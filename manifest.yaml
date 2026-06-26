@@ -1,0 +1,48 @@
+kp: KP2
+track: interoperability
+title: Government Interoperability Framework
+home: 10-Knowledge-Products/KP2-INT
+depends_on: []
+building_blocks:
+  - x-road-bus
+  - member-moeys
+  - member-pnea
+  - member-plr
+  - member-pnia
+modules:
+  - id: "2.1"
+    title: ""
+    building_blocks: [x-road-bus]
+    config: configs/x-road-bus/2.1.conf
+    prompt: prompts/2.1.md
+    acceptance: acceptance/2.1.md
+  - id: "2.2"
+    title: ""
+    building_blocks: [member-moeys]
+    config: configs/member-moeys/2.2.conf
+    prompt: prompts/2.2.md
+    acceptance: acceptance/2.2.md
+  - id: "2.3"
+    title: ""
+    building_blocks: [member-pnea]
+    config: configs/member-pnea/2.3.conf
+    prompt: prompts/2.3.md
+    acceptance: acceptance/2.3.md
+  - id: "2.4"
+    title: ""
+    building_blocks: [member-plr]
+    config: configs/member-plr/2.4.conf
+    prompt: prompts/2.4.md
+    acceptance: acceptance/2.4.md
+  - id: "2.5"
+    title: ""
+    building_blocks: [member-pnia]
+    config: configs/member-pnia/2.5.conf
+    prompt: prompts/2.5.md
+    acceptance: acceptance/2.5.md
+  - id: "2.6"
+    title: ""
+    building_blocks: [x-road-bus]
+    config: configs/x-road-bus/2.6.conf
+    prompt: prompts/2.6.md
+    acceptance: acceptance/2.6.md
