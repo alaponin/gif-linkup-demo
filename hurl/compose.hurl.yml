@@ -1,0 +1,77 @@
+# Overlay that adds the Hurl runner to the Linkup demonstration federation.
+# Basis: nordic-institute/X-Road @ 7.7.0, Docker/xrd-dev-stack/compose.yaml.
+# Used together with the base file:
+#   docker compose -f docker-compose.yml -f hurl/compose.hurl.yml ...
+# hurl/run-linkup.sh does this for you.
+#
+# Two things this overlay adds beyond the runner itself:
+#   1. a shared volume carrying the Test CA's ca.pem / ocsp.pem / tsa.pem into
+#      the runner's --file-root, so the certification-service requests can
+#      upload them without a docker cp dance;
+#   2. healthchecks on cs and the Security Servers, so the runner does not start
+#      firing until every admin UI answers on :4000.
+
+services:
+  ca:
+    volumes:
+      # The xrddev-testca image writes the demo trust anchor here. Confirmed at
+      # P0 (2026-07-25): ca.pem/ocsp.pem/tsa.pem land in /home/ca/certs exactly
+      # as assumed.
+      - ca-certs:/home/ca/certs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/testca/certs"]
+      interval: 5s
+      retries: 40
+
+  cs:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
+      interval: 5s
+      retries: 120
+
+  # retries: 120 (10 min budget, doubled from an initial 60/5min at P0 2026-07-25):
+  # a from-zero boot passes well within 5 min, but a restart from persisted
+  # volumes (docker compose down without --purge, then up again) can take a
+  # Security Server longer to re-establish its signer/proxy state than a fresh
+  # init -- `docker compose run --rm hurl`'s dependency wait treats an
+  # already-unhealthy container as a hard failure rather than continuing to
+  # poll, so the budget has to cover the slower path, not just the common one.
+  # Found via Task 7 of docs/superpowers/plans/2026-07-25-kp2-verified-pack.md.
+  ss-pdga:
+    healthcheck: &ss-health
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
+      interval: 5s
+      retries: 120
+  ss-pnea:
+    healthcheck: *ss-health
+  ss-plr:
+    healthcheck: *ss-health
+  ss-pnia:
+    healthcheck: *ss-health
+  ss-moeys:
+    healthcheck: *ss-health
+
+  hurl:
+    image: ghcr.io/orange-opensource/hurl:latest
+    container_name: hurl
+    # "tools" keeps it out of `docker compose up`; `docker compose run hurl`
+    # activates the profile on its own.
+    profiles: ["tools"]
+    networks: [linkup]
+    volumes:
+      - ./hurl:/hurl-src:ro
+      - ca-certs:/hurl-files/ca:ro
+    depends_on:
+      cs:
+        condition: service_healthy
+      ca:
+        condition: service_healthy
+      ss-pdga:
+        condition: service_healthy
+      ss-pnea:
+        condition: service_healthy
+      ss-plr:
+        condition: service_healthy
+
+volumes:
+  ca-certs: {name: kp2-ca-certs}

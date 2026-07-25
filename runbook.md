@@ -60,9 +60,18 @@ sessions in one browser log each other out — use separate browsers/profiles.
 ## Teardown
 
 - `scripts/teardown.sh` — stops containers; named volumes survive, so the
-  federation's configuration persists across restarts.
+  federation's configuration persists across restarts. **To resume, do not
+  rerun `deploy.sh`/`hurl/run-linkup.sh`** — the Hurl scenario set always runs
+  the full stand-up sequence and is not idempotent against already-configured
+  state (confirmed at P0 2026-07-25: `POST /api/v1/initialization` returns
+  `409 init_already_initialized` on a persisted CS, and every later
+  registration call would fail the same way). Resume with the containers
+  directly: `docker compose -f docker-compose.yml -f hurl/compose.hurl.yml
+  --profile full up -d` — the persisted `/etc/xroad` state in each volume is
+  everything the federation needs; nothing else has to run.
 - `scripts/teardown.sh --purge` — also deletes the volumes: full reset to zero.
-  The reproducibility proof (P5) is: `--purge`, redeploy, reseed, acceptance green.
+  The reproducibility proof (P5) is: `--purge`, redeploy (`hurl/run-linkup.sh`,
+  the from-zero path), reseed, acceptance green.
 
 ## Known traps
 
