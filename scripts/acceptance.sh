@@ -36,8 +36,13 @@ check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
   api GET "localhost:${SS_UI[$ss]}" "$key" /clients \
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
+# Registration status is global-conf propagation, same asynchrony as the Hurl
+# runner itself -- confirmed at P5 (2026-07-25): a cold reproducibility run hit
+# PNEA:EXAMS still short of REGISTERED the instant acceptance.sh started right
+# after deploy, though it settled seconds later. Retry, don't fail (lib.sh's
+# retry(), same as everywhere else this asynchrony shows up in this pack).
 for pair in MOEYS:PEMIS PNEA:EXAMS PLR:ENROLMENT PNIA:IDENTITY; do
-  check_pair() { check_client_registered "$pair"; }
+  check_pair() { retry 12 5 "${pair} REGISTERED" check_client_registered "$pair"; }
   check "2.x(${pair})" "client REGISTERED on ${HOST_SS[$pair]}" check_pair
 done
 
@@ -56,11 +61,11 @@ check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service 
   api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients/${grantee}/access-rights" \
     | jq -e --arg svc "$svc" '[.[].service_code] == [$svc]' >/dev/null
 }
-check_241() { check_acl_exact "${HOST_SS[PLR:ENROLMENT]}" PROGRESSA:GOV:PLR:ENROLMENT \
-  enrolment-api PROGRESSA:GOV:PNEA:EXAMS; }
+check_241() { retry 12 5 "enrolment-api ACL settled" check_acl_exact "${HOST_SS[PLR:ENROLMENT]}" \
+  PROGRESSA:GOV:PLR:ENROLMENT enrolment-api PROGRESSA:GOV:PNEA:EXAMS; }
 check 2.4.acl "enrolment-api grants exactly PNEA:EXAMS, nothing else" check_241
-check_251() { check_acl_exact "${HOST_SS[PNIA:IDENTITY]}" PROGRESSA:GOV:PNIA:IDENTITY \
-  identity-api PROGRESSA:GOV:PNEA:EXAMS; }
+check_251() { retry 12 5 "identity-api ACL settled" check_acl_exact "${HOST_SS[PNIA:IDENTITY]}" \
+  PROGRESSA:GOV:PNIA:IDENTITY identity-api PROGRESSA:GOV:PNEA:EXAMS; }
 check 2.5.acl "identity-api grants exactly PNEA:EXAMS, nothing else" check_251
 
 # ---- 2.6 the once-only exchange ---------------------------------------------
