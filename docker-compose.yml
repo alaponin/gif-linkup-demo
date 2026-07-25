@@ -1,0 +1,161 @@
+# KP2 build pack — Linkup demonstration federation (X-Road 7.x)
+# Basis: NIIS KB "How to Set Up a Local Test Environment Using Docker Compose?"
+# Full profile: CS + Test CA + 5 Security Servers + 3 mock providers (~16 GB RAM).
+# Lite profile: LITE=1 in .env — scripts then omit "--profile full", so ss-pnia
+# and ss-moeys (profile "full") do not run and their subsystems are hosted on
+# ss-plr (see scripts/lib.sh HOST_SS).
+# DEMO ONLY — never production (Test CA, fixed CS creds, single host).
+
+x-sidecar: &sidecar
+  image: niis/xroad-security-server-sidecar:${XROAD_VERSION:-7.7.0}
+  environment: &sidecar-env
+    XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
+    XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
+    XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
+    XROAD_LOG_LEVEL: INFO
+  networks: [linkup]
+  depends_on: [cs, ca]
+
+x-mock: &mock
+  build: ./apps/mock-registry
+  networks: [linkup]
+
+services:
+  cs:
+    # Central Server — operated by PDGA. Test/dev image: UI creds fixed xrd/secret.
+    image: niis/xroad-central-server:${XROAD_CS_TAG:-noble-7.7.0}
+    container_name: cs
+    environment:
+      XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
+    ports: ["4000:4000"]
+    volumes:
+      - cs-db:/var/lib/postgresql/16/main
+      - cs-conf:/etc/xroad
+    networks: [linkup]
+
+  ca:
+    # Test CA + OCSP (:8888) + TSA (:8899) — demo trust anchor.
+    # TESTCA_TAG defaults to a digest pin (.env.example) per the reproducibility
+    # rule (PLAN.md decision 1) — confirmed at P0 2026-07-25.
+    image: ghcr.io/nordic-institute/xrddev-testca:${TESTCA_TAG:-latest}
+    container_name: ca
+    ports: ["8888:8888"]
+    volumes:
+      - ca-data:/home/ca
+    networks: [linkup]
+
+  ss-pdga:
+    # Management Security Server (CS owner PDGA + MANAGEMENT subsystem).
+    <<: *sidecar
+    container_name: ss-pdga
+    ports: ["1000:4000", "1080:8080"]
+    volumes:
+      - ss-pdga-db:/var/lib/postgresql/16/main
+      - ss-pdga-conf:/etc/xroad
+      - ss-pdga-archive:/var/lib/xroad
+
+  ss-pnea:
+    # PNEA — consumer (PROGRESSA/GOV/PNEA:EXAMS).
+    <<: *sidecar
+    container_name: ss-pnea
+    ports: ["2000:4000", "2080:8080"]
+    volumes:
+      - ss-pnea-db:/var/lib/postgresql/16/main
+      - ss-pnea-conf:/etc/xroad
+      - ss-pnea-archive:/var/lib/xroad
+
+  ss-plr:
+    # PLR — provider (PROGRESSA/GOV/PLR:ENROLMENT).
+    <<: *sidecar
+    container_name: ss-plr
+    ports: ["3000:4000", "3080:8080"]
+    volumes:
+      - ss-plr-db:/var/lib/postgresql/16/main
+      - ss-plr-conf:/etc/xroad
+      - ss-plr-archive:/var/lib/xroad
+
+  ss-pnia:
+    # PNIA — provider (PROGRESSA/GOV/PNIA:IDENTITY). Full profile only.
+    <<: *sidecar
+    container_name: ss-pnia
+    profiles: ["full"]
+    ports: ["5000:4000", "5080:8080"]
+    volumes:
+      - ss-pnia-db:/var/lib/postgresql/16/main
+      - ss-pnia-conf:/etc/xroad
+      - ss-pnia-archive:/var/lib/xroad
+
+  ss-moeys:
+    # MoEYS — provider (PROGRESSA/GOV/MOEYS:PEMIS). Full profile only.
+    <<: *sidecar
+    container_name: ss-moeys
+    profiles: ["full"]
+    ports: ["6000:4000", "6080:8080"]
+    volumes:
+      - ss-moeys-db:/var/lib/postgresql/16/main
+      - ss-moeys-conf:/etc/xroad
+      - ss-moeys-archive:/var/lib/xroad
+
+  app-pnia:
+    # Mock identity registry behind ss-pnia.
+    <<: *mock
+    container_name: app-pnia
+    environment:
+      ENTITY: persons
+      CSV_FILE: /data/persons.csv
+      SPEC_FILE: /specs/pnia-identity.openapi.yaml
+      KEY_FIELD: nin
+    volumes:
+      - ./apps/data:/data:ro
+      - ./apps/specs:/specs:ro
+
+  app-plr:
+    # Mock learner registry behind ss-plr.
+    <<: *mock
+    container_name: app-plr
+    environment:
+      ENTITY: enrolments
+      CSV_FILE: /data/enrolments.csv
+      SPEC_FILE: /specs/plr-enrolment.openapi.yaml
+      KEY_FIELD: nin
+    volumes:
+      - ./apps/data:/data:ro
+      - ./apps/specs:/specs:ro
+
+  app-pemis:
+    # Mock school-information system behind ss-moeys.
+    <<: *mock
+    container_name: app-pemis
+    environment:
+      ENTITY: school-records
+      CSV_FILE: /data/school_records.csv
+      SPEC_FILE: /specs/pemis.openapi.yaml
+      KEY_FIELD: nin
+    volumes:
+      - ./apps/data:/data:ro
+      - ./apps/specs:/specs:ro
+
+volumes:
+  cs-db: {name: kp2-cs-db}
+  cs-conf: {name: kp2-cs-conf}
+  ca-data: {name: kp2-ca-data}
+  ss-pdga-db: {name: kp2-ss-pdga-db}
+  ss-pdga-conf: {name: kp2-ss-pdga-conf}
+  ss-pdga-archive: {name: kp2-ss-pdga-archive}
+  ss-pnea-db: {name: kp2-ss-pnea-db}
+  ss-pnea-conf: {name: kp2-ss-pnea-conf}
+  ss-pnea-archive: {name: kp2-ss-pnea-archive}
+  ss-plr-db: {name: kp2-ss-plr-db}
+  ss-plr-conf: {name: kp2-ss-plr-conf}
+  ss-plr-archive: {name: kp2-ss-plr-archive}
+  ss-pnia-db: {name: kp2-ss-pnia-db}
+  ss-pnia-conf: {name: kp2-ss-pnia-conf}
+  ss-pnia-archive: {name: kp2-ss-pnia-archive}
+  ss-moeys-db: {name: kp2-ss-moeys-db}
+  ss-moeys-conf: {name: kp2-ss-moeys-conf}
+  ss-moeys-archive: {name: kp2-ss-moeys-archive}
+
+networks:
+  linkup:
+    name: linkup
+    driver: bridge
