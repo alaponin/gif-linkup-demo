@@ -21,8 +21,11 @@ COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl
 
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
 # which SS hosts which subsystem). acceptance.sh/deploy.sh must not re-derive these.
-declare -A SS_UI=( [ss-pdga]=1000 [ss-pnea]=2000 [ss-plr]=3000 [ss-pnia]=5000 [ss-moeys]=6000 )
-declare -A SS_REST=( [ss-pdga]=1080 [ss-pnea]=2080 [ss-plr]=3080 [ss-pnia]=5080 [ss-moeys]=6080 )
+declare -A SS_UI=( [ss-pdga]=1000 [ss-pnea]=2000 [ss-plr]=3000 [ss-pnia]=5100 [ss-moeys]=6000 )
+declare -A SS_REST=( [ss-pdga]=1080 [ss-pnea]=2080 [ss-plr]=3080 [ss-pnia]=5180 [ss-moeys]=6080 )
+# ss-pnia is 5100/5180, not 5000/5080: port 5000 collides with macOS's AirPlay
+# Receiver (ControlCenter), which hangs the connection instead of refusing it.
+# See docker-compose.yml's ss-pnia comment. Confirmed at P0, 2026-07-25.
 SS_ORDER=(ss-pdga ss-pnea ss-plr ss-pnia ss-moeys)   # management SS first
 declare -A HOST_SS=( [PDGA:MANAGEMENT]=ss-pdga [PNEA:EXAMS]=ss-pnea \
                      [PLR:ENROLMENT]=ss-plr [PNIA:IDENTITY]=ss-pnia [MOEYS:PEMIS]=ss-moeys )

@@ -55,7 +55,7 @@ sessions in one browser log each other out — use separate browsers/profiles.
 | --- | --- | --- |
 | Central Server (PDGA) | https://localhost:4000 | xrd / secret (fixed, test image) |
 | Test CA | https://localhost:8888/testca/ | — |
-| ss-pdga / ss-pnea / ss-plr / ss-pnia / ss-moeys | https://localhost:1000 / 2000 / 3000 / 5000 / 6000 | `.env` admin user |
+| ss-pdga / ss-pnea / ss-plr / ss-pnia / ss-moeys | https://localhost:1000 / 2000 / 3000 / 5100 / 6000 | `.env` admin user |
 
 ## Teardown
 
@@ -84,6 +84,11 @@ of the demo CA, not a claim about Progressa); services stay disabled after they 
 added until enabled; the consumer subsystem's connection type must be HTTP for the
 demo call (default HTTPS expects a client TLS certificate); the admin APIs
 authenticate by session login and XSRF token, not by API key.
+
+macOS hosts: port 5000 is not used for any admin UI here (ss-pnia is 5100) because
+macOS's AirPlay Receiver listens on 5000 by default and silently hangs the
+connection rather than refusing it — confirmed at P0 (2026-07-25) as a genuinely
+confusing failure mode (containers report healthy; the admin API call just hangs).
 
 Pin discipline: the scenarios are written against X-Road **7.7.0** and the compose
 images are pinned to it. `Docker/xrd-dev-stack` does not exist before 7.5.0 and is

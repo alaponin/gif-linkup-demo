@@ -76,10 +76,14 @@ services:
 
   ss-pnia:
     # PNIA — provider (PROGRESSA/GOV/PNIA:IDENTITY). Full profile only.
+    # Host port 5100, not 5000: macOS's AirPlay Receiver (ControlCenter) listens
+    # on 5000 by default and silently swallows the connection instead of
+    # refusing it, so a straight "5000:4000" mapping hangs on macOS rather than
+    # failing fast. Confirmed at P0, 2026-07-25.
     <<: *sidecar
     container_name: ss-pnia
     profiles: ["full"]
-    ports: ["5000:4000", "5080:8080"]
+    ports: ["5100:4000", "5180:8080"]
     volumes:
       - ss-pnia-db:/var/lib/postgresql/16/main
       - ss-pnia-conf:/etc/xroad
