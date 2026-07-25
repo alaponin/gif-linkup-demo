@@ -7,7 +7,32 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Track:** interoperability
 - **Depends on:** none (foundation)
 - **Stand it up:** see `runbook.md`
-- **Index:** see `manifest.yaml` (module → BB → config → prompt → acceptance)
+- **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
+  `video_ref` to the Topic 5 subtopic each module realises, and the frozen
+  Progressa identifiers that are the KP3/KP4 join keys)
+- **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
+  `REVIEW.md` (self-review; open decisions)
+
+What's here: `docker-compose.yml` (X-Road 7.7.0: Central Server, Test CA, five
+Security Servers — the compose topology has a three-server lite profile, but
+the generated Hurl scenario set does not yet support it; see `hurl/README.md`
+"Known limits"), `configs/` (declarative YAML per module),
+`prompts/` (the bb-config-gen plays that generate the configs), `hurl/` (the
+federation as config-as-code — Hurl scenarios driving the admin REST APIs,
+generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),
+`acceptance/` (given/when/then per module; 2.6 is the once-only exchange, the
+framework's acceptance), `scripts/` (deploy / seed / acceptance / teardown),
+`apps/` (mock REST registries behind the Security Servers + OpenAPI contracts +
+Gambia-grounded, Progressa-named seed data), `docs/` (production delta per Module
+5.7; X-Road 8 note; what reading the 7.7.0 reference corrected).
+
+By design, KP2's slice is **Joget-free**: the member systems are mocks behind
+stable OpenAPI contracts — the seam where KP4's Joget DX apps plug in later
+without touching the X-Road configuration.
 
 Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs,
-`kp-solution-verify` proves the pack runs. Scope: Education only, public anchors only.
+`kp-solution-verify` proves the pack runs. **Status: VERIFIED (2026-07-25)** —
+`check_pack.py --ready` passes and the live acceptance suite is green,
+including the reproducibility proof (`teardown.sh --purge` → cold redeploy →
+reseed → acceptance, unattended — PLAN.md §7). Scope: Education only, public
+anchors only. Demo only — never production (`docs/production-delta.md`).

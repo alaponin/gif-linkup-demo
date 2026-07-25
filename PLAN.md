@@ -237,15 +237,15 @@ Each assertion mapped to its EIF layer per 5.6. UNVERIFIED until green.
 
 ## 7. Work sequence
 
-| Phase | Work | Exit gate |
-| --- | --- | --- |
-| P0 Spike | Compose up as-published; `hurlfmt --check hurl/.build/setup.hurl` (never yet parsed by Hurl — authored without network access to the binary); `hurl/run-linkup.sh` from zero; measure RAM; confirm the testca cert filenames in `/home/ca/certs`; fix full-vs-lite default | Federation up from the scenarios; §3 assumptions confirmed on a live stack |
-| P1 Configs + prompts | bb-config-gen plays 2.1–2.5; manifest titles + fixes (`home:` says `KP2-INT`, folder is `KP2-GIF`; freeze identifiers); **dogfood**: run each prompt for real, diff its output against the config, reconcile — only then is the config "generated" | `check_pack.py` passes; every config regenerated from its prompt |
-| P2 Providers + seed | Mocks from the OpenAPI specs; Gambia-grounded CSVs; `seed.sh` | Mocks answer locally with seeded data |
-| P3 Deploy automation | `hurl/run-linkup.sh` from zero incl. retries and explicit approvals; `deploy.sh` reduced to a wrapper; `teardown.sh`; runbook rewritten to match reality (incl. teardown + manual fallback) | Clean machine → federation up, one command |
-| P4 Acceptance | `acceptance.sh` + six checks incl. 2.6's four assertions | Suite green |
-| P5 Verify + ship | Resolve all `[confirm]` against the live registry; `check_pack.py --ready`; teardown `--purge` → redeploy → re-run (reproducibility proof) | Pack VERIFIED |
-| P6 Deltas | `xroad-8-delta.md`; production delta (5.7 list + demo-only flags from §3: Test CA, fixed CS credentials, TLS-verify off, HTTP connection type, single host); ITU-cloud re-targeting parked | Docs merged |
+| Phase | Work | Exit gate | Status |
+| --- | --- | --- | --- |
+| P0 Spike | Compose up as-published; `hurlfmt --check hurl/.build/setup.hurl` (never yet parsed by Hurl — authored without network access to the binary); `hurl/run-linkup.sh` from zero; measure RAM; confirm the testca cert filenames in `/home/ca/certs`; fix full-vs-lite default | Federation up from the scenarios; §3 assumptions confirmed on a live stack | **Done** 2026-07-25 |
+| P1 Configs + prompts | bb-config-gen plays 2.1–2.5; manifest titles + fixes (`home:` says `KP2-INT`, folder is `KP2-GIF`; freeze identifiers); **dogfood**: run each prompt for real, diff its output against the config, reconcile — only then is the config "generated" | `check_pack.py` passes; every config regenerated from its prompt | **Done** 2026-07-25 |
+| P2 Providers + seed | Mocks from the OpenAPI specs; Gambia-grounded CSVs; `seed.sh` | Mocks answer locally with seeded data | **Done** 2026-07-25 |
+| P3 Deploy automation | `hurl/run-linkup.sh` from zero incl. retries and explicit approvals; `deploy.sh` reduced to a wrapper; `teardown.sh`; runbook rewritten to match reality (incl. teardown + manual fallback) | Clean machine → federation up, one command | **Done** 2026-07-25 |
+| P4 Acceptance | `acceptance.sh` + six checks incl. 2.6's four assertions | Suite green | **Done** 2026-07-25 |
+| P5 Verify + ship | Resolve all `[confirm]` against the live registry; `check_pack.py --ready`; teardown `--purge` → redeploy → re-run (reproducibility proof) | Pack VERIFIED | **Done** 2026-07-25 |
+| P6 Deltas | `xroad-8-delta.md`; production delta (5.7 list + demo-only flags from §3: Test CA, fixed CS credentials, TLS-verify off, HTTP connection type, single host); ITU-cloud re-targeting parked | Docs merged | **Done** 2026-07-25 — both delta docs reviewed against the live run, no new shortcuts found, no edits needed |
 
 **P0–P5 complete, 2026-07-25.** Reproducibility proof: `teardown.sh --purge` →
 `hurl/run-linkup.sh` (cold, 936s) → `scripts/seed.sh` → `scripts/acceptance.sh`
