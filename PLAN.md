@@ -247,6 +247,20 @@ Each assertion mapped to its EIF layer per 5.6. UNVERIFIED until green.
 | P5 Verify + ship | Resolve all `[confirm]` against the live registry; `check_pack.py --ready`; teardown `--purge` → redeploy → re-run (reproducibility proof) | Pack VERIFIED |
 | P6 Deltas | `xroad-8-delta.md`; production delta (5.7 list + demo-only flags from §3: Test CA, fixed CS credentials, TLS-verify off, HTTP connection type, single host); ITU-cloud re-targeting parked | Docs merged |
 
+**P0–P5 complete, 2026-07-25.** Reproducibility proof: `teardown.sh --purge` →
+`hurl/run-linkup.sh` (cold, 936s) → `scripts/seed.sh` → `scripts/acceptance.sh`
+— all green, unattended. Real bugs found and fixed along the way (each its own
+commit): a comma in MoEYS's member_name broke X-Road's server-side DN
+construction (`hurl/generate.py` `dn_escape()`); `teardown.sh --purge` missed
+the Hurl overlay's `ca-certs` volume; the Security Server healthcheck budget
+was too short for a restart-from-persisted-volumes boot (60→120 retries);
+`ss-pnia`'s host port 5000 collided with macOS's AirPlay Receiver (moved to
+5100); and `acceptance.sh`'s registration-status checks were single-shot
+against an asynchronous propagation window (now retried, like everywhere else
+this asynchrony shows up). See
+`docs/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full task
+log. P6 (deltas) below.
+
 ## 8. Known traps
 
 Global-conf propagation delays (retry, don't fail); the CSR is generated in DER but
