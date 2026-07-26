@@ -17,6 +17,7 @@ drift from the YAML the bb-config-gen plays produce.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import sys
@@ -1143,6 +1144,51 @@ HTTP 200
 
     # Module 2.6 -- the once-only exchange -- has no scenario by design; see the
     # note above probe data. scripts/acceptance.sh owns it.
+
+    # -- hurl/topology.json --------------------------------------------------
+    # Consumed by apps/console/truth.py so the demo console cannot describe a
+    # federation different from the one this profile actually deploys. Not
+    # git-committed -- same convention as hurl/scenarios/ and hurl/vars.env
+    # (regenerated fresh every run, never staged; see hurl/README.md).
+    security_servers = [
+        {"code": mgmt_ss["code"], "host": mgmt_ss["dns_name"], "ui_port": 4000, "proxy_port": 8080},
+    ]
+    for key in ("pnea", "plr", "pnia", "moeys"):
+        if profile == "lite" and key in LITE_HOSTED_ON:
+            continue  # not brought up as its own server under lite
+        ss = members[key]["security_server"]
+        security_servers.append(
+            {"code": ss["code"], "host": ss["dns_name"], "ui_port": 4000, "proxy_port": 8080}
+        )
+
+    subsystems = []
+    for key in ("pnia", "plr", "moeys", "pnea"):
+        member = members[key]
+        m, sub_cfg, ss = member["member"], member["subsystem"], member["security_server"]
+        hosted_on = LITE_HOSTED_ON.get(key) if profile == "lite" else None
+        host_dns = members[hosted_on]["security_server"]["dns_name"] if hosted_on else ss["dns_name"]
+        subsystems.append({
+            "id": f"{instance}:{member_class}:{m['member_code']}:{sub_cfg['code']}",
+            "member_code": m["member_code"],
+            "member_name": m["member_name"],
+            "subsystem_code": sub_cfg["code"],
+            "hosted_on": host_dns,
+            "services": [
+                {"code": svc["code"], "access": svc.get("access") or []}
+                for svc in (member.get("services") or [])
+            ],
+        })
+
+    topology = {
+        "profile": profile,
+        "instance": instance,
+        "member_class": member_class,
+        "central_server": {"host": core["central_server"]["address"], "ui_port": 4000},
+        "security_servers": security_servers,
+        "subsystems": subsystems,
+    }
+    (PACK / "hurl" / "topology.json").write_text(json.dumps(topology, indent=2) + "\n")
+    print("  wrote hurl/topology.json")
 
     print(f"\ndone -- {instance} federation, "
           f"{len(manifest['identifiers']['members'])} members, "

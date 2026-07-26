@@ -20,6 +20,7 @@ Usage:  python3 hurl/check_scenarios.py        (exit 1 on any failure)
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import sys
@@ -154,6 +155,27 @@ def main() -> None:
         _, _, code, subsystem = re.split(r"[:/]", member_str.replace(":", "/"))
         if not any(v["code"] == code and v["subsystem"] == subsystem for v in identity["members"].values()):
             note(f"identifiers.members entry {member_str} has no matching identity.members entry (code+subsystem)")
+
+    # hurl/topology.json (apps/console's only source of topology) must exist,
+    # match the deployed profile, and describe exactly the members frozen in
+    # manifest.yaml -- the same class of agreement check as identity:/
+    # identifiers: above.
+    topo_path = PACK / "hurl" / "topology.json"
+    if not topo_path.exists():
+        note("hurl/topology.json does not exist -- run hurl/generate.py")
+    else:
+        topo = json.loads(topo_path.read_text())
+        deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
+        expected_profile = deployment.get("profile", "full")
+        if topo.get("profile") != expected_profile:
+            note(f"topology.json profile ({topo.get('profile')!r}) disagrees with deployment.yaml ({expected_profile!r})")
+        topo_ids = {s["id"] for s in topo.get("subsystems", [])}
+        manifest_ids = set()
+        for member_str in ids["members"]:
+            instance, cls, code, subsystem = re.split(r"[:/]", member_str.replace(":", "/"))
+            manifest_ids.add(f"{instance}:{cls}:{code}:{subsystem}")
+        if topo_ids != manifest_ids:
+            note(f"topology.json subsystems {sorted(topo_ids)} disagree with manifest identifiers.members {sorted(manifest_ids)}")
 
     if failures:
         print(f"\n{len(failures)} problem(s)")
