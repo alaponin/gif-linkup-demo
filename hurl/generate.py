@@ -671,6 +671,7 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
 
 def main() -> None:
     manifest = load("manifest.yaml")
+    identity = manifest["identity"]
     deployment = load("deployment.yaml")
     if deployment.get("target") != "docker-local":
         raise SystemExit(
@@ -689,11 +690,19 @@ def main() -> None:
         "moeys": load("configs/member-moeys/2.2.yaml"),
         "pnea": load("configs/member-pnea/2.3.yaml"),
     }
+    # member:/subsystem: no longer live in configs/*.yaml (removed 2026-07-26,
+    # manifest.yaml's identity.members is the source now) -- inject them into
+    # the same dict shape so build_ss_file/build_service_file/
+    # build_hosted_client and the "02 members" loop below need zero changes.
+    for key, cfg in members.items():
+        ident = identity["members"][key]
+        cfg["member"] = {"member_code": ident["code"], "member_name": ident["name"]}
+        cfg["subsystem"] = {"code": ident["subsystem"], "description": ident["subsystem_description"]}
 
-    instance = core["central_server"]["instance_identifier"]
-    owner = core["central_server"]["owner"]
+    instance = identity["instance"]
+    owner = identity["owner"]
     mgmt_ss = core["management_security_server"]
-    member_class = owner["member_class"]
+    member_class = identity["member_class"]
     pdga_prefix = ss_prefix(mgmt_ss["dns_name"])
 
     print("generating Linkup Hurl scenarios (X-Road 7.7.0 admin APIs)")
@@ -862,16 +871,16 @@ HTTP 201
 # Servers later in the run.
 ############################################################
 
-# {owner['member_name']} -- federation owner
+# {owner['name']} -- federation owner
 POST https://{{{{cs_host}}}}:4000/api/v1/members
 X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
 Content-Type: application/json
 {{
   "member_id": {{
     "member_class": "{{{{member_class}}}}",
-    "member_code": "{owner['member_code']}"
+    "member_code": "{owner['code']}"
   }},
-  "member_name": "{owner['member_name']}"
+  "member_name": "{owner['name']}"
 }}
 
 HTTP 201
@@ -883,7 +892,7 @@ Content-Type: application/json
 {{
   "subsystem_id": {{
     "member_class": "{{{{member_class}}}}",
-    "member_code": "{owner['member_code']}",
+    "member_code": "{owner['code']}",
     "subsystem_code": "{owner['management_subsystem']}"
   }}
 }}
@@ -895,7 +904,7 @@ PATCH https://{{{{cs_host}}}}:4000/api/v1/management-services-configuration
 X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
 Content-Type: application/json
 {{
-  "service_provider_id": "{{{{xroad_instance}}}}:{{{{member_class}}}}:{owner['member_code']}:{owner['management_subsystem']}"
+  "service_provider_id": "{{{{xroad_instance}}}}:{{{{member_class}}}}:{owner['code']}:{owner['management_subsystem']}"
 }}
 
 HTTP 200
@@ -954,21 +963,13 @@ gconf_anchor: body
     write("03-cs-anchor.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 10 management security server -------------------------------------
-    pdga_member = {
-        "member": {
-            "member_code": owner["member_code"],
-            "member_name": owner["member_name"],
-        },
-        "subsystem": {"code": owner["management_subsystem"]},
-        "security_server": {"code": mgmt_ss["code"], "dns_name": mgmt_ss["dns_name"]},
-    }
     host_var = f"{pdga_prefix}_host"
     body = sub(
         SS_BRINGUP_INIT,
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
-        MEMBER_CODE=owner["member_code"],
-        MEMBER_NAME=dn_escape(owner["member_name"]),
+        MEMBER_CODE=owner["code"],
+        MEMBER_NAME=dn_escape(owner["name"]),
         HOSTVAR=host_var,
         P=pdga_prefix,
         CANAME=sub(CA_NAME_CAPTURE, HOSTVAR=host_var, P=pdga_prefix),
@@ -976,8 +977,8 @@ gconf_anchor: body
     body += sub(
         MEMBER_SIGN_KEY,
         SS_CODE=mgmt_ss["code"],
-        MEMBER_CODE=owner["member_code"],
-        MEMBER_NAME=dn_escape(owner["member_name"]),
+        MEMBER_CODE=owner["code"],
+        MEMBER_NAME=dn_escape(owner["name"]),
         HOSTVAR=host_var,
         SESS_P=pdga_prefix,
         CAP_P=pdga_prefix,
@@ -1076,7 +1077,7 @@ HTTP 200
 """,
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
-        MEMBER_CODE=owner["member_code"],
+        MEMBER_CODE=owner["code"],
         SUBSYSTEM=owner["management_subsystem"],
         HOSTVAR=host_var,
         P=pdga_prefix,
