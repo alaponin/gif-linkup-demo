@@ -139,6 +139,32 @@ services:
       - ./apps/data:/data:ro
       - ./apps/specs:/specs:ro
 
+  console:
+    # KP2 demonstration console -- demo only, never production (see
+    # docs/production-delta.md). profiles: ["demo"] keeps it off by default
+    # on a plain `docker compose up`; scripts/console.sh {up|down|reset|status}
+    # is the intended entry point. Mounts reconstruct just enough of the pack
+    # (not the whole repo) for apps/console/truth.py to load: deployment.yaml,
+    # manifest.yaml, configs/, hurl/topology.json, apps/data/*.csv -- all
+    # read-only. out/ is the one read-write mount, for the ACL journal.
+    build: ./apps/console
+    container_name: console
+    profiles: ["demo"]
+    networks: [linkup]
+    ports: ["127.0.0.1:8090:8000"]
+    environment:
+      PACK_DIR: /pack
+      OUT_DIR: /out
+      XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
+      XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
+    volumes:
+      - ./deployment.yaml:/pack/deployment.yaml:ro
+      - ./manifest.yaml:/pack/manifest.yaml:ro
+      - ./configs:/pack/configs:ro
+      - ./hurl/topology.json:/pack/hurl/topology.json:ro
+      - ./apps/data:/pack/apps/data:ro
+      - ./out:/out
+
 volumes:
   cs-db: {name: kp2-cs-db}
   cs-conf: {name: kp2-cs-conf}
