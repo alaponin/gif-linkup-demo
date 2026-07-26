@@ -344,3 +344,22 @@ call format used in the acceptance check). The stack's dev images and `DEV:COM`
 identifiers are not reused — see `docs/xroad-770-notes.md` §5. Admin API definitions:
 `src/{central,security}-server/openapi-model/.../openapi-definition.yaml`.
 docs.x-road.global manuals (CS/SS user guides) for anything the scenario does not cover.
+
+## 11. Demonstration console (2026-07-26)
+
+`apps/console/` (`scripts/console.sh up`, `http://localhost:8090`) is a demo
+asset, deliberately **outside** the module map in §4 and outside the
+acceptance path in §6: it has no `config`/`prompt`/`acceptance` file and
+`manifest.yaml` does not list it. It reads the same generated
+`hurl/topology.json` the scenarios use (no fourth copy of the topology) and
+really mutates the `identity-api` ACL live for its permissions tab — every
+mutation is journalled and reversed (`journal.py`), with reset on demand, on
+container start, and on a 120s no-heartbeat watchdog, and
+`scripts/acceptance.sh` itself refuses to run while that journal is dirty.
+See `docs/superpowers/plans/2026-07-26-kp2-demo-console.md` for the full
+build record, including two live-confirmed X-Road behaviours worth knowing
+about elsewhere in this pack: revoking/granting access-rights is instant in
+the **admin API's own read**, but the **proxy's actual authorization
+decision** can lag by up to ~30s (a server-conf cache effect, not a bug);
+and re-revoking or re-granting an already-there state both return `409`,
+which must be treated as success, not failure.

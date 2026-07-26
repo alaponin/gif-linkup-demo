@@ -24,7 +24,9 @@ generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),
 `acceptance/` (given/when/then per module; 2.6 is the once-only exchange, the
 framework's acceptance), `scripts/` (deploy / seed / acceptance / teardown),
 `apps/` (mock REST registries behind the Security Servers + OpenAPI contracts +
-Gambia-grounded, Progressa-named seed data), `docs/` (production delta per Module
+Gambia-grounded, Progressa-named seed data; `apps/console/` is the optional
+one-page demonstration UI, `scripts/console.sh up` — a demo asset, not a
+module, never in the acceptance path), `docs/` (production delta per Module
 5.7; X-Road 8 note; what reading the 7.7.0 reference corrected).
 
 By design, KP2's slice is **Joget-free**: the member systems are mocks behind

@@ -45,6 +45,16 @@ host, and run the once-only exchange that proves it. Demo only — see
    Runs `acceptance/2.1.md` … `2.6.md` in order; exits non-zero on first failure.
    2.6 is the framework's acceptance: the once-only exchange resolves, the right
    learner returns, nothing is asked twice, and the unauthorised caller is denied.
+5. **Demonstrate (optional)** — `scripts/console.sh up`
+   A one-page demo console (counter / inspector / permissions tabs) at
+   `http://localhost:8090` for a non-technical audience — not a module, not part
+   of acceptance, and never production (`docs/production-delta.md`). It really
+   revokes and grants the `identity-api` ACL live, journals every change, and
+   resets on demand, on startup, and on a 120s no-activity watchdog, so a demo
+   can't be left in a state that breaks `scripts/acceptance.sh` afterwards.
+   `scripts/console.sh {down|reset|status}` manages it; `acceptance.sh` itself
+   refuses to run while its journal is dirty, with a message telling you to
+   `scripts/console.sh reset` first.
 
 ## Admin UIs (manual fallback)
 
