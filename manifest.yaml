@@ -25,6 +25,39 @@ identifiers:
     - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
     - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
     - PROGRESSA/GOV/MOEYS/PEMIS/pemis-api
+# Rich identity — names, subsystem descriptions — that configs/*.yaml used to
+# duplicate by hand. identifiers: above stays the flat cross-pack contract,
+# untouched; this is what hurl/generate.py actually reads. The two must agree
+# -- hurl/check_scenarios.py checks that (Task 4 of
+# docs/superpowers/plans/2026-07-26-agency-identity-rename-support.md).
+identity:
+  instance: PROGRESSA
+  member_class: GOV
+  owner:
+    code: PDGA
+    name: Progressa Digital Government Authority
+    management_subsystem: MANAGEMENT
+  members:
+    moeys:
+      code: MOEYS
+      name: "Progressa Ministry of Education, Youth and Sport"
+      subsystem: PEMIS
+      subsystem_description: School information system (education management)
+    pnea:
+      code: PNEA
+      name: Progressa National Examination Authority
+      subsystem: EXAMS
+      subsystem_description: Examination and certification services (consumer of identity + enrolment)
+    plr:
+      code: PLR
+      name: Progressa Learner Registry
+      subsystem: ENROLMENT
+      subsystem_description: Authoritative learner enrolment register
+    pnia:
+      code: PNIA
+      name: Progressa National Identity Authority
+      subsystem: IDENTITY
+      subsystem_description: Authoritative person identity register
 modules:
   - id: "2.1"
     video_ref: "5.5"   # Topic 5 subtopic this module realises
