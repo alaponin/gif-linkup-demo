@@ -1,0 +1,208 @@
+/* KP2 demonstration console. Designed for 1080p screen capture: 16px
+   minimum body text, no dense tables, deterministic animation timings. */
+
+:root {
+  --bg: #0f1520;
+  --panel: #161e2c;
+  --panel-border: #2a3648;
+  --text: #e8edf5;
+  --muted: #8fa0b8;
+  --citizen: #e8b339;
+  --pnia: #4fb0e8;
+  --plr: #6fce8f;
+  --danger: #e85f5f;
+  --ok: #4fce8f;
+  --font: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: var(--font);
+  line-height: 1.5;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+header h1 {
+  font-size: 20px;
+  margin: 0;
+  font-weight: 600;
+}
+
+header .badge {
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+nav.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+nav.tabs button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  padding: 14px 20px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+}
+
+nav.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--pnia);
+}
+
+main {
+  padding: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+/* -- counter tab -- */
+
+.learner-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+
+.chip {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.chip:hover { border-color: var(--pnia); }
+.chip.clean-404 { border-color: var(--danger); color: var(--danger); }
+
+.progress-line { color: var(--muted); font-size: 15px; margin-bottom: 16px; }
+
+.form-field {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.form-field.shown { opacity: 1; transform: translateY(0); }
+
+.form-field .field-name { width: 160px; color: var(--muted); font-size: 14px; }
+.form-field .field-value { flex: 1; font-size: 16px; }
+.form-field .field-value.empty { color: var(--muted); font-style: italic; }
+
+.source-badge {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.source-badge.citizen { background: color-mix(in srgb, var(--citizen) 25%, transparent); color: var(--citizen); }
+.source-badge.PNIA { background: color-mix(in srgb, var(--pnia) 25%, transparent); color: var(--pnia); }
+.source-badge.PLR { background: color-mix(in srgb, var(--plr) 25%, transparent); color: var(--plr); }
+
+.kp4-seam {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--panel-border);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* -- inspector tab -- */
+
+.layer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.layer-pane h3 { margin: 0 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.layer-pane p.sentence { margin: 0 0 12px; }
+.layer-pane .detail { font-size: 14px; color: var(--muted); }
+
+.call-detail { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--bg); border-radius: 6px; padding: 10px; margin-top: 6px; overflow-x: auto; }
+
+/* -- permissions tab -- */
+
+.service-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--panel-border); }
+.service-row .grants { font-size: 14px; color: var(--muted); }
+
+button.action {
+  background: var(--pnia);
+  color: #06111c;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+button.action.revoke { background: var(--danger); }
+button.action:disabled { opacity: 0.5; cursor: default; }
+
+.result-box { margin-top: 16px; padding: 16px; border-radius: 8px; background: var(--bg); }
+.result-box.denied { border: 1px solid var(--danger); }
+.result-box.allowed { border: 1px solid var(--ok); }
+.result-box .fault { font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin-top: 8px; }
+
+/* -- journal banner -- */
+
+#journal-banner {
+  display: none;
+  background: color-mix(in srgb, var(--danger) 20%, var(--bg));
+  border-bottom: 1px solid var(--danger);
+  padding: 10px 32px;
+  font-size: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+#journal-banner.dirty { display: flex; }
+#journal-banner button { background: var(--danger); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --panel-border: #dbe2ec;
+    --text: #1a2332;
+    --muted: #5b6b82;
+  }
+}

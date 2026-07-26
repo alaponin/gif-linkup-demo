@@ -1,3 +1,73 @@
-<!-- Placeholder -- Task 6 builds the real counter/inspector/permissions page. -->
 <!doctype html>
-<html><body><p>KP2 demonstration console: API is up. Page not built yet (Task 6).</p></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KP2 demonstration console</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="journal-banner">
+    <span id="journal-banner-text">A permission was changed for this demo and has not been reset.</span>
+    <button id="journal-reset-btn">Reset now</button>
+  </div>
+
+  <header>
+    <h1>KP2 &mdash; the once-only exchange, live</h1>
+    <span class="badge" id="profile-badge">profile: &hellip;</span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="counter">Counter</button>
+    <button class="tab-btn" data-tab="inspector">Inspector</button>
+    <button class="tab-btn" data-tab="permissions">Permissions</button>
+  </nav>
+
+  <main>
+    <!-- ================= COUNTER ================= -->
+    <section class="tab-panel active" id="tab-counter">
+      <div class="card">
+        <h2>Who's applying?</h2>
+        <p style="color: var(--muted)">This is the credential-application form &mdash; the seam where a KP4 Joget DX app plugs in later, behind the same OpenAPI contract. For today, click a learner.</p>
+        <div class="learner-chips" id="learner-chips">Loading learners&hellip;</div>
+      </div>
+
+      <div class="card" id="counter-form-card" style="display:none">
+        <h2>Application for national identification number <span id="counter-nin"></span></h2>
+        <p class="progress-line" id="progress-line"></p>
+        <div id="counter-fields"></div>
+        <p class="kp4-seam">This form is the seam &mdash; KP4 replaces it behind the same OpenAPI contract.</p>
+      </div>
+    </section>
+
+    <!-- ================= INSPECTOR ================= -->
+    <section class="tab-panel" id="tab-inspector">
+      <div class="card">
+        <h2>Four layers, one exchange</h2>
+        <p style="color: var(--muted)">Run an exchange on the Counter tab first &mdash; this tab explains what just happened, layer by layer. Nothing here is invented: every string is either from <code>configs/x-road-bus/2.6.yaml</code> or the live response.</p>
+        <div id="inspector-empty">No exchange run yet.</div>
+        <div class="layer-grid" id="inspector-layers" style="display:none"></div>
+      </div>
+    </section>
+
+    <!-- ================= PERMISSIONS ================= -->
+    <section class="tab-panel" id="tab-permissions">
+      <div class="card">
+        <h2>Who can call what</h2>
+        <p style="color: var(--muted)">Only <code>identity-api</code>'s grant to PNEA is toggleable here &mdash; <code>enrolment-api</code> stays untouched on purpose, so a broken reset is always visible as an asymmetry between the two rows.</p>
+        <div id="acl-services"></div>
+      </div>
+
+      <div class="card">
+        <h2>Try it</h2>
+        <p style="color: var(--muted)">Revoke the grant, then run the exchange again. Revoking is a real admin-API write; the Security Server's own authorization cache can lag it by up to ~30 seconds &mdash; this polls automatically rather than assuming the flip is instant.</p>
+        <button class="action" id="permissions-run-btn">Run the exchange as PNEA</button>
+        <button class="action" id="permissions-run-negative-btn">Run it as MOEYS (always denied)</button>
+        <div id="permissions-result"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

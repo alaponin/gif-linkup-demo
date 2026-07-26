@@ -16,6 +16,7 @@ import time
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 import journal as journal_mod
 import truth as truth_mod
@@ -161,7 +162,24 @@ def get_exchange(nin: str):
     return {
         "credential_application": application,
         "calls": [dataclasses.asdict(r) for r in results],
+        "layers": TRUTH.layers,
     }
+
+
+@app.get("/api/exchange/{nin}/negative")
+def get_exchange_negative(nin: str):
+    """The negative check (Module 5.6): the same calls, run as the
+    unauthorised client through ITS OWN Security Server -- confirmed live
+    this must be routed this way, or the denial comes from a consumer SS
+    rejecting a client it doesn't host rather than from the provider's ACL."""
+    negative = TRUTH.exchange["negative_check"]
+    results = xroad.exchange(
+        TRUTH.negative_check_entrypoint,
+        TRUTH.exchange["calls"],
+        nin,
+        negative["unauthorised_client"],
+    )
+    return {"calls": [dataclasses.asdict(r) for r in results], "expect": negative["expect"]}
 
 
 @app.get("/api/acl")
@@ -234,3 +252,8 @@ def post_heartbeat():
     global _last_heartbeat
     _last_heartbeat = time.time()
     return {"ok": True}
+
+
+# Mounted last so it never shadows an /api/* route -- StaticFiles(html=True)
+# serves static/index.html for "/" and any other unmatched path.
+app.mount("/", StaticFiles(directory=pathlib.Path(__file__).parent / "static", html=True), name="static")
