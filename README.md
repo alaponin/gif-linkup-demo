@@ -13,10 +13,11 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
   `REVIEW.md` (self-review; open decisions)
 
-What's here: `docker-compose.yml` (X-Road 7.7.0: Central Server, Test CA, five
-Security Servers — the compose topology has a three-server lite profile, but
-the generated Hurl scenario set does not yet support it; see `hurl/README.md`
-"Known limits"), `configs/` (declarative YAML per module),
+What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
+profile, X-Road version pins; `.env` carries only secrets), `docker-compose.yml`
+(X-Road 7.7.0: Central Server, Test CA, five Security Servers — `deployment.yaml`'s
+`profile: lite` runs three, PNIA and MoEYS hosted as extra clients on ss-plr;
+see `hurl/README.md` "Known limits"), `configs/` (declarative YAML per module),
 `prompts/` (the bb-config-gen plays that generate the configs), `hurl/` (the
 federation as config-as-code — Hurl scenarios driving the admin REST APIs,
 generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),

@@ -101,12 +101,14 @@ rather than clicking the UIs.
   fails immediately (confirmed at P0, 2026-07-25). Resuming a stopped-but-not-
   purged federation is `docker compose ... up -d` directly — see runbook.md
   "Teardown" — not a rerun of `run-linkup.sh`, which is the from-zero path only.
-- **`LITE=1` is not supported.** The scenarios initialise `ss-pnia` and
-  `ss-moeys` as servers in their own right, and the lite profile does not start
-  them; `run-linkup.sh` refuses to run rather than failing twenty minutes in.
-  Supporting lite means teaching `generate.py` to host those two subsystems as
-  extra clients of `ss-plr` — the topology table in `scripts/lib.sh` (`HOST_SS`)
-  is the source of truth for that mapping.
+- **Lite profile (`deployment.yaml` `profile: lite`) hosts PNIA and MoEYS on
+  ss-plr.** Their SIGN key/cert and client registration are generated as
+  fragments appended into `21-ss-plr.hurl`, not their own files —
+  `20-ss-pnia.hurl`/`22-ss-moeys.hurl` become stubs (still written, so
+  `manifest.yaml`'s scenario claims keep resolving) explaining where the real
+  content actually runs. See `generate.py`'s `LITE_HOSTED_ON` and
+  `build_hosted_client()`. Live-verified at P5 (2026-07-26): ~8.9 GB RAM vs
+  full's ~13 GB.
 - The runner's `depends_on` waits on `cs`, `ca`, `ss-pdga`, `ss-pnea` and
   `ss-plr` only; `ss-pnia` and `ss-moeys` belong to the `full` compose profile,
   which a non-profiled dependency cannot reference, so they are covered by the

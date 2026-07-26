@@ -11,12 +11,12 @@ host, and run the once-only exchange that proves it. Demo only — see
   P0 2026-07-25 on a 16 GB colima VM via `docker stats --no-stream`: ~2.0–2.3 GB
   per Security Server (≈10.7 GB), 1.7 GB for the Central Server, under 100 MB
   each for the Test CA and the three mock providers. Fits in 16 GB with modest
-  headroom (~3 GB) — tight enough that a smaller host should use `LITE=1`.
-  Under that, set `LITE=1` in `.env`: the scripts then skip the compose "full"
-  profile, ss-pnia/ss-moeys do not run, and their subsystems are hosted on
-  ss-plr (cross-server calls stay real: ss-pnea → ss-plr). **Note (P0):**
-  `LITE=1` is not yet supported by the generated Hurl scenario set — see
-  `hurl/README.md` "Known limits". On 16 GB, prefer the full profile.
+  headroom (~3 GB) — tight enough that a smaller host should prefer the lite
+  profile: ~8.9 GB (measured P5, 2026-07-26). Set it in `deployment.yaml`
+  (`profile: lite`, not `.env` — deployment shape lives in `deployment.yaml`,
+  secrets stay in `.env`): the scripts then skip the compose "full" profile,
+  ss-pnia/ss-moeys do not run, and their subsystems are hosted on ss-plr
+  (cross-server calls stay real: ss-pnea → ss-plr).
 - `curl`, `jq`, `python3` on the workstation.
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.

@@ -285,9 +285,25 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
 - **ITU cloud (Linkup)** — same compose + scenarios on the ITU VM; blocked on
   environment specifics (Inception action A4). Retargeting is now a change to the
   host values in `hurl/generate.py` and nothing else — the same move upstream made
-  between 7.7.0 (`cs_host=cs`) and `develop` (`cs_host=xrd-cs.lxd`).
+  between 7.7.0 (`cs_host=cs`) and `develop` (`cs_host=xrd-cs.lxd`). Tracked as
+  the `target:` field in `deployment.yaml` (currently only `docker-local` is
+  implemented) — a genuine non-Docker target is a separate, not-yet-started spec.
+- **Full rename/reuse support for a different country or sector** — configuring
+  this pack to stand up a differently-named federation (not just Progressa) is
+  a separate, not-yet-started spec (decided 2026-07-26, sequenced after the
+  `deployment.yaml`/lite-profile work). Touches the bb-config-gen prompts,
+  `manifest.yaml`'s frozen-identifier contract, `gen_seed_data.py`, and the
+  KP3/KP4 cross-pack join-key story.
 - **Joget DX** — replaces mocks behind the same OpenAPI specs in KP4 era.
 - **X-Road 8.x** — delta note only.
+- **Resolved 2026-07-26:** `deployment.yaml` (analyst-facing spec: target,
+  topology profile, X-Road version pins — `.env` shrinks to secrets only) and a
+  genuinely working `profile: lite` (3 Security Servers — PNIA/MoEYS hosted as
+  extra clients on ss-plr). Live-verified: ~8.9 GB RAM vs full's ~13 GB,
+  `ACCEPTANCE GREEN` under both profiles. Two ordering bugs found and fixed in
+  X-Road's admin API sequence for a hosted member (client-add must precede its
+  SIGN-key generation, which must precede its registration) — see
+  `docs/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
 - **Resolved at P0 (2026-07-25):** testca image digest pinned
   (`.env.example` `TESTCA_TAG=latest@sha256:018e9f...c16c0c5`); the test CA does
   write `ca.pem`/`ocsp.pem`/`tsa.pem` into `/home/ca/certs`, confirmed live; RAM
