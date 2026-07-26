@@ -7,8 +7,36 @@ PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$PACK_DIR/.env" ] && set -a && . "$PACK_DIR/.env" && set +a
 export PACK_DIR
 
-# Full topology by default; LITE=1 drops ss-pnia/ss-moeys (compose profile "full")
-# and hosts their subsystems on ss-plr instead.
+# yq wrapper (python fallback: hard deps stay curl+jq+python3). Defined here,
+# ahead of its first use below, because deployment.yaml is now read before
+# COMPOSE is built. Clean error on a missing key instead of a traceback.
+yq_get() { python3 -c "
+import sys, yaml
+try:
+    doc = yaml.safe_load(open('$1'))
+    node = doc
+    for part in '$2'.split('.'):
+        node = node[int(part)] if part.isdigit() else node[part]
+    print(node)
+except (KeyError, IndexError, TypeError):
+    sys.exit('yq_get: no key \\'$2\\' in $1')
+"; }
+
+# deployment.yaml is the analyst-facing spec (topology profile, X-Road version
+# pins); .env carries only secrets. See
+# docs/superpowers/specs/2026-07-26-deployment-spec-and-lite-profile-design.md.
+DEPLOY_SPEC="$PACK_DIR/deployment.yaml"
+case "$(yq_get "$DEPLOY_SPEC" profile)" in
+  lite) LITE=1 ;;
+  full) LITE=0 ;;
+  *) echo "lib.sh: deployment.yaml profile must be 'full' or 'lite'" >&2; exit 1 ;;
+esac
+export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
+export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
+export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
+
+# Full topology by default; profile: lite (deployment.yaml) drops ss-pnia/
+# ss-moeys (compose profile "full") and hosts their subsystems on ss-plr instead.
 COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
 [ "${LITE:-0}" != "1" ] && COMPOSE+=(--profile full)
 # Teardown must always see every service, whatever LITE is set to now, AND
@@ -83,17 +111,3 @@ api() {
 # Exported so retry can be used from subshells if ever needed; acceptance.sh
 # defines its checks as same-shell functions and does not depend on this.
 export -f log fail retry api_key api
-
-# yq wrapper (python fallback: hard deps stay curl+jq+python3). Clean error on
-# a missing key instead of a traceback.
-yq_get() { python3 -c "
-import sys, yaml
-try:
-    doc = yaml.safe_load(open('$1'))
-    node = doc
-    for part in '$2'.split('.'):
-        node = node[int(part)] if part.isdigit() else node[part]
-    print(node)
-except (KeyError, IndexError, TypeError):
-    sys.exit('yq_get: no key \\'$2\\' in $1')
-"; }
