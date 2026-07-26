@@ -6,14 +6,18 @@ read here once, never returned in a response or logged.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import csv
 import dataclasses
 import os
 import pathlib
+import time
 
 import httpx
 from fastapi import FastAPI, HTTPException
 
+import journal as journal_mod
 import truth as truth_mod
 import xroad
 
@@ -21,14 +25,20 @@ PACK_DIR = pathlib.Path(os.environ.get("PACK_DIR", "/pack"))
 OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 ADMIN_USER = os.environ["XROAD_ADMIN_USER"]
 ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
-JOURNAL_PATH = OUT_DIR / "console-acl-journal.json"
 
-app = FastAPI(title="KP2 demonstration console")
+# Design decision 4: only one ACL is mutable in this demo -- identity-api's
+# grant to PNEA:EXAMS. enrolment-api stays untouched so a broken reset is
+# always visible as an asymmetry between the two tabs, not hidden by symmetry.
+MUTABLE_SERVICE = "identity-api"
+HEARTBEAT_TIMEOUT_S = 120
+WATCHDOG_POLL_S = 10
 
 # Loaded once at startup, not per-request: a stale Truth after a redeploy
 # means the container needs restarting anyway (deployment.yaml/topology.json
 # changing is a redeploy event, not something this demo tool hot-reloads).
 TRUTH = truth_mod.load_truth(PACK_DIR)
+JOURNAL = journal_mod.Journal(OUT_DIR / "console-acl-journal.json")
+_last_heartbeat = time.time()
 
 
 def _admin_session(host: str) -> xroad.AdminSession:
@@ -43,9 +53,32 @@ def _subsystem_for_service(service_code: str) -> dict:
 
 
 def _journal_is_dirty() -> bool:
-    if not JOURNAL_PATH.exists():
-        return False
-    return JOURNAL_PATH.read_text().strip() not in ("", "[]")
+    return JOURNAL.is_dirty()
+
+
+async def _watchdog() -> None:
+    """Belt and braces (design decision 3): a demo that silently leaves the
+    ACL revoked and makes acceptance.sh fail an hour later for an
+    unrelated-looking reason is exactly the kind of thing that discredits
+    the pack. Reset after HEARTBEAT_TIMEOUT_S with no page heartbeat."""
+    global _last_heartbeat
+    while True:
+        await asyncio.sleep(WATCHDOG_POLL_S)
+        if time.time() - _last_heartbeat > HEARTBEAT_TIMEOUT_S and JOURNAL.is_dirty():
+            journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+            _last_heartbeat = time.time()
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    if JOURNAL.is_dirty():
+        journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+    watchdog_task = asyncio.create_task(_watchdog())
+    yield
+    watchdog_task.cancel()
+
+
+app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)
 
 
 @app.get("/api/health")
@@ -147,3 +180,57 @@ def get_acl():
             "live": live,
         }
     return {"services": services, "dirty": _journal_is_dirty()}
+
+
+def _mutate_acl(action: str) -> dict:
+    """Only MUTABLE_SERVICE (design decision 4) is ever mutated here."""
+    subsystem = _subsystem_for_service(MUTABLE_SERVICE)
+    subjects = TRUTH.expected_acl[MUTABLE_SERVICE]
+    if not subjects:
+        raise HTTPException(400, f"{MUTABLE_SERVICE} has no expected subject to mutate")
+    subject = subjects[0]
+    session = _admin_session(subsystem["hosted_on"])
+    prior_state = "granted" if action == "revoke" else "revoked"
+
+    # Journalled BEFORE the live call -- a crash between this write and the
+    # next leaves enough on disk for reset() to reverse (journal.py docstring).
+    idx = JOURNAL.append_pending(journal_mod.JournalEntry(
+        ts=time.time(), action=action, ss=subsystem["hosted_on"],
+        client_id=subsystem["id"], subject=subject, service_code=MUTABLE_SERVICE,
+        prior_state=prior_state,
+    ))
+    if action == "revoke":
+        session.revoke(subsystem["id"], subject, MUTABLE_SERVICE)
+    else:
+        session.grant(subsystem["id"], subject, MUTABLE_SERVICE)
+    JOURNAL.mark_applied(idx)
+    return {"ok": True, "action": action, "service_code": MUTABLE_SERVICE}
+
+
+@app.post("/api/acl/revoke")
+def post_acl_revoke():
+    return _mutate_acl("revoke")
+
+
+@app.post("/api/acl/grant")
+def post_acl_grant():
+    return _mutate_acl("grant")
+
+
+@app.post("/api/reset")
+def post_reset():
+    """Reverses the journal newest-first and verifies the result equals
+    truth.expected_acl exactly -- never a silent 'reset ok' (Task 5 Step 2)."""
+    global _last_heartbeat
+    _last_heartbeat = time.time()
+    result = journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+    if not result["ok"]:
+        raise HTTPException(409, result)
+    return result
+
+
+@app.post("/api/heartbeat")
+def post_heartbeat():
+    global _last_heartbeat
+    _last_heartbeat = time.time()
+    return {"ok": True}
