@@ -15,6 +15,18 @@ CLIENT='X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS'
 BADCLIENT='X-Road-Client: PROGRESSA/GOV/MOEYS/PEMIS'
 OUT_DIR="$PACK_DIR/out"; mkdir -p "$OUT_DIR"
 
+# The demo console (apps/console/) journals every ACL mutation to this file
+# and clears it on a clean reset. A non-empty journal means a demo is
+# mid-permission-toggle -- run scripts/console.sh reset first, or this suite
+# can fail for a reason that has nothing to do with the pack itself. A
+# missing file (the console was never built/started) means business as
+# usual -- this check never imports or requires the console.
+JOURNAL_FILE="$OUT_DIR/console-acl-journal.json"
+if [ -s "$JOURNAL_FILE" ] && [ "$(cat "$JOURNAL_FILE")" != "[]" ]; then
+  fail "the demo console's ACL journal ($JOURNAL_FILE) is not empty -- the \
+federation is mid-demo. Run scripts/console.sh reset, then re-run this suite."
+fi
+
 check() { local id=$1 desc=$2 fn=$3
   if "$fn"; then log "PASS $id — $desc"; else fail "FAIL $id — $desc"; fi }
 
