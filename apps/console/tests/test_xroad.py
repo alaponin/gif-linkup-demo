@@ -81,6 +81,19 @@ def test_grant_already_granted_409_is_success_not_failure():
     session.grant("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS", "identity-api")  # must not raise
 
 
+def test_revoke_already_revoked_409_is_success_not_failure():
+    """Confirmed live 2026-07-26: revoking an already-revoked right returns
+    409 accessright_not_found -- the target state already holds, so this
+    must not raise (load-bearing for reset()'s crash-recovery replay)."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return _login_response(request)
+        return httpx.Response(409, json={"error": {"code": "accessright_not_found"}}, request=request)
+
+    session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    session.revoke("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS", "identity-api")  # must not raise
+
+
 def test_revoke_uses_delete_path_and_204():
     seen_paths = []
 

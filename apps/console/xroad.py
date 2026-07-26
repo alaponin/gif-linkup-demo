@@ -84,6 +84,12 @@ class AdminSession:
             f"/clients/{client_id}/service-clients/{subject_id}/access-rights/delete",
             json_body={"items": [{"service_code": service_code}]},
         )
+        if resp.status_code == 409:
+            return  # already revoked (confirmed live: 409 accessright_not_found) --
+            # the target state (no grant) already holds, so this is success, same
+            # reasoning as grant()'s 409 handling. Load-bearing for reset(): a
+            # crash-mid-write can replay an entry whose live call already
+            # succeeded, and reset must not fail on that replay.
         resp.raise_for_status()
 
 
