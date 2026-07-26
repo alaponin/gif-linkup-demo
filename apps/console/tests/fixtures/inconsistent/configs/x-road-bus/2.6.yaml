@@ -1,0 +1,34 @@
+# Deliberately inconsistent fixture for apps/console/tests/test_truth.py --
+# prefilled_from_bus is missing 'status', which enrolment-api's own prefills
+# list still carries. load_truth() must raise, not silently drop a field.
+module: "2.6"
+building_block: x-road-bus
+exchange:
+  name: once-only-credential-application
+  scenario: >
+    Deliberately broken fixture -- see the comment above.
+  consumer: PROGRESSA/GOV/PNEA/EXAMS
+  entrypoint: http://ss-pnea:8080
+  calls:
+    - service: PROGRESSA/GOV/PNIA/IDENTITY/identity-api
+      request: GET /persons/{nin}
+      r1_path: /r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/{nin}
+      prefills: [given_name, family_name, date_of_birth, sex, region]
+      layer_technical: routed cross-server, mutual TLS between security servers
+      layer_legal: returns only the fields the credential purpose needs (decree, Topic 2)
+    - service: PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
+      request: GET /enrolments/{nin}
+      r1_path: /r1/PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api/enrolments/{nin}
+      prefills: [school, level, enrolment_year, status]
+      layer_organisational: between members the governance admitted (Topic 3)
+      layer_semantic: resolves because PNEA/PNIA/PLR share the semantic map (Topic 4)
+  asked_once:
+    citizen_provides: [nin]
+    prefilled_from_bus: [given_name, family_name, date_of_birth, sex, region,
+                         school, level, enrolment_year]
+  headers:
+    X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS
+  negative_check:
+    unauthorised_client: PROGRESSA/GOV/MOEYS/PEMIS
+    entrypoint: http://ss-moeys:8080
+    expect: X-Road access-denied error on both services (ACL grants PNEA:EXAMS only)
