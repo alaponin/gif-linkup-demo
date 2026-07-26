@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+out/
+# Concatenated Hurl run files — rebuilt by hurl/run-linkup.sh on every run.
+hurl/.build/
+# Local dev/test venv for apps/console (pytest/httpx/fastapi) -- the console
+# container installs its own deps in-image (apps/console/Dockerfile); this is
+# only for running apps/console/tests locally during development.
+.venv/
