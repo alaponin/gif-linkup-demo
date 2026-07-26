@@ -422,9 +422,15 @@ HTTP 201
 
 # Extracted alongside MEMBER_SIGN_KEY for the same reason -- SESS_P/CAP_P let a
 # hosted member register as a client using the hosting SS's session while
-# keeping its own capture namespace. build_ss_file calls this with
-# SESS_P == CAP_P; build_hosted_client (lite profile) does not.
-MEMBER_CLIENT = """
+# keeping its own capture namespace. Split into ADD/REGISTER because a hosted
+# member's SIGN key must be generated *between* the two: the signer rejects a
+# member_id it doesn't yet know as a client (client_not_found) if generated
+# before ADD, but /register rejects a member with no certificate yet
+# (core.Signer.UnknownMember) if called before the SIGN key is imported.
+# Confirmed live at P0 for lite, 2026-07-26. build_ss_file calls ADD then
+# REGISTER back-to-back (SESS_P == CAP_P, unchanged full-mode behavior);
+# build_hosted_client interleaves ADD -> MEMBER_SIGN_KEY -> REGISTER.
+MEMBER_CLIENT_ADD = """
 # Add @MEMBER_CODE@:@SUBSYSTEM@ as a client of @SS@
 POST https://{{@HOSTVAR@}}:4000/api/v1/clients
 X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
@@ -442,7 +448,9 @@ HTTP 201
 
 [Captures]
 @CAP_P@_client_id: jsonpath "$.id"
+"""
 
+MEMBER_CLIENT_REGISTER = """
 # Register the subsystem
 PUT https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/register
 X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
@@ -564,8 +572,7 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     body += sub(SS_BRINGUP_REGISTER, HOSTVAR=host_var, P=prefix)
     body += sub(SS_ACTIVATE, HOSTVAR=host_var, P=prefix)
     body += sub(SS_TSA_POST, HOSTVAR=host_var, P=prefix)
-    body += sub(
-        MEMBER_CLIENT,
+    client_kwargs = dict(
         SS=ss["dns_name"],
         MEMBER_CODE=m["member_code"],
         SUBSYSTEM=sub_cfg["code"],
@@ -574,6 +581,8 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
+    body += sub(MEMBER_CLIENT_ADD, **client_kwargs)
+    body += sub(MEMBER_CLIENT_REGISTER, **client_kwargs)
     return body
 
 
@@ -620,6 +629,12 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     (host_member's), not this member's nominal one from its own config --
     the cert genuinely lives on the host's token, and naming a server that
     was never brought up under this profile would be a lie in the cert.
+
+    Client registration MUST come before the SIGN key: the owning member's
+    SIGN key is valid because /initialization set owner_member_code, but a
+    hosted member has no such relationship -- the signer rejects a member_id
+    it doesn't yet recognize as a client with 400 client_not_found (confirmed
+    live at P0 for lite, 2026-07-26).
     """
     m, sub_cfg = member["member"], member["subsystem"]
     conn = member.get("client", {}).get("connection_type", "HTTP")
@@ -627,6 +642,16 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     sess_p = ss_prefix(host_ss["dns_name"])
     cap_p = ss_prefix(member["security_server"]["dns_name"])
     body = sub(
+        MEMBER_CLIENT_ADD,
+        SS=host_ss["dns_name"],
+        MEMBER_CODE=m["member_code"],
+        SUBSYSTEM=sub_cfg["code"],
+        CONNECTION_TYPE=conn,
+        HOSTVAR=host_var,
+        SESS_P=sess_p,
+        CAP_P=cap_p,
+    )
+    body += sub(
         MEMBER_SIGN_KEY,
         SS_CODE=host_ss["code"],
         MEMBER_CODE=m["member_code"],
@@ -636,11 +661,7 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
         CAP_P=cap_p,
     )
     body += sub(
-        MEMBER_CLIENT,
-        SS=host_ss["dns_name"],
-        MEMBER_CODE=m["member_code"],
-        SUBSYSTEM=sub_cfg["code"],
-        CONNECTION_TYPE=conn,
+        MEMBER_CLIENT_REGISTER,
         HOSTVAR=host_var,
         SESS_P=sess_p,
         CAP_P=cap_p,
