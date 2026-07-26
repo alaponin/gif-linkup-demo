@@ -150,7 +150,7 @@ def dn_escape(value: str) -> str:
 # Mirrors setup.hurl's SS0/SS1 sequences request for request.
 # ---------------------------------------------------------------------------
 
-SS_BRINGUP = """
+SS_BRINGUP_INIT = """
 ############################################################
 # @SS@ -- @MEMBER_NAME@ (@SS_CODE@)
 ############################################################
@@ -271,10 +271,18 @@ HTTP 201
 
 [Captures]
 @P@_auth_key_cert_hash: jsonpath "$.certificate_details.hash"
+"""
 
-# Generate the SIGN key and its CSR for the owner member
+# Extracted so it can also run for a member HOSTED on someone else's Security
+# Server (the lite profile's PNIA/MoEYS-on-ss-plr pattern): SESS_P is whose
+# already-open session authenticates the request; CAP_P is this member's own
+# capture namespace, so a hosted member's client_id/sign_key never collides
+# with the hosting SS's own. The owning member's own bring-up (build_ss_file)
+# calls this with SESS_P == CAP_P -- identical behavior to before this split.
+MEMBER_SIGN_KEY = """
+# Generate the SIGN key and its CSR for @MEMBER_CODE@
 POST https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/keys-with-csrs
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 Content-Type: application/json
 {
   "key_label": "Sign key",
@@ -296,17 +304,17 @@ Content-Type: application/json
 HTTP 200
 
 [Captures]
-@P@_sign_key_id: jsonpath "$.key.id"
-@P@_sign_key_csr_id: jsonpath "$.csr_id"
+@CAP_P@_sign_key_id: jsonpath "$.key.id"
+@CAP_P@_sign_key_csr_id: jsonpath "$.csr_id"
 
 # Download the SIGN CSR in PEM
-GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@P@_sign_key_id}}/csrs/{{@P@_sign_key_csr_id}}?csr_format=PEM
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@CAP_P@_sign_key_id}}/csrs/{{@CAP_P@_sign_key_csr_id}}?csr_format=PEM
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 
 HTTP 200
 
 [Captures]
-@P@_sign_key_csr: body
+@CAP_P@_sign_key_csr: body
 
 # Sign the SIGN CSR against the Test CA
 POST http://{{ca_host}}:8888/testca/sign
@@ -319,27 +327,29 @@ sign
 --certboundary
 Content-Disposition: form-data; name="certreq"; filename="sign.csr.pem"
 
-{{@P@_sign_key_csr}}
+{{@CAP_P@_sign_key_csr}}
 --certboundary--
 ```
 
 HTTP 200
 [Captures]
-@P@_sign_key_cert: body
+@CAP_P@_sign_key_cert: body
 
 # Import the SIGN certificate
 POST https://{{@HOSTVAR@}}:4000/api/v1/token-certificates
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 Content-Type: application/octet-stream
 ```
-{{@P@_sign_key_cert}}
+{{@CAP_P@_sign_key_cert}}
 ```
 
 HTTP 201
 
 [Captures]
-@P@_sign_key_cert_hash: jsonpath "$.certificate_details.hash"
+@CAP_P@_sign_key_cert_hash: jsonpath "$.certificate_details.hash"
+"""
 
+SS_BRINGUP_REGISTER = """
 # Register the AUTH certificate (the SS's address is its DNS name on the linkup network)
 PUT https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}/register
 X-XSRF-TOKEN: {{@P@_xsrf_token}}
@@ -402,10 +412,14 @@ X-XSRF-TOKEN: {{@P@_xsrf_token}}
 HTTP 201
 """
 
-SS_CLIENT = """
+# Extracted alongside MEMBER_SIGN_KEY for the same reason -- SESS_P/CAP_P let a
+# hosted member register as a client using the hosting SS's session while
+# keeping its own capture namespace. build_ss_file calls this with
+# SESS_P == CAP_P; build_hosted_client (lite profile) does not.
+MEMBER_CLIENT = """
 # Add @MEMBER_CODE@:@SUBSYSTEM@ as a client of @SS@
 POST https://{{@HOSTVAR@}}:4000/api/v1/clients
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 {
   "ignore_warnings": true,
   "client": {
@@ -419,11 +433,11 @@ X-XSRF-TOKEN: {{@P@_xsrf_token}}
 HTTP 201
 
 [Captures]
-@P@_client_id: jsonpath "$.id"
+@CAP_P@_client_id: jsonpath "$.id"
 
 # Register the subsystem
-PUT https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/register
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+PUT https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/register
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 
 HTTP 204
 
@@ -434,9 +448,9 @@ X-XSRF-TOKEN: {{cs_xsrf_token}}
 HTTP 200
 
 [Captures]
-@P@_client_req_id: jsonpath "$.items[0].id"
+@CAP_P@_client_req_id: jsonpath "$.items[0].id"
 
-POST https://{{cs_host}}:4000/api/v1/management-requests/{{@P@_client_req_id}}/approval
+POST https://{{cs_host}}:4000/api/v1/management-requests/{{@CAP_P@_client_req_id}}/approval
 X-XSRF-TOKEN: {{cs_xsrf_token}}
 
 HTTP 200
@@ -454,6 +468,9 @@ HTTP 200
 ca_name: jsonpath "$[0].name"
 """
 
+# SESS_P/CAP_P split for the same reason as MEMBER_SIGN_KEY/MEMBER_CLIENT: a
+# hosted member's service publish authenticates with the host SS's session
+# but must operate on its OWN client_id, not the host's.
 SERVICE_PUBLISH = """
 ############################################################
 # @MEMBER_CODE@:@SUBSYSTEM@ -- publish @SERVICE_CODE@ (OPENAPI3)
@@ -461,8 +478,8 @@ SERVICE_PUBLISH = """
 
 # Add the OpenAPI 3 service description. The Security Server parses servers.url
 # from the spec as the forwarding target.
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-descriptions
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-descriptions
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 {
   "url": "{{@SPECVAR@}}",
   "type": "OPENAPI3",
@@ -472,11 +489,11 @@ X-XSRF-TOKEN: {{@P@_xsrf_token}}
 HTTP 201
 
 [Captures]
-@P@_@SC@_description_id: jsonpath "$.id"
+@CAP_P@_@SC@_description_id: jsonpath "$.id"
 
 # Services are disabled when added -- enable it explicitly
-PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@P@_@SC@_description_id}}/enable
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@CAP_P@_@SC@_description_id}}/enable
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 
 # setup.hurl@7.7.0: 200, although the OpenAPI model says 204.
 HTTP 200
@@ -486,8 +503,8 @@ SERVICE_ACL = """
 # Grant @ACL_SUBJECT@ access to @SERVICE_CODE@ -- and nobody else.
 # The omission is deliberate: @NEGATIVE@ is left out so the negative check in
 # acceptance/2.6.md proves the ACL, not an accident of configuration.
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-clients/@ACL_SUBJECT@/access-rights
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-clients/@ACL_SUBJECT@/access-rights
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 {
   "items": [
     {
@@ -518,7 +535,7 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     prefix = ss_prefix(ss["dns_name"])
     conn = member.get("client", {}).get("connection_type", "HTTP")
     body = sub(
-        SS_BRINGUP,
+        SS_BRINGUP_INIT,
         SS=ss["dns_name"],
         SS_CODE=ss["code"],
         MEMBER_CODE=m["member_code"],
@@ -527,23 +544,35 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         P=prefix,
         CANAME=sub(CA_NAME_CAPTURE, HOSTVAR=host_var, P=prefix) if capture_ca_name else "",
     )
+    body += sub(
+        MEMBER_SIGN_KEY,
+        SS_CODE=ss["code"],
+        MEMBER_CODE=m["member_code"],
+        MEMBER_NAME=dn_escape(m["member_name"]),
+        HOSTVAR=host_var,
+        SESS_P=prefix,
+        CAP_P=prefix,
+    )
+    body += sub(SS_BRINGUP_REGISTER, HOSTVAR=host_var, P=prefix)
     body += sub(SS_ACTIVATE, HOSTVAR=host_var, P=prefix)
     body += sub(SS_TSA_POST, HOSTVAR=host_var, P=prefix)
     body += sub(
-        SS_CLIENT,
+        MEMBER_CLIENT,
         SS=ss["dns_name"],
         MEMBER_CODE=m["member_code"],
         SUBSYSTEM=sub_cfg["code"],
         CONNECTION_TYPE=conn,
         HOSTVAR=host_var,
-        P=prefix,
+        SESS_P=prefix,
+        CAP_P=prefix,
     )
     return body
 
 
-def build_service_file(member: dict, host_var: str) -> str:
+def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -> str:
     m, sub_cfg, ss = member["member"], member["subsystem"], member["security_server"]
-    prefix = ss_prefix(ss["dns_name"])
+    cap_p = ss_prefix(ss["dns_name"])
+    sess_p = sess_p or cap_p
     out = ""
     for svc in member.get("services") or []:
         service_code = svc["code"]
@@ -555,7 +584,8 @@ def build_service_file(member: dict, host_var: str) -> str:
             SERVICE_CODE=service_code,
             SC=sc,
             HOSTVAR=host_var,
-            P=prefix,
+            SESS_P=sess_p,
+            CAP_P=cap_p,
             SPECVAR=f"{m['member_code'].lower()}_spec_url",
         )
         for subject in svc.get("access") or []:
@@ -563,7 +593,8 @@ def build_service_file(member: dict, host_var: str) -> str:
                 SERVICE_ACL,
                 SERVICE_CODE=service_code,
                 HOSTVAR=host_var,
-                P=prefix,
+                SESS_P=sess_p,
+                CAP_P=cap_p,
                 ACL_SUBJECT=subject.replace("/", ":"),
                 NEGATIVE="PROGRESSA:GOV:MOEYS:PEMIS",
             )
@@ -856,7 +887,7 @@ gconf_anchor: body
     }
     host_var = f"{pdga_prefix}_host"
     body = sub(
-        SS_BRINGUP,
+        SS_BRINGUP_INIT,
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["member_code"],
@@ -865,6 +896,16 @@ gconf_anchor: body
         P=pdga_prefix,
         CANAME=sub(CA_NAME_CAPTURE, HOSTVAR=host_var, P=pdga_prefix),
     )
+    body += sub(
+        MEMBER_SIGN_KEY,
+        SS_CODE=mgmt_ss["code"],
+        MEMBER_CODE=owner["member_code"],
+        MEMBER_NAME=dn_escape(owner["member_name"]),
+        HOSTVAR=host_var,
+        SESS_P=pdga_prefix,
+        CAP_P=pdga_prefix,
+    )
+    body += sub(SS_BRINGUP_REGISTER, HOSTVAR=host_var, P=pdga_prefix)
     body += sub(
         """
 # Nominate this Security Server as the one hosting the management services
