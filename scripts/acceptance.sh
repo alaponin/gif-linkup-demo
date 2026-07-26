@@ -83,8 +83,21 @@ print(sorted(p-e)[0])")
 ID_URL="$PNEA_REST/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons"
 EN_URL="$PNEA_REST/r1/PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api/enrolments"
 
-id_json=$(curl -sf -H "$CLIENT" "$ID_URL/$NIN")
-en_json=$(curl -sf -H "$CLIENT" "$EN_URL/$NIN")
+# Same asynchronous-propagation risk as the registration-status checks above
+# (retry, don't fail): confirmed live at P5 (2026-07-26) -- a fresh deploy's
+# first exchange call can hit a transient failure moments before it settles.
+# retry() itself only reports success/failure and discards stdout, so capture
+# the body with a small inline retry instead.
+fetch_retry() {
+  local url=$1 i out
+  for ((i=1; i<=12; i++)); do
+    if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null); then printf '%s' "$out"; return 0; fi
+    log "waiting: $url ($i/12)"; sleep 5
+  done
+  fail "timed out: $url"
+}
+id_json=$(fetch_retry "$ID_URL/$NIN")
+en_json=$(fetch_retry "$EN_URL/$NIN")
 
 check_261() { [ -n "$id_json" ] && [ -n "$en_json" ]; }
 check 2.6.1 "happy path — both cross-server calls resolve" check_261
