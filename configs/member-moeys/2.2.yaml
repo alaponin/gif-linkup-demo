@@ -2,14 +2,9 @@
 # Do not hand-edit — regenerate. Spec: NIIS X-Road member/subsystem registration.
 module: "2.2"
 building_block: member-moeys
-member:
-  instance: PROGRESSA
-  member_class: GOV
-  member_code: MOEYS
-  member_name: Progressa Ministry of Education, Youth and Sport
-subsystem:
-  code: PEMIS
-  description: School information system (education management)
+# member/subsystem identity comes from manifest.yaml's identity.members.moeys
+# now -- restating it here was a second, driftable copy of the same values.
+# Dogfooded 2026-07-26.
 security_server:
   code: SS-MOEYS
   dns_name: ss-moeys          # lite profile: hosted on ss-plr instead

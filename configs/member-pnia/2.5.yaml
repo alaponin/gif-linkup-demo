@@ -2,14 +2,9 @@
 # Do not hand-edit — regenerate. Spec: NIIS X-Road subsystem + service description + access rights.
 module: "2.5"
 building_block: member-pnia
-member:
-  instance: PROGRESSA
-  member_class: GOV
-  member_code: PNIA
-  member_name: Progressa National Identity Authority
-subsystem:
-  code: IDENTITY
-  description: Authoritative person identity register
+# member/subsystem identity comes from manifest.yaml's identity.members.pnia
+# now -- restating it here was a second, driftable copy of the same values.
+# Dogfooded 2026-07-26.
 security_server:
   code: SS-PNIA
   dns_name: ss-pnia            # lite profile: hosted on ss-plr instead

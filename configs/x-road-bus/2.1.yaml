@@ -3,16 +3,13 @@
 module: "2.1"
 building_block: x-road-bus
 central_server:
-  instance_identifier: PROGRESSA
+  # instance_identifier, owner (code/name/management_subsystem) and
+  # member_classes[0].code all come from manifest.yaml's identity: block now
+  # -- restating them here was never read by generate.py for .code (dead
+  # field) and was a second, driftable copy for the rest. Dogfooded 2026-07-26.
   address: cs                      # container DNS name on the linkup network
   member_classes:
-    - code: GOV
-      description: Government institutions of Progressa
-  owner:
-    member_class: GOV
-    member_code: PDGA
-    member_name: Progressa Digital Government Authority
-    management_subsystem: MANAGEMENT
+    - description: Government institutions of Progressa
 trust_services:
   # Certificate files themselves are not a config field: hurl/generate.py reads
   # them from the shared ca volume (ca.pem/ocsp.pem/tsa.pem, no rename) per

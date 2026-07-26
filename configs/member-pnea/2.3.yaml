@@ -2,14 +2,9 @@
 # Do not hand-edit — regenerate. Spec: NIIS X-Road member/subsystem registration.
 module: "2.3"
 building_block: member-pnea
-member:
-  instance: PROGRESSA
-  member_class: GOV
-  member_code: PNEA
-  member_name: Progressa National Examination Authority
-subsystem:
-  code: EXAMS
-  description: Examination and certification services (consumer of identity + enrolment)
+# member/subsystem identity comes from manifest.yaml's identity.members.pnea
+# now -- restating it here was a second, driftable copy of the same values.
+# Dogfooded 2026-07-26.
 security_server:
   code: SS-PNEA
   dns_name: ss-pnea
