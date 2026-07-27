@@ -264,10 +264,28 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 **Files:** `static/style.css`, `index.html`
 
-- [ ] **Step 1:** provenance must not be carried by colour alone — keep the system name, raise badge contrast to WCAG AA, add a distinguishing shape or icon per provider.
-- [ ] **Step 2:** keyboard path through the whole demonstration; visible focus rings; the learner chips are real buttons with accessible names.
-- [ ] **Step 3:** one persistent, quiet line: *demonstration stack — Test CA, fixed credentials, single host. Not a production deployment.*
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** provenance must not be carried by colour alone — keep the system name, raise badge contrast to WCAG AA, add a distinguishing shape or icon per provider.
+- [x] **Step 2:** keyboard path through the whole demonstration; visible focus rings; the learner chips are real buttons with accessible names.
+- [x] **Step 3:** one persistent, quiet line: *demonstration stack — Test CA, fixed credentials, single host. Not a production deployment.*
+- [x] **Step 4:** commit.
+
+  **Verified live (2026-07-27):** computed WCAG contrast ratios directly
+  (relative-luminance formula) rather than eyeballing -- the three source
+  badges and both permission-status badges moved from tinted-transparent
+  color-mix() (contrast depended on whatever panel color sat underneath,
+  unguaranteed) to solid backgrounds against white text, all measuring
+  6.2:1-8.4:1, comfortably past AA's 4.5:1. Added a shape per source
+  (▲ citizen, ● PNIA, ■ PLR) and a ✓/✗ per permission outcome, so the
+  distinction survives colour-blindness or a black-and-white slide.
+  Learner chips were already real `<button>` elements with their visible
+  text as their accessible name (Task 2) -- confirmed, no change needed.
+  Added an explicit `:focus-visible` outline (3px solid accent, 2px offset)
+  on every button/link rather than relying on each browser's own default,
+  which can be too subtle on a dark custom-styled button; confirmed via a
+  real keyboard Tab press (not a scripted `.focus()`, which some browsers'
+  focus-visible heuristics don't count as keyboard-like) that it renders.
+  Added the persistent disclosure line as a page footer, present regardless
+  of which tab is active. acceptance.sh green; 25 unit tests green.
 
 ---
 

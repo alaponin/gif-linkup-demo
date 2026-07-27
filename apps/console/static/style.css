@@ -17,6 +17,16 @@
 
 * { box-sizing: border-box; }
 
+/* Explicit, high-contrast focus ring on every interactive element -- never
+   rely on a browser default that can be too subtle to see on a dark
+   custom-styled button (UX plan Task 10, Step 2). Every control the
+   keyboard path touches is a real <button>, so :focus-visible covers the
+   whole demonstration without per-element wiring. */
+button:focus-visible, a:focus-visible {
+  outline: 3px solid var(--pnia);
+  outline-offset: 2px;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -207,9 +217,13 @@ main {
   white-space: nowrap;
 }
 
-.source-badge.citizen { background: color-mix(in srgb, var(--citizen) 25%, transparent); color: var(--citizen); }
-.source-badge.PNIA { background: color-mix(in srgb, var(--pnia) 25%, transparent); color: var(--pnia); }
-.source-badge.PLR { background: color-mix(in srgb, var(--plr) 25%, transparent); color: var(--plr); }
+/* Solid, not tinted-transparent: measured >=6.2:1 against white text,
+   comfortably past WCAG AA's 4.5:1 for normal text (UX plan Task 10) --
+   the old color-mix()-on-panel background depended on what was under it
+   and could not be guaranteed AA in both themes. */
+.source-badge.citizen { background: #7a5c14; color: #fff; }
+.source-badge.PNIA { background: #1c5f8a; color: #fff; }
+.source-badge.PLR { background: #1f6b45; color: #fff; }
 
 .kp4-seam {
   margin-top: 20px;
@@ -253,8 +267,9 @@ main {
 .permissions-columns { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
 .permissions-column { flex: 1; min-width: 240px; }
 .permissions-column h3 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
-.perm-status { font-size: 12px; font-weight: normal; padding: 3px 9px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); }
-.perm-status.denied-label { background: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--danger); }
+/* Solid backgrounds, same AA-contrast reasoning as .source-badge above. */
+.perm-status { font-size: 12px; font-weight: normal; padding: 3px 9px; border-radius: 12px; background: #1f6b45; color: #fff; }
+.perm-status.denied-label { background: #8a2e2e; color: #fff; }
 .permissions-column .result-box { min-height: 1.2em; }
 
 button.action {
@@ -297,4 +312,13 @@ button.action:disabled { opacity: 0.5; cursor: default; }
     --text: #1a2332;
     --muted: #5b6b82;
   }
+}
+
+/* Persistent, quiet honesty line (UX plan Task 10, Step 3) -- always on
+   screen, never only in a doc nobody watching the demo will read. */
+.demo-disclosure {
+  text-align: center;
+  padding: 14px 32px 24px;
+  color: var(--muted);
+  font-size: 13px;
 }

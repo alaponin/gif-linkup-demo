@@ -174,6 +174,14 @@ function sourceClassFor(info) {
     : info.member_code === "PLR" ? "PLR" : "citizen";
 }
 
+// Provenance is never colour-alone (UX plan Task 10, Step 1): each source
+// also gets its own shape, so the distinction survives colour-blindness or
+// a black-and-white printout of a slide.
+const SOURCE_SHAPE = { citizen: "▲", PNIA: "●", PLR: "■" }; // ▲ ● ■
+function sourceShapeFor(info) {
+  return SOURCE_SHAPE[sourceClassFor(info)];
+}
+
 function revealField(row, info) {
   const valueEl = row.querySelector(".field-value");
   valueEl.textContent = info.value ?? "not available";
@@ -241,7 +249,7 @@ async function renderCounterForm(nin, data, runToken) {
       row.innerHTML = `
         <span class="field-name">${esc(info.label)}</span>
         <span class="field-value empty">&mdash;</span>
-        <span class="source-badge ${sourceClassFor(info)}" style="visibility:hidden">${esc(badgeText)}</span>
+        <span class="source-badge ${sourceClassFor(info)}" style="visibility:hidden">${sourceShapeFor(info)} ${esc(badgeText)}</span>
       `;
       section.appendChild(row);
       sectionRows.push([name, info, row]);
@@ -537,7 +545,7 @@ async function askAsPnea() {
   const call = data.calls.find(c => c.service.includes("identity-api"));
   const allowed = renderPermResult(resultEl, call);
   const statusEl = $("#pnea-status");
-  statusEl.textContent = allowed ? "admitted" : "not admitted";
+  statusEl.textContent = allowed ? "✓ admitted" : "✕ not admitted"; // shape, not colour alone
   statusEl.classList.toggle("denied-label", !allowed);
 }
 
