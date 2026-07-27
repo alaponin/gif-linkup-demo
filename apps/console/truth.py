@@ -28,10 +28,32 @@ import pathlib
 import yaml
 
 
+FIELD_LABELS = {
+    "nin": "NIN",
+    "given_name": "Given name",
+    "family_name": "Family name",
+    "date_of_birth": "Date of birth",
+    "sex": "Sex",
+    "region": "Region",
+    "school": "School",
+    "level": "Level",
+    "enrolment_year": "Enrolment year",
+    "status": "Enrolment status",
+}
+
+
+def _label(name: str) -> str:
+    return FIELD_LABELS.get(name, name.replace("_", " ").capitalize())
+
+
 @dataclasses.dataclass(frozen=True)
 class FormField:
     name: str
+    label: str
     source: str  # "citizen" or a member_code, e.g. "PNIA"
+    group: str   # "citizen", or the lowercased subsystem_code of the call
+                 # that prefills it (e.g. "identity", "enrolment") -- derived
+                 # from topology.json, never hardcoded per member
 
 
 @dataclasses.dataclass(frozen=True)
@@ -73,6 +95,13 @@ def _entrypoint_for_member_code(topology: dict, member_code: str) -> str:
     )
 
 
+def _subsystem_code_for_member(topology: dict, member_code: str) -> str:
+    for subsystem in topology["subsystems"]:
+        if subsystem["member_code"] == member_code:
+            return subsystem["subsystem_code"]
+    raise RuntimeError(f"truth.py: no subsystem in topology.json for member_code {member_code!r}")
+
+
 def load_truth(pack_dir: str | pathlib.Path) -> Truth:
     pack_dir = pathlib.Path(pack_dir)
 
@@ -89,13 +118,19 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
 
     # -- form model: every citizen-provided field, every bus-prefilled field
     # tagged with which member supplies it (from that call's own prefills).
-    citizen_fields = set(exchange["asked_once"]["citizen_provides"])
+    # Built in call order (citizen field(s) first, then each call's prefills
+    # in the order 2.6.yaml lists them) rather than sorted -- the form reads
+    # as "who you are, then where you studied", not a database dump.
+    citizen_fields = list(exchange["asked_once"]["citizen_provides"])
     prefilled_fields = set(exchange["asked_once"]["prefilled_from_bus"])
 
     field_source: dict[str, str] = {f: "citizen" for f in citizen_fields}
+    field_group: dict[str, str] = {f: "citizen" for f in citizen_fields}
+    field_order: list[str] = list(citizen_fields)
     union_of_prefills: set[str] = set()
     for call in exchange["calls"]:
         member_code = _member_code(call["service"])
+        group = _subsystem_code_for_member(topology, member_code).lower()
         for field in call.get("prefills", []):
             union_of_prefills.add(field)
             if field in field_source:
@@ -104,6 +139,8 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
                     "also citizen-provided -- configs/x-road-bus/2.6.yaml is inconsistent"
                 )
             field_source[field] = member_code
+            field_group[field] = group
+            field_order.append(field)
 
     # Same invariant scripts/acceptance.sh check 2.6.3 asserts at runtime,
     # checked here at load time instead: coverage AND purpose limitation.
@@ -116,9 +153,9 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         )
 
     form_fields = [
-        FormField(name=f, source=field_source[f]) for f in (citizen_fields | prefilled_fields)
+        FormField(name=f, label=_label(f), source=field_source[f], group=field_group[f])
+        for f in field_order
     ]
-    form_fields.sort(key=lambda f: (f.source != "citizen", f.name))
 
     # -- layers: aggregated across all calls. Confirmed live: no single call
     # carries all four -- identity-api has technical+legal, enrolment-api has

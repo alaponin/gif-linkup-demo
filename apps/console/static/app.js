@@ -104,34 +104,66 @@ async function runExchange(nin) {
   renderInspector(data);
 }
 
+const GROUP_TITLES = { identity: "Identity", enrolment: "Enrolment" };
+
 function renderCounterForm(nin, data) {
   $("#counter-form-card").style.display = "block";
-  $("#counter-nin").textContent = nin;
+  $("#counter-nin-line").textContent = `NIN ${nin}`;
+  const given = data.credential_application.given_name?.value;
+  const family = data.credential_application.family_name?.value;
+  $("#counter-learner-name").textContent = (given && family) ? ` — ${given} ${family}` : "";
+
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
 
   const entries = Object.entries(data.credential_application);
-  const total = entries.length;
+  const askedCount = entries.filter(([, info]) => info.source === "citizen").length;
+  const prefillTotal = entries.length - askedCount;
   let filled = 0;
+  $("#progress-line").textContent = `asked ${askedCount} · pre-filled 0 / ${prefillTotal}`;
 
-  entries.forEach(([name, info], i) => {
-    const row = document.createElement("div");
-    row.className = "form-field";
-    const sourceClass = info.source === "citizen" ? "citizen"
-      : info.source.startsWith("PNIA") ? "PNIA"
-      : info.source.startsWith("PLR") ? "PLR" : "citizen";
-    const badgeText = info.source === "citizen" ? "you told us" : info.source;
-    row.innerHTML = `
-      <span class="field-name">${esc(name)}</span>
-      <span class="field-value ${info.value == null ? "empty" : ""}">${esc(info.value ?? "not available")}</span>
-      <span class="source-badge ${sourceClass}">${esc(badgeText)}</span>
-    `;
-    fieldsEl.appendChild(row);
-    setTimeout(() => {
-      row.classList.add("shown");
-      filled += 1;
-      $("#progress-line").textContent = `fields asked: 1 / fields filled: ${filled}`;
-    }, i * STAGGER_MS);
+  // Group in first-seen order (citizen field(s) first, then each call's
+  // fields in the order truth.py built them -- never alphabetical).
+  const groupOrder = [];
+  const groups = {};
+  entries.forEach(([name, info]) => {
+    if (!groups[info.group]) { groups[info.group] = []; groupOrder.push(info.group); }
+    groups[info.group].push([name, info]);
+  });
+
+  let i = 0;
+  groupOrder.forEach(group => {
+    const section = document.createElement("div");
+    section.className = "form-group";
+    if (group !== "citizen") {
+      const heading = document.createElement("h3");
+      heading.className = "form-group-heading";
+      heading.textContent = GROUP_TITLES[group] || group;
+      section.appendChild(heading);
+    }
+    groups[group].forEach(([name, info]) => {
+      const row = document.createElement("div");
+      row.className = "form-field";
+      const sourceClass = info.source === "citizen" ? "citizen"
+        : info.source.startsWith("PNIA") ? "PNIA"
+        : info.source.startsWith("PLR") ? "PLR" : "citizen";
+      const badgeText = info.source === "citizen" ? "you told us" : info.source;
+      row.innerHTML = `
+        <span class="field-name">${esc(info.label)}</span>
+        <span class="field-value ${info.value == null ? "empty" : ""}">${esc(info.value ?? "not available")}</span>
+        <span class="source-badge ${sourceClass}">${esc(badgeText)}</span>
+      `;
+      section.appendChild(row);
+      const idx = i++;
+      setTimeout(() => {
+        row.classList.add("shown");
+        if (info.source !== "citizen") {
+          filled += 1;
+          $("#progress-line").textContent = `asked ${askedCount} · pre-filled ${filled} / ${prefillTotal}`;
+        }
+      }, idx * STAGGER_MS);
+    });
+    fieldsEl.appendChild(section);
   });
 }
 

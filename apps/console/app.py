@@ -157,7 +157,12 @@ def get_exchange(nin: str):
     application = {}
     for field in TRUTH.form_fields:
         source = "citizen" if field.source == "citizen" else f"{field.source} over the bus"
-        application[field.name] = {"value": values.get(field.name), "source": source}
+        application[field.name] = {
+            "value": values.get(field.name),
+            "source": source,
+            "label": field.label,
+            "group": field.group,
+        }
 
     return {
         "credential_application": application,

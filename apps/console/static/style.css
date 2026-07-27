@@ -108,7 +108,18 @@ main {
 .chip:hover { border-color: var(--pnia); }
 .chip.clean-404 { border-color: var(--danger); color: var(--danger); }
 
+.subtitle { color: var(--muted); font-size: 15px; margin: 4px 0 8px; }
 .progress-line { color: var(--muted); font-size: 15px; margin-bottom: 16px; }
+
+.form-group { margin-bottom: 8px; }
+.form-group-heading {
+  margin: 20px 0 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.form-group:first-child .form-group-heading { margin-top: 4px; }
 
 .form-field {
   display: flex;
