@@ -67,6 +67,8 @@ class Truth:
     layers: dict[str, str]
     consumer_entrypoint: str
     negative_check_entrypoint: str
+    identity_mock_base_url: str  # PNIA's mock backend, off the bus entirely --
+    # for the legal pane's "held" query only (UX plan Task 5, Step 3)
 
 
 def _member_code(xroad_id: str) -> str:
@@ -179,6 +181,16 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         topology, _member_code(exchange["negative_check"]["unauthorised_client"])
     )
 
+    # PNIA's mock backend, off the bus -- the "held" query never goes near
+    # X-Road (module docstring). Derived from configs/member-pnia/2.5.yaml's
+    # spec_url the same way apps/mock-registry/app.py's own servers.url is:
+    # {base}/spec.yaml -> {base}/v1.
+    pnia_config = yaml.safe_load((pack_dir / "configs/member-pnia/2.5.yaml").read_text())
+    identity_spec_url = next(
+        svc["spec_url"] for svc in pnia_config["services"] if svc["code"] == "identity-api"
+    )
+    identity_mock_base_url = identity_spec_url.removesuffix("/spec.yaml") + "/v1"
+
     return Truth(
         pack_dir=pack_dir,
         profile=profile,
@@ -189,4 +201,5 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         layers=layers,
         consumer_entrypoint=consumer_entrypoint,
         negative_check_entrypoint=negative_check_entrypoint,
+        identity_mock_base_url=identity_mock_base_url,
     )

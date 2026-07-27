@@ -136,11 +136,26 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 **Files:** `scripts/gen_seed_data.py`, `apps/data/persons.csv`, `apps/specs/pnia-identity.openapi.yaml`, `apps/mock-registry/app.py`, `configs/member-pnia/2.5.yaml`, `static/app.js`
 
-- [ ] **Step 1:** add columns PNIA plausibly holds and the credential purpose does not need — e.g. `mother_name`, `birth_registration_no`, `residence_address`.
-- [ ] **Step 2:** the mock filters its response to the fields its OpenAPI spec declares, instead of returning the whole CSV row. Held-but-not-sent becomes a property of the contract, which is the point.
-- [ ] **Step 3:** add a `/v1/persons/{nin}/held-fields` endpoint (names only, never values) so the console can show *what was withheld* without ever transporting it. It is not on the bus and must not be — it is read by the console from the mock directly, and the UI must say so.
-- [ ] **Step 4:** legal pane lists sent vs withheld field names with the `layer_legal` sentence above them.
-- [ ] **Step 5:** confirm `acceptance.sh` 2.6.3's exact-set assertion still passes (it should — withheld fields never enter the response); commit.
+- [x] **Step 1:** add columns PNIA plausibly holds and the credential purpose does not need — e.g. `mother_name`, `birth_registration_no`, `residence_address`.
+- [x] **Step 2:** the mock filters its response to the fields its OpenAPI spec declares, instead of returning the whole CSV row. Held-but-not-sent becomes a property of the contract, which is the point.
+- [x] **Step 3:** add a `/v1/persons/{nin}/held-fields` endpoint (names only, never values) so the console can show *what was withheld* without ever transporting it. It is not on the bus and must not be — it is read by the console from the mock directly, and the UI must say so.
+- [x] **Step 4:** legal pane lists sent vs withheld field names with the `layer_legal` sentence above them.
+- [x] **Step 5:** confirm `acceptance.sh` 2.6.3's exact-set assertion still passes (it should — withheld fields never enter the response); commit.
+
+  **Verified live (2026-07-27):** regenerating the seed data shifted the RNG
+  sequence (adding a field earlier in the per-person dict changes every
+  later draw under the same seed) -- the specific demo NIN/name changed, but
+  nothing in the pack hardcodes one (`grep` came up empty), so this is
+  harmless churn, not a regression. Real, unexpected fix needed: 2.6.2's
+  `assert_record.py` compared the full seeded CSV row against the response
+  and failed on the three newly-withheld fields -- correctly, since it was
+  asserting the *old* contract. Changed it to check every field the API
+  *actually returned* against the seed (still catches a wrong-record bug,
+  still catches an empty response, no longer demands the echo of a field
+  the contract never sends). `mother_name`/`birth_registration_no`/
+  `residence_address` confirmed absent from `/persons/{nin}` and present
+  in `/persons/{nin}/held-fields`; the console's legal pane renders both
+  lists live. `acceptance.sh` GREEN including 2.6.3; 21 unit tests green.
 
 ## Task 6: Rebuild the inspector as evidence
 

@@ -161,7 +161,20 @@ def get_exchange(nin: str):
         "calls": [dataclasses.asdict(r) for r in results],
         "layers": TRUTH.layers,
         "client_header": TRUTH.exchange["headers"]["X-Road-Client"],
+        "identity_held_fields": _identity_held_fields(nin),
     }
+
+
+def _identity_held_fields(nin: str) -> list[str]:
+    """Field names PNIA's own record carries but its published contract
+    doesn't send -- read directly from the mock, off the bus entirely,
+    never through xroad.py (UX plan Task 5, Step 3). Never the values."""
+    try:
+        resp = httpx.get(f"{TRUTH.identity_mock_base_url}/persons/{nin}/held-fields", timeout=3.0)
+        resp.raise_for_status()
+        return resp.json()["held"]
+    except httpx.HTTPError:
+        return []
 
 
 @app.get("/api/exchange/{nin}/negative")

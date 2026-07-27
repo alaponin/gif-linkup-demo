@@ -422,6 +422,21 @@ function renderInspector(data) {
       ).join("\n");
       el.appendChild(detail);
     }
+    if (pane.key === "legal") {
+      // Purpose limitation, proved by absence (UX plan Task 5): PNIA's own
+      // record carries more than the credential purpose needs -- these
+      // names came straight from the mock, off the bus, never their values.
+      const sentFields = Object.entries(data.credential_application)
+        .filter(([, info]) => info.member_code === "PNIA")
+        .map(([name]) => name);
+      const held = data.identity_held_fields || [];
+      const detail = document.createElement("div");
+      detail.className = "call-detail";
+      detail.textContent =
+        `PNIA sends: ${sentFields.join(", ")}\n` +
+        `PNIA holds but withholds: ${held.join(", ") || "(none)"}`;
+      el.appendChild(detail);
+    }
     grid.appendChild(el);
   });
 }
