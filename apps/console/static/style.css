@@ -40,6 +40,8 @@ header h1 {
   font-weight: 600;
 }
 
+.header-badges { display: flex; align-items: center; gap: 10px; }
+
 header .badge {
   font-size: 13px;
   color: var(--muted);

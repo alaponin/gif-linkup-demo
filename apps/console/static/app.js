@@ -9,6 +9,9 @@ const ACL_POLL_MAX_ATTEMPTS = 8; // ~40s -- confirmed live the proxy's own
 
 let lastNin = null;
 let defaultNin = null;
+let counterFormRun = 0; // bumped on every runExchange -- lets an in-flight
+// reveal loop notice a newer run started (e.g. the presenter clicked a
+// different learner mid-animation) and stop touching shared DOM/tally.
 
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
@@ -89,29 +92,56 @@ async function loadLearners() {
   container.innerHTML = "";
   learners.forEach((learner, i) => {
     const chip = document.createElement("button");
-    chip.className = "chip" + (learner.case.includes("404") ? " clean-404" : "");
-    chip.textContent = `${learner.name} (${learner.nin}) -- ${learner.case}`;
+    chip.className = "chip" + (learner.case === "no enrolment record" ? " clean-404" : "");
+    chip.textContent = `${learner.nin} · ${learner.case}`;
     chip.addEventListener("click", () => runExchange(learner.nin));
     container.appendChild(chip);
     if (i === 0) defaultNin = learner.nin;
   });
 }
 
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+let sessionQuestionsAvoided = 0;
+function bumpSessionTally(prefillTotal) {
+  sessionQuestionsAvoided += prefillTotal;
+  $("#tally-badge").textContent = `questions avoided this session: ${sessionQuestionsAvoided}`;
+}
+
 async function runExchange(nin) {
   lastNin = nin;
+  const runToken = ++counterFormRun;
   const data = await api(`/api/exchange/${nin}`);
-  renderCounterForm(nin, data);
+  if (runToken !== counterFormRun) return; // superseded while the fetch was in flight
   renderInspector(data);
+  await renderCounterForm(nin, data, runToken);
 }
 
 const GROUP_TITLES = { identity: "Identity", enrolment: "Enrolment" };
+const BEFORE_HOLD_MS = 800;
 
-function renderCounterForm(nin, data) {
+function sourceClassFor(info) {
+  return info.source === "citizen" ? "citizen"
+    : info.source.startsWith("PNIA") ? "PNIA"
+    : info.source.startsWith("PLR") ? "PLR" : "citizen";
+}
+
+function revealField(row, info) {
+  const valueEl = row.querySelector(".field-value");
+  valueEl.textContent = info.value ?? "not available";
+  valueEl.classList.toggle("empty", info.value == null);
+  row.querySelector(".source-badge").style.visibility = "visible";
+  row.classList.add("shown");
+}
+
+// Three beats, not one reveal: the empty form ("this is ten questions"),
+// then the one question (NIN) landing, then the nine pre-filled fields --
+// so the audience sees the *before* the once-only exchange is saving them
+// from, not just the after (UX plan Task 2, Step 2).
+async function renderCounterForm(nin, data, runToken) {
   $("#counter-form-card").style.display = "block";
   $("#counter-nin-line").textContent = `NIN ${nin}`;
-  const given = data.credential_application.given_name?.value;
-  const family = data.credential_application.family_name?.value;
-  $("#counter-learner-name").textContent = (given && family) ? ` — ${given} ${family}` : "";
+  $("#counter-learner-name").textContent = "";
 
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
@@ -119,8 +149,7 @@ function renderCounterForm(nin, data) {
   const entries = Object.entries(data.credential_application);
   const askedCount = entries.filter(([, info]) => info.source === "citizen").length;
   const prefillTotal = entries.length - askedCount;
-  let filled = 0;
-  $("#progress-line").textContent = `asked ${askedCount} · pre-filled 0 / ${prefillTotal}`;
+  $("#progress-line").textContent = "Without the bus, this is ten questions.";
 
   // Group in first-seen order (citizen field(s) first, then each call's
   // fields in the order truth.py built them -- never alphabetical).
@@ -131,7 +160,7 @@ function renderCounterForm(nin, data) {
     groups[info.group].push([name, info]);
   });
 
-  let i = 0;
+  const rows = []; // [[fieldName, info, rowEl]]
   groupOrder.forEach(group => {
     const section = document.createElement("div");
     section.className = "form-group";
@@ -143,28 +172,47 @@ function renderCounterForm(nin, data) {
     }
     groups[group].forEach(([name, info]) => {
       const row = document.createElement("div");
-      row.className = "form-field";
-      const sourceClass = info.source === "citizen" ? "citizen"
-        : info.source.startsWith("PNIA") ? "PNIA"
-        : info.source.startsWith("PLR") ? "PLR" : "citizen";
+      row.className = "form-field shown"; // visible immediately, blank
       const badgeText = info.source === "citizen" ? "you told us" : info.source;
       row.innerHTML = `
         <span class="field-name">${esc(info.label)}</span>
-        <span class="field-value ${info.value == null ? "empty" : ""}">${esc(info.value ?? "not available")}</span>
-        <span class="source-badge ${sourceClass}">${esc(badgeText)}</span>
+        <span class="field-value empty">&mdash;</span>
+        <span class="source-badge ${sourceClassFor(info)}" style="visibility:hidden">${esc(badgeText)}</span>
       `;
       section.appendChild(row);
-      const idx = i++;
-      setTimeout(() => {
-        row.classList.add("shown");
-        if (info.source !== "citizen") {
-          filled += 1;
-          $("#progress-line").textContent = `asked ${askedCount} · pre-filled ${filled} / ${prefillTotal}`;
-        }
-      }, idx * STAGGER_MS);
+      rows.push([name, info, row]);
     });
     fieldsEl.appendChild(section);
   });
+
+  await sleep(BEFORE_HOLD_MS);
+  if (runToken !== counterFormRun) return; // superseded during the hold
+
+  // ask the one question
+  for (const [, info, row] of rows) {
+    if (info.source === "citizen") revealField(row, info);
+  }
+  $("#progress-line").textContent = `asked ${askedCount} · pre-filled 0 / ${prefillTotal}`;
+  await sleep(STAGGER_MS * 2);
+  if (runToken !== counterFormRun) return;
+
+  // then let the bus answer the rest, one at a time
+  let filled = 0;
+  for (const [name, info, row] of rows) {
+    if (info.source === "citizen") continue;
+    await sleep(STAGGER_MS);
+    if (runToken !== counterFormRun) return; // a newer run took over mid-fill
+    revealField(row, info);
+    filled += 1;
+    $("#progress-line").textContent = `asked ${askedCount} · pre-filled ${filled} / ${prefillTotal}`;
+    if (name === "family_name") {
+      const given = data.credential_application.given_name?.value;
+      const family = info.value;
+      if (given && family) $("#counter-learner-name").textContent = ` — ${given} ${family}`;
+    }
+  }
+
+  bumpSessionTally(prefillTotal);
 }
 
 // -------------------------------------------------------------- inspector ----

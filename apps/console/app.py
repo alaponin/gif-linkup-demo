@@ -110,30 +110,21 @@ def get_learners():
     """A handful of seeded NINs: several present in both registries, and --
     labelled as such -- one present in PNIA but absent from PLR, which is
     acceptance.sh check 2.6.5's clean-404 case. Read from the same CSVs
-    seed.sh regenerates."""
+    seed.sh regenerates. No names here (UX plan Task 2, Step 1): the name
+    arriving from PNIA over the bus is the demonstration's payoff, and a
+    chip that already shows it spoils that before the exchange runs."""
     with open(PACK_DIR / "apps/data/persons.csv", newline="") as f:
-        persons = {row["nin"]: row for row in csv.DictReader(f)}
+        nins = {row["nin"] for row in csv.DictReader(f)}
     with open(PACK_DIR / "apps/data/enrolments.csv", newline="") as f:
         enrolled_nins = {row["nin"] for row in csv.DictReader(f)}
 
-    both = sorted(nin for nin in persons if nin in enrolled_nins)[:4]
-    pnia_only = sorted(nin for nin in persons if nin not in enrolled_nins)[:1]
+    both = sorted(nin for nin in nins if nin in enrolled_nins)[:4]
+    pnia_only = sorted(nin for nin in nins if nin not in enrolled_nins)[:1]
 
-    learners = [
-        {
-            "nin": nin,
-            "name": f"{persons[nin]['given_name']} {persons[nin]['family_name']}",
-            "case": "happy path",
-        }
-        for nin in both
-    ] + [
-        {
-            "nin": nin,
-            "name": f"{persons[nin]['given_name']} {persons[nin]['family_name']}",
-            "case": "no enrolment record (clean 404)",
-        }
-        for nin in pnia_only
-    ]
+    learners = (
+        [{"nin": nin, "case": "has an enrolment record"} for nin in both]
+        + [{"nin": nin, "case": "no enrolment record"} for nin in pnia_only]
+    )
     return {"learners": learners}
 
 
