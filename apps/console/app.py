@@ -151,14 +151,16 @@ def get_exchange(nin: str):
         application[field.name] = {
             "value": values.get(field.name),
             "source": source,
-            "label": field.label,
-            "group": field.group,
+            "member_code": field.source,  # raw code ("citizen" or e.g. "PNIA") --
+            "label": field.label,         # `source` above is display text, not
+            "group": field.group,         # a key: match calls/topology on this instead
         }
 
     return {
         "credential_application": application,
         "calls": [dataclasses.asdict(r) for r in results],
         "layers": TRUTH.layers,
+        "client_header": TRUTH.exchange["headers"]["X-Road-Client"],
     }
 
 

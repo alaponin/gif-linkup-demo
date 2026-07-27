@@ -79,9 +79,31 @@ function initJournalBanner() {
 
 // --------------------------------------------------------------- topology ----
 
+let TOPOLOGY = null; // cached from the one /api/topology fetch on load --
+// looked up by member/host code, never re-derived (Global Constraint: no
+// fourth copy of the topology).
+
 async function loadTopologyBadge() {
-  const topo = await api("/api/topology");
-  $("#profile-badge").textContent = `profile: ${topo.profile}`;
+  TOPOLOGY = await api("/api/topology");
+  $("#profile-badge").textContent = `profile: ${TOPOLOGY.profile}`;
+}
+
+function subsystemFor(memberCode) {
+  return TOPOLOGY?.subsystems.find(s => s.member_code === memberCode);
+}
+
+function hostProxyPortFor(host) {
+  return TOPOLOGY?.security_servers.find(s => s.host === host)?.host_proxy_port;
+}
+
+// Rewrites an in-network call URL (http://ss-pnea:8080/r1/...) to the
+// host-mapped equivalent (http://localhost:2080/r1/...) a presenter can
+// run outside the linkup network -- same path, same query, real data.
+function hostMappedUrl(internalUrl) {
+  const m = internalUrl.match(/^https?:\/\/([^:/]+):\d+(\/.*)$/);
+  if (!m) return internalUrl;
+  const port = hostProxyPortFor(m[1]);
+  return port ? `http://localhost:${port}${m[2]}` : internalUrl;
 }
 
 // ---------------------------------------------------------------- counter ----
@@ -117,13 +139,14 @@ async function runExchange(nin) {
   await renderCounterForm(nin, data, runToken);
 }
 
-const GROUP_TITLES = { identity: "Identity", enrolment: "Enrolment" };
 const BEFORE_HOLD_MS = 800;
+const MIN_ASKING_MS = 400; // floor under the real elapsed_ms so "asking..."
+// is always visible on camera, even when the real call was very fast
 
 function sourceClassFor(info) {
-  return info.source === "citizen" ? "citizen"
-    : info.source.startsWith("PNIA") ? "PNIA"
-    : info.source.startsWith("PLR") ? "PLR" : "citizen";
+  return info.member_code === "citizen" ? "citizen"
+    : info.member_code === "PNIA" ? "PNIA"
+    : info.member_code === "PLR" ? "PLR" : "citizen";
 }
 
 function revealField(row, info) {
@@ -135,9 +158,10 @@ function revealField(row, info) {
 }
 
 // Three beats, not one reveal: the empty form ("this is ten questions"),
-// then the one question (NIN) landing, then the nine pre-filled fields --
-// so the audience sees the *before* the once-only exchange is saving them
-// from, not just the after (UX plan Task 2, Step 2).
+// then the one question (NIN) landing, then each provider answering in
+// turn -- "asking PNIA..." -> "PNIA answered in 227ms" -> its fields land
+// -- so the audience sees two systems answer visibly in sequence, not one
+// block of values that could have been hard-coded (UX plan Tasks 2 & 3).
 async function renderCounterForm(nin, data, runToken) {
   $("#counter-form-card").style.display = "block";
   $("#counter-nin-line").textContent = `NIN ${nin}`;
@@ -145,9 +169,12 @@ async function renderCounterForm(nin, data, runToken) {
 
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
+  $("#receipts-panel").style.display = "none";
+  $("#receipts-panel").innerHTML = "";
+  $("#receipts-toggle-btn").style.display = "none";
 
   const entries = Object.entries(data.credential_application);
-  const askedCount = entries.filter(([, info]) => info.source === "citizen").length;
+  const askedCount = entries.filter(([, info]) => info.member_code === "citizen").length;
   const prefillTotal = entries.length - askedCount;
   $("#progress-line").textContent = "Without the bus, this is ten questions.";
 
@@ -160,17 +187,26 @@ async function renderCounterForm(nin, data, runToken) {
     groups[info.group].push([name, info]);
   });
 
-  const rows = []; // [[fieldName, info, rowEl]]
+  // citizen section renders plain, with all its rows blank-until-asked
+  const citizenRows = []; // [[name, info, rowEl]]
+  const providerSections = []; // [[group, memberCode, statusEl, [[name, info, rowEl], ...]]]
+
   groupOrder.forEach(group => {
     const section = document.createElement("div");
     section.className = "form-group";
+    const fields = groups[group];
+    let statusEl = null;
     if (group !== "citizen") {
-      const heading = document.createElement("h3");
-      heading.className = "form-group-heading";
-      heading.textContent = GROUP_TITLES[group] || group;
-      section.appendChild(heading);
+      const memberCode = fields[0][1].member_code;
+      const header = document.createElement("div");
+      header.className = "provider-header";
+      statusEl = document.createElement("span");
+      statusEl.className = "provider-status";
+      header.appendChild(statusEl);
+      section.appendChild(header);
     }
-    groups[group].forEach(([name, info]) => {
+    const sectionRows = [];
+    fields.forEach(([name, info]) => {
       const row = document.createElement("div");
       row.className = "form-field shown"; // visible immediately, blank
       const badgeText = info.source === "citizen" ? "you told us" : info.source;
@@ -180,39 +216,90 @@ async function renderCounterForm(nin, data, runToken) {
         <span class="source-badge ${sourceClassFor(info)}" style="visibility:hidden">${esc(badgeText)}</span>
       `;
       section.appendChild(row);
-      rows.push([name, info, row]);
+      sectionRows.push([name, info, row]);
     });
     fieldsEl.appendChild(section);
+    if (group === "citizen") citizenRows.push(...sectionRows);
+    else providerSections.push([group, fields[0][1].member_code, statusEl, sectionRows]);
   });
 
   await sleep(BEFORE_HOLD_MS);
   if (runToken !== counterFormRun) return; // superseded during the hold
 
   // ask the one question
-  for (const [, info, row] of rows) {
-    if (info.source === "citizen") revealField(row, info);
-  }
+  for (const [, info, row] of citizenRows) revealField(row, info);
   $("#progress-line").textContent = `asked ${askedCount} · pre-filled 0 / ${prefillTotal}`;
   await sleep(STAGGER_MS * 2);
   if (runToken !== counterFormRun) return;
 
-  // then let the bus answer the rest, one at a time
+  // then each provider answers in turn, visibly
   let filled = 0;
-  for (const [name, info, row] of rows) {
-    if (info.source === "citizen") continue;
-    await sleep(STAGGER_MS);
-    if (runToken !== counterFormRun) return; // a newer run took over mid-fill
-    revealField(row, info);
-    filled += 1;
-    $("#progress-line").textContent = `asked ${askedCount} · pre-filled ${filled} / ${prefillTotal}`;
-    if (name === "family_name") {
-      const given = data.credential_application.given_name?.value;
-      const family = info.value;
-      if (given && family) $("#counter-learner-name").textContent = ` — ${given} ${family}`;
+  for (const [, memberCode, statusEl, sectionRows] of providerSections) {
+    const call = data.calls.find(c => c.service.split("/")[2] === memberCode);
+    const memberName = subsystemFor(memberCode)?.member_name || memberCode;
+    const hostedOn = subsystemFor(memberCode)?.hosted_on || "";
+
+    statusEl.textContent = `Asking ${memberName}…`;
+    const askingDelay = call ? Math.max(call.elapsed_ms, MIN_ASKING_MS) : MIN_ASKING_MS;
+    await sleep(askingDelay);
+    if (runToken !== counterFormRun) return;
+
+    statusEl.textContent = call
+      ? `${memberName} answered in ${call.elapsed_ms.toFixed(0)}ms · served by ${hostedOn}`
+      : `${memberName} did not answer`;
+
+    for (const [name, info, row] of sectionRows) {
+      await sleep(STAGGER_MS);
+      if (runToken !== counterFormRun) return;
+      revealField(row, info);
+      filled += 1;
+      $("#progress-line").textContent = `asked ${askedCount} · pre-filled ${filled} / ${prefillTotal}`;
+      if (name === "family_name") {
+        const given = data.credential_application.given_name?.value;
+        const family = info.value;
+        if (given && family) $("#counter-learner-name").textContent = ` — ${given} ${family}`;
+      }
     }
   }
 
   bumpSessionTally(prefillTotal);
+  renderReceipts(data);
+  $("#receipts-toggle-btn").style.display = "inline-block";
+}
+
+// -- receipts: the raw provider responses, verbatim, plus a curl command
+// an architect can run on the host to get the same answer outside the
+// console entirely (UX plan Task 3, Steps 3-4).
+function renderReceipts(data) {
+  const panel = $("#receipts-panel");
+  panel.innerHTML = "";
+  data.calls.forEach(call => {
+    const card = document.createElement("div");
+    card.className = "receipt-card";
+    const curlCmd = `curl -s -H "X-Road-Client: ${data.client_header}" "${hostMappedUrl(call.url)}"`;
+    card.innerHTML = `
+      <h4>${esc(call.service)}</h4>
+      <pre class="receipt-body">${esc(JSON.stringify(call.body, null, 2))}</pre>
+      <button class="copy-curl-btn">Copy as curl</button>
+    `;
+    card.querySelector(".copy-curl-btn").addEventListener("click", async (e) => {
+      await navigator.clipboard.writeText(curlCmd);
+      const btn = e.target;
+      const original = btn.textContent;
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+    panel.appendChild(card);
+  });
+}
+
+function initReceiptsToggle() {
+  $("#receipts-toggle-btn").addEventListener("click", () => {
+    const panel = $("#receipts-panel");
+    const showing = panel.style.display === "block";
+    panel.style.display = showing ? "none" : "block";
+    $("#receipts-toggle-btn").textContent = showing ? "Show the receipts" : "Hide the receipts";
+  });
 }
 
 // -------------------------------------------------------------- inspector ----
@@ -342,6 +429,7 @@ async function runNegativeExchange() {
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initJournalBanner();
+  initReceiptsToggle();
   startHeartbeat();
   loadTopologyBadge();
   loadLearners();
