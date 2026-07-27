@@ -65,8 +65,19 @@ class AdminSession:
         return [item["id"] for item in resp.json()]
 
     def read_acl(self, client_id: str, subject_id: str) -> list[str]:
-        """Which service codes this subject holds on this client."""
+        """Which service codes this subject holds on this client.
+
+        Confirmed live (2026-07-27): a subject with zero access rights is
+        not a "service client" of this client at all, so the admin API
+        404s here rather than returning []  -- the asymmetry with
+        read_subjects() (which naturally omits such a subject from its
+        list, no error) matters when this is used to determine prior_state
+        before a mutation: the fully-revoked case must read as [], not
+        raise, or callers can never observe "currently has nothing granted".
+        """
         resp = self.get(f"/clients/{client_id}/service-clients/{subject_id}/access-rights")
+        if resp.status_code == 404:
+            return []
         resp.raise_for_status()
         return [item["service_code"] for item in resp.json()]
 

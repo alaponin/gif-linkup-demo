@@ -3,9 +3,13 @@
 
 const STAGGER_MS = 220;
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const ACL_POLL_INTERVAL_MS = 5_000;
-const ACL_POLL_MAX_ATTEMPTS = 8; // ~40s -- confirmed live the proxy's own
-// authorization cache can lag the admin API by up to ~30s (2026-07-26).
+const ACL_POLL_INTERVAL_MS = 1_000;
+const ACL_POLL_MAX_ATTEMPTS = 10; // ~10s -- the proxy's own authorization
+// cache lags the admin API's read (server-conf-cache-period); tuned to 5s
+// for this demo stack (xroad-demo-local.ini, docs/xroad-770-notes.md §6,
+// production default is 60s) and measured live at 4.5-5.6s, so 10s is
+// comfortable headroom rather than the old ~40s budget sized for the
+// untuned default.
 
 let lastNin = null;
 let defaultNin = null;

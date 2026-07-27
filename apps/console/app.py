@@ -244,7 +244,16 @@ def _mutate_acl(action: str) -> dict:
         raise HTTPException(400, f"{MUTABLE_SERVICE} has no expected subject to mutate")
     subject = subjects[0]
     session = _admin_session(subsystem["hosted_on"])
-    prior_state = "granted" if action == "revoke" else "revoked"
+
+    # prior_state must come from the actual live state, never inferred as
+    # "the opposite of the requested action" -- grant()/revoke() are both
+    # idempotent-safe at the X-Road layer (xroad.py's 409 handling: calling
+    # grant when already granted, or revoke when already revoked, is a
+    # success no-op). If prior_state assumed a transition happened when it
+    # didn't, reset()'s reversal would apply the wrong action and corrupt
+    # the real state -- confirmed live: calling this endpoint twice with the
+    # same action left the journal permanently dirty and unable to verify.
+    prior_state = "granted" if MUTABLE_SERVICE in session.read_acl(subsystem["id"], subject) else "revoked"
 
     # Journalled BEFORE the live call -- a crash between this write and the
     # next leaves enough on disk for reset() to reverse (journal.py docstring).

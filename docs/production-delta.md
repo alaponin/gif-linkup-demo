@@ -22,6 +22,7 @@ demo as production.
 | Demo console has no authentication of its own (`apps/console/`) | Real access control on any tool that can read/mutate ACLs |
 | Console holds admin credentials server-side, localhost-bound as the only access control | Credentials never colocated with a public-facing demo tool; network-level isolation |
 | Console's ACL write path exists purely to be theatrical for an audience | No tool mutates production ACLs for demonstration purposes, ever |
+| Proxy's `server-conf-cache-period` tuned to 5s (`xroad-demo-local.ini`, default is 60s) so an ACL change is filmable | Leave at the documented default (or size deliberately) — a short cache period trades proxy CPU for faster-to-reflect ACL changes, a trade a real federation's traffic volume should make on purpose, not by copying a demo value |
 
 ## The task the hardening list forgets
 

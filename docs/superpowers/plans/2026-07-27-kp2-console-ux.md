@@ -206,11 +206,37 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 `app.js` carries `ACL_POLL_MAX_ATTEMPTS = 8 // ~40s`. Forty seconds of nothing happening is not demonstrable and not filmable.
 
-- [ ] **Step 1:** measure precisely — poll every 500 ms from the moment of revoke to the first `AccessDenied` and record the true distribution over five runs.
-- [ ] **Step 2:** investigate whether it is configurable: `docker exec ss-pnia grep -rn "cache-period\|cache" /etc/xroad/ /usr/share/xroad/conf.d/ 2>/dev/null`, and check the Security Server user guide's system-parameter annex. `proxy.ini` at 7.7.0 does **not** list a server-conf cache period, so if one exists it is a `SystemProperties` default rather than a documented default — confirm before relying on it.
-- [ ] **Step 3:** if it is configurable, set it low for the demo stack only, in the `demo` profile, and record it in `docs/production-delta.md` as a demo-only tuning.
-- [ ] **Step 4:** if it is not, design for it: an explicit countdown with the reason stated (*the provider caches its authorisation list; waiting for it to expire — 23s*), and a documented presenter workaround of arming the revoke before the camera rolls.
-- [ ] **Step 5:** write the finding into `docs/xroad-770-notes.md`; commit.
+- [x] **Step 1:** measure precisely — poll every 500 ms from the moment of revoke to the first `AccessDenied` and record the true distribution over five runs.
+- [x] **Step 2:** investigate whether it is configurable: `docker exec ss-pnia grep -rn "cache-period\|cache" /etc/xroad/ /usr/share/xroad/conf.d/ 2>/dev/null`, and check the Security Server user guide's system-parameter annex. `proxy.ini` at 7.7.0 does **not** list a server-conf cache period, so if one exists it is a `SystemProperties` default rather than a documented default — confirm before relying on it.
+- [x] **Step 3:** if it is configurable, set it low for the demo stack only, in the `demo` profile, and record it in `docs/production-delta.md` as a demo-only tuning.
+- [x] **Step 4:** if it is not, design for it: an explicit countdown with the reason stated (*the provider caches its authorisation list; waiting for it to expire — 23s*), and a documented presenter workaround of arming the revoke before the camera rolls.
+- [x] **Step 5:** write the finding into `docs/xroad-770-notes.md`; commit.
+
+  **Verified live (2026-07-27):** measured 5 runs at the documented default
+  (`server-conf-cache-period`, X-Road System Parameters User Guide, 60s) --
+  59.9s-60.5s, confirming both the exact property name and the default. It
+  is a real `[proxy]` `local.ini` setting, not an env var the sidecar image
+  exposes generically, so tuned it by bind-mounting `xroad-demo-local.ini`
+  over `/etc/xroad/conf.d/local.ini` on all 5 Security Servers
+  (`docker-compose.yml`) at `server-conf-cache-period = 5`. Re-measured
+  under the override: 4.5s-5.6s. Shrunk `app.js`'s poll budget from ~40s
+  (8x5s) to ~10s (10x1s) to match. Documented in both
+  `docs/xroad-770-notes.md` §6 and `docs/production-delta.md`.
+
+  **Two real bugs found and fixed during verification, independent of the
+  cache-period tuning itself:** (1) `app.py`'s `_mutate_acl` inferred
+  `prior_state` as "the opposite of the requested action" instead of
+  reading the actual live state -- calling the write API with the same
+  action twice (which my measurement script's cleanup loop did, and which
+  a UI race could also trigger) journalled a false transition, and
+  `reset()`'s reversal then corrupted the real ACL, leaving the journal
+  permanently dirty. Fixed by reading `session.read_acl()` before
+  mutating. (2) That fix then exposed a second bug: `read_acl()` 404s
+  (rather than returning `[]`) when a subject has zero access rights --
+  confirmed live -- so the fully-revoked case raised instead of reading as
+  empty. Fixed by treating 404 as `[]` in `xroad.py`. Both covered by new
+  regression tests (`test_app_mutate_acl.py`, plus one in
+  `test_xroad.py`); 25 unit tests green; `acceptance.sh` green.
 
 ## Task 9: Three beats, one path
 

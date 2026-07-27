@@ -57,6 +57,21 @@ def test_read_subjects_and_read_acl():
     assert session.read_acl("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS") == ["identity-api"]
 
 
+def test_read_acl_returns_empty_list_on_404_not_raises():
+    """Confirmed live (2026-07-27): a subject with zero access rights isn't
+    a service-client at all, so the admin API 404s here rather than
+    returning []. Found because app.py's _mutate_acl reads this to
+    determine prior_state before mutating -- the fully-revoked case must
+    read as [], or the caller can never observe "nothing currently granted"."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return _login_response(request)
+        return httpx.Response(404, json={"detail": "not found"}, request=request)
+
+    session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert session.read_acl("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS") == []
+
+
 def test_grant_success():
     calls = []
 

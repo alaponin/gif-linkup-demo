@@ -1,0 +1,109 @@
+kp: KP2
+track: interoperability
+title: Government Interoperability Framework
+home: 10-Knowledge-Products/KP2-GIF
+depends_on: []
+building_blocks:
+  - x-road-bus
+  - member-moeys
+  - member-pnea
+  - member-plr
+  - member-pnia
+# Frozen identifiers — cross-pack join keys for KP3/KP4. Confirmed against the
+# live registry at P5 (2026-07-25): all four members + subsystems and the
+# owner present exactly as below; see acceptance.sh's 2.x checks.
+identifiers:
+  instance: PROGRESSA
+  member_class: GOV
+  owner: PROGRESSA/GOV/PDGA
+  members:
+    - PROGRESSA/GOV/MOEYS:PEMIS
+    - PROGRESSA/GOV/PNEA:EXAMS
+    - PROGRESSA/GOV/PLR:ENROLMENT
+    - PROGRESSA/GOV/PNIA:IDENTITY
+  services:
+    - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
+    - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
+    - PROGRESSA/GOV/MOEYS/PEMIS/pemis-api
+# Rich identity — names, subsystem descriptions — that configs/*.yaml used to
+# duplicate by hand. identifiers: above stays the flat cross-pack contract,
+# untouched; this is what hurl/generate.py actually reads. The two must agree
+# -- hurl/check_scenarios.py checks that (Task 4 of
+# docs/superpowers/plans/2026-07-26-agency-identity-rename-support.md).
+identity:
+  instance: PROGRESSA
+  member_class: GOV
+  owner:
+    code: PDGA
+    name: Progressa Digital Government Authority
+    management_subsystem: MANAGEMENT
+  members:
+    moeys:
+      code: MOEYS
+      name: "Progressa Ministry of Education, Youth and Sport"
+      subsystem: PEMIS
+      subsystem_description: School information system (education management)
+    pnea:
+      code: PNEA
+      name: Progressa National Examination Authority
+      subsystem: EXAMS
+      subsystem_description: Examination and certification services (consumer of identity + enrolment)
+    plr:
+      code: PLR
+      name: Progressa Learner Registry
+      subsystem: ENROLMENT
+      subsystem_description: Authoritative learner enrolment register
+    pnia:
+      code: PNIA
+      name: Progressa National Identity Authority
+      subsystem: IDENTITY
+      subsystem_description: Authoritative person identity register
+modules:
+  - id: "2.1"
+    video_ref: "5.5"   # Topic 5 subtopic this module realises
+    title: "Stand up the federation core"
+    building_blocks: [x-road-bus]
+    config: configs/x-road-bus/2.1.yaml
+    scenarios: hurl/scenarios/00-cs-init.hurl, hurl/scenarios/01-cs-trust-services.hurl, hurl/scenarios/03-cs-anchor.hurl, hurl/scenarios/10-ss-pdga.hurl
+    prompt: prompts/2.1.md
+    acceptance: acceptance/2.1.md
+  - id: "2.2"
+    video_ref: "5.4"   # Topic 5 subtopic this module realises
+    title: "Register MoEYS/PEMIS on the bus"
+    building_blocks: [member-moeys]
+    config: configs/member-moeys/2.2.yaml
+    scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/22-ss-moeys.hurl, hurl/scenarios/32-services-moeys.hurl
+    prompt: prompts/2.2.md
+    acceptance: acceptance/2.2.md
+  - id: "2.3"
+    video_ref: "5.4"   # Topic 5 subtopic this module realises
+    title: "Register PNEA — the consumer"
+    building_blocks: [member-pnea]
+    config: configs/member-pnea/2.3.yaml
+    scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/23-ss-pnea.hurl
+    prompt: prompts/2.3.md
+    acceptance: acceptance/2.3.md
+  - id: "2.4"
+    video_ref: "5.4"   # Topic 5 subtopic this module realises
+    title: "Register PLR and publish the enrolment service"
+    building_blocks: [member-plr]
+    config: configs/member-plr/2.4.yaml
+    scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/21-ss-plr.hurl, hurl/scenarios/31-services-plr.hurl
+    prompt: prompts/2.4.md
+    acceptance: acceptance/2.4.md
+  - id: "2.5"
+    video_ref: "5.4"   # Topic 5 subtopic this module realises
+    title: "Register PNIA and publish the identity service"
+    building_blocks: [member-pnia]
+    config: configs/member-pnia/2.5.yaml
+    scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/20-ss-pnia.hurl, hurl/scenarios/30-services-pnia.hurl
+    prompt: prompts/2.5.md
+    acceptance: acceptance/2.5.md
+  - id: "2.6"
+    video_ref: "5.6"   # Topic 5 subtopic this module realises
+    title: "Run the once-only exchange"
+    building_blocks: [x-road-bus]
+    config: configs/x-road-bus/2.6.yaml
+    scenarios: ""   # proved by scripts/acceptance.sh, not by a scenario
+    prompt: prompts/2.6.md
+    acceptance: acceptance/2.6.md
