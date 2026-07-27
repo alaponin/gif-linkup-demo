@@ -42,13 +42,24 @@ header h1 {
 
 .header-badges { display: flex; align-items: center; gap: 10px; }
 
-header .badge {
+.badge {
   font-size: 13px;
   color: var(--muted);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   padding: 4px 10px;
 }
+
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 32px;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+.context-bar .secondary-action { padding: 4px 12px; font-size: 13px; }
 
 nav.tabs {
   display: flex;
@@ -207,6 +218,19 @@ main {
   color: var(--muted);
   font-size: 14px;
 }
+
+.forward-link {
+  display: block;
+  margin-top: 16px;
+  background: none;
+  border: none;
+  color: var(--pnia);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.forward-link:hover { text-decoration: underline; }
 
 /* -- inspector tab -- */
 

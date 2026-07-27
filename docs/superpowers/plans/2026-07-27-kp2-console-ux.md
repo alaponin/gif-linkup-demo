@@ -242,10 +242,23 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 **Files:** `static/index.html`, `app.js`, `style.css`
 
-- [ ] **Step 1:** tabs become numbered steps — **1 Ask once · 2 How it worked · 3 Who's allowed** — with a forward affordance at the end of each ("See how that worked →").
-- [ ] **Step 2:** a persistent context bar: current learner, federation health, profile, journal state, reset.
-- [ ] **Step 3:** a **Run the demonstration** button that walks all three beats with captions and deterministic timing — the mode used for filming and by anyone handed the URL cold.
-- [ ] **Step 4:** capture pass at 1080p: type legible, no clipping, no dead air; commit.
+- [x] **Step 1:** tabs become numbered steps — **1 Ask once · 2 How it worked · 3 Who's allowed** — with a forward affordance at the end of each ("See how that worked →").
+- [x] **Step 2:** a persistent context bar: current learner, federation health, profile, journal state, reset.
+- [x] **Step 3:** a **Run the demonstration** button that walks all three beats with captions and deterministic timing — the mode used for filming and by anyone handed the URL cold.
+- [x] **Step 4:** capture pass at 1080p: type legible, no clipping, no dead air; commit.
+
+  **Verified live (2026-07-27), screenshots not literal** (same
+  pre-existing browser-automation limitation as Task 2): confirmed via DOM
+  state instead. Tab labels read "1 · Ask once / 2 · How it worked /
+  3 · Who's allowed"; context bar shows all 4 live badges (learner,
+  federation reachability, profile, permissions state) plus an
+  always-visible Reset; forward links appear only once their tab has real
+  content and correctly switch tabs; the guided run walked all three beats
+  end to end unattended (Counter -> Inspector -> Permissions) and landed
+  on the correct final state in both permissions columns (PNEA admitted,
+  MOEYS denied). Folded the persistent context bar's permissions badge
+  into the existing journal-banner poll instead of adding a second /api/acl
+  poll for the same field. acceptance.sh green; 25 unit tests green.
 
 ## Task 10: Accessibility and honesty polish
 

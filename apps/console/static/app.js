@@ -35,14 +35,17 @@ async function api(path, opts) {
 
 // ---------------------------------------------------------------- tabs ----
 
+function switchToTab(name) {
+  $all(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  $all(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${name}`));
+}
+
 function initTabs() {
   $all(".tab-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      $all(".tab-btn").forEach(b => b.classList.remove("active"));
-      $all(".tab-panel").forEach(p => p.classList.remove("active"));
-      btn.classList.add("active");
-      $(`#tab-${btn.dataset.tab}`).classList.add("active");
-    });
+    btn.addEventListener("click", () => switchToTab(btn.dataset.tab));
+  });
+  $all(".forward-link").forEach(btn => {
+    btn.addEventListener("click", () => switchToTab(btn.dataset.tab));
   });
 }
 
@@ -56,27 +59,27 @@ function startHeartbeat() {
 
 // ------------------------------------------------------- journal banner ----
 
+// One read of /api/acl.dirty drives both the top banner (only shown while
+// dirty) and the context bar's always-visible "Permissions: ..." badge --
+// they track the same fact, so one poll rather than two (UX plan Task 9).
 async function refreshJournalBanner() {
   const acl = await api("/api/acl");
-  const banner = $("#journal-banner");
-  if (acl.dirty) {
-    banner.classList.add("dirty");
-  } else {
-    banner.classList.remove("dirty");
-  }
+  $("#journal-banner").classList.toggle("dirty", acl.dirty);
+  $("#context-permissions").textContent = `Permissions: ${acl.dirty ? "modified" : "unmodified"}`;
+  $("#context-permissions").classList.toggle("denied-label", acl.dirty);
   return acl;
 }
 
+async function resetEverything() {
+  const resp = await api("/api/reset", { method: "POST" });
+  await refreshJournalBanner();
+  await refreshPermissionsToggle();
+  if (!resp.ok) alert("Reset could not verify the restored ACL -- see server logs.\n" + JSON.stringify(resp));
+  return resp;
+}
+
 function initJournalBanner() {
-  $("#journal-reset-btn").addEventListener("click", async () => {
-    const resp = await api("/api/reset", { method: "POST" });
-    if (resp.ok) {
-      await refreshJournalBanner();
-      await refreshPermissionsToggle();
-    } else {
-      alert("Reset could not verify the restored ACL -- see server logs.\n" + JSON.stringify(resp));
-    }
-  });
+  $("#journal-reset-btn").addEventListener("click", resetEverything);
   refreshJournalBanner();
   setInterval(refreshJournalBanner, HEARTBEAT_INTERVAL_MS);
 }
@@ -90,6 +93,24 @@ let TOPOLOGY = null; // cached from the one /api/topology fetch on load --
 async function loadTopologyBadge() {
   TOPOLOGY = await api("/api/topology");
   $("#profile-badge").textContent = `profile: ${TOPOLOGY.profile}`;
+  const total = TOPOLOGY.security_servers.length;
+  const up = TOPOLOGY.security_servers.filter(s => s.reachable).length;
+  $("#context-health").textContent = `Federation: ${up}/${total} reachable`;
+  $("#context-health").classList.toggle("denied-label", up < total);
+}
+
+// -- persistent context bar: current learner, federation health, profile,
+// journal state, reset -- all visible regardless of which tab is open
+// (UX plan Task 9, Step 2). Permissions state comes from
+// refreshJournalBanner()'s own poll of /api/acl.dirty, not a second one.
+function updateContextLearner(nin, given, family) {
+  $("#context-learner").textContent = (given && family)
+    ? `Learner: NIN ${nin} — ${given} ${family}`
+    : `Learner: NIN ${nin}`;
+}
+
+function initContextBar() {
+  $("#context-reset-btn").addEventListener("click", resetEverything);
 }
 
 function subsystemFor(memberCode) {
@@ -172,6 +193,7 @@ async function renderCounterForm(nin, data, runToken) {
   $("#counter-learner-name").textContent = "";
   $("#break-proof-controls").style.display = "flex";
   updateBreakProofButtons(data);
+  updateContextLearner(nin, null, null);
 
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
@@ -278,7 +300,10 @@ async function renderCounterForm(nin, data, runToken) {
       if (name === "family_name") {
         const given = data.credential_application.given_name?.value;
         const family = info.value;
-        if (given && family) $("#counter-learner-name").textContent = ` — ${given} ${family}`;
+        if (given && family) {
+          $("#counter-learner-name").textContent = ` — ${given} ${family}`;
+          updateContextLearner(nin, given, family);
+        }
       }
     }
   }
@@ -289,6 +314,7 @@ async function renderCounterForm(nin, data, runToken) {
   bumpSessionTally(filled);
   renderReceipts(data);
   $("#receipts-toggle-btn").style.display = "inline-block";
+  $("#counter-forward-btn").style.display = "inline-block";
 }
 
 // -- receipts: the raw provider responses, verbatim, plus a curl command
@@ -406,6 +432,7 @@ async function renderInspector(data) {
   const contextEl = $("#inspector-context");
   contextEl.style.display = "block";
   contextEl.textContent = `Showing the exchange run for NIN ${lastNin} at ${new Date().toLocaleTimeString()}.`;
+  $("#inspector-forward-btn").style.display = "inline-block";
 
   const grid = $("#inspector-layers");
   grid.style.display = "grid";
@@ -570,14 +597,53 @@ function initPermissions() {
   refreshPermissionsToggle();
 }
 
+// ------------------------------------------------------------ guided run ----
+// Walks all three beats with deterministic pauses -- the mode used for
+// filming, and for anyone handed the URL cold with nobody to explain the
+// three tabs' order (UX plan Task 9, Step 3).
+const GUIDED_BEAT_PAUSE_MS = 1_800;
+
+async function runGuidedDemonstration() {
+  const btn = $("#run-demo-btn");
+  const original = btn.textContent;
+  btn.disabled = true;
+
+  const nin = defaultNin;
+  if (!nin) { btn.disabled = false; return; }
+
+  switchToTab("counter");
+  btn.textContent = "Asking once…";
+  await runExchange(nin); // resolves after the full before/ask/fill animation
+  await sleep(GUIDED_BEAT_PAUSE_MS);
+
+  btn.textContent = "Showing how it worked…";
+  switchToTab("inspector");
+  await sleep(GUIDED_BEAT_PAUSE_MS * 2);
+
+  btn.textContent = "Showing who's allowed…";
+  switchToTab("permissions");
+  await askAsPnea();
+  await sleep(STAGGER_MS * 2);
+  await askAsMoeys();
+
+  btn.disabled = false;
+  btn.textContent = original;
+}
+
+function initGuidedDemo() {
+  $("#run-demo-btn").addEventListener("click", runGuidedDemonstration);
+}
+
 // ------------------------------------------------------------------ init ----
 
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initJournalBanner();
+  initContextBar();
   initReceiptsToggle();
   initBreakProof();
   initPermissions();
+  initGuidedDemo();
   startHeartbeat();
   loadTopologyBadge();
   loadLearners();

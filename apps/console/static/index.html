@@ -16,14 +16,22 @@
     <h1>KP2 &mdash; the once-only exchange, live</h1>
     <div class="header-badges">
       <span class="badge" id="tally-badge">questions avoided this session: 0</span>
-      <span class="badge" id="profile-badge">profile: &hellip;</span>
+      <button class="action" id="run-demo-btn">&#9654; Run the demonstration</button>
     </div>
   </header>
 
+  <div class="context-bar" id="context-bar">
+    <span class="badge" id="context-learner">No learner selected yet</span>
+    <span class="badge" id="context-health">Federation: &hellip;</span>
+    <span class="badge" id="profile-badge">profile: &hellip;</span>
+    <span class="badge" id="context-permissions">Permissions: &hellip;</span>
+    <button class="secondary-action" id="context-reset-btn">Reset</button>
+  </div>
+
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="counter">Counter</button>
-    <button class="tab-btn" data-tab="inspector">Inspector</button>
-    <button class="tab-btn" data-tab="permissions">Permissions</button>
+    <button class="tab-btn active" data-tab="counter">1 &middot; Ask once</button>
+    <button class="tab-btn" data-tab="inspector">2 &middot; How it worked</button>
+    <button class="tab-btn" data-tab="permissions">3 &middot; Who's allowed</button>
   </nav>
 
   <main>
@@ -48,6 +56,7 @@
           <button class="secondary-action" id="restore-proof-btn" style="display:none">Restore PNIA's permission</button>
         </div>
         <p class="kp4-seam">This form is the seam &mdash; KP4 replaces it behind the same OpenAPI contract.</p>
+        <button class="forward-link" id="counter-forward-btn" data-tab="inspector" style="display:none">See how that worked &rarr;</button>
       </div>
     </section>
 
@@ -59,6 +68,7 @@
         <p class="context-strip" id="inspector-context" style="display:none"></p>
         <div id="inspector-empty">No exchange run yet.</div>
         <div class="layer-grid" id="inspector-layers" style="display:none"></div>
+        <button class="forward-link" id="inspector-forward-btn" data-tab="permissions" style="display:none">See who's allowed &rarr;</button>
       </div>
     </section>
 
