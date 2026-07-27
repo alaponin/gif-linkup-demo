@@ -161,10 +161,21 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 **Files:** `static/index.html`, `app.js`, `style.css`; `apps/console/app.py`
 
-- [ ] **Step 1:** single column, ordered **Legal → Organisational → Semantic → Technical**, the way EIF is taught. Drop the `(EIF LAYER n)` numbering, or number it in that order — never 1, 4, 3, 2 in a grid.
-- [ ] **Step 2:** each pane keeps its `2.6.yaml` sentence as its heading text and gains live evidence beneath: legal = sent vs withheld (Task 5); organisational = the verbatim `service-clients` response; semantic = provider field → form field with values; technical = the two request/response pairs as two separate blocks with status, elapsed and serving Security Server.
-- [ ] **Step 3:** a one-line context strip at the top — *showing the exchange run for NIN … at 14:32* — so the tab is never ambiguous about which event it describes.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** single column, ordered **Legal → Organisational → Semantic → Technical**, the way EIF is taught. Drop the `(EIF LAYER n)` numbering, or number it in that order — never 1, 4, 3, 2 in a grid.
+- [x] **Step 2:** each pane keeps its `2.6.yaml` sentence as its heading text and gains live evidence beneath: legal = sent vs withheld (Task 5); organisational = the verbatim `service-clients` response; semantic = provider field → form field with values; technical = the two request/response pairs as two separate blocks with status, elapsed and serving Security Server.
+- [x] **Step 3:** a one-line context strip at the top — *showing the exchange run for NIN … at 14:32* — so the tab is never ambiguous about which event it describes.
+- [x] **Step 4:** commit.
+
+  **Verified live (2026-07-27):** semantic.fields per provider wasn't
+  readable anywhere the console already loaded -- added a generic
+  member-code -> config-file map derived from `manifest.yaml`'s own module
+  list (`building_blocks: [member-X]` -> `configs/member-x/N.N.yaml`), not
+  hardcoded to PNIA/PLR, so it resolves for any member with a `semantic:`
+  block. Browser-checked: pane order Legal/Organisational/Semantic/
+  Technical (`grid-template-columns: 1fr`), context strip shows the real
+  NIN and render time, technical pane renders exactly 2 separate blocks
+  (one per call, each with status/elapsed/serving SS/URL). acceptance.sh
+  green; 21 unit tests green.
 
 ## Task 7: Permissions — two callers, one service
 

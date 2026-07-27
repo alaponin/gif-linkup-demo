@@ -15,6 +15,7 @@ import pathlib
 import time
 
 import httpx
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
@@ -40,6 +41,24 @@ WATCHDOG_POLL_S = 10
 TRUTH = truth_mod.load_truth(PACK_DIR)
 JOURNAL = journal_mod.Journal(OUT_DIR / "console-acl-journal.json")
 _last_heartbeat = time.time()
+
+# member code -> that member's own config file, derived from manifest.yaml's
+# module map (never hardcoded) -- so the inspector's semantic pane can show
+# each provider's own semantic.fields list (UX plan Task 6, Step 2).
+_MANIFEST = yaml.safe_load((PACK_DIR / "manifest.yaml").read_text())
+_CONFIG_BY_MEMBER: dict[str, str] = {}
+for _module in _MANIFEST["modules"]:
+    for _bb in _module.get("building_blocks", []):
+        if _bb.startswith("member-"):
+            _CONFIG_BY_MEMBER[_bb.removeprefix("member-").upper()] = _module["config"]
+
+
+def _semantic_fields_for(member_code: str) -> list[str]:
+    config_path = _CONFIG_BY_MEMBER.get(member_code)
+    if not config_path:
+        return []
+    cfg = yaml.safe_load((PACK_DIR / config_path).read_text())
+    return cfg.get("semantic", {}).get("fields", [])
 
 
 def _admin_session(host: str) -> xroad.AdminSession:
@@ -156,12 +175,18 @@ def get_exchange(nin: str):
             "group": field.group,         # a key: match calls/topology on this instead
         }
 
+    semantic_fields = {
+        member_code: _semantic_fields_for(member_code)
+        for member_code in {f.source for f in TRUTH.form_fields if f.source != "citizen"}
+    }
+
     return {
         "credential_application": application,
         "calls": [dataclasses.asdict(r) for r in results],
         "layers": TRUTH.layers,
         "client_header": TRUTH.exchange["headers"]["X-Road-Client"],
         "identity_held_fields": _identity_held_fields(nin),
+        "semantic_fields": semantic_fields,
     }
 
 

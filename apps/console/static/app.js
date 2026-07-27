@@ -135,7 +135,7 @@ async function runExchange(nin) {
   const runToken = ++counterFormRun;
   const data = await api(`/api/exchange/${nin}`);
   if (runToken !== counterFormRun) return; // superseded while the fetch was in flight
-  renderInspector(data);
+  await renderInspector(data);
   await renderCounterForm(nin, data, runToken);
 }
 
@@ -393,20 +393,27 @@ function initBreakProof() {
 
 // -------------------------------------------------------------- inspector ----
 
-function renderInspector(data) {
+// Single column, ordered the way EIF is taught -- legal, organisational,
+// semantic, technical -- never the 1,4,3,2 grid order the layer_* keys
+// happen to sort into. Each pane keeps its 2.6.yaml sentence as a heading
+// and gains live evidence beneath it (UX plan Task 6).
+async function renderInspector(data) {
   $("#inspector-empty").style.display = "none";
+  const contextEl = $("#inspector-context");
+  contextEl.style.display = "block";
+  contextEl.textContent = `Showing the exchange run for NIN ${lastNin} at ${new Date().toLocaleTimeString()}.`;
+
   const grid = $("#inspector-layers");
   grid.style.display = "grid";
   grid.innerHTML = "";
 
-  const byService = {};
-  data.calls.forEach(call => { byService[call.service] = call; });
+  const acl = await api("/api/acl");
 
   const panes = [
-    { key: "technical", title: "Technical (EIF Layer 1)" },
-    { key: "legal", title: "Legal (EIF Layer 4)" },
-    { key: "organisational", title: "Organisational (EIF Layer 3)" },
-    { key: "semantic", title: "Semantic (EIF Layer 2)" },
+    { key: "legal", title: "Legal" },
+    { key: "organisational", title: "Organisational" },
+    { key: "semantic", title: "Semantic" },
+    { key: "technical", title: "Technical" },
   ];
 
   panes.forEach(pane => {
@@ -414,14 +421,7 @@ function renderInspector(data) {
     el.className = "layer-pane";
     const sentence = data.layers[pane.key] || "(not stated for this call)";
     el.innerHTML = `<h3>${esc(pane.title)}</h3><p class="sentence">${esc(sentence)}</p>`;
-    if (pane.key === "technical") {
-      const detail = document.createElement("div");
-      detail.className = "call-detail";
-      detail.textContent = data.calls.map(c =>
-        `${c.status_code ?? "ERR"}  ${c.elapsed_ms.toFixed(0)}ms  ${c.url}`
-      ).join("\n");
-      el.appendChild(detail);
-    }
+
     if (pane.key === "legal") {
       // Purpose limitation, proved by absence (UX plan Task 5): PNIA's own
       // record carries more than the credential purpose needs -- these
@@ -436,7 +436,37 @@ function renderInspector(data) {
         `PNIA sends: ${sentFields.join(", ")}\n` +
         `PNIA holds but withholds: ${held.join(", ") || "(none)"}`;
       el.appendChild(detail);
+    } else if (pane.key === "organisational") {
+      const detail = document.createElement("div");
+      detail.className = "call-detail";
+      detail.textContent = Object.entries(acl.services)
+        .filter(([code]) => code === "identity-api" || code === "enrolment-api")
+        .map(([code, info]) =>
+          `${code}: configured=[${info.configured.join(", ")}]  live=[${info.live.join(", ")}]`)
+        .join("\n");
+      el.appendChild(detail);
+    } else if (pane.key === "semantic") {
+      const detail = document.createElement("div");
+      detail.className = "call-detail";
+      detail.textContent = Object.entries(data.semantic_fields || {})
+        .map(([member, fields]) => {
+          const withValues = fields.map(f => `${f}=${data.credential_application[f]?.value ?? "not available"}`);
+          return `${member} semantic.fields: ${withValues.join(", ")}`;
+        })
+        .join("\n");
+      el.appendChild(detail);
+    } else if (pane.key === "technical") {
+      data.calls.forEach(call => {
+        const memberCode = call.service.split("/")[2];
+        const servedBy = subsystemFor(memberCode)?.hosted_on || "?";
+        const detail = document.createElement("div");
+        detail.className = "call-detail";
+        detail.textContent =
+          `${call.service}\n${call.status_code ?? "ERR"} in ${call.elapsed_ms.toFixed(0)}ms, served by ${servedBy}\n${call.url}`;
+        el.appendChild(detail);
+      });
     }
+
     grid.appendChild(el);
   });
 }
