@@ -165,6 +165,13 @@ main {
 }
 .copy-curl-btn:hover { border-color: var(--pnia); }
 
+.denied-group .provider-status { color: var(--danger); }
+.denied-row { opacity: 0.6; }
+.denied-row .field-value { text-decoration: line-through; color: var(--danger); font-style: normal; }
+
+.break-proof-caption { color: var(--danger); font-size: 14px; min-height: 1.2em; margin: 12px 0 0; }
+.break-proof-controls { display: flex; gap: 10px; margin-top: 8px; }
+
 .form-field {
   display: flex;
   align-items: baseline;

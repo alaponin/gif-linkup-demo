@@ -166,6 +166,8 @@ async function renderCounterForm(nin, data, runToken) {
   $("#counter-form-card").style.display = "block";
   $("#counter-nin-line").textContent = `NIN ${nin}`;
   $("#counter-learner-name").textContent = "";
+  $("#break-proof-controls").style.display = "flex";
+  updateBreakProofButtons(data);
 
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
@@ -232,8 +234,12 @@ async function renderCounterForm(nin, data, runToken) {
   await sleep(STAGGER_MS * 2);
   if (runToken !== counterFormRun) return;
 
-  // then each provider answers in turn, visibly
+  // then each provider answers in turn, visibly -- or is denied, visibly
+  // (UX plan Task 4: withdrawing one provider's permission must render
+  // correctly here regardless of how the denial came about, not just via
+  // the break-proof buttons below).
   let filled = 0;
+  let anyDenied = false;
   for (const [, memberCode, statusEl, sectionRows] of providerSections) {
     const call = data.calls.find(c => c.service.split("/")[2] === memberCode);
     const memberName = subsystemFor(memberCode)?.member_name || memberCode;
@@ -243,6 +249,17 @@ async function renderCounterForm(nin, data, runToken) {
     const askingDelay = call ? Math.max(call.elapsed_ms, MIN_ASKING_MS) : MIN_ASKING_MS;
     await sleep(askingDelay);
     if (runToken !== counterFormRun) return;
+
+    if (call?.denied) {
+      anyDenied = true;
+      statusEl.textContent = `${memberName} denied: ${call.fault_type}`;
+      statusEl.closest(".form-group").classList.add("denied-group");
+      for (const [, , row] of sectionRows) {
+        row.classList.add("denied-row");
+        row.querySelector(".field-value").textContent = "denied";
+      }
+      continue; // never counted as filled -- it wasn't
+    }
 
     statusEl.textContent = call
       ? `${memberName} answered in ${call.elapsed_ms.toFixed(0)}ms · served by ${hostedOn}`
@@ -262,7 +279,10 @@ async function renderCounterForm(nin, data, runToken) {
     }
   }
 
-  bumpSessionTally(prefillTotal);
+  $("#break-proof-caption").textContent = anyDenied
+    ? "The same form, one source withdrawn — nothing here was hard-coded."
+    : "";
+  bumpSessionTally(filled);
   renderReceipts(data);
   $("#receipts-toggle-btn").style.display = "inline-block";
 }
@@ -300,6 +320,75 @@ function initReceiptsToggle() {
     panel.style.display = showing ? "none" : "block";
     $("#receipts-toggle-btn").textContent = showing ? "Show the receipts" : "Hide the receipts";
   });
+}
+
+// -- break-one-source proof: the existing ACL write is the trust device --
+// revoking identity-api's grant makes exactly the PNIA half of the form
+// fail while PLR still fills, with no new write path (UX plan Task 4).
+
+function updateBreakProofButtons(data) {
+  const identityCall = data.calls.find(c => c.service.split("/")[2] === "PNIA");
+  const denied = identityCall?.denied === true;
+  $("#break-proof-btn").style.display = denied ? "none" : "inline-block";
+  $("#restore-proof-btn").style.display = denied ? "inline-block" : "none";
+}
+
+async function pollForIdentityDenied(nin, wantDenied, onProgress) {
+  for (let attempt = 1; attempt <= ACL_POLL_MAX_ATTEMPTS; attempt++) {
+    const data = await api(`/api/exchange/${nin}`);
+    const call = data.calls.find(c => c.service.split("/")[2] === "PNIA");
+    if ((call?.denied === true) === wantDenied) return true;
+    onProgress(attempt);
+    await sleep(ACL_POLL_INTERVAL_MS);
+  }
+  return false;
+}
+
+async function runBreakOneSourceProof() {
+  const nin = lastNin;
+  if (!nin) return;
+  const btn = $("#break-proof-btn");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Revoking…";
+  await api("/api/acl/revoke", { method: "POST" });
+  await refreshJournalBanner();
+  const ok = await pollForIdentityDenied(nin, true, attempt => {
+    btn.textContent = `Waiting for the denial to take effect (${attempt}/${ACL_POLL_MAX_ATTEMPTS})…`;
+  });
+  btn.disabled = false;
+  btn.textContent = original;
+  if (!ok) {
+    $("#break-proof-caption").textContent = "Did not observe the denial within the poll window -- try again.";
+    return;
+  }
+  await runExchange(nin);
+}
+
+async function runRestoreProof() {
+  const nin = lastNin;
+  if (!nin) return;
+  const btn = $("#restore-proof-btn");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Restoring…";
+  await api("/api/acl/grant", { method: "POST" });
+  await refreshJournalBanner();
+  const ok = await pollForIdentityDenied(nin, false, attempt => {
+    btn.textContent = `Waiting for the restore to take effect (${attempt}/${ACL_POLL_MAX_ATTEMPTS})…`;
+  });
+  btn.disabled = false;
+  btn.textContent = original;
+  if (!ok) {
+    $("#break-proof-caption").textContent = "Did not observe the restore within the poll window -- try again.";
+    return;
+  }
+  await runExchange(nin);
+}
+
+function initBreakProof() {
+  $("#break-proof-btn").addEventListener("click", runBreakOneSourceProof);
+  $("#restore-proof-btn").addEventListener("click", runRestoreProof);
 }
 
 // -------------------------------------------------------------- inspector ----
@@ -430,6 +519,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initJournalBanner();
   initReceiptsToggle();
+  initBreakProof();
   startHeartbeat();
   loadTopologyBadge();
   loadLearners();

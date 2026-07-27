@@ -115,10 +115,22 @@ Each pane needs its own *evidence*, not just its sentence:
 
 The existing ACL write is the trust device — revoking `identity-api`'s grant makes exactly the PNIA half of the form fail while the PLR half still fills. No Docker socket, no new write path, no new blast radius.
 
-- [ ] **Step 1:** add **Take PNIA's permission away and try again** to the counter, calling the existing `/api/acl/revoke`.
-- [ ] **Step 2:** re-running now shows the identity section struck through with the real `Server.ServerProxy.AccessDenied` fault, while the enrolment section fills normally. Caption: *the same form, one source withdrawn — nothing here was hard-coded.*
-- [ ] **Step 3:** the restore button sits directly beside it, and the journal banner stays visible the whole time it is dirty.
-- [ ] **Step 4:** verify `scripts/acceptance.sh` passes after a restore; commit.
+- [x] **Step 1:** add **Take PNIA's permission away and try again** to the counter, calling the existing `/api/acl/revoke`.
+- [x] **Step 2:** re-running now shows the identity section struck through with the real `Server.ServerProxy.AccessDenied` fault, while the enrolment section fills normally. Caption: *the same form, one source withdrawn — nothing here was hard-coded.*
+- [x] **Step 3:** the restore button sits directly beside it, and the journal banner stays visible the whole time it is dirty.
+- [x] **Step 4:** verify `scripts/acceptance.sh` passes after a restore; commit.
+
+  **Verified live (2026-07-27):** made denial-rendering a property of
+  `renderCounterForm` itself, not a one-off code path only the break-proof
+  buttons trigger -- any exchange where a provider call comes back denied
+  renders the same way, whichever path caused it. Live-tested the full
+  cycle: revoke -> poll hit the same ~30-40s proxy authorization-cache lag
+  already known from the console's own build (one poll cycle timed out
+  honestly with no false success, a retry then caught the real denial) ->
+  identity section showed struck-through `denied` values while enrolment
+  answered normally (`Progressa Learner Registry answered in 109ms`) ->
+  restore -> identity answered again. `scripts/console.sh reset` cleared the
+  journal (`dirty: false`), and `scripts/acceptance.sh` was GREEN afterward.
 
 ## Task 5: Purpose limitation, proved by absence
 
