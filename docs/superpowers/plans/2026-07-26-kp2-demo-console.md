@@ -162,7 +162,22 @@ Expected: both diffs empty — only `hurl/topology.json` is new. If either diff 
 - [ ] **Step 1:** `acceptance.sh` exits early with a clear message if `out/console-acl-journal.json` is non-empty: the federation is mid-demo, run `scripts/console.sh reset`. It must not import or start the console — a missing file means business as usual.
 - [ ] **Step 2:** `runbook.md` gains an optional step 5 (demonstration console) after acceptance; `README.md` gains one line in the what's-here paragraph; `PLAN.md` gains a short section recording that the console is a demo asset outside the module map and outside the acceptance path.
 - [ ] **Step 3:** `docs/production-delta.md` gains the console's shortcuts: no authentication, admin credentials held server-side in a demo container, localhost binding as the only access control, and an ACL write path that exists purely to be theatrical. It never ships to a real deployment.
-- [ ] **Step 4:** full sequence on a clean machine — `hurl/run-linkup.sh`, `scripts/seed.sh`, `scripts/acceptance.sh`, `scripts/console.sh up`, run the three tabs, `scripts/console.sh reset`, `scripts/acceptance.sh` again. Commit.
+- [x] **Step 4:** full sequence on a clean machine — `hurl/run-linkup.sh`, `scripts/seed.sh`, `scripts/acceptance.sh`, `scripts/console.sh up`, run the three tabs, `scripts/console.sh reset`, `scripts/acceptance.sh` again. Commit.
+
+  **Verified live (P8, 2026-07-27):** `teardown.sh --purge` → cold `run-linkup.sh` →
+  `seed.sh` → `acceptance.sh` (GREEN) → `console.sh up` → counter (`/api/health`,
+  `/api/topology`, `/api/learners`), inspector (`/api/exchange/<nin>`, both calls
+  200, all four layers present), permissions (`/api/exchange/<nin>/negative` denied
+  with `Server.ServerProxy.AccessDenied`; `/api/acl/revoke` then `/api/acl/grant`
+  round-tripped `live` correctly, journal `dirty` flagged as expected) — all
+  exercised via curl, not the browser (screenshot capture was unreliable in this
+  environment; functional correctness confirmed via response bodies instead) →
+  `console.sh reset` (journal cleared, ACLs verified back to configured state) →
+  `acceptance.sh` again (GREEN). Along the way, hit and root-caused a
+  `SslAuthenticationFailed`/OCSP-staleness fault on `ss-plr` on the *first* attempt
+  at this step (the federation had been up for ~10 hours during this session's
+  earlier investigation) — not a console bug; documented in `runbook.md` "Known
+  traps" and reproduced clean on a fresh redeploy done promptly.
 
 ---
 

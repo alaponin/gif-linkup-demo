@@ -95,6 +95,15 @@ added until enabled; the consumer subsystem's connection type must be HTTP for t
 demo call (default HTTPS expects a client TLS certificate); the admin APIs
 authenticate by session login and XSRF token, not by API key.
 
+A security server's Test CA-issued OCSP response has a bounded freshness window;
+confirmed live (P8, 2026-07-27) that after roughly ten hours idle, the signer starts
+rejecting the server's own authentication certificate (`IncorrectValidationInfo:
+OCSP response is too old`), which then fails every cross-server call through it
+with `Server.ClientProxy.SslAuthenticationFailed` — not an access-control problem,
+and not specific to the demo console. If a federation has been sitting up for
+hours before a demo, redeploy fresh (`scripts/teardown.sh --purge` then step 2)
+rather than trusting a stale stack.
+
 macOS hosts: port 5000 is not used for any admin UI here (ss-pnia is 5100) because
 macOS's AirPlay Receiver listens on 5000 by default and silently hangs the
 connection rather than refusing it — confirmed at P0 (2026-07-25) as a genuinely
