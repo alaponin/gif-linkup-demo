@@ -13,6 +13,14 @@ let defaultNin = null;
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
 
+// Every value below traces back to a federated exchange call (a provider's
+// response body) or an X-Road fault body -- never assume it's HTML-safe just
+// because today's mocks are well-behaved.
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
+}
+
 async function api(path, opts) {
   const resp = await fetch(path, opts);
   return resp.json();
@@ -114,9 +122,9 @@ function renderCounterForm(nin, data) {
       : info.source.startsWith("PLR") ? "PLR" : "citizen";
     const badgeText = info.source === "citizen" ? "you told us" : info.source;
     row.innerHTML = `
-      <span class="field-name">${name}</span>
-      <span class="field-value ${info.value == null ? "empty" : ""}">${info.value ?? "not available"}</span>
-      <span class="source-badge ${sourceClass}">${badgeText}</span>
+      <span class="field-name">${esc(name)}</span>
+      <span class="field-value ${info.value == null ? "empty" : ""}">${esc(info.value ?? "not available")}</span>
+      <span class="source-badge ${sourceClass}">${esc(badgeText)}</span>
     `;
     fieldsEl.appendChild(row);
     setTimeout(() => {
@@ -149,7 +157,7 @@ function renderInspector(data) {
     const el = document.createElement("div");
     el.className = "layer-pane";
     const sentence = data.layers[pane.key] || "(not stated for this call)";
-    el.innerHTML = `<h3>${pane.title}</h3><p class="sentence">${sentence}</p>`;
+    el.innerHTML = `<h3>${esc(pane.title)}</h3><p class="sentence">${esc(sentence)}</p>`;
     if (pane.key === "technical") {
       const detail = document.createElement("div");
       detail.className = "call-detail";
@@ -175,8 +183,8 @@ async function loadAcl() {
     const granted = info.live.length > 0;
     row.innerHTML = `
       <div>
-        <strong>${code}</strong> on ${info.hosted_on}
-        <div class="grants">grants: ${info.live.join(", ") || "(none)"}</div>
+        <strong>${esc(code)}</strong> on ${esc(info.hosted_on)}
+        <div class="grants">grants: ${esc(info.live.join(", ") || "(none)")}</div>
       </div>
       ${mutable
         ? `<button class="action ${granted ? "revoke" : ""}" id="acl-toggle-btn">${granted ? "Revoke" : "Grant"} PNEA:EXAMS</button>`
@@ -227,7 +235,7 @@ async function runPermissionsExchange() {
   const { call } = outcome;
   if (call.denied) {
     resultEl.className = "result-box denied";
-    resultEl.innerHTML = `<strong>Denied.</strong><div class="fault">${JSON.stringify(call.body)}</div>`;
+    resultEl.innerHTML = `<strong>Denied.</strong><div class="fault">${esc(JSON.stringify(call.body))}</div>`;
   } else {
     resultEl.className = "result-box allowed";
     resultEl.innerHTML = `<strong>Allowed.</strong> identity-api resolved in ${call.elapsed_ms.toFixed(0)}ms.`;
@@ -242,10 +250,10 @@ async function runNegativeExchange() {
   const call = data.calls[0];
   if (call.denied) {
     resultEl.className = "result-box denied";
-    resultEl.innerHTML = `<strong>Denied, as expected.</strong> MOEYS:PEMIS is never on this ACL.<div class="fault">${JSON.stringify(call.body)}</div>`;
+    resultEl.innerHTML = `<strong>Denied, as expected.</strong> MOEYS:PEMIS is never on this ACL.<div class="fault">${esc(JSON.stringify(call.body))}</div>`;
   } else {
     resultEl.className = "result-box";
-    resultEl.innerHTML = `<strong>Unexpected: not denied.</strong> ${JSON.stringify(call.body)}`;
+    resultEl.innerHTML = `<strong>Unexpected: not denied.</strong> ${esc(JSON.stringify(call.body))}`;
   }
 }
 
