@@ -181,11 +181,24 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 
 **Files:** `static/index.html`, `app.js`
 
-- [ ] **Step 1:** replace the three-row table with two columns: **PNEA:EXAMS — admitted** and **MOEYS:PEMIS — not admitted**, each with one button that asks PNIA for the same learner. Same request, opposite outcomes, side by side.
-- [ ] **Step 2:** one toggle beneath: *Revoke PNEA's access.* Re-running then makes PNEA's column match MoEYS's. That is the entire lesson — being on the bus is not permission to call everything.
-- [ ] **Step 3:** delete every implementation aside from the page: no "not mutable in this demo", no asymmetry rationale, no journal mechanics. Move all of it into a code comment. Keep `enrolment-api` and `pemis-api` out of the tab entirely; the reset verification already covers the asymmetry check without an audience seeing it.
-- [ ] **Step 4:** the reset control is always visible on this tab, not only when dirty.
-- [ ] **Step 5:** commit.
+- [x] **Step 1:** replace the three-row table with two columns: **PNEA:EXAMS — admitted** and **MOEYS:PEMIS — not admitted**, each with one button that asks PNIA for the same learner. Same request, opposite outcomes, side by side.
+- [x] **Step 2:** one toggle beneath: *Revoke PNEA's access.* Re-running then makes PNEA's column match MoEYS's. That is the entire lesson — being on the bus is not permission to call everything.
+- [x] **Step 3:** delete every implementation aside from the page: no "not mutable in this demo", no asymmetry rationale, no journal mechanics. Move all of it into a code comment. Keep `enrolment-api` and `pemis-api` out of the tab entirely; the reset verification already covers the asymmetry check without an audience seeing it.
+- [x] **Step 4:** the reset control is always visible on this tab, not only when dirty.
+- [x] **Step 5:** commit.
+
+  **Verified live (2026-07-27):** consolidated the counter tab's Task 4
+  revoke/grant-and-poll logic and this tab's into one shared `pollFor
+  IdentityDenied` (kept two thin, purpose-specific wrapper functions rather
+  than one wrapper touching two different caption/button DOM trees).
+  Refined mid-verification: button visibility now updates immediately from
+  the admin API's read (confirmed instant), decoupled from the slower
+  proxy-side poll -- found by testing and seeing a stale "did not observe"
+  message sit next to an already-correct result. Full cycle browser-tested:
+  both columns show real opposite outcomes for the same learner, revoke
+  collapses PNEA's column to match MOEYS's, restore reverses it, the
+  always-visible Reset button works independent of the journal-dirty
+  banner. `acceptance.sh` green afterward; 21 unit tests green.
 
 ## Task 8: The authorisation-cache lag
 

@@ -226,8 +226,12 @@ main {
 
 /* -- permissions tab -- */
 
-.service-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--panel-border); }
-.service-row .grants { font-size: 14px; color: var(--muted); }
+.permissions-columns { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
+.permissions-column { flex: 1; min-width: 240px; }
+.permissions-column h3 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.perm-status { font-size: 12px; font-weight: normal; padding: 3px 9px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); }
+.perm-status.denied-label { background: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--danger); }
+.permissions-column .result-box { min-height: 1.2em; }
 
 button.action {
   background: var(--pnia);

@@ -66,16 +66,31 @@
     <section class="tab-panel" id="tab-permissions">
       <div class="card">
         <h2>Who can call what</h2>
-        <p style="color: var(--muted)">Only <code>identity-api</code>'s grant to PNEA is toggleable here &mdash; <code>enrolment-api</code> stays untouched on purpose, so a broken reset is always visible as an asymmetry between the two rows.</p>
-        <div id="acl-services"></div>
+        <p style="color: var(--muted)">Same request &mdash; ask PNIA for this learner's identity &mdash; from two different callers, side by side. Being on the bus is not permission to call everything.</p>
+        <div class="permissions-columns">
+          <div class="permissions-column">
+            <h3>PNEA:EXAMS <span class="perm-status" id="pnea-status">not yet asked</span></h3>
+            <button class="action" id="ask-as-pnea-btn">Ask PNIA for this learner</button>
+            <div class="result-box" id="pnea-result"></div>
+          </div>
+          <div class="permissions-column">
+            <h3>MOEYS:PEMIS <span class="perm-status denied-label">not admitted</span></h3>
+            <button class="action" id="ask-as-moeys-btn">Ask PNIA for this learner</button>
+            <div class="result-box" id="moeys-result"></div>
+          </div>
+        </div>
+        <div class="break-proof-controls">
+          <button class="secondary-action" id="permissions-revoke-btn" style="display:none">Revoke PNEA's access</button>
+          <button class="secondary-action" id="permissions-restore-btn" style="display:none">Restore PNEA's access</button>
+        </div>
+        <p class="break-proof-caption" id="permissions-caption"></p>
       </div>
 
       <div class="card">
-        <h2>Try it</h2>
-        <p style="color: var(--muted)">Revoke the grant, then run the exchange again. Revoking is a real admin-API write; the Security Server's own authorization cache can lag it by up to ~30 seconds &mdash; this polls automatically rather than assuming the flip is instant.</p>
-        <button class="action" id="permissions-run-btn">Run the exchange as PNEA</button>
-        <button class="action" id="permissions-run-negative-btn">Run it as MOEYS (always denied)</button>
-        <div id="permissions-result"></div>
+        <h2>Reset</h2>
+        <p style="color: var(--muted)">Always available, not only when a change is pending &mdash; returns every ACL this demo can touch to its configured state.</p>
+        <button class="secondary-action" id="permissions-reset-btn">Reset now</button>
+        <p class="break-proof-caption" id="permissions-reset-caption"></p>
       </div>
     </section>
   </main>

@@ -68,7 +68,7 @@ function initJournalBanner() {
     const resp = await api("/api/reset", { method: "POST" });
     if (resp.ok) {
       await refreshJournalBanner();
-      await loadAcl();
+      await refreshPermissionsToggle();
     } else {
       alert("Reset could not verify the restored ACL -- see server logs.\n" + JSON.stringify(resp));
     }
@@ -472,90 +472,98 @@ async function renderInspector(data) {
 }
 
 // ------------------------------------------------------------ permissions ----
+// Two callers, one service, opposite outcomes -- that is the entire lesson
+// (UX plan Task 7). enrolment-api and pemis-api are deliberately absent
+// from this tab: they would just be two more inert rows, and the reset
+// path's own verification (journal.py) already checks the mutable/
+// untouched-service asymmetry without an audience needing to see it.
+// Design decision 4 (why only identity-api is writable here) lives in
+// app.py's comment, not on this page.
 
-async function loadAcl() {
-  const acl = await api("/api/acl");
-  const container = $("#acl-services");
-  container.innerHTML = "";
-  Object.entries(acl.services).forEach(([code, info]) => {
-    const row = document.createElement("div");
-    row.className = "service-row";
-    const mutable = code === "identity-api";
-    const granted = info.live.length > 0;
-    row.innerHTML = `
-      <div>
-        <strong>${esc(code)}</strong> on ${esc(info.hosted_on)}
-        <div class="grants">grants: ${esc(info.live.join(", ") || "(none)")}</div>
-      </div>
-      ${mutable
-        ? `<button class="action ${granted ? "revoke" : ""}" id="acl-toggle-btn">${granted ? "Revoke" : "Grant"} PNEA:EXAMS</button>`
-        : `<span class="grants">not mutable in this demo</span>`}
-    `;
-    container.appendChild(row);
-    if (mutable) {
-      $("#acl-toggle-btn").addEventListener("click", () => toggleAcl(granted ? "revoke" : "grant"));
-    }
-  });
-}
-
-async function toggleAcl(action) {
-  await api(`/api/acl/${action}`, { method: "POST" });
-  await loadAcl();
-  await refreshJournalBanner();
-}
-
-async function pollExchangeUntil(nin, predicate, resultEl) {
-  for (let attempt = 1; attempt <= ACL_POLL_MAX_ATTEMPTS; attempt++) {
-    const data = await api(`/api/exchange/${nin}`);
-    const call = data.calls.find(c => c.service.includes("identity-api"));
-    if (predicate(call)) return { data, call };
-    resultEl.textContent = `Waiting for the Security Server's authorization cache to catch up (attempt ${attempt}/${ACL_POLL_MAX_ATTEMPTS})...`;
-    await new Promise(r => setTimeout(r, ACL_POLL_INTERVAL_MS));
-  }
-  return null;
-}
-
-async function runPermissionsExchange() {
-  const nin = lastNin || defaultNin;
-  const resultEl = $("#permissions-result");
-  resultEl.className = "result-box";
-  resultEl.textContent = "Running...";
-
-  const acl = await api("/api/acl");
-  const currentlyGranted = acl.services["identity-api"].live.length > 0;
-
-  const outcome = await pollExchangeUntil(
-    nin,
-    call => currentlyGranted ? call.status_code === 200 : call.denied,
-    resultEl,
-  );
-  if (!outcome) {
-    resultEl.textContent = "Did not observe the expected state within the poll window -- check the ACL and try again.";
-    return;
-  }
-  const { call } = outcome;
+function renderPermResult(resultEl, call) {
   if (call.denied) {
     resultEl.className = "result-box denied";
     resultEl.innerHTML = `<strong>Denied.</strong><div class="fault">${esc(JSON.stringify(call.body))}</div>`;
-  } else {
-    resultEl.className = "result-box allowed";
-    resultEl.innerHTML = `<strong>Allowed.</strong> identity-api resolved in ${call.elapsed_ms.toFixed(0)}ms.`;
+    return false;
   }
+  if (call.status_code === 200) {
+    resultEl.className = "result-box allowed";
+    resultEl.innerHTML = `<strong>Allowed.</strong> Resolved in ${call.elapsed_ms.toFixed(0)}ms.`;
+    return true;
+  }
+  resultEl.className = "result-box";
+  resultEl.textContent = call.error || `Unexpected status ${call.status_code}`;
+  return false;
 }
 
-async function runNegativeExchange() {
+async function askAsPnea() {
   const nin = lastNin || defaultNin;
-  const resultEl = $("#permissions-result");
+  if (!nin) return;
+  const resultEl = $("#pnea-result");
   resultEl.className = "result-box";
+  resultEl.textContent = "Asking…";
+  const data = await api(`/api/exchange/${nin}`);
+  const call = data.calls.find(c => c.service.includes("identity-api"));
+  const allowed = renderPermResult(resultEl, call);
+  const statusEl = $("#pnea-status");
+  statusEl.textContent = allowed ? "admitted" : "not admitted";
+  statusEl.classList.toggle("denied-label", !allowed);
+}
+
+async function askAsMoeys() {
+  const nin = lastNin || defaultNin;
+  if (!nin) return;
+  const resultEl = $("#moeys-result");
+  resultEl.className = "result-box";
+  resultEl.textContent = "Asking…";
   const data = await api(`/api/exchange/${nin}/negative`);
-  const call = data.calls[0];
-  if (call.denied) {
-    resultEl.className = "result-box denied";
-    resultEl.innerHTML = `<strong>Denied, as expected.</strong> MOEYS:PEMIS is never on this ACL.<div class="fault">${esc(JSON.stringify(call.body))}</div>`;
-  } else {
-    resultEl.className = "result-box";
-    resultEl.innerHTML = `<strong>Unexpected: not denied.</strong> ${esc(JSON.stringify(call.body))}`;
+  renderPermResult(resultEl, data.calls[0]);
+}
+
+async function refreshPermissionsToggle() {
+  const acl = await api("/api/acl");
+  const granted = acl.services["identity-api"].live.length > 0;
+  $("#permissions-revoke-btn").style.display = granted ? "inline-block" : "none";
+  $("#permissions-restore-btn").style.display = granted ? "none" : "inline-block";
+}
+
+async function togglePneaAccess(action, btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  await api(`/api/acl/${action}`, { method: "POST" });
+  await refreshJournalBanner();
+  await refreshPermissionsToggle(); // admin-API state -- correct immediately
+  const nin = lastNin || defaultNin;
+  const wantDenied = action === "revoke";
+  const ok = nin && await pollForIdentityDenied(nin, wantDenied, attempt => {
+    btn.textContent = `Waiting for the change to take effect (${attempt}/${ACL_POLL_MAX_ATTEMPTS})…`;
+  });
+  btn.disabled = false;
+  btn.textContent = original;
+  if (!ok) {
+    $("#permissions-caption").textContent = "Did not observe the change within the poll window -- try again.";
+    return;
   }
+  $("#permissions-caption").textContent = "";
+  await askAsPnea(); // re-run against the proxy now that it's confirmed
+}
+
+async function resetPermissions() {
+  const resp = await api("/api/reset", { method: "POST" });
+  await refreshJournalBanner();
+  await refreshPermissionsToggle();
+  $("#permissions-reset-caption").textContent = resp.ok
+    ? "Reset complete -- ACLs match their configured state."
+    : "Reset could not verify the restored ACL -- see server logs.";
+}
+
+function initPermissions() {
+  $("#ask-as-pnea-btn").addEventListener("click", askAsPnea);
+  $("#ask-as-moeys-btn").addEventListener("click", askAsMoeys);
+  $("#permissions-revoke-btn").addEventListener("click", e => togglePneaAccess("revoke", e.target));
+  $("#permissions-restore-btn").addEventListener("click", e => togglePneaAccess("grant", e.target));
+  $("#permissions-reset-btn").addEventListener("click", resetPermissions);
+  refreshPermissionsToggle();
 }
 
 // ------------------------------------------------------------------ init ----
@@ -565,10 +573,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initJournalBanner();
   initReceiptsToggle();
   initBreakProof();
+  initPermissions();
   startHeartbeat();
   loadTopologyBadge();
   loadLearners();
-  loadAcl();
-  $("#permissions-run-btn").addEventListener("click", runPermissionsExchange);
-  $("#permissions-run-negative-btn").addEventListener("click", runNegativeExchange);
 });
