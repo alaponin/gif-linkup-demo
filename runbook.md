@@ -96,7 +96,7 @@ demo call (default HTTPS expects a client TLS certificate); the admin APIs
 authenticate by session login and XSRF token, not by API key.
 
 A security server's Test CA-issued OCSP response has a bounded freshness window;
-confirmed live (P8, 2026-07-27) that after roughly ten hours idle, the signer starts
+confirmed live (2026-07-27) that after roughly ten hours idle, the signer starts
 rejecting the server's own authentication certificate (`IncorrectValidationInfo:
 OCSP response is too old`), which then fails every cross-server call through it
 with `Server.ClientProxy.SslAuthenticationFailed` — not an access-control problem,

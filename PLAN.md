@@ -270,7 +270,13 @@ code (`C=FI`, an artefact of the demo CA — see `docs/xroad-770-notes.md` §3);
 are disabled after they are added until explicitly enabled; consumer default connection
 type HTTPS breaks the demo call unless set to HTTP or a client cert is uploaded;
 concurrent admin-UI sessions in one browser log each other out; CS test image admin
-creds are fixed `xrd`/`secret` (test/dev only — note in production delta).
+creds are fixed `xrd`/`secret` (test/dev only — note in production delta); a Security
+Server's Test CA-issued OCSP response has a bounded freshness window — confirmed live
+(2026-07-27) that after roughly ten hours idle, the signer rejects the server's own
+authentication certificate as `IncorrectValidationInfo: OCSP response is too old`,
+failing every cross-server call through it with `Server.ClientProxy.SslAuthenticationFailed`
+(not an ACL problem, and not specific to the demo console — see `runbook.md` "Known
+traps"). Redeploy fresh rather than trusting a federation that has sat up for hours.
 
 **Version traps.** `Docker/xrd-dev-stack/` does not exist before 7.5.0 and is gone on
 `develop` (7.8.0-SNAPSHOT), which has moved to `development/native-lxd-stack/` and
@@ -363,3 +369,14 @@ the **admin API's own read**, but the **proxy's actual authorization
 decision** can lag by up to ~30s (a server-conf cache effect, not a bug);
 and re-revoking or re-granting an already-there state both return `409`,
 which must be treated as success, not failure.
+
+All 8 tasks complete and verified live (2026-07-27): a from-zero purge → redeploy
+→ seed → acceptance → console-up → all three tabs exercised → console-reset →
+acceptance cycle ran clean end to end, plus the 21-test unit suite. A security
+pass over the console (secret handling, XSS, CORS, path/command injection) found
+one real issue — federated-exchange field values and X-Road fault bodies were
+interpolated unescaped into `innerHTML` in `static/app.js`, a stored-XSS vector
+if a provider (a real agency system, once KP4 replaces the mocks) ever returned
+an HTML-bearing field value. Fixed with one escaping helper applied at every
+call site; admin credentials themselves were already correctly kept server-side
+only and never found in a response, log, or the ACL journal.

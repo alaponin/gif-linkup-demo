@@ -34,8 +34,10 @@ stable OpenAPI contracts — the seam where KP4's Joget DX apps plug in later
 without touching the X-Road configuration.
 
 Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs,
-`kp-solution-verify` proves the pack runs. **Status: VERIFIED (2026-07-25)** —
-`check_pack.py --ready` passes and the live acceptance suite is green,
-including the reproducibility proof (`teardown.sh --purge` → cold redeploy →
-reseed → acceptance, unattended — PLAN.md §7). Scope: Education only, public
-anchors only. Demo only — never production (`docs/production-delta.md`).
+`kp-solution-verify` proves the pack runs. **Status: VERIFIED (2026-07-25,
+re-verified 2026-07-27 including `apps/console/`)** — `check_pack.py --ready`
+passes and the live acceptance suite is green, including the reproducibility
+proof (`teardown.sh --purge` → cold redeploy → reseed → acceptance, unattended
+— PLAN.md §7) and, most recently, the same cycle plus a full console
+up/exercise/reset pass (PLAN.md §11). Scope: Education only, public anchors
+only. Demo only — never production (`docs/production-delta.md`).
