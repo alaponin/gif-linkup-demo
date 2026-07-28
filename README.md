@@ -6,7 +6,9 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 
 - **Track:** interoperability
 - **Depends on:** none (foundation)
-- **Stand it up:** see `runbook.md`
+- **Stand it up:** see `runbook.md` — first run is `scripts/gen-secrets.sh`
+  (writes a real `.env`; `.env.example` is a placeholder template and
+  cannot work by itself)
 - **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
   Progressa identifiers that are the KP3/KP4 join keys)

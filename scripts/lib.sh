@@ -7,6 +7,24 @@ PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$PACK_DIR/.env" ] && set -a && . "$PACK_DIR/.env" && set +a
 export PACK_DIR
 
+# Refuse a .env that is missing, still a placeholder, or still one of the
+# values this repo used to publish (docs/reviews/2026-07-28-branch-review.md
+# finding S2) -- the Central Server's own fixed xrd/secret is a separate,
+# unrotatable credential baked into the release image, never read from
+# .env, and is not touched by this check.
+for _cred_var in XROAD_TOKEN_PIN XROAD_ADMIN_PASSWORD; do
+  case "${!_cred_var:-}" in
+    ""|*CHANGEME*|Progressa123!|secret|Secret1234)
+      echo "lib.sh: $_cred_var is unset, a placeholder, or a value this repo
+used to publish in .env.example. Run scripts/gen-secrets.sh to generate a
+real .env (or scripts/gen-secrets.sh --force to replace an existing one --
+read its warning about the software token's PIN first)." >&2
+      exit 1
+      ;;
+  esac
+done
+unset _cred_var
+
 # yq wrapper (python fallback: hard deps stay curl+jq+python3). Defined here,
 # ahead of its first use below, because deployment.yaml is now read before
 # COMPOSE is built. Clean error on a missing key instead of a traceback.

@@ -23,7 +23,10 @@ host, and run the once-only exchange that proves it. Demo only — see
 
 ## Steps
 
-1. `cp .env.example .env` and adjust (PIN, admin password).
+1. `scripts/gen-secrets.sh` — writes a real `.env` with a random token PIN
+   and admin password (mode `600`). `.env.example` ships placeholders that
+   cannot work, on purpose — do not copy it by hand
+   (docs/reviews/2026-07-28-branch-review.md finding S2).
 2. **Deploy** — `scripts/deploy.sh` (a wrapper over `hurl/run-linkup.sh`)
    Brings up the containers and drives the full stand-up over the admin REST APIs:
    CS init (instance `PROGRESSA`, class `GOV`, configuration signing keys) → Test CA /

@@ -300,9 +300,13 @@ def read_env() -> dict[str, str]:
     """
     path = PACK / ".env"
     if not path.exists():
-        path = PACK / ".env.example"
-        print(f"  note: no .env yet, reading {path.name} "
-              "(re-run generate.py after cp .env.example .env)")
+        raise SystemExit(
+            "generate.py: .env does not exist -- run scripts/gen-secrets.sh first. "
+            ".env.example ships placeholders that cannot work "
+            "(docs/reviews/2026-07-28-branch-review.md finding S2); falling back to "
+            "it here would generate a vars.env full of CHANGEME and fail deep "
+            "inside a Hurl run, the worst place to discover it."
+        )
     env: dict[str, str] = {}
     for raw in path.read_text().splitlines():
         line = raw.strip()
