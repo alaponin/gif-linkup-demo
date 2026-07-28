@@ -138,11 +138,29 @@ PINNED_PORTS = {  # ui, rest -- see lib.sh's AirPlay note on ss-pnia
 
 **Files:** `hurl/generate.py`, `scripts/lib.sh`, `scripts/acceptance.sh` (read-only impact)
 
-- [ ] **Step 1:** `generate.py` emits `hurl/topology.sh` — a sourceable fragment declaring `SS_UI`, `SS_REST`, `SS_ORDER` and `HOST_SS` with exactly the values it just put in `topology.json`, carrying a "GENERATED — do not hand-edit" header.
-- [ ] **Step 2:** `lib.sh` sources `hurl/topology.sh` instead of declaring those four itself. If the file is missing it runs `python3 hurl/generate.py` once to produce it (offline, no stack needed), then sources it; if it is still missing, hard fail.
-- [ ] **Step 3:** preserve the lite branch semantics exactly — under lite, `SS_ORDER` excludes hosted members' servers and `HOST_SS` points them at their host. This now comes from the generator rather than from a bash `if`.
-- [ ] **Step 4:** keep `lib.sh`'s AirPlay comment, moved to the generator's `PINNED_PORTS` table so the reasoning survives.
-- [ ] **Step 5:** verify with the stack up: `scripts/acceptance.sh` green under `full`; switch to `lite`, redeploy, green again. Commit.
+- [x] **Step 1:** `generate.py` emits `hurl/topology.sh` — a sourceable fragment declaring `SS_UI`, `SS_REST`, `SS_ORDER` and `HOST_SS` with exactly the values it just put in `topology.json`, carrying a "GENERATED — do not hand-edit" header.
+- [x] **Step 2:** `lib.sh` sources `hurl/topology.sh` instead of declaring those four itself. If the file is missing it runs `python3 hurl/generate.py` once to produce it (offline, no stack needed), then sources it; if it is still missing, hard fail.
+- [x] **Step 3:** preserve the lite branch semantics exactly — under lite, `SS_ORDER` excludes hosted members' servers and `HOST_SS` points them at their host. This now comes from the generator rather than from a bash `if`.
+- [x] **Step 4:** keep `lib.sh`'s AirPlay comment, moved to the generator's `PINNED_PORTS` table so the reasoning survives.
+- [x] **Step 5:** verify with the stack up: `scripts/acceptance.sh` green under `full`; switch to `lite`, redeploy, green again. Commit.
+
+  **Verified live (2026-07-28):** fresh cold deploy under `full` -> seed ->
+  `acceptance.sh` GREEN (both attempts hit the same known transient
+  right-after-deploy `JSONDecodeError` this pack already has elsewhere in
+  its history -- unrelated to this task, clean on retry). Purged,
+  regenerated for `lite`, redeployed, seeded -> GREEN again, with 2.6.4's
+  negative check correctly reporting "denied by ... ss-plr" -- the
+  generated `HOST_SS`'s lite branch, no longer a hand-written bash `if`.
+  A real risk found and fixed before it could bite: `lib.sh` only
+  regenerated `topology.sh` when *missing*, not when *stale* -- a
+  leftover file from the other profile would be sourced silently. Added a
+  profile-agreement check (`topology.json`'s own `profile` field vs
+  `deployment.yaml`'s current one) that fails loudly instead.
+  `PDGA:MANAGEMENT` (in `HOST_SS` but absent from `topology.json`'s
+  subsystems list, since PDGA is the owner, not a discovered member) is
+  added back explicitly when emitting `topology.sh`, so nothing lib.sh
+  depended on was silently dropped. `check_scenarios.py` green; 25 unit
+  tests green; restored `deployment.yaml` to `profile: full` afterward.
 
 ## Task 5: Compose overlay for joined members
 
