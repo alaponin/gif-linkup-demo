@@ -261,11 +261,36 @@ acceptance from the moment it exists.
 
 **Files:** `prompts/member.md` (new), `scripts/member.sh` (new), `README.md`, `runbook.md`
 
-- [ ] **Step 1:** `prompts/member.md` — the bb-config-gen play that turns an agency brief into `configs/member-<key>/<module>.yaml` plus the `identity.members.<key>` entry: agency name and code, subsystem code and description, whether it runs its own Security Server or is `hosted_on` another, the services it publishes (service code, OpenAPI spec URL, semantic entity/key/fields) and who may call them. Same house style as the existing prompts: opens "Below is …", decomposes into named fields, ends with the exact output format, every identifier `[confirm: verify against the live registry]`.
-- [ ] **Step 2:** `scripts/member.sh list` prints the deployed member set with origin, host server and ports, from `topology.json`.
-- [ ] **Step 3:** `scripts/member.sh remove <key>` deletes the config directory and the `identity.members` entry, regenerates, and prints plainly that the live federation still holds the member until `scripts/teardown.sh --purge`. Refuses on a `canonical` member.
-- [ ] **Step 4:** no `member.sh add` that writes config by hand — adding a member is running the prompt. Say that in the script's help text; it is the pack's teaching claim.
-- [ ] **Step 5:** document both in `README.md` and `runbook.md`. Commit.
+- [x] **Step 1:** `prompts/member.md` — the bb-config-gen play that turns an agency brief into `configs/member-<key>/<module>.yaml` plus the `identity.members.<key>` entry: agency name and code, subsystem code and description, whether it runs its own Security Server or is `hosted_on` another, the services it publishes (service code, OpenAPI spec URL, semantic entity/key/fields) and who may call them. Same house style as the existing prompts: opens "Below is …", decomposes into named fields, ends with the exact output format, every identifier `[confirm: verify against the live registry]`.
+- [x] **Step 2:** `scripts/member.sh list` prints the deployed member set with origin, host server and ports, from `topology.json`.
+- [x] **Step 3:** `scripts/member.sh remove <key>` deletes the config directory and the `identity.members` entry, regenerates, and prints plainly that the live federation still holds the member until `scripts/teardown.sh --purge`. Refuses on a `canonical` member.
+- [x] **Step 4:** no `member.sh add` that writes config by hand — adding a member is running the prompt. Say that in the script's help text; it is the pack's teaching claim.
+- [x] **Step 5:** document both in `README.md` and `runbook.md`. Commit.
+
+**Verified live (2026-07-28):** wrote `prompts/member.md` in the established
+house style, generalised to produce TWO YAML documents (unlike 2.2–2.5's
+config-only output) since a joining member has neither a config nor a
+manifest identity entry yet — separated by a `---` line, the first being the
+`identity.members.<key>` entry (always `origin: joined`, never touching the
+frozen `identifiers:` block), the second `configs/member-<key>/<key>.yaml`.
+Wrote `scripts/member.sh` with `list` (reads `hurl/topology.json`, confirmed
+live: correctly showed origin/server/ports for all four canonical members)
+and `remove <key>` (refuses on `canonical`, confirmed live against `moeys`
+and against an unknown key). Live-tested the full add/remove mechanics with a
+throwaway `test` member (`hosted_on: ss-plr`, no services): `generate.py`
+discovered it, `member.sh list` showed `test joined ss-plr ...` resolved
+through the hosted mapping correctly, `member.sh remove test` then deleted
+`configs/member-test/`, removed the manifest block via the script's
+indentation-scoped text surgery, and regenerated — `manifest.yaml` came back
+**byte-identical** to the pre-test baseline (`diff` clean) and
+`hurl/check_scenarios.py` passed clean afterward. Re-ran
+`scripts/acceptance.sh` on the live full-profile stack after this round-trip
+to confirm no residual damage: GREEN, all five checks including 2.6. No
+`member.sh add`, stated in the script's own `usage()` text and in
+`prompts/member.md`'s Safeguard section. Documented `member.sh`/
+`prompts/member.md` in `README.md` (a new short paragraph plus updated
+"What's here") and `runbook.md` (new "Joining a member" section between
+Teardown and Known traps).
 
 ## Task 9: End-to-end proof, and the two investigations
 
