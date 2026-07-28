@@ -281,10 +281,38 @@ confirmed working end to end before any of Task 6's own testing began.
 
 **Files:** `docs/production-delta.md`, `runbook.md`, `README.md`, `docs/reviews/2026-07-28-branch-review.md`
 
-- [ ] **Step 1:** `production-delta.md` gains rows for what remains demo-only after this plan: loopback binding as the *only* network control (production needs network segmentation, a reverse proxy with real TLS, and authenticated admin access), and the Central Server's unrotatable fixed credentials. While in the file, correct the stale row that still lists auto-approve as a demo shortcut — it was replaced by `management_request_approval: explicit` (review finding C5, one line, and leaving it wrong undermines the rows that are right).
-- [ ] **Step 2:** `runbook.md` gains a short "Reaching the stack from another machine" note: SSH local port forwarding, not a bind change.
-- [ ] **Step 3:** mark S1 and S2 resolved in the review document, with the date and what was done.
-- [ ] **Step 4: full verification on a clean machine.** `scripts/gen-secrets.sh` → `hurl/run-linkup.sh` → `scripts/seed.sh` → `scripts/acceptance.sh` green → `scripts/console.sh up` and all three tabs work → `scripts/check-exposure.sh` green. Then, from a second machine on the same network, confirm every port is refused. Commit.
+- [x] **Step 1:** `production-delta.md` gains rows for what remains demo-only after this plan: loopback binding as the *only* network control (production needs network segmentation, a reverse proxy with real TLS, and authenticated admin access), and the Central Server's unrotatable fixed credentials. While in the file, correct the stale row that still lists auto-approve as a demo shortcut — it was replaced by `management_request_approval: explicit` (review finding C5, one line, and leaving it wrong undermines the rows that are right).
+- [x] **Step 2:** `runbook.md` gains a short "Reaching the stack from another machine" note: SSH local port forwarding, not a bind change.
+- [x] **Step 3:** mark S1 and S2 resolved in the review document, with the date and what was done.
+- [x] **Step 4: full verification on a clean machine.** `scripts/gen-secrets.sh` → `hurl/run-linkup.sh` → `scripts/seed.sh` → `scripts/acceptance.sh` green → `scripts/console.sh up` and all three tabs work → `scripts/check-exposure.sh` green. Then, from a second machine on the same network, confirm every port is refused. Commit.
+
+**Verified live (2026-07-28):** discovered while committing Step 3 that
+`docs/reviews/2026-07-28-branch-review.md` — the document this whole plan
+cites in its own header as the basis for S1/S2 — had itself never been
+`git add`ed, the same class of gap as C6 (untracked files the pack needs).
+Committed it along with the resolution notes. The "stale auto-approve row"
+in Step 1 turned out to describe something that never happened in this
+pack's own generated flow at all (`generate.py`'s `check_policy()` already
+refuses a config that declares `auto_approve`) — removed the row rather
+than reword it, since there is no remaining gap there to describe.
+
+Full clean-machine cycle, for real, not simulated: `teardown.sh --purge`,
+then deleted `.env` and `out/.token-fingerprint` by hand so nothing carried
+over. `scripts/gen-secrets.sh` (no `--force` needed — nothing existed) →
+`hurl/run-linkup.sh` → `scripts/seed.sh` → `scripts/acceptance.sh` (green
+on the second try — the same pre-existing, documented cold-deploy
+`assert_record.py` `JSONDecodeError` flakiness seen throughout every
+redeploy in this whole project, confirmed once more not a regression) →
+`scripts/console.sh up`, with every one of its endpoints actually called
+and checked (`/api/health`, `/api/topology`'s five `reachable: true`
+flags, `/api/learners`, the happy-path `/api/exchange/{nin}` returning two
+real `200`s, the negative variant returning two real `denied: true`s, and
+`/api/acl` showing `dirty: false`) → `scripts/check-exposure.sh` green
+standalone. The "second machine" step used this host's real LAN IP
+(`ipconfig getifaddr`) rather than a hypothetical: dialed all 13 published
+ports against it and got a refused connection on every one (one showed a
+timeout on the first attempt, retested three times and got a clean refusal
+each time — a one-off network blip, not an exposure).
 
 ---
 
