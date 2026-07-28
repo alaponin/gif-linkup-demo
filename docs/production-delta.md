@@ -11,9 +11,9 @@ demo as production.
 | Demo shortcut (where) | Production requirement |
 | --- | --- |
 | Test CA as trust anchor (`2.1.yaml`) | Accredited certification authority + real OCSP/TSA |
-| Auto-approve management requests (`2.1.yaml`, deploy step 4) | Manual approval per the governance RACI |
 | Single Docker host, containers (`docker-compose.yml`) | Separate sized hosts per component, HA/redundancy |
-| Fixed CS admin creds `xrd/secret` (test image) | Hardened access, individual accounts, audit |
+| Fixed CS admin creds `xrd/secret` (test image, cannot be rotated — not read from `.env`) | Hardened access, individual accounts, audit |
+| Loopback binding (`deployment.yaml`'s `network.bind`, exposure-and-secrets Task 1) is the *only* network control | Network segmentation, a reverse proxy terminating real TLS, and authenticated admin access — a bind address is not a substitute for any of these once the stack leaves one trusted host |
 | Plain-HTTP service URLs, TLS-verify off (`2.2/2.4/2.5.yaml`) | HTTPS to information systems, certificates verified |
 | Consumer connection type HTTP (`2.3.yaml`) | HTTPS + client TLS certificate |
 | Mock CSV registries (`apps/`) | The agencies' real systems (e.g. Joget DX apps) behind the same OpenAPI contracts |
