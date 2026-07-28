@@ -25,6 +25,32 @@ read its warning about the software token's PIN first)." >&2
 done
 unset _cred_var
 
+# A correctly-formatted PIN can still be the WRONG one: every server's
+# software token was initialised with whatever PIN was in .env the last
+# time hurl/run-linkup.sh actually deployed (recorded there as a fingerprint,
+# never the value, in out/.token-fingerprint). Changing .env afterwards does
+# not change the token -- confirmed live (docs/xroad-770-notes.md §9) that
+# the mismatch surfaces as Server.ClientProxy.SslAuthenticationFailed, which
+# reads like a certificate problem, not a PIN one. Only refuse while the
+# federation's own volumes still exist: teardown.sh --purge deletes them but
+# not this host-side file, and a stale fingerprint must not block a
+# legitimate fresh redeploy with a new .env.
+TOKEN_FINGERPRINT="$PACK_DIR/out/.token-fingerprint"
+if [ -f "$TOKEN_FINGERPRINT" ] && docker volume inspect kp2-cs-db >/dev/null 2>&1; then
+  _current_fp=$(printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256 | cut -d' ' -f1)
+  _stored_fp=$(cat "$TOKEN_FINGERPRINT")
+  if [ "$_current_fp" != "$_stored_fp" ]; then
+    echo "lib.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
+federation's software token was initialised with. Changing .env alone does
+not change the token -- the mismatch surfaces as X-Road errors that look
+like certificate faults, not PIN errors (docs/xroad-770-notes.md §9).
+Restore the original .env, or scripts/teardown.sh --purge and redeploy with
+the new one." >&2
+    exit 1
+  fi
+  unset _current_fp _stored_fp
+fi
+
 # yq wrapper (python fallback: hard deps stay curl+jq+python3). Defined here,
 # ahead of its first use below, because deployment.yaml is now read before
 # COMPOSE is built. Clean error on a missing key instead of a traceback.

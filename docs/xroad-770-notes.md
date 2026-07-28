@@ -191,6 +191,44 @@ Two things worth knowing for anyone walking the UIs instead:
 Both are demo/convenience measures and belong in `docs/production-delta.md`, not
 in a production build.
 
+## 9. Changing `.env`'s PIN after a deployment already exists
+
+Investigated live (exposure-and-secrets plan, Task 6), using a real
+occurrence rather than a manufactured one: `scripts/gen-secrets.sh --force`
+against an already-deployed federation, containers recreated (no purge) so
+their persisted `/etc/xroad` state — including the software token, still
+initialised with the OLD PIN — survived while the new PIN was injected via
+`.env`.
+
+The mismatch is real and confirmed at two different layers, and they say
+two different things:
+
+- **The admin API's own `/tokens` endpoint is completely explicit about
+  it**: `"status": "USER_PIN_INCORRECT"`, `"logged_in": false`, both the
+  auth and sign keys `"available": false`. Anyone who knows to check this
+  endpoint gets an unambiguous diagnosis in one call — the autologin
+  process's own log line (`(re)trying to enter PIN`, repeating) is the same
+  signal surfacing before anyone queries the API at all.
+- **A real cross-server call sees something completely different and
+  actively misleading**: `Server.ClientProxy.SslAuthenticationFailed`,
+  `"message": "Security server has no valid authentication certificate"`.
+  This is the exact failure mode the plan predicted before testing it — it
+  reads as a *certificate* problem (expired, revoked, wrong CA) and sends
+  whoever is debugging it looking at OCSP responses and cert chains, not at
+  `.env`. The certificate itself is fine the whole time (confirmed via
+  `/tokens`: `ocsp_status: OCSP_RESPONSE_GOOD`, `active: true`) — it simply
+  cannot be *used*, because the signer never unlocked the token that holds
+  it.
+
+Neither the admin login endpoint (`/login`) nor `docker ps`/`docker logs`
+health status is disturbed by this at all — the container reports healthy,
+the operator can log into the admin UI, and only a call that actually needs
+the signer (a real cross-server exchange, or an explicit `/tokens` check)
+reveals anything is wrong. This is not benign: it is exactly the confusing
+failure mode the plan set out to catch before it wastes someone's afternoon,
+which is why Task 6's fingerprint check is a hard failure at deploy time,
+not a warning.
+
 ## Sources
 
 `nordic-institute/X-Road` at tag `7.7.0`: `development/hurl/scenarios/setup.hurl`,

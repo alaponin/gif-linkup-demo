@@ -67,4 +67,14 @@ log "global configuration propagation is asynchronous and takes minutes)"
   --retry 12 \
   --retry-interval 10000
 
+# Fingerprint, never the PIN itself: the software token on every server is
+# now initialised with this value. scripts/lib.sh refuses a later run whose
+# .env disagrees with this fingerprint while the volumes still exist --
+# changing .env alone does not change the token (docs/xroad-770-notes.md
+# §9), and this is what lets that be caught here instead of 20 minutes into
+# a confusing SslAuthenticationFailed.
+mkdir -p "$PACK_DIR/out"
+printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256 | cut -d' ' -f1 > "$PACK_DIR/out/.token-fingerprint"
+chmod 600 "$PACK_DIR/out/.token-fingerprint"
+
 log "federation up — now: scripts/seed.sh, then scripts/acceptance.sh"
