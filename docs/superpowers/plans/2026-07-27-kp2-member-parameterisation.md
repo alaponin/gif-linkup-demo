@@ -71,11 +71,29 @@ done
 
 **Files:** `hurl/generate.py`, `configs/member-*/2.*.yaml`, `prompts/2.2.md`–`2.5.md`, `hurl/check_scenarios.py`
 
-- [ ] **Step 1:** teach `generate.py` to read `security_server.hosted_on` from a member config (a Security Server DNS name, or absent). Resolution order: explicit `hosted_on` in config → profile overlay (`LITE_HOSTED_ON` when `profile: lite`) → own server.
-- [ ] **Step 2:** `build_hosted_client` and the `sess_p`/`cap_p` service-file path already handle the hosted case; route the generalised resolution into them so there is exactly one hosted-client code path.
-- [ ] **Step 3:** a member whose `hosted_on` names a server that no member owns is a hard failure with the list of valid hosts.
-- [ ] **Step 4:** document the field in the four member prompts as an optional line ("if this agency will not run its own Security Server, name the one that hosts it") — it is a field an agency brief genuinely determines.
-- [ ] **Step 5:** regenerate both profiles; diffs empty (the canonical four leave `hosted_on` unset, so lite still resolves through the overlay exactly as before). Commit.
+- [x] **Step 1:** teach `generate.py` to read `security_server.hosted_on` from a member config (a Security Server DNS name, or absent). Resolution order: explicit `hosted_on` in config → profile overlay (`LITE_HOSTED_ON` when `profile: lite`) → own server.
+- [x] **Step 2:** `build_hosted_client` and the `sess_p`/`cap_p` service-file path already handle the hosted case; route the generalised resolution into them so there is exactly one hosted-client code path.
+- [x] **Step 3:** a member whose `hosted_on` names a server that no member owns is a hard failure with the list of valid hosts.
+- [x] **Step 4:** document the field in the four member prompts as an optional line ("if this agency will not run its own Security Server, name the one that hosts it") — it is a field an agency brief genuinely determines.
+- [x] **Step 5:** regenerate both profiles; diffs empty (the canonical four leave `hosted_on` unset, so lite still resolves through the overlay exactly as before). Commit.
+
+  **Verified live (2026-07-28):** both hard-failure cases triggered for
+  real (a `hosted_on` naming a nonexistent server -- lists the valid
+  hosts; a genuine hosting-chain cycle between two members). Also proved
+  the generalisation is real, not cosmetic: gave PNEA an explicit
+  `hosted_on: ss-plr` under `profile: full` (impossible with the old
+  lite-only constant) and confirmed `topology.json` and the generated
+  scenario both reflected it correctly -- `security_servers` correctly
+  dropped `SS-PNEA`, the subsystem entry correctly showed `hosted_on:
+  ss-plr` -- then reverted the test. One rough edge found and
+  deliberately left alone: the stub comment written when a member is
+  hosted still reads "lite profile: ..." regardless of which resolution
+  path put it there. Making it path-aware is a real improvement but was
+  out of scope for this task and risked violating the byte-identical
+  constraint for no requested behavior change; the comment is provably
+  correct for both paths that matter today (the canonical four only ever
+  hit it under `profile: lite`), so left as-is. `check_scenarios.py`
+  green; 25 unit tests green.
 
 ## Task 3: Stable allocation of scenario numbers and host ports
 
