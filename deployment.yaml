@@ -5,6 +5,16 @@
 
 target: docker-local   # only supported value today. Future: itu-cloud, vm (PLAN.md §9)
 
+network:
+  # Host interface every published port binds to. 127.0.0.1 keeps the whole
+  # stack reachable from this machine and from nowhere else. Reaching it from
+  # elsewhere is an SSH tunnel or a VPN, not a change here.
+  #
+  # Any other value ALSO requires acknowledge_public_exposure: true below --
+  # see scripts/lib.sh's refusal for what is actually being exposed.
+  bind: 127.0.0.1
+  # acknowledge_public_exposure: true
+
 profile: full           # full = 5 Security Servers. lite = 3 (PNIA + MoEYS
                         # hosted as extra clients on ss-plr — see PLAN.md §2)
 

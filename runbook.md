@@ -64,7 +64,7 @@ sessions in one browser log each other out — use separate browsers/profiles.
 | Component | URL | Credentials |
 | --- | --- | --- |
 | Central Server (PDGA) | https://localhost:4000 | xrd / secret (fixed, test image) |
-| Test CA | https://localhost:8888/testca/ | — |
+| Test CA | http://localhost:8888/testca/ | — |
 | ss-pdga / ss-pnea / ss-plr / ss-pnia / ss-moeys | https://localhost:1000 / 2000 / 3000 / 5100 / 6000 | `.env` admin user |
 
 ## Teardown

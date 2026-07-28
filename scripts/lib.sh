@@ -34,6 +34,7 @@ esac
 export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
+export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
 
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
 # which SS hosts which subsystem, and which joined members own a container) --

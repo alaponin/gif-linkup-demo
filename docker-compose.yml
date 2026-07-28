@@ -27,7 +27,7 @@ services:
     container_name: cs
     environment:
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
-    ports: ["4000:4000"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:4000:4000"]
     volumes:
       - cs-db:/var/lib/postgresql/16/main
       - cs-conf:/etc/xroad
@@ -39,7 +39,7 @@ services:
     # rule (PLAN.md decision 1) — confirmed at P0 2026-07-25.
     image: ghcr.io/nordic-institute/xrddev-testca:${TESTCA_TAG:-latest}
     container_name: ca
-    ports: ["8888:8888"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:8888:8888"]
     volumes:
       - ca-data:/home/ca
     networks: [linkup]
@@ -48,7 +48,7 @@ services:
     # Management Security Server (CS owner PDGA + MANAGEMENT subsystem).
     <<: *sidecar
     container_name: ss-pdga
-    ports: ["1000:4000", "1080:8080"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:1000:4000", "${XROAD_BIND:-127.0.0.1}:1080:8080"]
     volumes:
       - ss-pdga-db:/var/lib/postgresql/16/main
       - ss-pdga-conf:/etc/xroad
@@ -59,7 +59,7 @@ services:
     # PNEA — consumer (PROGRESSA/GOV/PNEA:EXAMS).
     <<: *sidecar
     container_name: ss-pnea
-    ports: ["2000:4000", "2080:8080"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:2000:4000", "${XROAD_BIND:-127.0.0.1}:2080:8080"]
     volumes:
       - ss-pnea-db:/var/lib/postgresql/16/main
       - ss-pnea-conf:/etc/xroad
@@ -70,7 +70,7 @@ services:
     # PLR — provider (PROGRESSA/GOV/PLR:ENROLMENT).
     <<: *sidecar
     container_name: ss-plr
-    ports: ["3000:4000", "3080:8080"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:3000:4000", "${XROAD_BIND:-127.0.0.1}:3080:8080"]
     volumes:
       - ss-plr-db:/var/lib/postgresql/16/main
       - ss-plr-conf:/etc/xroad
@@ -86,7 +86,7 @@ services:
     <<: *sidecar
     container_name: ss-pnia
     profiles: ["full"]
-    ports: ["5100:4000", "5180:8080"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:5100:4000", "${XROAD_BIND:-127.0.0.1}:5180:8080"]
     volumes:
       - ss-pnia-db:/var/lib/postgresql/16/main
       - ss-pnia-conf:/etc/xroad
@@ -98,7 +98,7 @@ services:
     <<: *sidecar
     container_name: ss-moeys
     profiles: ["full"]
-    ports: ["6000:4000", "6080:8080"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:6000:4000", "${XROAD_BIND:-127.0.0.1}:6080:8080"]
     volumes:
       - ss-moeys-db:/var/lib/postgresql/16/main
       - ss-moeys-conf:/etc/xroad
@@ -156,7 +156,7 @@ services:
     container_name: console
     profiles: ["demo"]
     networks: [linkup]
-    ports: ["127.0.0.1:8090:8000"]
+    ports: ["${XROAD_BIND:-127.0.0.1}:8090:8000"]
     environment:
       PACK_DIR: /pack
       OUT_DIR: /out
