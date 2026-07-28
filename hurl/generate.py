@@ -59,14 +59,95 @@ LITE_HOSTED_ON = {"pnia": "plr", "moeys": "plr"}
 # port ever changes. Carried into topology.json (not re-derived) so the demo
 # console can emit a "copy as curl" command a presenter can run on the host,
 # outside the linkup network, where the in-network :4000/:8080 ports don't
-# resolve.
-HOST_PORTS = {
-    "ss-pdga": {"ui": 1000, "proxy": 1080},
-    "ss-pnea": {"ui": 2000, "proxy": 2080},
-    "ss-plr": {"ui": 3000, "proxy": 3080},
-    "ss-pnia": {"ui": 5100, "proxy": 5180},
-    "ss-moeys": {"ui": 6000, "proxy": 6080},
+# resolve. Keyed by SS-owner key (member key, or "pdga" for the management
+# server -- PDGA is the federation owner, not a discovered member, so it
+# never appears in configs/member-*/ and needs its own entry here).
+PINNED_PORTS = {
+    "pdga": (1000, 1080), "pnea": (2000, 2080), "plr": (3000, 3080),
+    "pnia": (5100, 5180), "moeys": (6000, 6080),
 }
+
+# Service-publication scenario numbers -- the canonical three providers'
+# 30/31/32, pinned the same way PINNED_SCENARIO_NO pins their SS numbers.
+# PNEA has no entry: it publishes no service and has never had a numbered
+# services file (see the "3x service publication" loop) -- only members
+# with services get one, pinned or fresh.
+PINNED_SERVICE_SCENARIO_NO = {"pnia": "30", "plr": "31", "moeys": "32"}
+
+# Where a NEW member's numbers/ports come from once nothing pins them --
+# safely above every pinned value today, so the canonical five never
+# collide with a fresh allocation.
+FRESH_SS_SCENARIO_START = 40
+FRESH_SERVICE_SCENARIO_START = 50
+FRESH_PORT_START = 7000
+# macOS's AirPlay Receiver (ControlCenter) listens on 5000 by default and
+# hangs the connection instead of refusing it -- see docker-compose.yml's
+# ss-pnia comment. Refused outright, not just avoided by construction: a
+# future change to FRESH_PORT_START must not silently reintroduce this.
+FORBIDDEN_PORT_RANGE = range(5000, 5100)
+
+
+def _allocate_numbers(keys: list, pinned: dict, start: int) -> dict:
+    """Pinned-then-allocated: every key in `pinned` keeps its number;
+    everything else gets the next unused number from `start` upward, in
+    `keys`' own (already-deterministic) order. Same member set -> same
+    allocation, always -- the property Task 9's byte-identical-after-
+    remove check depends on."""
+    result: dict = {}
+    used: set = set()
+    for key in keys:
+        if key in pinned:
+            result[key] = pinned[key]
+            used.add(int(pinned[key]))
+    next_n = start
+    for key in keys:
+        if key in result:
+            continue
+        while next_n in used:
+            next_n += 1
+        result[key] = str(next_n)
+        used.add(next_n)
+        next_n += 1
+    return result
+
+
+def allocate_ports(owner_keys: list) -> dict:
+    """owner_keys: every Security-Server-OWNING entity's key ("pdga" plus
+    every unhosted member key), already in deterministic order. Pinned
+    ports are kept; anything unpinned is allocated fresh from
+    FRESH_PORT_START (UI +0, REST +80, both +100 per allocation), refusing
+    the AirPlay range outright and refusing to collide with any pinned or
+    already-allocated port."""
+    result: dict = {}
+    used_ui: set = set()
+    used_rest: set = set()
+    for key in owner_keys:
+        if key in PINNED_PORTS:
+            ui, rest = PINNED_PORTS[key]
+            if ui in FORBIDDEN_PORT_RANGE or rest in FORBIDDEN_PORT_RANGE:
+                raise SystemExit(
+                    f"generate.py: PINNED_PORTS[{key!r}] = ({ui}, {rest}) falls in "
+                    "the 5000-5099 range macOS's AirPlay Receiver silently hangs on"
+                )
+            result[key] = (ui, rest)
+            used_ui.add(ui)
+            used_rest.add(rest)
+    n = 0
+    for key in owner_keys:
+        if key in result:
+            continue
+        while True:
+            ui, rest = FRESH_PORT_START + 100 * n, FRESH_PORT_START + 80 + 100 * n
+            n += 1
+            if ui in FORBIDDEN_PORT_RANGE or rest in FORBIDDEN_PORT_RANGE:
+                continue
+            if ui in used_ui or rest in used_rest:
+                continue
+            break
+        result[key] = (ui, rest)
+        used_ui.add(ui)
+        used_rest.add(rest)
+    return result
 
 # The canonical five's Security Server scenario numbers -- never renumbered
 # (docs/superpowers/plans/2026-07-27-kp2-member-parameterisation.md, Global
@@ -1214,9 +1295,13 @@ HTTP 200
     # -- 2x member security servers ----------------------------------------
     # tsa_name / tsa_url and ca_name are captured on the management server
     # above; the member servers reuse them, which is why 10- must run first.
-    order = [("20", "pnia"), ("21", "plr"), ("22", "moeys"), ("23", "pnea")]
-    num_for_key = dict((k, n) for n, k in order)
-    for num, key in order:
+    # Numbers: pinned for the canonical four (PINNED_SCENARIO_NO), allocated
+    # fresh from FRESH_SS_SCENARIO_START for anyone else -- every discovered
+    # member gets one, hosted or not, since even a hosted member's stub file
+    # needs a number to be claimable by a module in manifest.yaml.
+    ss_scenario_no = _allocate_numbers(list(members.keys()), PINNED_SCENARIO_NO, FRESH_SS_SCENARIO_START)
+    for key in members:
+        num = ss_scenario_no[key]
         member = members[key]
         dns = member["security_server"]["dns_name"]
         host_var = f"{ss_prefix(dns)}_host"
@@ -1230,7 +1315,7 @@ HTTP 200
                 f"{num}-ss-{key}.hurl",
                 f"configs/member-{key}/{member['module']}.yaml",
                 f"# lite profile: {key.upper()} is hosted as an extra client on "
-                f"ss-{hosted_on} -- see {num_for_key[hosted_on]}-ss-{hosted_on}.hurl. "
+                f"ss-{hosted_on} -- see {ss_scenario_no[hosted_on]}-ss-{hosted_on}.hurl. "
                 "The full-profile bring-up below is not run under lite.\n",
             )
             continue
@@ -1241,7 +1326,12 @@ HTTP 200
         write(f"{num}-ss-{key}.hurl", f"configs/member-{key}/{member['module']}.yaml", body)
 
     # -- 3x service publication + ACLs -------------------------------------
-    for num, key in [("30", "pnia"), ("31", "plr"), ("32", "moeys")]:
+    # Only members with services get a numbered file at all (PNEA, the
+    # consumer, never has -- same as before this task).
+    service_keys = [k for k in members if members[k].get("services")]
+    service_scenario_no = _allocate_numbers(service_keys, PINNED_SERVICE_SCENARIO_NO, FRESH_SERVICE_SCENARIO_START)
+    for key in service_keys:
+        num = service_scenario_no[key]
         member = members[key]
         dns = member["security_server"]["dns_name"]
         hosted_on = hosted_on_map.get(key)
@@ -1272,22 +1362,37 @@ HTTP 200
     # federation different from the one this profile actually deploys. Not
     # git-committed -- same convention as hurl/scenarios/ and hurl/vars.env
     # (regenerated fresh every run, never staged; see hurl/README.md).
-    def _ss_entry(code: str, host: str) -> dict:
-        ports = HOST_PORTS[host]
+    # Port allocation order: "pdga" (the owner, not a discovered member)
+    # plus every SS-owning (unhosted) member, sorted alphabetically by key --
+    # the fresh-allocation order this plan's Task 3 specifies. Pinned ports
+    # win regardless of position, so this ordering only ever affects a
+    # member nothing pins.
+    owner_keys = ["pdga"] + sorted(k for k in members if k not in hosted_on_map)
+    ports_by_key = allocate_ports(owner_keys)
+
+    def _ss_entry(code: str, host: str, key: str) -> dict:
+        ui, rest = ports_by_key[key]
         return {
             "code": code, "host": host, "ui_port": 4000, "proxy_port": 8080,
-            "host_ui_port": ports["ui"], "host_proxy_port": ports["proxy"],
+            "host_ui_port": ui, "host_proxy_port": rest,
         }
 
-    security_servers = [_ss_entry(mgmt_ss["code"], mgmt_ss["dns_name"])]
-    for key in ("pnea", "plr", "pnia", "moeys"):
+    security_servers = [_ss_entry(mgmt_ss["code"], mgmt_ss["dns_name"], "pdga")]
+    # Historical iteration order for the canonical four (byte-identical
+    # constraint) -- pnea/plr/pnia/moeys, not the pinned-scenario-number
+    # order subsystems below uses. Anything discovered beyond these four
+    # (a joined member) is appended after, in its own deterministic order.
+    _legacy_ss_order = ("pnea", "plr", "pnia", "moeys")
+    ss_iter_order = [k for k in _legacy_ss_order if k in members] + \
+        [k for k in members if k not in _legacy_ss_order]
+    for key in ss_iter_order:
         if key in hosted_on_map:
             continue  # not brought up as its own server -- hosted elsewhere
         ss = members[key]["security_server"]
-        security_servers.append(_ss_entry(ss["code"], ss["dns_name"]))
+        security_servers.append(_ss_entry(ss["code"], ss["dns_name"], key))
 
     subsystems = []
-    for key in ("pnia", "plr", "moeys", "pnea"):
+    for key in members:  # already in deterministic (pinned, then key) order
         member = members[key]
         m, sub_cfg, ss = member["member"], member["subsystem"], member["security_server"]
         hosted_on = hosted_on_map.get(key)
@@ -1298,6 +1403,7 @@ HTTP 200
             "member_name": m["member_name"],
             "subsystem_code": sub_cfg["code"],
             "hosted_on": host_dns,
+            "origin": identity["members"][key].get("origin", "canonical"),
             "services": [
                 {"code": svc["code"], "access": svc.get("access") or []}
                 for svc in (member.get("services") or [])
