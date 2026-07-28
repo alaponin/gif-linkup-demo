@@ -139,11 +139,31 @@ green `scripts/acceptance.sh`.
 
 **Files:** `scripts/check-exposure.sh` (new), `scripts/acceptance.sh`, `hurl/run-linkup.sh`
 
-- [ ] **Step 1:** write `scripts/check-exposure.sh`: read `docker compose ... config --format json`, walk every service's published ports, and fail listing any whose host IP is absent, `0.0.0.0` or `::`. Exit 0 when every mapping is loopback, or when `acknowledge_public_exposure` is set (in which case print what is exposed and still exit 0).
-- [ ] **Step 2:** confirm the exact JSON shape on the running Compose version before relying on it — `docker compose config --format json | jq '.services[].ports'` — and pin the field names the script reads to what you observed.
-- [ ] **Step 3:** call it from `hurl/run-linkup.sh` before it brings containers up, so a misconfiguration is caught before anything listens rather than after.
-- [ ] **Step 4:** also call it at the top of `scripts/acceptance.sh`, so an unexpectedly exposed stack fails the suite rather than passing it.
-- [ ] **Step 5:** prove it catches a regression: temporarily add a service with a bare `ports: ["9999:9999"]`, confirm the script fails and names it, remove it. Commit.
+- [x] **Step 1:** write `scripts/check-exposure.sh`: read `docker compose ... config --format json`, walk every service's published ports, and fail listing any whose host IP is absent, `0.0.0.0` or `::`. Exit 0 when every mapping is loopback, or when `acknowledge_public_exposure` is set (in which case print what is exposed and still exit 0).
+- [x] **Step 2:** confirm the exact JSON shape on the running Compose version before relying on it — `docker compose config --format json | jq '.services[].ports'` — and pin the field names the script reads to what you observed.
+- [x] **Step 3:** call it from `hurl/run-linkup.sh` before it brings containers up, so a misconfiguration is caught before anything listens rather than after.
+- [x] **Step 4:** also call it at the top of `scripts/acceptance.sh`, so an unexpectedly exposed stack fails the suite rather than passing it.
+- [x] **Step 5:** prove it catches a regression: temporarily add a service with a bare `ports: ["9999:9999"]`, confirm the script fails and names it, remove it. Commit.
+
+**Verified live (2026-07-28):** confirmed the JSON shape empirically before
+writing anything (Compose v5.2.0): a port entry has no `host_ip` key at all
+when unbound, gains `host_ip: "127.0.0.1"` once a bind is interpolated —
+absence, not `null` or `""`, is the "exposed" signal the script checks for.
+`console` (profile `demo`) and `hurl` (profile `tools`) are both omitted
+from `docker compose config` unless their profile is explicitly activated,
+confirmed by rendering with none, then with `--profile full --profile demo
+--profile tools` together — the script always activates all three so it
+covers every service regardless of what's currently running. Tested every
+path for real: safe config → exit 0, unacknowledged `0.0.0.0` → `lib.sh`'s
+own gate refuses first (belt-and-suspenders, confirmed working), acknowledged
+`0.0.0.0` → exit 0 listing all 13 exposed ports including `console`, and the
+plan's own regression case — a bare `ports: ["9999:9999"]` on `cs` with
+`network.bind` left correctly at `127.0.0.1` — fails and names `cs:9999`
+exactly, proving the script catches what no `deployment.yaml` field alone
+ever could. Confirmed `hurl/run-linkup.sh` refuses before touching any
+container (5 Security Servers still running, untouched, after the refusal).
+`scripts/acceptance.sh` GREEN with the check's pass-line as its first
+output.
 
 ## Task 4: `.env.example` becomes a template, and a generator writes the real thing
 
