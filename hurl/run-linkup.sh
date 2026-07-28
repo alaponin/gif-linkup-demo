@@ -51,6 +51,8 @@ fi
 
 COMPOSE_HURL=("${COMPOSE[@]}" -f "$PACK_DIR/hurl/compose.hurl.yml")
 
+scripts/check-exposure.sh
+
 log "bringing the federation containers up"
 "${COMPOSE_HURL[@]}" up -d --build
 

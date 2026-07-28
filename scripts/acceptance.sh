@@ -5,6 +5,8 @@
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 
+"$(dirname "$0")/check-exposure.sh"
+
 OUT_DIR="$PACK_DIR/out"; mkdir -p "$OUT_DIR"
 
 # The demo console (apps/console/) journals every ACL mutation to this file
