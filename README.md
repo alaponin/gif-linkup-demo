@@ -37,7 +37,12 @@ The number and identity of members is a property of `configs/member-*/` plus
 member joins by running `prompts/member.md` against an agency brief and
 committing what it produces — there is no `scripts/member.sh add`, because
 writing member config by hand is exactly what this pack is demonstrating you
-don't need to do.
+don't need to do. On a single-host demo deployment, default a joining member
+to `hosted_on` an existing Security Server rather than its own: it costs zero
+extra containers and RAM, and sidesteps every own-server finding in
+`docs/production-delta.md` (a real port-allocation bug, two real Compose gaps,
+and host-CPU-contention risk under several concurrent JVMs) — reserve a
+joined member's own server for when the demonstration specifically needs one.
 
 By design, KP2's slice is **Joget-free**: the member systems are mocks behind
 stable OpenAPI contracts — the seam where KP4's Joget DX apps plug in later

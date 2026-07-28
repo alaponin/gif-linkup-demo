@@ -86,11 +86,18 @@ PINNED_SERVICE_SCENARIO_NO = {"pnia": "30", "plr": "31", "moeys": "32"}
 FRESH_SS_SCENARIO_START = 40
 FRESH_SERVICE_SCENARIO_START = 50
 FRESH_PORT_START = 7000
-# macOS's AirPlay Receiver (ControlCenter) listens on 5000 by default and
-# hangs the connection instead of refusing it -- see docker-compose.yml's
-# ss-pnia comment. Refused outright, not just avoided by construction: a
-# future change to FRESH_PORT_START must not silently reintroduce this.
-FORBIDDEN_PORT_RANGE = range(5000, 5100)
+# macOS's AirPlay Receiver (ControlCenter) listens on 5000 (screen mirroring)
+# AND 7000 (RAOP audio) by default, and on both it hangs the TCP connection
+# mid-TLS-handshake instead of refusing it outright -- see docker-compose.yml's
+# ss-pnia comment for 5000. 7000 is exactly FRESH_PORT_START's own default and
+# was found live (member-parameterisation plan Task 9): a joined member's own
+# Security Server got this port, registered fine during initial bring-up, then
+# its admin API became unreachable from the host with no error -- `docker
+# restart` did not fix it, `lsof -i :7000` on the host found ControlCenter, not
+# the container, holding it. Refused outright, not just avoided by
+# construction: a future change to FRESH_PORT_START must not silently
+# reintroduce this.
+FORBIDDEN_PORT_RANGE = frozenset(range(5000, 5100)) | {7000}
 
 
 def _allocate_numbers(keys: list, pinned: dict, start: int) -> dict:
@@ -133,7 +140,7 @@ def allocate_ports(owner_keys: list) -> dict:
             if ui in FORBIDDEN_PORT_RANGE or rest in FORBIDDEN_PORT_RANGE:
                 raise SystemExit(
                     f"generate.py: PINNED_PORTS[{key!r}] = ({ui}, {rest}) falls in "
-                    "the 5000-5099 range macOS's AirPlay Receiver silently hangs on"
+                    "a port macOS's AirPlay Receiver silently hangs on (5000-5099, or 7000)"
                 )
             result[key] = (ui, rest)
             used_ui.add(ui)
@@ -1327,12 +1334,30 @@ HTTP 200
             # into its host's own file below instead. Still write a stub
             # here so this module's manifest.yaml scenario claim keeps
             # resolving to a real, existing file.
+            #
+            # Two reasons a member can be hosted, and the stub must say which:
+            # its own config sets security_server.hosted_on (permanent, every
+            # profile -- the mechanism a joining member uses), or it is only
+            # hosted under today's lite preset (LITE_HOSTED_ON). Confusing
+            # the two would tell a full-profile reader "this changes under
+            # lite" about a member that is hosted in every profile.
+            if member["security_server"].get("hosted_on"):
+                stub = (
+                    f"# {key.upper()} is hosted as a client on ss-{hosted_on} "
+                    f"(configs/member-{key}/{member['module']}.yaml sets "
+                    "security_server.hosted_on) -- it never brings up its own "
+                    f"server. See {ss_scenario_no[hosted_on]}-ss-{hosted_on}.hurl.\n"
+                )
+            else:
+                stub = (
+                    f"# lite profile: {key.upper()} is hosted as an extra client on "
+                    f"ss-{hosted_on} -- see {ss_scenario_no[hosted_on]}-ss-{hosted_on}.hurl. "
+                    "The full-profile bring-up below is not run under lite.\n"
+                )
             write(
                 f"{num}-ss-{key}.hurl",
                 f"configs/member-{key}/{member['module']}.yaml",
-                f"# lite profile: {key.upper()} is hosted as an extra client on "
-                f"ss-{hosted_on} -- see {ss_scenario_no[hosted_on]}-ss-{hosted_on}.hurl. "
-                "The full-profile bring-up below is not run under lite.\n",
+                stub,
             )
             continue
         body = build_ss_file(member, host_var)
@@ -1504,6 +1529,21 @@ declare -A HOST_SS=(
                 f"      - {key}-db:/var/lib/postgresql/16/main\n"
                 f"      - {key}-conf:/etc/xroad\n"
                 f"      - {key}-archive:/var/lib/xroad\n"
+                f"      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini\n"
+                # hurl/compose.hurl.yml (hand-written) adds this same healthcheck
+                # to each canonical Security Server BY NAME, so run-linkup.sh's
+                # runner waits for it to answer on :4000 before driving admin
+                # APIs against it. That file stays hand-written and scoped to
+                # the canonical five (design decision 5); a joined member's own
+                # server gets it here instead, so it is never a container
+                # nothing waits for. Found live (Task 9): without this, Compose
+                # only waits for the process to start, not for its Tomcat/TLS
+                # listener to actually come up, and a caller can hang
+                # indefinitely on a TLS handshake that never completes.
+                f"    healthcheck:\n"
+                f'      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]\n'
+                f"      interval: 5s\n"
+                f"      retries: 120\n"
             )
             volume_blocks.append(
                 f"  {key}-db: {{name: kp2-{key}-db}}\n"

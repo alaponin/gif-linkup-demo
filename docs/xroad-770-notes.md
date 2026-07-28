@@ -122,7 +122,63 @@ afford trading a little proxy CPU for a faster-to-reflect ACL change; a
 production federation should not tune this down without understanding the
 trade-off, which is why it is called out in `docs/production-delta.md`.
 
-## 7. Reducing manual toil if you configure by hand anyway
+## 7. Retiring a member from a running federation, without `teardown.sh --purge`
+
+Investigated live (member-parameterisation plan, Task 9) with a throwaway
+joined member (`PHIB:CLAIMS`, its own Security Server): **yes, a member can
+be retired from a running federation without a full purge** — but it takes
+four admin-API calls across two servers, in a specific order, taking a few
+minutes end to end (same order of magnitude as registration's own
+propagation lag), and nothing in this pack scripts it.
+
+1. `PUT /clients/{id}/unregister` on the member's **own** Security Server.
+   Sends a `CLIENT_DELETION_REQUEST` to the Central Server. Unlike a
+   registration request, this one has **no approval step**: `POST
+   /management-requests/{id}/approval` against it returns `403` (nothing to
+   approve — it auto-processes). The client's local `status` becomes
+   `DELETION_IN_PROGRESS` and stays that way until propagation catches up.
+2. Wait. `GET /clients/{id}` on the same server keeps returning
+   `DELETION_IN_PROGRESS` until the Central Server has processed the
+   request and this server's `confclient` has downloaded the updated global
+   configuration (polls every ~60s — same mechanism as every other
+   propagation delay in this pack). Confirmed independently via the Central
+   Server: `DELETE /subsystems/{id}/servers/{server_id}` (the CS-side
+   "unregister a subsystem from a server" call) returned `404
+   subsystem_not_registered_to_security_server` once step 1 had actually
+   taken effect — i.e. step 1 alone already broke the server↔subsystem
+   link; step 2 is purely a propagation wait, not a second action.
+3. `DELETE /clients/{id}` on the member's own Security Server, retried once
+   the wait is over. Failed with `409 action_not_possible` when tried
+   immediately after step 1 (before propagation caught up); succeeded
+   (`204`) once it had. This is what actually removes the local client
+   record. Confirmed live: a call from another member to the retired
+   member's service now fails cleanly with `Server.ClientProxy.UnknownMember`
+   — the same clean failure a caller should see, not a hang or a stale
+   success.
+4. Optional, only if the member's *identity* (not just its bus registration)
+   should disappear from the federation's directory: `DELETE
+   /subsystems/{subsystem_id}` then `DELETE /members/{member_id}` on the
+   Central Server (both `204`, both plain synchronous CS-side deletes, no
+   propagation wait). Confirmed live: `GET /clients?q=<member_code>` on the
+   Central Server returns empty afterward.
+
+**Two traps found live, not from reading the spec:**
+
+- **Order matters between this and `teardown.sh --purge`.** If the member's
+  *config* is removed (`scripts/member.sh remove`) before its container is
+  torn down, `hurl/compose.members.yml` regenerates to `services: {}` and
+  `teardown.sh --purge`'s `docker compose down -v` no longer references that
+  member's container or volumes at all — they become orphaned (found live:
+  `ss-phib` and its three `kp2-phib-*` volumes survived a `--purge` run and
+  had to be removed by hand, `docker rm -f` + `docker volume rm`). Retire the
+  member live first (the four steps above), or purge/teardown *before*
+  removing its config, not after.
+- A demonstration join **can** be undone on camera, but not instantly and
+  not with one click — budget a few real minutes of dead air for step 2, or
+  narrate through it, the same way this pack already narrates through
+  registration's own propagation lag.
+
+## 8. Reducing manual toil if you configure by hand anyway
 
 Two things worth knowing for anyone walking the UIs instead:
 
