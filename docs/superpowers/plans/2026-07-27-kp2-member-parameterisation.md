@@ -200,11 +200,28 @@ PINNED_PORTS = {  # ui, rest -- see lib.sh's AirPlay note on ss-pnia
 
 **Files:** `manifest.yaml`, `hurl/check_scenarios.py`
 
-- [ ] **Step 1:** add `origin: canonical` to each of the four `identity.members` entries, with a comment that `identifiers:` is the frozen KP3/KP4 contract and only canonical members belong in it.
-- [ ] **Step 2:** relax the agreement check: every `identifiers.members` entry must still have a matching canonical `identity.members` entry; a `joined` member absent from `identifiers:` is fine; a `joined` member *present* in `identifiers:` is an error (it would silently enter the cross-pack contract).
-- [ ] **Step 3:** module `scenarios:` claims currently require every scenario file to be claimed. Joined members produce unclaimed scenarios by construction — allow files whose member key resolves to a `joined` member, and keep the strict rule for everything else.
-- [ ] **Step 4:** add checks that the allocation is sane: no duplicate host port, no duplicate scenario number, no joined member in the 5000–5099 range, every `hosted_on` resolvable.
-- [ ] **Step 5:** `python3 hurl/check_scenarios.py` green; the ship gate (`check_pack.py --ready`) green. Commit.
+- [x] **Step 1:** add `origin: canonical` to each of the four `identity.members` entries, with a comment that `identifiers:` is the frozen KP3/KP4 contract and only canonical members belong in it.
+- [x] **Step 2:** relax the agreement check: every `identifiers.members` entry must still have a matching canonical `identity.members` entry; a `joined` member absent from `identifiers:` is fine; a `joined` member *present* in `identifiers:` is an error (it would silently enter the cross-pack contract).
+- [x] **Step 3:** module `scenarios:` claims currently require every scenario file to be claimed. Joined members produce unclaimed scenarios by construction — allow files whose member key resolves to a `joined` member, and keep the strict rule for everything else.
+- [x] **Step 4:** add checks that the allocation is sane: no duplicate host port, no duplicate scenario number, no joined member in the 5000–5099 range, every `hosted_on` resolvable.
+- [x] **Step 5:** `python3 hurl/check_scenarios.py` green; the ship gate (`check_pack.py --ready`) green. Commit.
+
+  **Verified live (2026-07-28):** every new/relaxed check triggered for
+  real, not just read for plausibility. Added a throwaway joined member
+  (14 scenarios) -- static gate green with its files correctly
+  unclaimed-but-tolerated; put it in `identifiers.members` -- caught
+  ("only canonical members belong in the frozen identifiers: cross-pack
+  contract"); then individually broke `topology.json` four ways (a
+  duplicate port, a port in 5000-5099, an unresolvable `hosted_on`, a
+  duplicate scenario-number file) -- each produced the exact intended
+  failure message, one at a time, reverted between tests. Lost the
+  Step 1 manifest edit once to an uncommitted `git checkout --
+  manifest.yaml` during test cleanup and had to redo it -- a reminder
+  that "revert the test" needs to mean "revert only the test," not the
+  whole file, when there's uncommitted real work sitting in it too.
+  `check_scenarios.py` green; `check_pack.py --ready` green;
+  `acceptance.sh` green on the live stack (still up from Task 5); 25 unit
+  tests green.
 
 ## Task 7: Generic per-member acceptance
 
