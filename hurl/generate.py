@@ -17,6 +17,7 @@ drift from the YAML the bb-config-gen plays produce.
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import re
@@ -28,7 +29,14 @@ except ImportError:  # pragma: no cover
     sys.exit("generate.py needs PyYAML: pip install pyyaml")
 
 PACK = pathlib.Path(__file__).resolve().parent.parent
-OUT = PACK / "hurl" / "scenarios"
+# HURL_DIR/OUT/ENV_PATH are reassigned in main() when --out/--env are passed
+# (tests/test_golden.py only -- see testing-strategy plan Task 1). Every
+# other read (manifest.yaml, deployment.yaml, configs/) always goes through
+# PACK itself and is never redirected: a golden-corpus run must read the
+# real, committed member configuration, only write its output elsewhere.
+HURL_DIR = PACK / "hurl"
+OUT = HURL_DIR / "scenarios"
+ENV_PATH = PACK / ".env"
 
 # --- credentials ------------------------------------------------------------
 # The Security Server credentials and the software-token PIN are NOT declared
@@ -298,7 +306,7 @@ def read_env() -> dict[str, str]:
     autologin expects another, which fails at the first key generation and looks
     like a certificate problem.
     """
-    path = PACK / ".env"
+    path = ENV_PATH
     if not path.exists():
         raise SystemExit(
             "generate.py: .env does not exist -- run scripts/gen-secrets.sh first. "
@@ -895,7 +903,44 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     return body
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate the Linkup Hurl scenario set from configs/ + manifest.yaml."
+    )
+    parser.add_argument(
+        "--out", metavar="DIR",
+        help="write scenarios/, vars.env, topology.json, topology.sh and "
+             "compose.members.yml under DIR instead of hurl/ -- tests only "
+             "(tests/test_golden.py). The real deploy path never passes this.",
+    )
+    parser.add_argument(
+        "--profile", choices=("full", "lite"),
+        help="use this profile instead of deployment.yaml's -- tests only, "
+             "so the golden corpus can cover both profiles without a tracked "
+             "file having to change.",
+    )
+    parser.add_argument(
+        "--env", metavar="FILE",
+        help="read secrets from FILE instead of .env -- tests only "
+             "(tests/golden/env.fixture), so a golden vars.env is never "
+             "generated from a real credential.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    global HURL_DIR, OUT, ENV_PATH
+    args = parse_args()
+    if args.out:
+        HURL_DIR = pathlib.Path(args.out)
+        OUT = HURL_DIR / "scenarios"
+        # vars.env writes before any scenario file (see main() below) and,
+        # unlike hurl/ itself, a fresh --out directory does not already
+        # exist -- found live via tests/test_golden.py's first run.
+        HURL_DIR.mkdir(parents=True, exist_ok=True)
+    if args.env:
+        ENV_PATH = pathlib.Path(args.env)
+
     manifest = load("manifest.yaml")
     identity = manifest["identity"]
     deployment = load("deployment.yaml")
@@ -904,7 +949,7 @@ def main() -> None:
             f"generate.py: deployment.yaml target {deployment.get('target')!r} is not "
             "supported -- only 'docker-local' is implemented today."
         )
-    profile = deployment.get("profile", "full")
+    profile = args.profile or deployment.get("profile", "full")
     if profile not in ("full", "lite"):
         raise SystemExit(f"generate.py: deployment.yaml profile must be 'full' or 'lite' (got {profile!r})")
     core = load("configs/x-road-bus/2.1.yaml")
@@ -966,7 +1011,7 @@ def main() -> None:
         for svc in member.get("services") or []:
             lines.append(f"{key}_spec_url={svc['spec_url']}")
     lines.append("")
-    vars_path = PACK / "hurl" / "vars.env"
+    vars_path = HURL_DIR / "vars.env"
     vars_path.write_text("\n".join(lines))
     # Contains the token PIN and admin password in cleartext (this is the
     # Hurl runner's own credentials file, mounted read-only into the
@@ -1469,7 +1514,7 @@ HTTP 200
         "security_servers": security_servers,
         "subsystems": subsystems,
     }
-    (PACK / "hurl" / "topology.json").write_text(json.dumps(topology, indent=2) + "\n")
+    (HURL_DIR / "topology.json").write_text(json.dumps(topology, indent=2) + "\n")
     print("  wrote hurl/topology.json")
 
     # -- hurl/topology.sh -----------------------------------------------
@@ -1502,7 +1547,7 @@ declare -A HOST_SS=(
 {chr(10).join(host_ss_lines)}
 )
 """
-    (PACK / "hurl" / "topology.sh").write_text(topology_sh)
+    (HURL_DIR / "topology.sh").write_text(topology_sh)
     print("  wrote hurl/topology.sh")
 
     # -- hurl/compose.members.yml --------------------------------------
@@ -1581,7 +1626,7 @@ declare -A HOST_SS=(
             "\n"
             "volumes:\n" + "\n".join(volume_blocks)
         )
-    (PACK / "hurl" / "compose.members.yml").write_text(compose_members_yml)
+    (HURL_DIR / "compose.members.yml").write_text(compose_members_yml)
     print("  wrote hurl/compose.members.yml")
 
     print(f"\ndone -- {instance} federation, "

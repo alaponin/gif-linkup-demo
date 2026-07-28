@@ -84,6 +84,38 @@ here instead.
 `check_pack.py` executes any `<pack>/<tool>/check_*.py` it finds, so a scenario set
 with an undefined variable or a drifted credential cannot pass `--ready`.
 
+## Golden corpus
+
+`tests/golden/{full,lite}/` is a committed fixture of exactly what
+`generate.py` emits today — `scenarios/`, `vars.env`, `topology.json`,
+`topology.sh`, `compose.members.yml` — generated from a fixed, fake
+`tests/golden/env.fixture` rather than a real `.env`. `tests/test_golden.py`
+regenerates both profiles (via `generate.py --out DIR --profile P --env
+FILE`, flags that exist only for this test) and diffs against it, in under
+two seconds, no Docker, no network:
+
+```bash
+.venv/bin/python3 -m pytest tests/test_golden.py -v
+```
+
+This is the byte-identical proof past plans pasted a `cp -r /tmp/base-*`
+ritual for, made permanent and cheap instead of manual and skippable.
+
+**When a change to `generate.py` should alter the output**, regenerate the
+corpus **in the same commit** as the change, so the diff is reviewable
+alongside the code that caused it:
+
+```bash
+python3 hurl/generate.py --out /tmp/golden-full --profile full --env tests/golden/env.fixture
+python3 hurl/generate.py --out /tmp/golden-lite --profile lite --env tests/golden/env.fixture
+rm -rf tests/golden/full tests/golden/lite
+cp -r /tmp/golden-full tests/golden/full
+cp -r /tmp/golden-lite tests/golden/lite
+```
+
+A golden test whose corpus gets updated blindly — without looking at what
+changed and why — is theatre, not a test. Read the diff before committing it.
+
 ## Retargeting
 
 `vars.env` is the only place hostnames appear. It currently holds Docker Compose
