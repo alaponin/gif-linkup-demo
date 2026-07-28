@@ -966,7 +966,13 @@ def main() -> None:
         for svc in member.get("services") or []:
             lines.append(f"{key}_spec_url={svc['spec_url']}")
     lines.append("")
-    (PACK / "hurl" / "vars.env").write_text("\n".join(lines))
+    vars_path = PACK / "hurl" / "vars.env"
+    vars_path.write_text("\n".join(lines))
+    # Contains the token PIN and admin password in cleartext (this is the
+    # Hurl runner's own credentials file, mounted read-only into the
+    # container) -- 600 at generation time, not left at the process umask's
+    # default, which on most systems is group/world-readable.
+    vars_path.chmod(0o600)
     print("  wrote hurl/vars.env")
 
     # -- 00 Central Server initialisation ----------------------------------

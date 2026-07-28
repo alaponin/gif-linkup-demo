@@ -80,10 +80,14 @@ def main() -> None:
         ("ss_admin_password", "XROAD_ADMIN_PASSWORD"),
     ):
         if vars_now.get(var) != env.get(env_key):
+            # Never print the values themselves -- both are live credentials
+            # (token PIN, admin password), and this is a secret-leakage path
+            # a plain diff-style message would otherwise open (found live,
+            # exposure-and-secrets plan Task 5).
             note(
-                f"vars.env {var}={vars_now.get(var)!r} disagrees with "
-                f"{env_path.name} {env_key}={env.get(env_key)!r} -- the scenarios "
-                "would authenticate with a value the containers do not have"
+                f"vars.env's {var} disagrees with {env_path.name}'s {env_key} "
+                "-- the scenarios would authenticate with a value the "
+                "containers do not have. Re-run hurl/generate.py."
             )
 
     files = sorted(SCEN.glob("*.hurl"))
