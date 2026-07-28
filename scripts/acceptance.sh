@@ -5,14 +5,6 @@
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 
-PNEA_REST="http://localhost:${SS_REST[ss-pnea]}"
-# Negative check goes through the SS that hosts MOEYS:PEMIS (its own server —
-# so the denial genuinely comes from the provider-side ACL, not from ss-pnea
-# rejecting an unknown client). Under LITE that is the shared provider SS.
-BAD_SS=${HOST_SS[MOEYS:PEMIS]}
-BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
-CLIENT='X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS'
-BADCLIENT='X-Road-Client: PROGRESSA/GOV/MOEYS/PEMIS'
 OUT_DIR="$PACK_DIR/out"; mkdir -p "$OUT_DIR"
 
 # The demo console (apps/console/) journals every ACL mutation to this file
@@ -41,7 +33,12 @@ check_21() {  # paths confirmed live at P0 2026-07-25
 check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
 
 # ---- 2.2–2.5 member registrations & services --------------------------------
-# Each subsystem REGISTERED on the SS that hosts it (lib.sh HOST_SS handles LITE).
+# Every subsystem HOST_SS names, REGISTERED on the SS that hosts it -- covers
+# whatever member set is actually deployed (hurl/topology.sh, member-
+# parameterisation Task 4), not a fixed list of four. PDGA:MANAGEMENT is
+# HOST_SS's one non-member entry (the federation owner's own management
+# subsystem, added by a different flow during 10-ss-pdga.hurl) -- excluded
+# here, same scope as before this generalisation.
 check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
   local ss=${HOST_SS[$1]} sub=${1##*:}
   local key; key=$(api_key "localhost:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
@@ -49,36 +46,53 @@ check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
 # Registration status is global-conf propagation, same asynchrony as the Hurl
-# runner itself -- confirmed at P5 (2026-07-25): a cold reproducibility run hit
+# runner itself -- confirmed at P5 (2025-07-25): a cold reproducibility run hit
 # PNEA:EXAMS still short of REGISTERED the instant acceptance.sh started right
 # after deploy, though it settled seconds later. Retry, don't fail (lib.sh's
 # retry(), same as everywhere else this asynchrony shows up in this pack).
-for pair in MOEYS:PEMIS PNEA:EXAMS PLR:ENROLMENT PNIA:IDENTITY; do
+for pair in $(printf '%s\n' "${!HOST_SS[@]}" | sort); do
+  [ "$pair" = "PDGA:MANAGEMENT" ] && continue
   check_pair() { retry 12 5 "${pair} REGISTERED" check_client_registered "$pair"; }
   check "2.x(${pair})" "client REGISTERED on ${HOST_SS[$pair]}" check_pair
 done
 
-# ACL exactness (2.4/2.5): confirmed live at P0 2026-07-25 —
-# GET /clients/{id}/service-clients lists every subject granted ANY access on
-# that client; GET .../service-clients/{subject}/access-rights lists which
-# service codes that subject holds. Exactness needs both: the subject list is
-# exactly [PNEA:EXAMS] (nobody else got in), AND that subject's granted service
-# is exactly the one this provider publishes (not some other service leaking
-# in via a wider grant).
-check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service code, $4 = sole grantee
-  local ss=$1 client_id=$2 svc=$3 grantee=$4
+# ACL exactness (generalised over every service every member config declares,
+# not two bespoke checks for enrolment-api/identity-api): confirmed live at
+# P0 2026-07-25 -- GET /clients/{id}/service-clients lists every subject
+# granted ANY access on that client; GET .../service-clients/{subject}/
+# access-rights lists which service codes that subject holds. Exactness needs
+# both, for EVERY service -- including a service with an EMPTY access: list
+# (pemis-api today), which must have NO subjects at all. That case was
+# previously unchecked entirely; this loop covers it as a natural consequence
+# of being generic rather than as a bespoke third check.
+#
+# The dataset comes from hurl/topology.json, not a second read of
+# configs/member-*/*.yaml -- topology.json already carries each subsystem's
+# hosted_on and each service's code+access (member-parameterisation Task 3),
+# so this is the one place that data is read for this purpose.
+check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service code, $4 = expected subjects (JSON array)
+  local ss=$1 client_id=$2 svc=$3 want_json=$4
   local key; key=$(api_key "localhost:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
   api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients" \
-    | jq -e --arg who "$grantee" '[.[].id] == [$who]' >/dev/null &&
-  api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients/${grantee}/access-rights" \
-    | jq -e --arg svc "$svc" '[.[].service_code] == [$svc]' >/dev/null
+    | jq -e --argjson want "$want_json" '([.[].id] | sort) == ($want | sort)' >/dev/null || return 1
+  local subj
+  for subj in $(printf '%s' "$want_json" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
+    api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients/${subj}/access-rights" \
+      | jq -e --arg svc "$svc" '[.[].service_code] == [$svc]' >/dev/null || return 1
+  done
 }
-check_241() { retry 12 5 "enrolment-api ACL settled" check_acl_exact "${HOST_SS[PLR:ENROLMENT]}" \
-  PROGRESSA:GOV:PLR:ENROLMENT enrolment-api PROGRESSA:GOV:PNEA:EXAMS; }
-check 2.4.acl "enrolment-api grants exactly PNEA:EXAMS, nothing else" check_241
-check_251() { retry 12 5 "identity-api ACL settled" check_acl_exact "${HOST_SS[PNIA:IDENTITY]}" \
-  PROGRESSA:GOV:PNIA:IDENTITY identity-api PROGRESSA:GOV:PNEA:EXAMS; }
-check 2.5.acl "identity-api grants exactly PNEA:EXAMS, nothing else" check_251
+while IFS=$'\t' read -r ss client_id svc want_json; do
+  check_svc() { retry 12 5 "${svc} ACL settled" check_acl_exact "$ss" "$client_id" "$svc" "$want_json"; }
+  want_desc=$(printf '%s' "$want_json" | python3 -c "import json,sys; a=json.load(sys.stdin); print(', '.join(a) if a else '(nobody)')")
+  check "2.x.acl(${svc})" "${svc} grants exactly ${want_desc}" check_svc
+done < <(python3 -c "
+import json
+topo = json.load(open('$PACK_DIR/hurl/topology.json'))
+for sub in topo['subsystems']:
+    for svc in sub['services']:
+        access = [a.replace('/', ':') for a in svc['access']]
+        print(f\"{sub['hosted_on']}\t{sub['id']}\t{svc['code']}\t{json.dumps(access)}\")
+")
 
 # ---- 2.6 the once-only exchange ---------------------------------------------
 NIN=$(python3 -c "
@@ -92,8 +106,38 @@ p={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/persons.csv'))}
 e={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/enrolments.csv'))}
 print(sorted(p-e)[0])")
 
-ID_URL="$PNEA_REST/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons"
-EN_URL="$PNEA_REST/r1/PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api/enrolments"
+# The exchange's shape (consumer, negative caller, the two r1 paths) comes
+# from configs/x-road-bus/2.6.yaml -- not restated as bash literals. Its
+# ENTRYPOINT fields stay unread on purpose: they are static ("http://ss-
+# pnea:8080") and only correct under profile: full -- under lite the
+# consumer/negative-caller can be hosted elsewhere, so the entrypoint is
+# resolved from HOST_SS/SS_REST instead, the same live-confirmed trap
+# apps/console/truth.py already documents and avoids.
+mapfile -t _exchange < <(python3 -c "
+import yaml
+cfg = yaml.safe_load(open('$PACK_DIR/configs/x-road-bus/2.6.yaml'))['exchange']
+print(cfg['headers']['X-Road-Client'])
+print(cfg['negative_check']['unauthorised_client'])
+print(cfg['calls'][0]['r1_path'])
+print(cfg['calls'][1]['r1_path'])
+")
+CLIENT="X-Road-Client: ${_exchange[0]}"
+BADCLIENT="X-Road-Client: ${_exchange[1]}"
+ID_PATH_TMPL="${_exchange[2]}"
+EN_PATH_TMPL="${_exchange[3]}"
+
+CONSUMER_MEMBER_SUBSYSTEM="${_exchange[0]//\//:}"; CONSUMER_MEMBER_SUBSYSTEM="${CONSUMER_MEMBER_SUBSYSTEM#*:*:}"
+BAD_MEMBER_SUBSYSTEM="${_exchange[1]//\//:}"; BAD_MEMBER_SUBSYSTEM="${BAD_MEMBER_SUBSYSTEM#*:*:}"
+PNEA_REST="http://localhost:${SS_REST[${HOST_SS[$CONSUMER_MEMBER_SUBSYSTEM]}]}"
+# Negative check goes through the SS that hosts the unauthorised caller (its
+# own server -- so the denial genuinely comes from the provider-side ACL, not
+# from the consumer's SS rejecting an unknown client). Under LITE that is the
+# shared provider SS.
+BAD_SS=${HOST_SS[$BAD_MEMBER_SUBSYSTEM]}
+BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
+
+ID_URL="$PNEA_REST${ID_PATH_TMPL%/\{nin\}}"
+EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
 
 # Same asynchronous-propagation risk as the registration-status checks above
 # (retry, don't fail): confirmed live at P5 (2026-07-26) -- a fresh deploy's
@@ -139,10 +183,10 @@ check_264() {  # denial must come from the provider ACL, observed as an X-Road e
                # Exact fault confirmed live at P0 (2026-07-25):
                # {"type":"Server.ServerProxy.AccessDenied","message":"Request is not
                # allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api",...}, HTTP 500.
-  curl -sk -H "$BADCLIENT" "$BAD_REST/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/$NIN" \
+  curl -sk -H "$BADCLIENT" "$BAD_REST${ID_PATH_TMPL/\{nin\}/$NIN}" \
     | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
 }
-check 2.6.4 "negative — MOEYS:PEMIS (via its own SS $BAD_SS) denied by the provider ACL" check_264
+check 2.6.4 "negative — ${_exchange[1]} (via its own SS $BAD_SS) denied by the provider ACL" check_264
 
 check_265() {
   local code
