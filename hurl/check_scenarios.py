@@ -125,9 +125,20 @@ def main() -> None:
             claimed.add(rel)
             if not (PACK / rel).exists():
                 note(f"module {mod['id']} claims {rel}, which does not exist")
+    # A joined member's scenario file is unclaimed BY CONSTRUCTION -- no
+    # module in manifest.yaml (2.1-2.6, fixed) names a member that doesn't
+    # exist there. Only tolerate that for a file whose own member key
+    # resolves to a joined member; the strict rule stays for everything
+    # else, including the canonical four and the shared x-road-bus files.
+    scenario_member_re = re.compile(r"^\d+-(?:ss|services)-([a-z0-9]+)\.hurl$")
     for path in files:
         rel = f"hurl/scenarios/{path.name}"
-        if rel not in claimed:
+        if rel in claimed:
+            continue
+        m = scenario_member_re.match(path.name)
+        member_key = m.group(1) if m else None
+        origin = manifest["identity"]["members"].get(member_key, {}).get("origin", "canonical")
+        if origin != "joined":
             note(f"{path.name} is not claimed by any module in manifest.yaml")
     for member in ids["members"]:
         instance, cls, code, subsystem = re.split(r"[:/]", member.replace(":", "/"))
@@ -153,13 +164,25 @@ def main() -> None:
         note(f"identity.owner.code ({identity['owner']['code']!r}) disagrees with identifiers.owner ({ids['owner']!r})")
     for member_str in ids["members"]:
         _, _, code, subsystem = re.split(r"[:/]", member_str.replace(":", "/"))
-        if not any(v["code"] == code and v["subsystem"] == subsystem for v in identity["members"].values()):
+        match = next(
+            (v for v in identity["members"].values() if v["code"] == code and v["subsystem"] == subsystem),
+            None,
+        )
+        if match is None:
             note(f"identifiers.members entry {member_str} has no matching identity.members entry (code+subsystem)")
+        elif match.get("origin", "canonical") != "canonical":
+            note(
+                f"identifiers.members entry {member_str} matches a "
+                f"{match.get('origin')!r} identity.members entry -- only canonical "
+                "members belong in the frozen identifiers: cross-pack contract"
+            )
 
     # hurl/topology.json (apps/console's only source of topology) must exist,
-    # match the deployed profile, and describe exactly the members frozen in
-    # manifest.yaml -- the same class of agreement check as identity:/
-    # identifiers: above.
+    # match the deployed profile, and describe at least the canonical members
+    # frozen in manifest.yaml -- the same class of agreement check as
+    # identity:/identifiers: above. A joined member is allowed to add a
+    # subsystem topology.json knows about that identifiers: doesn't (design
+    # decision 2) -- it's a superset relationship, not exact equality.
     topo_path = PACK / "hurl" / "topology.json"
     if not topo_path.exists():
         note("hurl/topology.json does not exist -- run hurl/generate.py")
@@ -174,8 +197,41 @@ def main() -> None:
         for member_str in ids["members"]:
             instance, cls, code, subsystem = re.split(r"[:/]", member_str.replace(":", "/"))
             manifest_ids.add(f"{instance}:{cls}:{code}:{subsystem}")
-        if topo_ids != manifest_ids:
-            note(f"topology.json subsystems {sorted(topo_ids)} disagree with manifest identifiers.members {sorted(manifest_ids)}")
+        missing = manifest_ids - topo_ids
+        if missing:
+            note(f"topology.json is missing canonical subsystem(s) {sorted(missing)} that manifest identifiers.members expects")
+
+        # Allocation sanity, straight from the generated artefacts -- not
+        # re-trusting generate.py's own runtime checks, since this gate is
+        # meant to catch a hand-edited or stale file too.
+        ui_ports = [s["host_ui_port"] for s in topo.get("security_servers", [])]
+        rest_ports = [s["host_proxy_port"] for s in topo.get("security_servers", [])]
+        if len(ui_ports) != len(set(ui_ports)):
+            note(f"topology.json has a duplicate host_ui_port: {sorted(ui_ports)}")
+        if len(rest_ports) != len(set(rest_ports)):
+            note(f"topology.json has a duplicate host_proxy_port: {sorted(rest_ports)}")
+        for p in ui_ports + rest_ports:
+            if 5000 <= p <= 5099:
+                note(f"topology.json allocates port {p} in the 5000-5099 range -- "
+                     "macOS's AirPlay Receiver silently hangs on it")
+        known_hosts = {s["host"] for s in topo.get("security_servers", [])}
+        for sub in topo.get("subsystems", []):
+            if sub["hosted_on"] not in known_hosts:
+                note(f"topology.json subsystem {sub['id']} is hosted_on {sub['hosted_on']!r}, "
+                     "which is not one of the running security_servers")
+
+    # No two scenario files claim the same leading number -- generate.py's
+    # own PINNED_SCENARIO_NO/_allocate_numbers() already prevent this at
+    # generation time; checked again here since this gate must also catch
+    # a hand-edited scenario set, not just trust the generator ran cleanly.
+    scenario_nums: dict[str, list[str]] = {}
+    for path in files:
+        m = re.match(r"^(\d+)-", path.name)
+        if m:
+            scenario_nums.setdefault(m.group(1), []).append(path.name)
+    for num, names in scenario_nums.items():
+        if len(names) > 1:
+            note(f"scenario number {num} is used by more than one file: {', '.join(sorted(names))}")
 
     if failures:
         print(f"\n{len(failures)} problem(s)")

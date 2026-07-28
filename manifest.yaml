@@ -37,27 +37,37 @@ identity:
     code: PDGA
     name: Progressa Digital Government Authority
     management_subsystem: MANAGEMENT
+  # origin: canonical | joined, default canonical (hurl/generate.py already
+  # reads it this way -- see docs/superpowers/plans/
+  # 2026-07-27-kp2-member-parameterisation.md). Only a canonical member may
+  # appear in identifiers.members above -- that block is the frozen
+  # KP3/KP4 cross-pack contract, and a joined member entering it silently
+  # would mean a demonstration join changing what other packs build against.
   members:
     moeys:
       code: MOEYS
       name: "Progressa Ministry of Education, Youth and Sport"
       subsystem: PEMIS
       subsystem_description: School information system (education management)
+      origin: canonical
     pnea:
       code: PNEA
       name: Progressa National Examination Authority
       subsystem: EXAMS
       subsystem_description: Examination and certification services (consumer of identity + enrolment)
+      origin: canonical
     plr:
       code: PLR
       name: Progressa Learner Registry
       subsystem: ENROLMENT
       subsystem_description: Authoritative learner enrolment register
+      origin: canonical
     pnia:
       code: PNIA
       name: Progressa National Identity Authority
       subsystem: IDENTITY
       subsystem_description: Authoritative person identity register
+      origin: canonical
 modules:
   - id: "2.1"
     video_ref: "5.5"   # Topic 5 subtopic this module realises
