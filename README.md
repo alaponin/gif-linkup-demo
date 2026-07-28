@@ -14,6 +14,16 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   Progressa identifiers that are the KP3/KP4 join keys)
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
   `REVIEW.md` (self-review; open decisions)
+- **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
+  tiers, chosen by the tool, not by whoever is typing. Measured on this
+  pack (2026-07-28): `--fast` (static checks, the ship gate, exposure,
+  `pytest tests/ apps/console/tests/` — no Docker container, no network, no
+  federation) **~8s**; `--live` (`--fast`, then `acceptance.sh` against a
+  running stack; refuses rather than deploying one if nothing is reachable)
+  **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
+  reproducibility proof) **~918s (~15 min)**. See
+  `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
+  tier replaced.
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
 profile, X-Road version pins; `.env` carries only secrets), `docker-compose.yml`
@@ -26,8 +36,9 @@ generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),
 `acceptance/` (given/when/then per module; 2.6 is the once-only exchange, the
 framework's acceptance; `member.md` is the generic per-member check every
 joined member gets automatically), `scripts/` (deploy / seed / acceptance /
-teardown / `member.sh list|remove` — reports on and retires joined members),
-`apps/` (mock REST registries behind
+teardown / `member.sh list|remove` — reports on and retires joined members /
+`verify.sh` — the tiered entry point above), `tests/` (the golden corpus for
+`hurl/generate.py` — `test_golden.py`, no Docker), `apps/` (mock REST registries behind
 the Security Servers + OpenAPI contracts +
 Gambia-grounded, Progressa-named seed data; `apps/console/` is the optional
 one-page demonstration UI, `scripts/console.sh up` — a demo asset, not a

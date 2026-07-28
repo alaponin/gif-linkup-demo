@@ -51,7 +51,10 @@ fi
 
 COMPOSE_HURL=("${COMPOSE[@]}" -f "$PACK_DIR/hurl/compose.hurl.yml")
 
-scripts/check-exposure.sh
+# Fail fast: the --fast tier (static checks, the ship gate, exposure,
+# pytest) runs before any container starts -- a typo used to cost fifteen
+# minutes to discover; now it costs seconds (testing-strategy plan Task 2).
+"$PACK_DIR/scripts/verify.sh" --fast
 
 log "bringing the federation containers up"
 "${COMPOSE_HURL[@]}" up -d --build
