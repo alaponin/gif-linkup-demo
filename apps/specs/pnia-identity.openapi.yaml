@@ -1,0 +1,38 @@
+# PNIA identity API — the OpenAPI3 service description X-Road parses (module 2.5).
+# servers.url is the forwarding target the Security Server uses.
+openapi: 3.0.3
+info:
+  title: Progressa National Identity Authority — identity API
+  version: "1.0"
+  description: >
+    Purpose-limited person lookup for credential issuance (decree, purpose
+    limitation). Returns only the fields the credential purpose needs.
+servers:
+  - url: http://app-pnia:8000/v1
+paths:
+  /persons/{nin}:
+    get:
+      operationId: getPerson
+      summary: Fetch a person's identity by NIN
+      parameters:
+        - name: nin
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9]{11}$'}
+      responses:
+        "200":
+          description: The person record (purpose-limited fields only)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nin, given_name, family_name, date_of_birth, sex, region]
+                properties:
+                  nin: {type: string}
+                  given_name: {type: string}
+                  family_name: {type: string}
+                  date_of_birth: {type: string, format: date}
+                  sex: {type: string, enum: [F, M]}
+                  region: {type: string}
+        "404":
+          description: No person with this NIN

@@ -1,0 +1,34 @@
+# PLR enrolment API — the OpenAPI3 service description X-Road parses (module 2.4).
+openapi: 3.0.3
+info:
+  title: Progressa Learner Registry — enrolment API
+  version: "1.0"
+  description: Authoritative enrolment lookup by NIN for once-only pre-fill.
+servers:
+  - url: http://app-plr:8000/v1
+paths:
+  /enrolments/{nin}:
+    get:
+      operationId: getEnrolment
+      summary: Fetch a learner's current enrolment by NIN
+      parameters:
+        - name: nin
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9]{11}$'}
+      responses:
+        "200":
+          description: The enrolment record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nin, school, level, enrolment_year, status]
+                properties:
+                  nin: {type: string}
+                  school: {type: string}
+                  level: {type: string}
+                  enrolment_year: {type: string}
+                  status: {type: string, enum: [active, transferred, completed]}
+        "404":
+          description: No enrolment for this NIN (observable, not silent)
