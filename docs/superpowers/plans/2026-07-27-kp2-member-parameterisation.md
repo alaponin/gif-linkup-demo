@@ -166,11 +166,35 @@ PINNED_PORTS = {  # ui, rest -- see lib.sh's AirPlay note on ss-pnia
 
 **Files:** `hurl/generate.py`, `scripts/lib.sh`, `.gitignore`
 
-- [ ] **Step 1:** `generate.py` emits `hurl/compose.members.yml` containing service blocks **only** for members with `origin: joined` that own a Security Server — sidecar image, container name, allocated host ports, the three named volumes, `networks: [linkup]`, `depends_on: [cs, ca]` — mirroring the canonical blocks' shape.
-- [ ] **Step 2:** when no joined member owns a server, emit nothing (or a comment-only file) so the overlay is always safe to include.
-- [ ] **Step 3:** `lib.sh` adds `-f hurl/compose.members.yml` to both `COMPOSE` and `COMPOSE_ALL` when the file exists. `COMPOSE_ALL` must include it unconditionally where present, for the same reason `hurl/compose.hurl.yml` is already there — a volume defined in an overlay cannot be removed by a `down -v` that does not name that overlay.
-- [ ] **Step 4:** add `hurl/compose.members.yml` and `hurl/topology.sh` to `.gitignore` alongside the other generated artefacts.
-- [ ] **Step 5:** commit.
+- [x] **Step 1:** `generate.py` emits `hurl/compose.members.yml` containing service blocks **only** for members with `origin: joined` that own a Security Server — sidecar image, container name, allocated host ports, the three named volumes, `networks: [linkup]`, `depends_on: [cs, ca]` — mirroring the canonical blocks' shape.
+- [x] **Step 2:** when no joined member owns a server, emit nothing (or a comment-only file) so the overlay is always safe to include.
+- [x] **Step 3:** `lib.sh` adds `-f hurl/compose.members.yml` to both `COMPOSE` and `COMPOSE_ALL` when the file exists. `COMPOSE_ALL` must include it unconditionally where present, for the same reason `hurl/compose.hurl.yml` is already there — a volume defined in an overlay cannot be removed by a `down -v` that does not name that overlay.
+- [x] **Step 4:** add `hurl/compose.members.yml` and `hurl/topology.sh` to `.gitignore` alongside the other generated artefacts.
+- [x] **Step 5:** commit.
+
+  **Verified live (2026-07-28):** added a throwaway joined member owning
+  its own server and ran `docker compose ... config` on the merged files
+  -- got back a fully resolved service (correct image, env vars from
+  `.env`, ports, correctly joined to the `linkup` network
+  `docker-compose.yml` declares), confirming YAML anchors don't cross
+  Compose's `-f` file boundaries but its `services:`/`volumes:`/
+  `networks:` keys do -- `compose.members.yml` redeclares its own
+  `x-sidecar` anchor but not the network. Removed the test member
+  afterward. Found and fixed a real ordering bug via an actual
+  fresh-clone simulation (deleted both generated files, sourced `lib.sh`):
+  the original placement checked for `compose.members.yml`'s existence
+  *before* the generate-if-missing fallback had a chance to create it, so
+  a fresh clone's first script run would have silently omitted the file
+  it had just generated moments later in the same source. Reordered so
+  the fallback runs first. Also found and fixed: `generate.py` never
+  cleared stale scenario files from a removed member -- directly relevant
+  to Task 9's byte-identical-after-remove proof. `.gitignore` gained all
+  five generated `hurl/` artefacts (confirmed via `git check-ignore` that
+  none were actually ignored before, only conventionally never staged).
+  Live-verified end to end: fresh full-profile deploy -> seed ->
+  `acceptance.sh` GREEN on the first attempt, with the generated (empty)
+  overlay merged into every compose call with zero effect on the real
+  deploy. `check_scenarios.py` green; 25 unit tests green.
 
 ## Task 6: Canonical vs joined in the manifest and the gate
 
