@@ -216,10 +216,31 @@ file.
 
 **Files:** `hurl/generate.py`, `scripts/lib.sh`
 
-- [ ] **Step 1:** `hurl/vars.env` is generated containing the token PIN and admin password in cleartext and is mounted into the Hurl container. Set mode `600` on it at generation time, in the same place it is written.
-- [ ] **Step 2:** audit for secret leakage into output: `grep -rn "XROAD_TOKEN_PIN\|XROAD_ADMIN_PASSWORD" scripts/ hurl/ apps/` and confirm no path echoes a value, including in `set -x` traces and error messages. Fix any that do.
-- [ ] **Step 3:** confirm `.gitignore` still covers `.env`, `hurl/vars.env` and `out/`; add an explicit note next to the `.env` entry that it holds live credentials.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** `hurl/vars.env` is generated containing the token PIN and admin password in cleartext and is mounted into the Hurl container. Set mode `600` on it at generation time, in the same place it is written.
+- [x] **Step 2:** audit for secret leakage into output: `grep -rn "XROAD_TOKEN_PIN\|XROAD_ADMIN_PASSWORD" scripts/ hurl/ apps/` and confirm no path echoes a value, including in `set -x` traces and error messages. Fix any that do.
+- [x] **Step 3:** confirm `.gitignore` still covers `.env`, `hurl/vars.env` and `out/`; add an explicit note next to the `.env` entry that it holds live credentials.
+- [x] **Step 4:** commit.
+
+**Verified live (2026-07-28):** the audit found a real leak —
+`hurl/check_scenarios.py`'s vars.env/.env agreement check printed both
+actual secret values into its failure message whenever they disagreed.
+Reproduced deliberately (hand-edited `vars.env`'s `token_pin` to a marker
+string, ran the check, confirmed the marker appeared in the output) before
+and after the fix — the marker showed up in the old message, and does not
+in the new one, which now names only which variable disagrees. Checked
+`apps/console/xroad.py`'s `AdminSession` specifically for the `set -x`/repr/
+traceback risk the plan calls out: it never assigns `password` to `self` at
+all, so there is no attribute for a repr or an uncaught exception to expose
+later — confirmed by reading the constructor, not assumed from the
+docstring's own claim. `scripts/acceptance.sh`'s `api_key()` calls do pass
+the admin password as a bare positional argument, which `bash -x` would
+print in a trace; noted as an operational caveat (debugging these scripts
+with `-x` exposes credentials) rather than restructured, since changing
+`api_key()`'s signature to avoid that is a larger, separate change than
+this task's scope. `hurl/vars.env` confirmed `600` after every
+regeneration; `.gitignore` already covered all three paths, now with a
+one-line reason next to `.env` and `hurl/vars.env`. `check_scenarios.py`
+and `scripts/acceptance.sh` both re-confirmed clean/GREEN after the fix.
 
 ## Task 6: A changed PIN fails loudly, not confusingly
 
