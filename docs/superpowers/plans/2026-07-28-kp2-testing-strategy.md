@@ -82,11 +82,32 @@ scripts/verify.sh --live    # --fast, then acceptance.sh against a RUNNING stack
 scripts/verify.sh --full    # purge, deploy, seed, acceptance, console smoke. ~15 min
 ```
 
-- [ ] **Step 2:** `--fast` runs, in this order, cheapest first: `check_scenarios.py`, the ship gate, `check-exposure.sh`, `check-python-floor.sh` (if the simplification plan has landed it), and pytest across `tests/` and `apps/console/tests/`.
-- [ ] **Step 3:** `--live` refuses, with a clear message, when no federation is reachable — it must never silently deploy one. Distinguishing "the checks failed" from "there was nothing to check" is the whole point of the tier.
-- [ ] **Step 4:** **fail fast in the deploy path.** `hurl/run-linkup.sh` runs the `--fast` tier before it starts any container. A typo currently costs fifteen minutes to discover; it should cost five seconds.
-- [ ] **Step 5:** measure and record each tier's actual wall time in `README.md`, so the numbers in this plan are replaced by real ones.
-- [ ] **Step 6:** commit.
+- [x] **Step 2:** `--fast` runs, in this order, cheapest first: `check_scenarios.py`, the ship gate, `check-exposure.sh`, `check-python-floor.sh` (if the simplification plan has landed it), and pytest across `tests/` and `apps/console/tests/`.
+- [x] **Step 3:** `--live` refuses, with a clear message, when no federation is reachable — it must never silently deploy one. Distinguishing "the checks failed" from "there was nothing to check" is the whole point of the tier.
+- [x] **Step 4:** **fail fast in the deploy path.** `hurl/run-linkup.sh` runs the `--fast` tier before it starts any container. A typo currently costs fifteen minutes to discover; it should cost five seconds.
+- [x] **Step 5:** measure and record each tier's actual wall time in `README.md`, so the numbers in this plan are replaced by real ones.
+- [x] **Step 6:** commit.
+
+**Verified live (2026-07-28):** `check-python-floor.sh` doesn't exist yet
+(it belongs to the simplification plan, sequenced to land after this one)
+— `--fast` checks for it and runs it only if present, per Step 2's own
+"if it has landed" wording, rather than requiring it. Measured all three
+tiers for real rather than estimating: `--fast` ~8s, `--live` ~23s
+(against the already-running stack, both well under target), `--full`
+~918s (one real cold cycle, timed end to end). Proved `--live`'s refusal
+path by pointing its own reachability probe at a port nothing listens on
+— refused with the exact message, restored, re-confirmed the real path
+still passes. Proved `run-linkup.sh`'s fail-fast wiring for real: injected
+the same bare-port fault from the exposure-and-secrets plan's Task 3 test,
+confirmed the deploy stopped exactly at `check-exposure.sh`'s failure line
+— "bringing the federation containers up" never printed, and the running
+container count never changed. Found and fixed a real bug during the
+`--full` timing run itself: `console.sh up` returning is not the same as
+the FastAPI app inside actually accepting connections yet, so the bare
+health-check that followed it failed on a container that was healthy two
+seconds later — fixed with a bounded retry and reproduced the exact race
+against a real container restart to confirm the fix, rather than trusting
+the fix without re-triggering the failure.
 
 ## Task 3: Federation snapshot and restore
 
