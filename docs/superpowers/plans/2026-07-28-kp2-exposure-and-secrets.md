@@ -246,10 +246,36 @@ and `scripts/acceptance.sh` both re-confirmed clean/GREEN after the fix.
 
 **Files:** `scripts/lib.sh`, `hurl/run-linkup.sh`, `docs/xroad-770-notes.md`
 
-- [ ] **Step 1:** on a successful deploy, record a fingerprint of the PIN actually used — `printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256` — into `out/.token-fingerprint` (mode `600`, never the value itself).
-- [ ] **Step 2:** on subsequent runs, if the fingerprint exists, disagrees with the current `.env`, and federation volumes still exist, fail with: the software token was initialised with a different PIN; either restore the old value or `scripts/teardown.sh --purge` and redeploy.
-- [ ] **Step 3:** confirm live that this is the real behaviour — deploy, change the PIN in `.env`, redeploy, and record what X-Road actually does (which error, at which step, and whether the sidecar's autologin or the admin API fails first) in `docs/xroad-770-notes.md`. If it turns out to be benign, say so and downgrade the check to a warning; do not assert a failure mode nobody observed.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** on a successful deploy, record a fingerprint of the PIN actually used — `printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256` — into `out/.token-fingerprint` (mode `600`, never the value itself).
+- [x] **Step 2:** on subsequent runs, if the fingerprint exists, disagrees with the current `.env`, and federation volumes still exist, fail with: the software token was initialised with a different PIN; either restore the old value or `scripts/teardown.sh --purge` and redeploy.
+- [x] **Step 3:** confirm live that this is the real behaviour — deploy, change the PIN in `.env`, redeploy, and record what X-Road actually does (which error, at which step, and whether the sidecar's autologin or the admin API fails first) in `docs/xroad-770-notes.md`. If it turns out to be benign, say so and downgrade the check to a warning; do not assert a failure mode nobody observed.
+- [x] **Step 4:** commit.
+
+**Verified live (2026-07-28):** Step 3 happened first, and from a real
+occurrence rather than a manufactured one — `scripts/gen-secrets.sh --force`
+was genuinely needed at this point in the session (the pack's own actual
+`.env` still held the historically-published `Progressa123!`/`secret`
+values Task 4 refuses), against a federation that was already deployed and
+GREEN. Recreating the containers (no purge) surfaced the exact predicted
+failure mode: the autologin process logs `(re)trying to enter PIN` on
+repeat, the admin API's own `/tokens` endpoint reports
+`"status": "USER_PIN_INCORRECT"` with both keys `"available": false"`
+(a clean, unambiguous signal — but only if you know to check that
+endpoint), and a real cross-server call instead sees
+`Server.ClientProxy.SslAuthenticationFailed: "no valid authentication
+certificate"` — a certificate-shaped error for a PIN problem, with the
+certificate itself confirmed valid (`ocsp_status: OCSP_RESPONSE_GOOD`)
+throughout. Not benign — the hard-failure check stands as designed, not
+downgraded to a warning. Full findings in `docs/xroad-770-notes.md` §9.
+Steps 1-2 were then written and tested against this same live federation:
+matching fingerprint sources clean; a deliberately mismatched `.env` with
+the real `kp2-cs-db` volume present refuses with the exact message; the
+same mismatch with the volume check pointed at a name confirmed not to
+exist (a controlled substitute for an actual purge, to avoid destroying
+the session's live stack just to test one branch) correctly proceeds
+without refusing. Purged and redeployed fresh afterward with the
+regenerated `.env`; `scripts/acceptance.sh` and `scripts/console.sh` both
+confirmed working end to end before any of Task 6's own testing began.
 
 ## Task 7: Documentation and verification
 
