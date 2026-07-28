@@ -296,12 +296,107 @@ Teardown and Known traps).
 
 **Files:** `docs/superpowers/plans/…` (this file's checkboxes), `docs/production-delta.md`, `docs/xroad-770-notes.md`
 
-- [ ] **Step 1:** **the acceptance criterion for this whole plan.** With the stack up, add a throwaway sixth member — a health ministry publishing one service, `hosted_on: ss-plr`, granting access to `PNEA:EXAMS` — by running `prompts/member.md`. Regenerate, redeploy, and confirm: its subsystem registers, its service publishes, its ACL is exact, and a live call from PNEA resolves.
-- [ ] **Step 2:** `scripts/member.sh remove` it, regenerate, and confirm the generated artefacts return **byte-identical** to the Task 1 baselines for both profiles. If they do not, the allocation is not stable and this task is not done.
-- [ ] **Step 3:** repeat Step 1 with a member that owns its own Security Server, to exercise the compose overlay and port allocation. Record the RAM cost, and record in `README.md` that `hosted_on` is the recommended default for joined members on a single host.
-- [ ] **Step 4:** **investigation** — whether `DELETE /clients/{id}` and member deletion on the Central Server can retire a member from a running federation, or whether `teardown.sh --purge` really is the only path. Record the finding in `docs/xroad-770-notes.md` either way; it decides whether a demonstration join can be undone on camera.
-- [ ] **Step 5:** **investigation** — what a joined member costs when it owns a server (RAM, boot time, and whether the `retries: 120` healthcheck budget still covers a six-server start from persisted volumes). Record in `docs/production-delta.md`.
-- [ ] **Step 6:** commit.
+- [x] **Step 1:** **the acceptance criterion for this whole plan.** With the stack up, add a throwaway sixth member — a health ministry publishing one service, `hosted_on: ss-plr`, granting access to `PNEA:EXAMS` — by running `prompts/member.md`. Regenerate, redeploy, and confirm: its subsystem registers, its service publishes, its ACL is exact, and a live call from PNEA resolves.
+- [x] **Step 2:** `scripts/member.sh remove` it, regenerate, and confirm the generated artefacts return **byte-identical** to the Task 1 baselines for both profiles. If they do not, the allocation is not stable and this task is not done.
+- [x] **Step 3:** repeat Step 1 with a member that owns its own Security Server, to exercise the compose overlay and port allocation. Record the RAM cost, and record in `README.md` that `hosted_on` is the recommended default for joined members on a single host.
+- [x] **Step 4:** **investigation** — whether `DELETE /clients/{id}` and member deletion on the Central Server can retire a member from a running federation, or whether `teardown.sh --purge` really is the only path. Record the finding in `docs/xroad-770-notes.md` either way; it decides whether a demonstration join can be undone on camera.
+- [x] **Step 5:** **investigation** — what a joined member costs when it owns a server (RAM, boot time, and whether the `retries: 120` healthcheck budget still covers a six-server start from persisted volumes). Record in `docs/production-delta.md`.
+- [x] **Step 6:** commit.
+
+**Verified live (2026-07-28):** ran the whole thing twice — once with a
+hosted throwaway member (MOH, `hosted_on: ss-plr`, no own container) and
+once with an own-server throwaway member (PHIB) — on a fresh cold `full`-
+profile deploy each time.
+
+Step 1 (MOH): added `configs/member-moh/moh.yaml` + the manifest entry by
+hand, following `prompts/member.md`'s own instructions (this session played
+the role the prompt is written for). Regenerated, purged, redeployed fresh.
+`scripts/acceptance.sh` — unmodified since Task 7 — picked up
+`2.x(MOH:HEALTH) — client REGISTERED on ss-plr` and
+`2.x.acl(health-api) — health-api grants exactly PROGRESSA:GOV:PNEA:EXAMS`
+automatically. Confirmed with a direct `curl` through PNEA's own Security
+Server (`X-Road-Client` header + `/r1/.../health-api/...` path) that a real
+call resolves to real data, and that an ungranted caller (MOEYS) gets a
+clean `Server.ServerProxy.AccessDenied`, not a hang or a silent pass.
+
+Step 2 (MOH removed): `scripts/member.sh remove moh`, regenerated. Rather
+than trust an in-session memory of "what Task 1's baseline looked like,"
+checked out commit `96e2364` (end of Task 8) into a separate `git worktree`,
+ran `hurl/generate.py` there for both profiles independently, and `diff -r`'d
+every generated artefact (`scenarios/`, `vars.env`, `topology.json`,
+`topology.sh`, `compose.members.yml`) against the live repo's post-
+add-then-remove state — byte-identical on both `full` and `lite`. Repeated
+this exact independent-baseline diff again after Step 3's much larger
+round-trip (below); still byte-identical, confirming none of the three bugs
+found and fixed along the way touched canonical-member output.
+
+Step 3 (PHIB, own server): added `configs/member-phib/phib.yaml` (no
+`hosted_on`), regenerated — `hurl/compose.members.yml` correctly generated a
+real `ss-phib` service block. This is where the step earned its keep: purged
+and redeployed fresh, and the new server's admin API became silently
+unreachable from the host (TLS handshake accepted, never completed) some
+time after an initially successful deploy. Root-caused live, not guessed:
+`lsof -i :7000` on the host found macOS's `ControlCenter` (AirPlay Receiver)
+squatting the port — the exact same hazard class already known for port
+5000, just never checked for 7000, which happened to be
+`FRESH_PORT_START`'s own default. Fixed `FORBIDDEN_PORT_RANGE` in
+`hurl/generate.py` to exclude 7000 too (now a `frozenset`, not a bare
+`range`, since the two bad ports aren't contiguous). While diagnosing this,
+found and fixed two more real, live-discovered gaps in the same generated
+Compose block: it was missing the `xroad-demo-local.ini` bind mount (5s vs
+60s auth-cache — `docs/xroad-770-notes.md` §6) and the `healthcheck` block
+(`retries: 120`) every canonical server gets from the hand-written
+`hurl/compose.hurl.yml` — a joined member's own server had neither, so
+nothing ever waited for it to become ready. Also found and fixed a smaller,
+pre-existing wording bug while adding MOH: a hosted member's stub `.hurl`
+comment unconditionally said "lite profile: ... hosted ..." even for a
+member hosted permanently via its own config's `hosted_on`, independent of
+profile — now branches on which of the two hosting mechanisms actually
+applies. Re-deployed fresh after all four fixes: `PHIB:CLAIMS` registered
+in ~15 minutes (two independent cold 6-server runs measured 880s and 898s),
+`scripts/acceptance.sh` GREEN and fast (~16s, no hangs) with
+`2.x(PHIB:CLAIMS)` and `2.x.acl(claims-api)` passing automatically, and a
+direct `curl` through PNEA confirmed the live call resolves. RAM measured
+via `docker stats --no-stream`: ~2.1 GiB per Security Server regardless of
+canonical or joined, ~15–17 GiB total for six servers — recorded in
+`docs/production-delta.md` along with the `hosted_on`-by-default
+recommendation, now also stated in `README.md`.
+
+Step 4 (investigation): actually attempted the retirement live, not just
+read the OpenAPI spec. `PUT /clients/{id}/unregister` on PHIB's own server
+sent a `CLIENT_DELETION_REQUEST` with no approval step (`POST
+.../approval` → `403`, nothing to approve — it auto-processes); the client
+sat at `DELETION_IN_PROGRESS` until propagation caught up (a few minutes),
+then `DELETE /clients/{id}` succeeded (`204`) where it had previously failed
+with `409 action_not_possible`. Confirmed with a live call from PNEA that
+the retired member now fails cleanly with `Server.ClientProxy.UnknownMember`.
+Went further than the step asked and also cleared the member's identity
+from the Central Server (`DELETE /subsystems/{id}` then `DELETE
+/members/{id}`, both plain synchronous `204`s) and confirmed `GET
+/clients?q=PHIB` on the CS returns empty. **Answer: yes, undoable live,
+in four calls, over a few real minutes** — recorded in full in
+`docs/xroad-770-notes.md` §7, including a second live-found gotcha
+(removing a member's config before purging orphans its own-server container
+and volumes, since `compose.members.yml` no longer references them —
+`ss-phib` and its three `kp2-phib-*` volumes had to be cleaned up by hand).
+
+Step 5: folded into Step 3's findings above (RAM, boot time, and the host-
+CPU-contention risk of six concurrent X-Road JVMs on a laptop, which
+surfaced as a real, reproducible symptom independent of the three config
+bugs) — all recorded in `docs/production-delta.md`.
+
+Step 6: `scripts/member.sh remove phib`, regenerated, independent-baseline
+`diff -r` byte-identical on both profiles (as in Step 2). Manually cleaned
+up PHIB's orphaned container/volumes (the Step 4 gotcha), then did one more
+full purge → cold redeploy → seed → acceptance cycle with **only the
+canonical five**, to leave the repository's live state matching its
+committed default (`deployment.yaml`: `profile: full`) rather than whatever
+the last throwaway member happened to need. GREEN (one retry needed on the
+first run — the same pre-existing, documented, cold-deploy
+`assert_record.py` `JSONDecodeError` flakiness seen throughout this whole
+session, not a regression). `hurl/generate.py` (the three fixes),
+`docs/xroad-770-notes.md`, `docs/production-delta.md` and `README.md`
+committed together as Task 9's code/docs commit.
 
 ---
 
