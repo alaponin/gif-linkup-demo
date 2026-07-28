@@ -183,12 +183,23 @@ def main() -> None:
     # identity:/identifiers: above. A joined member is allowed to add a
     # subsystem topology.json knows about that identifiers: doesn't (design
     # decision 2) -- it's a superset relationship, not exact equality.
+    deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
+
+    # A spec that would publish the stack outside this host, without saying
+    # so twice, should not pass the ship gate quietly -- same rule scripts/
+    # lib.sh enforces at deploy time (member-parameterisation Task 2), pinned
+    # here too so a bad deployment.yaml is caught by --ready as well.
+    network = deployment.get("network") or {}
+    bind = network.get("bind", "127.0.0.1")
+    if bind not in ("127.0.0.1", "::1", "localhost") and network.get("acknowledge_public_exposure") is not True:
+        note(f"deployment.yaml sets network.bind={bind!r} without network.acknowledge_public_exposure: true "
+             "-- this would publish the X-Road proxy ports, the admin UIs and the Test CA with no authentication")
+
     topo_path = PACK / "hurl" / "topology.json"
     if not topo_path.exists():
         note("hurl/topology.json does not exist -- run hurl/generate.py")
     else:
         topo = json.loads(topo_path.read_text())
-        deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
         expected_profile = deployment.get("profile", "full")
         if topo.get("profile") != expected_profile:
             note(f"topology.json profile ({topo.get('profile')!r}) disagrees with deployment.yaml ({expected_profile!r})")

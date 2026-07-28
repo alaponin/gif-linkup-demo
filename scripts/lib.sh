@@ -35,6 +35,36 @@ export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
 export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
+# A non-loopback bind publishes, with no authentication, the X-Road proxy
+# ports (X-Road-Client is a self-asserted header, not a credential), the
+# admin UIs, and the Test CA's signing endpoint -- see the message below.
+# Two statements (bind + an explicit acknowledgement) rather than one, so
+# this cannot be flipped by someone skimming deployment.yaml.
+case "$XROAD_BIND" in
+  127.0.0.1|::1|localhost) ;;
+  *)
+    ACK=$(yq_get "$DEPLOY_SPEC" network.acknowledge_public_exposure 2>/dev/null || echo false)
+    if [ "$ACK" != "True" ]; then
+      echo "lib.sh: deployment.yaml sets network.bind=$XROAD_BIND without
+network.acknowledge_public_exposure: true.
+
+On a non-loopback interface this publishes, with no authentication:
+  - the five Security Server :8080 proxy ports. X-Road's client-proxy
+    interface has NO authentication -- the caller simply asserts who it is
+    in the X-Road-Client header, because that interface is defined to sit on
+    the agency's trusted internal network. Anyone who can reach it can
+    impersonate any subsystem this server hosts.
+  - the Central Server admin UI, whose credentials are fixed in the release
+    image (xrd/secret) and cannot be rotated.
+  - the Test CA, whose /testca/sign endpoint signs any CSR it is given.
+
+If that is genuinely what you want, set acknowledge_public_exposure: true.
+Otherwise leave bind at 127.0.0.1 and reach the stack over an SSH tunnel." >&2
+      exit 1
+    fi
+    echo "lib.sh: WARNING -- network.bind=$XROAD_BIND, acknowledged in deployment.yaml. This stack is reachable from outside this host with no authentication on its X-Road proxy ports." >&2
+    ;;
+esac
 
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
 # which SS hosts which subsystem, and which joined members own a container) --
