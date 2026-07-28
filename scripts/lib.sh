@@ -48,19 +48,33 @@ COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
 COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml" --profile full)
 
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
-# which SS hosts which subsystem). acceptance.sh/deploy.sh must not re-derive these.
-declare -A SS_UI=( [ss-pdga]=1000 [ss-pnea]=2000 [ss-plr]=3000 [ss-pnia]=5100 [ss-moeys]=6000 )
-declare -A SS_REST=( [ss-pdga]=1080 [ss-pnea]=2080 [ss-plr]=3080 [ss-pnia]=5180 [ss-moeys]=6080 )
-# ss-pnia is 5100/5180, not 5000/5080: port 5000 collides with macOS's AirPlay
-# Receiver (ControlCenter), which hangs the connection instead of refusing it.
-# See docker-compose.yml's ss-pnia comment. Confirmed at P0, 2026-07-25.
-SS_ORDER=(ss-pdga ss-pnea ss-plr ss-pnia ss-moeys)   # management SS first
-declare -A HOST_SS=( [PDGA:MANAGEMENT]=ss-pdga [PNEA:EXAMS]=ss-pnea \
-                     [PLR:ENROLMENT]=ss-plr [PNIA:IDENTITY]=ss-pnia [MOEYS:PEMIS]=ss-moeys )
-if [ "${LITE:-0}" = "1" ]; then
-  SS_ORDER=(ss-pdga ss-pnea ss-plr)
-  HOST_SS[PNIA:IDENTITY]=ss-plr
-  HOST_SS[MOEYS:PEMIS]=ss-plr
+# which SS hosts which subsystem). acceptance.sh/deploy.sh must not re-derive
+# these -- generated once by hurl/generate.py (from configs/ + manifest.yaml +
+# deployment.yaml's profile) into hurl/topology.sh, which declares SS_UI,
+# SS_REST, SS_ORDER and HOST_SS with exactly the lite/full-aware values this
+# file used to hand-declare. apps/console reads the same generation run's
+# hurl/topology.json -- one topology, not two hand-kept copies. ss-pnia's
+# 5100/5180 (not 5000/5080, which collides with macOS's AirPlay Receiver) is
+# now pinned in hurl/generate.py's PINNED_PORTS table -- see its comment.
+TOPOLOGY_SH="$PACK_DIR/hurl/topology.sh"
+if [ ! -f "$TOPOLOGY_SH" ]; then
+  ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
+fi
+[ -f "$TOPOLOGY_SH" ] || { echo "lib.sh: $TOPOLOGY_SH still missing after running generate.py" >&2; exit 1; }
+. "$TOPOLOGY_SH"
+# Regenerated only when missing, above -- a topology.sh left over from a
+# different profile would otherwise be sourced silently. hurl/topology.json
+# (same generation run) carries the profile it was built for; catch the
+# mismatch here with a clear message rather than let SS_ORDER/HOST_SS be
+# quietly wrong for whatever is about to run.
+TOPO_JSON="$PACK_DIR/hurl/topology.json"
+if [ -f "$TOPO_JSON" ]; then
+  topo_profile=$(python3 -c "import json; print(json.load(open('$TOPO_JSON'))['profile'])")
+  deploy_profile=$(yq_get "$DEPLOY_SPEC" profile)
+  if [ "$topo_profile" != "$deploy_profile" ]; then
+    echo "lib.sh: hurl/topology.json was generated for profile '$topo_profile' but deployment.yaml now says '$deploy_profile' -- run python3 hurl/generate.py (hurl/run-linkup.sh does this for you) before continuing" >&2
+    exit 1
+  fi
 fi
 
 log()  { printf '\033[1;34m[kp2]\033[0m %s\n' "$*"; }
