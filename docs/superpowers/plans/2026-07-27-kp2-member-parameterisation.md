@@ -227,11 +227,35 @@ PINNED_PORTS = {  # ui, rest -- see lib.sh's AirPlay note on ss-pnia
 
 **Files:** `scripts/acceptance.sh`, `acceptance/member.md` (new)
 
-- [ ] **Step 1:** replace the hardcoded `for pair in MOEYS:PEMIS PNEA:EXAMS PLR:ENROLMENT PNIA:IDENTITY` with a loop over `topology.sh`'s `HOST_SS` keys, so the registration check covers whatever set is deployed.
-- [ ] **Step 2:** replace the two bespoke ACL checks (`check_241`, `check_251`) with one loop over every service declared in every member config: the subject list must equal the config's `access:` list exactly, and that subject's granted service codes must equal exactly the service published. Services with an empty `access:` must have **no** subjects — that is `pemis-api`'s current state, and it is currently unchecked.
-- [ ] **Step 3:** make the 2.6 exchange read its two r1 paths, its consumer and its negative caller from `configs/x-road-bus/2.6.yaml` rather than hardcoding `ID_URL`/`EN_URL`. The field-set assertions stay as they are — 2.6 is the education story's headline check and is deliberately specific.
-- [ ] **Step 4:** write `acceptance/member.md` in the pack's given/when/then idiom, describing the generic per-member check so joined members have a documented acceptance rather than an implicit one.
-- [ ] **Step 5:** run the full suite on both profiles; green. Commit.
+- [x] **Step 1:** replace the hardcoded `for pair in MOEYS:PEMIS PNEA:EXAMS PLR:ENROLMENT PNIA:IDENTITY` with a loop over `topology.sh`'s `HOST_SS` keys, so the registration check covers whatever set is deployed.
+- [x] **Step 2:** replace the two bespoke ACL checks (`check_241`, `check_251`) with one loop over every service declared in every member config: the subject list must equal the config's `access:` list exactly, and that subject's granted service codes must equal exactly the service published. Services with an empty `access:` must have **no** subjects — that is `pemis-api`'s current state, and it is currently unchecked.
+- [x] **Step 3:** make the 2.6 exchange read its two r1 paths, its consumer and its negative caller from `configs/x-road-bus/2.6.yaml` rather than hardcoding `ID_URL`/`EN_URL`. The field-set assertions stay as they are — 2.6 is the education story's headline check and is deliberately specific.
+- [x] **Step 4:** write `acceptance/member.md` in the pack's given/when/then idiom, describing the generic per-member check so joined members have a documented acceptance rather than an implicit one.
+- [x] **Step 5:** run the full suite on both profiles; green. Commit.
+
+**Verified live (2026-07-28):** rewrote `scripts/acceptance.sh`'s registration
+loop to iterate `"${!HOST_SS[@]}"` (sorted, excluding `PDGA:MANAGEMENT`), and
+replaced the two bespoke ACL checks with one loop driven by
+`hurl/topology.json`'s `subsystems[].services[].access` — read from the
+generated artefact directly, not re-parsed from configs. Confirmed live on
+`full`: `2.x.acl(pemis-api) — pemis-api grants exactly (nobody)` now actually
+asserts the empty-access case, previously entirely unchecked. The 2.6
+exchange's `X-Road-Client`/negative-caller headers and both r1 path templates
+now come from `configs/x-road-bus/2.6.yaml` via a `mapfile` read; entrypoint
+(host:port) resolution deliberately still goes through `HOST_SS`/`SS_REST`
+rather than 2.6.yaml's static `entrypoint:` fields — the same profile-unaware
+trap `apps/console/truth.py` already documents. Ran the full suite GREEN
+end-to-end on a fresh cold deploy under `lite` (correctly showing
+`2.x(PNIA:IDENTITY) — client REGISTERED on ss-plr` and the negative check
+denied via its hosting server) and then again on a fresh cold deploy under
+`full` (all five members, `2.6.4` denied via each member's own server,
+`check_scenarios.py` also clean: 82 captures, 18 variables, identifiers match
+manifest.yaml). `deployment.yaml` left at its committed default,
+`profile: full`. Wrote `acceptance/member.md` in the established
+given/when/then house style, explicitly scoping it as the check 2.2–2.5
+already make, expressed once and generically — not a new module number — so
+a joined member added via Task 8's `prompts/member.md` has documented
+acceptance from the moment it exists.
 
 ## Task 8: The generating prompt and the member script
 
