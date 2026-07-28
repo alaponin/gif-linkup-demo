@@ -35,27 +35,18 @@ export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
 
-# Full topology by default; profile: lite (deployment.yaml) drops ss-pnia/
-# ss-moeys (compose profile "full") and hosts their subsystems on ss-plr instead.
-COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
-[ "${LITE:-0}" != "1" ] && COMPOSE+=(--profile full)
-# Teardown must always see every service, whatever LITE is set to now, AND
-# every compose file that can have defined a volume -- hurl/compose.hurl.yml's
-# ca-certs volume mounts at /home/ca/certs, a subpath of the base file's
-# ca-data:/home/ca mount. Omitting it here left `down -v` unable to remove
-# ca-certs, so a "purged" reset still handed a fresh CA container stale certs
-# from the previous run (found at P0, 2026-07-25).
-COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml" --profile full)
-
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
-# which SS hosts which subsystem). acceptance.sh/deploy.sh must not re-derive
-# these -- generated once by hurl/generate.py (from configs/ + manifest.yaml +
-# deployment.yaml's profile) into hurl/topology.sh, which declares SS_UI,
-# SS_REST, SS_ORDER and HOST_SS with exactly the lite/full-aware values this
-# file used to hand-declare. apps/console reads the same generation run's
-# hurl/topology.json -- one topology, not two hand-kept copies. ss-pnia's
-# 5100/5180 (not 5000/5080, which collides with macOS's AirPlay Receiver) is
-# now pinned in hurl/generate.py's PINNED_PORTS table -- see its comment.
+# which SS hosts which subsystem, and which joined members own a container) --
+# generated once by hurl/generate.py (from configs/ + manifest.yaml +
+# deployment.yaml's profile) into hurl/topology.sh (declares SS_UI, SS_REST,
+# SS_ORDER and HOST_SS with exactly the lite/full-aware values this file used
+# to hand-declare) and hurl/compose.members.yml (joined members' compose
+# blocks, read below). apps/console reads the same generation run's
+# hurl/topology.json -- one topology, not hand-kept copies. Must run before
+# COMPOSE/COMPOSE_ALL are built: compose.members.yml has to exist before its
+# `-f` flag can be added. ss-pnia's 5100/5180 (not 5000/5080, which collides
+# with macOS's AirPlay Receiver) is pinned in hurl/generate.py's PINNED_PORTS
+# table -- see its comment.
 TOPOLOGY_SH="$PACK_DIR/hurl/topology.sh"
 if [ ! -f "$TOPOLOGY_SH" ]; then
   ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
@@ -76,6 +67,25 @@ if [ -f "$TOPO_JSON" ]; then
     exit 1
   fi
 fi
+
+# Full topology by default; profile: lite (deployment.yaml) drops ss-pnia/
+# ss-moeys (compose profile "full") and hosts their subsystems on ss-plr instead.
+# hurl/compose.members.yml (generated above -- joined members that own their
+# own Security Server) is added whenever it exists, to both arrays: a volume
+# it defines can only be removed by a `down -v` that names this file too,
+# same reason hurl/compose.hurl.yml is already in COMPOSE_ALL below.
+COMPOSE_MEMBERS_YML="$PACK_DIR/hurl/compose.members.yml"
+COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
+[ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE+=(-f "$COMPOSE_MEMBERS_YML")
+[ "${LITE:-0}" != "1" ] && COMPOSE+=(--profile full)
+# Teardown must always see every service, whatever LITE is set to now, AND
+# every compose file that can have defined a volume -- hurl/compose.hurl.yml's
+# ca-certs volume mounts at /home/ca/certs, a subpath of the base file's
+# ca-data:/home/ca mount. Omitting it here left `down -v` unable to remove
+# ca-certs, so a "purged" reset still handed a fresh CA container stale certs
+# from the previous run (found at P0, 2026-07-25).
+COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml" --profile full)
+[ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE_ALL+=(-f "$COMPOSE_MEMBERS_YML")
 
 log()  { printf '\033[1;34m[kp2]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[kp2 FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
