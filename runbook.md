@@ -83,6 +83,22 @@ sessions in one browser log each other out — use separate browsers/profiles.
   The reproducibility proof (P5) is: `--purge`, redeploy (`hurl/run-linkup.sh`,
   the from-zero path), reseed, acceptance green.
 
+## Joining a member
+
+- **Add:** run `prompts/member.md` against the joining agency's brief; it
+  produces `configs/member-<key>/<key>.yaml` and the
+  `identity.members.<key>` entry to paste into `manifest.yaml`. Then
+  `python3 hurl/generate.py`, `scripts/deploy.sh` (or `hurl/run-linkup.sh`
+  from zero). There is no script that does this step — writing member
+  config by hand is what the prompt replaces.
+- **List:** `scripts/member.sh list` — key, origin, host server, ports, read
+  from `hurl/topology.json`.
+- **Remove:** `scripts/member.sh remove <key>` — deletes
+  `configs/member-<key>/` and the `manifest.yaml` entry, regenerates.
+  Refuses on a canonical member (the five never renumber or leave). Does
+  **not** touch a running federation: the member stays registered there
+  until `scripts/teardown.sh --purge`.
+
 ## Known traps
 
 Global-conf propagation delays (retry, do not fail); the CSR is generated in DER but
