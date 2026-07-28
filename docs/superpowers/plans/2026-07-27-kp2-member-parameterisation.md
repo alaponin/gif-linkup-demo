@@ -101,7 +101,7 @@ done
 
 **Interfaces:** Produces the `ports` and `scenario_number` fields consumed by Tasks 4–5.
 
-- [ ] **Step 1:** add two pinned tables to `generate.py`, with a comment explaining that they exist so the canonical five never move:
+- [x] **Step 1:** add two pinned tables to `generate.py`, with a comment explaining that they exist so the canonical five never move:
 
 ```python
 PINNED_SCENARIO_NO = {"pnia": "20", "plr": "21", "moeys": "22", "pnea": "23"}
@@ -111,11 +111,28 @@ PINNED_PORTS = {  # ui, rest -- see lib.sh's AirPlay note on ss-pnia
 }
 ```
 
-- [ ] **Step 2:** allocate anything not pinned deterministically from a fresh range — Security Server scenarios from `40`, service scenarios from `50`, host ports from `7000` (UI `7000 + 100n`, REST `7080 + 100n`), ordered by sorted member key so the same member set always yields the same allocation.
-- [ ] **Step 3:** refuse to allocate a port already present in `PINNED_PORTS` or already allocated, and refuse the 5000–5099 range outright with the AirPlay reason in the error message.
-- [ ] **Step 4:** service-scenario numbers follow the same pinned-then-allocated rule (`30`–`32` stay).
-- [ ] **Step 5:** extend `hurl/topology.json` with per-server `ui_port`/`rest_port` (host-side) and per-member `origin`; keep the existing in-network ports as they are, and name the two clearly enough that nobody confuses them.
-- [ ] **Step 6:** regenerate both profiles; scenario and `vars.env` diffs empty, `topology.json` gains fields only. Commit.
+- [x] **Step 2:** allocate anything not pinned deterministically from a fresh range — Security Server scenarios from `40`, service scenarios from `50`, host ports from `7000` (UI `7000 + 100n`, REST `7080 + 100n`), ordered by sorted member key so the same member set always yields the same allocation.
+- [x] **Step 3:** refuse to allocate a port already present in `PINNED_PORTS` or already allocated, and refuse the 5000–5099 range outright with the AirPlay reason in the error message.
+- [x] **Step 4:** service-scenario numbers follow the same pinned-then-allocated rule (`30`–`32` stay).
+- [x] **Step 5:** extend `hurl/topology.json` with per-server `ui_port`/`rest_port` (host-side) and per-member `origin`; keep the existing in-network ports as they are, and name the two clearly enough that nobody confuses them.
+- [x] **Step 6:** regenerate both profiles; scenario and `vars.env` diffs empty, `topology.json` gains fields only. Commit.
+
+  **Verified live (2026-07-28):** added a throwaway fifth member owning
+  its own server, regenerated -- got a real `40-ss-testagency.hurl` /
+  `50-services-testagency.hurl` and a fresh `7000`/`7080` port allocation,
+  correctly avoiding every pinned value. Removed it and confirmed
+  scenarios/vars.env return byte-identical and `topology.json` returns to
+  exactly this task's own field-gain diff, proving the allocation is
+  stable and reversible -- the same property Task 9's real end-to-end
+  proof depends on. `PINNED_PORTS` replaced `HOST_PORTS` (re-keyed from
+  DNS name to SS-owner key, since that is what the allocator and
+  `_ss_entry` both need to resolve pinned-vs-fresh). The canonical four's
+  two historically divergent iteration orders (`security_servers`:
+  pnea/plr/pnia/moeys; `subsystems`: pnia/plr/moeys/pnea) were kept
+  exactly as they were, since JSON array order is part of the
+  byte-identical guarantee -- a new member is appended after, in its own
+  deterministic order, in both. `check_scenarios.py` green; 25 unit tests
+  green.
 
 ## Task 4: One topology, consumed by bash
 
