@@ -93,7 +93,7 @@ leaving it wrong would defeat the point of the check.
 
 **Files:** `scripts/lib.sh`, `deployment.yaml`, `hurl/check_scenarios.py`
 
-- [ ] **Step 1:** in `lib.sh`, immediately after reading `network.bind`, refuse a non-loopback bind that is not acknowledged:
+- [x] **Step 1:** in `lib.sh`, immediately after reading `network.bind`, refuse a non-loopback bind that is not acknowledged:
 
 ```
 lib.sh: deployment.yaml sets network.bind=0.0.0.0 without
@@ -113,10 +113,27 @@ If that is genuinely what you want, set acknowledge_public_exposure: true.
 Otherwise leave bind at 127.0.0.1 and reach the stack over an SSH tunnel.
 ```
 
-- [ ] **Step 2:** accept `127.0.0.1`, `::1` and `localhost` as loopback; everything else needs the acknowledgement.
-- [ ] **Step 3:** document the key in `deployment.yaml` as a commented-out line with the one-sentence reason, so its existence is discoverable without reading `lib.sh`.
-- [ ] **Step 4:** add the same validation to `hurl/check_scenarios.py` so the ship gate catches it too — a spec file that would deploy publicly should not pass `--ready` quietly.
-- [ ] **Step 5:** test both branches for real: set `bind: 0.0.0.0` without the acknowledgement (expect the refusal), then with it (expect a deploy that works and a loud one-line warning at the top of every script run). Restore `127.0.0.1`. Commit.
+- [x] **Step 2:** accept `127.0.0.1`, `::1` and `localhost` as loopback; everything else needs the acknowledgement.
+- [x] **Step 3:** document the key in `deployment.yaml` as a commented-out line with the one-sentence reason, so its existence is discoverable without reading `lib.sh`.
+- [x] **Step 4:** add the same validation to `hurl/check_scenarios.py` so the ship gate catches it too — a spec file that would deploy publicly should not pass `--ready` quietly.
+- [x] **Step 5:** test both branches for real: set `bind: 0.0.0.0` without the acknowledgement (expect the refusal), then with it (expect a deploy that works and a loud one-line warning at the top of every script run). Restore `127.0.0.1`. Commit.
+
+**Verified live (2026-07-28):** Step 3 landed as part of Task 1's edit to
+`deployment.yaml` (natural to add both the field and its commented sibling
+in one pass). `yq_get` prints Python's `bool` repr (`True`, capital T) for a
+YAML `true`, so the `lib.sh` comparison checks against the literal string
+`"True"`, not `"true"` — confirmed by testing `yq_get` on a real boolean
+before writing the check, not assumed. `check_scenarios.py` reads the same
+key through plain `yaml.safe_load` instead, so there it's a real Python
+`bool` and the comparison is `is not True` — two different representations
+of the same value in two different readers, both confirmed correct rather
+than one copied to the other. Tested all four combinations live (refuse /
+warn-and-proceed, in both `lib.sh` and `check_scenarios.py`): unacknowledged
+`0.0.0.0` refuses with the exact message and exit 1 in both; acknowledged
+`0.0.0.0` prints the warning and exits 0 in `lib.sh`, and passes clean in
+`check_scenarios.py`. Restored `deployment.yaml` byte-identical to its
+Task 1 state (`diff` clean) and re-confirmed a warning-free source and a
+green `scripts/acceptance.sh`.
 
 ## Task 3: Exposure as a tested property
 
