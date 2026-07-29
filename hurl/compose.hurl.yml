@@ -61,6 +61,11 @@ services:
     volumes:
       - ./hurl:/hurl-src:ro
       - ca-certs:/hurl-files/ca:ro
+      # Read-write, unlike the two above: hurl/run-linkup.sh's --report-json
+      # goes here (testing-strategy plan Task 5) -- /hurl-src is read-only on
+      # purpose (generated files are never written back into hurl/ from a
+      # container), so the report needs its own mount.
+      - ./out:/hurl-out
     depends_on:
       cs:
         condition: service_healthy

@@ -176,3 +176,52 @@ Task 6 sequencing note warns against.
 **Recommendation:** use a snapshot soon after taking it, for fast
 iteration within roughly the same working session — not as long-term cold
 storage of a "known-good" federation to come back to days later.
+
+## Where the ~900s deploy actually goes (testing-strategy Task 5)
+
+Nobody knew which part of the ~880–918s deploy dominated — container boot,
+propagation, or the certificate sequences — until `hurl/run-linkup.sh`
+started emitting phase timings (`out/deploy-timings.txt`) and a Hurl
+`--report-json` per-request breakdown. Two cold runs, back to back:
+
+| | Run 1 | Run 2 |
+| --- | --- | --- |
+| Containers healthy | 234s | 215s |
+| Hurl admin-API run | 504s | 462s |
+| **Total** | **738s** | **677s** |
+
+Both runs land a bit under the ~880–918s figures measured for the whole of
+`run-linkup.sh`/`scripts/verify.sh --full` in earlier plans — expected, not
+a discrepancy: this instrumentation starts timing right before `docker
+compose up`, after `generate.py` and the `--fast` tier have already run,
+and stops at the end of the Hurl run, before `seed.sh`/`acceptance.sh`. It
+measures a narrower window on purpose, to isolate exactly the two phases
+the plan asked about.
+
+**The real finding is inside the "Hurl admin-API run" phase.** Summing
+every individual request's own `time` from the JSON report gives only
+**~131s** of actual HTTP work — identical across both runs, since the
+requests themselves are deterministic. The other **~373s (run 1) / ~331s
+(run 2)** is Hurl's own `--retry-interval 10000` sleeping between
+whole-file retries (37 retries in run 1, 34 in run 2 — consistent, not a
+fluke), and it is **overwhelmingly concentrated on four specific entries**:
+the four members' own "Register the subsystem" `PUT
+.../clients/{id}/register` calls, each retried 8–10 times in both runs
+before the Central Server's global configuration had propagated far
+enough for the next step to see the registration. Confirmed by cross-
+referencing the retried entry indices against `hurl/.build/setup.hurl`'s
+own line numbers, not guessed from the label.
+
+**Conclusion:** the deploy is dominated by **waiting for X-Road's own
+asynchronous global-configuration propagation after each member's
+subsystem registration** — not container boot (~215–234s, a distant
+second), and not raw HTTP request latency (~131s, a rounding error by
+comparison). This is inherent to X-Road's own design, not something this
+pack's tooling can shortcut by itself. It does, however, directly answer
+this plan's own "Out of scope" question: **parallelising the four
+independent member sequences (blocked today only by the
+`GET /management-requests?...WAITING` race the plan already flagged as a
+prerequisite fix) is very likely worth revisiting** — the bottleneck is
+exactly the shape parallelism collapses, four *serial* per-member
+propagation waits that could instead overlap, and the four retried entries
+above are precisely the four sequences that would run concurrently.
