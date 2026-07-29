@@ -23,7 +23,13 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
   reproducibility proof) **~918s (~15 min)**. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
-  tier replaced.
+  tier replaced. **When to run which, inside a plan:** `--fast` after each
+  step (it's the one that's always cheap enough to run every time), `--live`
+  once a task is done (proves it against a real running stack, not just
+  statically), `--full` once before the plan is closed out (the
+  reproducibility proof, not a per-task ritual). A plan's own "Verified live
+  (date)" notes should say which tier backed them, so a later reader can
+  tell a `--fast`-only claim from a `--full` one.
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
 profile, X-Road version pins; `.env` carries only secrets), `docker-compose.yml`

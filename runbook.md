@@ -72,6 +72,14 @@ sessions in one browser log each other out — use separate browsers/profiles.
 
 ## Teardown
 
+The federation is a fixture, not a build artefact: it exists to be reused
+across a session's work, not rebuilt every time something needs checking
+against it. Plain `scripts/teardown.sh` between sessions, never `--purge` —
+`--purge` throws the fixture away and pays the ~9-10 minute rebuild
+(`hurl/run-linkup.sh`) again for no reason. Reserve `--purge` for the one
+thing only a from-zero rebuild can prove: the reproducibility proof (P5,
+below), or `scripts/verify.sh --full`, which performs that same proof.
+
 - `scripts/teardown.sh` — stops containers; named volumes survive, so the
   federation's configuration persists across restarts. **To resume, do not
   rerun `deploy.sh`/`hurl/run-linkup.sh`** — the Hurl scenario set always runs
