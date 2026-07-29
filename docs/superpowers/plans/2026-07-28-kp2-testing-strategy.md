@@ -158,10 +158,25 @@ follow-up that actually waits is the only way to narrow it further.
 
 **Files:** `scripts/acceptance.sh`
 
-- [ ] **Step 1:** add `--only <id>` and `--from <id>` (e.g. `--only 2.6`, `--from 2.4`), defaulting to everything so existing invocations are unchanged.
-- [ ] **Step 2:** keep the ordering guarantee — `--from` runs the remaining checks in order, it does not reorder them.
-- [ ] **Step 3:** make the selection visible in the output, so a green run cannot be mistaken for a full one. A partial pass that reads like a full pass is a trap.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** add `--only <id>` and `--from <id>` (e.g. `--only 2.6`, `--from 2.4`), defaulting to everything so existing invocations are unchanged.
+- [x] **Step 2:** keep the ordering guarantee — `--from` runs the remaining checks in order, it does not reorder them.
+- [x] **Step 3:** make the selection visible in the output, so a green run cannot be mistaken for a full one. A partial pass that reads like a full pass is a trap.
+- [x] **Step 4:** commit.
+
+**Verified live (2026-07-29):** the plan's own `--from 2.4` example does not
+match any check id that actually runs today — member-parameterisation Task
+7 already generalised the discrete 2.2/2.3/2.4/2.5 checks into the
+`2.x(...)`/`2.x.acl(...)` loops, so there is no literal "2.4" left to
+select. Rather than silently reinterpret the example, added a hard-failure
+safety net for exactly this case (a selection that matches nothing fails
+loudly, naming the ids that do exist, instead of producing an empty run
+that still prints "GREEN") and documented the real ids in the script's own
+usage comment. Confirmed live: default run unchanged; `--only 2.6` ran
+exactly the five `2.6.*` checks; `--from 2.x.acl` ran from that point
+through `2.6.5` in original order (not reordered); `--from 2.4` and
+`--only nonexistent` both correctly failed with a clear message, confirmed
+via real (non-piped) exit codes, not the tail-masked `$?` a naive test
+would have trusted.
 
 ## Task 5: Measure the deploy
 
