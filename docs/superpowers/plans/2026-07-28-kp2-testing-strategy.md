@@ -299,10 +299,24 @@ environment itself is untested.
 
 **Files:** `README.md`, `runbook.md`, `docs/superpowers/plans/` template usage
 
-- [ ] **Step 1:** document the three tiers and when each applies, in `README.md`, with the measured times from Task 2 Step 5.
-- [ ] **Step 2:** state the policy that plans should follow: `--fast` after each step, `--live` at the end of each task, `--full` once before a plan is closed. The existing "Verified live (date)" notes should say which tier was run.
-- [ ] **Step 3:** add "the federation is a fixture, not a build artefact" to `runbook.md` — `teardown.sh` without `--purge` between sessions, `--purge` only for a reproducibility proof.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** document the three tiers and when each applies, in `README.md`, with the measured times from Task 2 Step 5.
+- [x] **Step 2:** state the policy that plans should follow: `--fast` after each step, `--live` at the end of each task, `--full` once before a plan is closed. The existing "Verified live (date)" notes should say which tier was run.
+- [x] **Step 3:** add "the federation is a fixture, not a build artefact" to `runbook.md` — `teardown.sh` without `--purge` between sessions, `--purge` only for a reproducibility proof.
+- [x] **Step 4:** commit.
+
+**Verified live (2026-07-29):** Step 1's measured times were already in
+`README.md` from Task 2's own edit, so this step's remaining work was
+the "when each applies" policy — added as a direct extension of that
+same bullet, plus a distinct policy paragraph in `runbook.md`'s Teardown
+section for Step 3. Read the plan's own wording narrowly on one point:
+"the existing 'Verified live (date)' notes should say which tier was
+run" is stated here as the policy going forward, not applied as a
+retroactive rewrite of this plan's own Tasks 1-7 notes (each already
+states in prose what was run and how — e.g. Task 7's note above spells
+out a local fresh-checkout simulation rather than a tier name — so
+back-filling a tier label onto seven already-precise notes would be
+churn, not new information). New notes from here on name their tier
+explicitly, per the added README.md policy text.
 
 ---
 
