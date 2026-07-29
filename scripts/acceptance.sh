@@ -2,8 +2,48 @@
 # Run the KP2 acceptance suite — one check per module in acceptance/, in order.
 # Exit non-zero on first failure. 2.6 is the framework's acceptance (Module 5.6).
 # Checks are same-shell functions (no bash -c subshells); topology comes from lib.sh.
+#
+#   scripts/acceptance.sh                # everything, unchanged
+#   scripts/acceptance.sh --only 2.6      # only checks whose id is (or starts
+#                                          # with) 2.6 -- matches 2.6.1..2.6.5
+#   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
+#
+# Ids today are 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>) and
+# 2.6.1-2.6.5 (member-parameterisation Task 7 generalised what used to be
+# discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
+# literal "2.4" id to select; --only/--from match against what actually
+# runs today, not the pre-generalisation module numbers).
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
+
+SELECT_MODE=all
+SELECT_ARG=""
+case "${1:-}" in
+  --only) SELECT_MODE=only; SELECT_ARG=${2:?"--only needs an id, e.g. --only 2.6"} ;;
+  --from) SELECT_MODE=from; SELECT_ARG=${2:?"--from needs an id, e.g. --from 2.6"} ;;
+  "") ;;
+  *) echo "usage: scripts/acceptance.sh [--only <id> | --from <id>]" >&2; exit 1 ;;
+esac
+
+# Hierarchical prefix match: "2.6" matches "2.6" itself, "2.6.1" (a literal
+# "." boundary) and "2.x(...)" style ids (a literal "(" boundary) -- not an
+# unrelated id that merely happens to start with the same characters.
+_id_matches() {
+  case "$1" in
+    "$2"|"$2".*|"$2"'('*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_FROM_REACHED=0
+[ "$SELECT_MODE" = all ] && _FROM_REACHED=1
+_SELECTED_COUNT=0
+
+case "$SELECT_MODE" in
+  all)  log "running the full acceptance suite" ;;
+  only) log "SELECTION: --only $SELECT_ARG -- this is a PARTIAL run, not a full pass" ;;
+  from) log "SELECTION: --from $SELECT_ARG -- this is a PARTIAL run, not a full pass" ;;
+esac
 
 "$(dirname "$0")/check-exposure.sh"
 
@@ -22,6 +62,21 @@ federation is mid-demo. Run scripts/console.sh reset, then re-run this suite."
 fi
 
 check() { local id=$1 desc=$2 fn=$3
+  case "$SELECT_MODE" in
+    only)
+      _id_matches "$id" "$SELECT_ARG" || { log "SKIP $id (not selected: --only $SELECT_ARG)"; return 0; }
+      ;;
+    from)
+      if [ "$_FROM_REACHED" = 0 ]; then
+        if _id_matches "$id" "$SELECT_ARG"; then
+          _FROM_REACHED=1
+        else
+          log "SKIP $id (before --from $SELECT_ARG)"; return 0
+        fi
+      fi
+      ;;
+  esac
+  _SELECTED_COUNT=$((_SELECTED_COUNT + 1))
   if "$fn"; then log "PASS $id — $desc"; else fail "FAIL $id — $desc"; fi }
 
 # ---- 2.1 federation core -----------------------------------------------------
@@ -215,4 +270,15 @@ print(json.dumps({"credential_application": app}, indent=2))
 PY
 log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + provenance)"
 
-log "ACCEPTANCE GREEN — the framework runs (mark modules VERIFIED via kp-solution-verify)"
+if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5."
+fi
+if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5."
+fi
+
+if [ "$SELECT_MODE" = all ]; then
+  log "ACCEPTANCE GREEN — the framework runs (mark modules VERIFIED via kp-solution-verify)"
+else
+  log "ACCEPTANCE GREEN for the SELECTED checks only (--$SELECT_MODE $SELECT_ARG, $_SELECTED_COUNT check(s)) -- this is NOT a full pass, do not mark modules VERIFIED from this alone"
+fi
