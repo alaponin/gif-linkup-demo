@@ -251,10 +251,49 @@ re-confirmed green after every fixture round-trip.
 
 There is no CI in the repository. The `--fast` tier runs in under a minute on any runner and would have caught several of the regressions these plans exist to prevent.
 
-- [ ] **Step 1:** a workflow that runs `scripts/verify.sh --fast` on push and pull request, scoped to changes under the pack.
-- [ ] **Step 2:** pin the Python version to the pack's **host** floor, not the latest — that is the runtime the host scripts must work on, and CI is where the C8 rule gets enforced for free.
-- [ ] **Step 3:** state explicitly in the workflow file that `--live` and `--full` are not run in CI and why (a federation needs ~16 GB and fifteen minutes), so nobody assumes green CI means the stack deploys.
-- [ ] **Step 4:** commit.
+- [x] **Step 1:** a workflow that runs `scripts/verify.sh --fast` on push and pull request, scoped to changes under the pack.
+- [x] **Step 2:** pin the Python version to the pack's **host** floor, not the latest — that is the runtime the host scripts must work on, and CI is where the C8 rule gets enforced for free.
+- [x] **Step 3:** state explicitly in the workflow file that `--live` and `--full` are not run in CI and why (a federation needs ~16 GB and fifteen minutes), so nobody assumes green CI means the stack deploys.
+- [x] **Step 4:** commit.
+
+**Verified live (2026-07-29), with one honest limit:** the "C8 rule" this
+step refers to belongs to the simplification plan and has not landed yet,
+so there is no formally documented floor file to read — pinned to 3.7,
+matching the constraint `hurl/generate.py`'s own code comment already
+states ("host runs system python3.7 -- no str.removeprefix"). Chose
+`ubuntu-22.04` over `ubuntu-latest` deliberately: prebuilt Python 3.7
+binaries are not guaranteed on newer Ubuntu images, which would silently
+defeat the pin.
+
+Found and fixed a real gap by actually testing the fresh-checkout
+scenario locally rather than assuming a workflow file that merely
+*looked* right would work: moved this machine's real `.env` and every
+generated `hurl/` artefact aside (both are gitignored, so a real fresh
+checkout has neither), then confirmed `scripts/verify.sh --fast` fails —
+`check_scenarios.py` compares `hurl/vars.env` against whatever `.env` it
+finds and reports the mismatch, and `check-exposure.sh`'s own `lib.sh`
+refuses outright with no `.env` at all (the exposure-and-secrets plan's
+own Task 4 hardening, which nothing in *this* plan had exercised from
+zero before now — a real interaction between the two plans, not
+something either one anticipated alone). Added a `gen-secrets.sh` +
+`generate.py` setup step to the workflow and confirmed the exact same
+local simulation now passes. Also had to catch, mid-test, that this
+machine's own leftover PIN fingerprint and `kp2-cs-db` volume (real state
+from Task 5's earlier timed deploys) made the corrected sequence
+*locally* fail for an unrelated reason a genuinely fresh CI runner would
+never hit — removed that leftover file too before re-testing, to isolate
+what a real fresh checkout actually experiences. Restored this machine's
+own `.env`/generated files/fingerprint afterward and re-confirmed
+`scripts/verify.sh --live` still passes.
+
+**What could not be verified:** the actual GitHub-hosted-runner execution
+— this specific Ubuntu image, whether `actions/setup-python` truly
+provides 3.7 on it, Docker's pre-installed state — none of that can be
+checked without pushing to GitHub and letting the workflow run for real,
+which this session does not do without explicit permission. The logic
+and command sequence were fully exercised locally with the pinned
+interpreter (3.7.9 on this machine matches the pin); the runner
+environment itself is untested.
 
 ## Task 8: Make the tiering the convention
 
