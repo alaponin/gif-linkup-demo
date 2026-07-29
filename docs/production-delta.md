@@ -116,3 +116,63 @@ the host-CPU-contention risk) entirely — reserve a joined member's own server
 for the specific case the demonstration needs it (this plan's Task 9 Step 3:
 proving the Compose overlay and port allocation actually work), not as the
 default shape for "just add a member."
+
+## Federation snapshots — measured, and their real shelf life (testing-strategy Task 3)
+
+`scripts/federation.sh snapshot|restore` tars/untars the ~19 named `kp2-*`
+volumes. Measured live, twice, on a freshly deployed federation:
+
+- **Snapshot:** ~64s steady state (a one-off `alpine` image pull added ~10s
+  the very first time only), 62–64 MiB.
+- **Restore mechanics** (purge current volumes, untar, recreate containers):
+  ~52s — but the plan's own "about a minute" estimate undersold what
+  "restored" actually means in practice. The containers then need their own
+  normal boot time to become healthy from the untarred data — measured
+  **~315s (~5.25 min) total** from `restore` returning to `scripts/verify.sh
+  --live` confirming the restored federation actually works end to end
+  (right down to the same seeded record, `02831663233`, resolving correctly
+  through the restored ACLs). Still **~3× faster than a full redeploy**
+  (~918s, README.md) — a real, worthwhile speedup for the target use case
+  (resetting to known-good state between config-only iterations), just not
+  the "about a minute" the plan estimated before measuring.
+- Found and fixed a real bug while measuring this: `scripts/verify.sh
+  --live`'s own reachability probe was a single-shot `curl`, which failed
+  when run immediately after `restore` brings containers up — the exact
+  same class of race as the `console.sh up` bug Task 2 found, fixed the
+  same way (a short, bounded retry that still refuses promptly when nothing
+  is deployed at all).
+
+**Shelf life is real, and shorter than "restore any time" would suggest —**
+confirmed from a genuine (if partly accidental) live occurrence rather than
+a deliberately engineered one: a federation whose underlying volumes had
+existed for **~18 real hours** (spanning this session's own background
+waits between tasks, not a snapshot specifically) failed a restart with the
+exact same `Server.ClientProxy.SslAuthenticationFailed: "Security server has
+no valid authentication certificate"` this pack already documents for
+~10 hours of idle time (`docs/xroad-770-notes.md`, "Known traps"). The
+software token itself reported `status: OK, logged_in: true` — this was not
+the PIN-mismatch failure mode from the exposure-and-secrets plan, it was the
+OCSP-freshness one, and it did **not** self-heal after several minutes of
+retries (unlike the normal propagation-lag pattern this pack expects
+elsewhere). **The shelf-life clock starts at snapshot time (whenever the
+volumes' OCSP responses were last fetched), not at restore time** — a
+snapshot taken today and restored next week inherits however stale it
+already was the day it was taken, it does not reset the clock.
+
+**What this session could and could not observe:** the immediate
+(effectively t≈0) snapshot→restore cycle above is a real, live-confirmed
+data point, and so is the ~18-hour failure. The plan's own ask — restore
+after an hour, a day, and several days, to find exactly where the boundary
+sits — needs elapsed wall-clock time this single working session cannot
+manufacture on demand. Recorded honestly as **not measured**, not
+extrapolated as fact: the true boundary is somewhere between "immediate"
+(works) and "~18 hours" (fails), consistent with but not a fresh
+confirmation of the pack's existing ~10-hour figure. A follow-up that
+actually waits — take a snapshot, come back in an hour, a day, several
+days — is the only way to narrow this further; guessing at it here would
+be exactly the "asserting a failure mode nobody observed" this plan's own
+Task 6 sequencing note warns against.
+
+**Recommendation:** use a snapshot soon after taking it, for fast
+iteration within roughly the same working session — not as long-term cold
+storage of a "known-good" federation to come back to days later.

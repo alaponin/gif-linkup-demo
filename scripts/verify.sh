@@ -46,10 +46,18 @@ run_fast() {
 run_live() {
   # Distinguishing "the checks failed" from "there was nothing to check" is
   # the whole point of this tier -- it must never silently deploy a
-  # federation just because none was reachable.
-  if ! curl -sk --max-time 3 -o /dev/null https://localhost:4000 2>/dev/null; then
-    fail "no federation reachable at https://localhost:4000 -- deploy one first (hurl/run-linkup.sh), or run scripts/verify.sh --full. --live never deploys one itself."
-  fi
+  # federation just because none was reachable. A short, bounded retry
+  # (not unbounded) tolerates a federation that was JUST started (e.g. by
+  # scripts/federation.sh restore, which calls this immediately after
+  # `docker compose up`) without blurring that distinction -- found live,
+  # a single-shot probe right after a restore failed on containers that
+  # were reachable seconds later.
+  local _reachable=0 _i
+  for _i in 1 2 3 4 5 6; do
+    curl -sk --max-time 3 -o /dev/null https://localhost:4000 2>/dev/null && { _reachable=1; break; }
+    sleep 5
+  done
+  [ "$_reachable" = 1 ] || fail "no federation reachable at https://localhost:4000 (waited 30s) -- deploy one first (hurl/run-linkup.sh), or run scripts/verify.sh --full. --live never deploys one itself."
   run_fast
   log "acceptance.sh"
   "$PACK_DIR/scripts/acceptance.sh"
