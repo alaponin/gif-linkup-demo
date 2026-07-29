@@ -184,11 +184,31 @@ would have trusted.
 
 Nobody knows which part of the 880–898 seconds dominates: container boot, global-conf propagation, or the certificate sequences.
 
-- [ ] **Step 1:** have `run-linkup.sh` emit phase timings — containers healthy, Hurl run start, Hurl run end — to `out/deploy-timings.txt`.
-- [ ] **Step 2:** capture Hurl's own per-request report. Check which report flag this Hurl version supports (`--report-junit`, `--report-html`, or JSON output) before wiring it in, rather than assuming.
-- [ ] **Step 3:** run it twice cold and record where the time actually goes, in `docs/production-delta.md` next to the existing boot-time measurements.
-- [ ] **Step 4:** state the conclusion: which phase to attack next, and whether the parallelisation this plan put out of scope is worth revisiting once the approval race is fixed.
-- [ ] **Step 5:** commit.
+- [x] **Step 1:** have `run-linkup.sh` emit phase timings — containers healthy, Hurl run start, Hurl run end — to `out/deploy-timings.txt`.
+- [x] **Step 2:** capture Hurl's own per-request report. Check which report flag this Hurl version supports (`--report-junit`, `--report-html`, or JSON output) before wiring it in, rather than assuming.
+- [x] **Step 3:** run it twice cold and record where the time actually goes, in `docs/production-delta.md` next to the existing boot-time measurements.
+- [x] **Step 4:** state the conclusion: which phase to attack next, and whether the parallelisation this plan put out of scope is worth revisiting once the approval race is fixed.
+- [x] **Step 5:** commit.
+
+**Verified live (2026-07-29):** checked the actual Hurl version (7.1.0)
+and its `--help` output before wiring anything in — `--report-json <DIR>`
+was available and, unlike `--report-junit`/`--report-tap` (pass/fail
+only), carries a per-entry `time` field, which is what a phase breakdown
+actually needs. Found live that the runner's existing two mounts
+(`/hurl-src`, `/hurl-files/ca`) are both read-only on purpose, so the
+report needed its own read-write mount (`./out:/hurl-out`) added to
+`hurl/compose.hurl.yml`. Ran two real cold deploys (738s and 677s) rather
+than estimating, and the report data turned a vague "propagation is slow"
+into a specific, cross-referenced finding: only ~131s of the Hurl phase is
+real HTTP work (identical both runs); the rest is `--retry-interval`
+sleeping, concentrated on the four members' own subsystem-registration PUT
+calls (confirmed against `hurl/.build/setup.hurl`'s actual line numbers,
+not guessed) — consistent enough run to run (37 vs 34 retries, same four
+entries both times) to trust as a real pattern, not noise. Conclusion and
+its implication for the out-of-scope parallelisation question written up
+in full in `docs/production-delta.md`. `scripts/seed.sh` +
+`scripts/acceptance.sh` confirmed GREEN on run 2's federation before
+moving on.
 
 ## Task 6: Turn live-discovered behaviours into fixtures
 
