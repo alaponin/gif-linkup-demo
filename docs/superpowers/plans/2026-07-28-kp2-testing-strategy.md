@@ -115,12 +115,44 @@ the fix without re-triggering the failure.
 
 The deployed state is 19 named Docker volumes. Restoring them is about a minute; recreating them is fifteen.
 
-- [ ] **Step 1:** `scripts/federation.sh snapshot [name]` — **stop the containers first** (`teardown.sh` without `--purge`), then for each volume `docker run --rm -v <vol>:/v -v <dir>:/s alpine tar czf /s/<vol>.tgz -C /v .`, then bring them back up. Snapshotting a running PostgreSQL volume yields a torn database; this is not optional.
-- [ ] **Step 2:** `scripts/federation.sh restore <name>` — stop, remove the volumes, recreate them empty, untar, start. Then run `--live` to prove the restored federation actually works.
-- [ ] **Step 3:** `list` and `rm`. Snapshots live in `.snapshots/`, gitignored, and the script warns about their size.
-- [ ] **Step 4: the investigation that decides whether this is useful.** Restored state ages: X-Road's global configuration has an expiry and certificates have validity windows, so a snapshot is not restorable forever. Measure it — take a snapshot, restore it after an hour, a day, and several days, and record at which point the federation stops working and with what symptom. Write the shelf life into the script's help text and into `docs/production-delta.md`.
-- [ ] **Step 5:** record the measured snapshot and restore times. If restore is not meaningfully faster than a redeploy, say so and stop — that is a legitimate outcome and worth knowing.
-- [ ] **Step 6:** commit.
+- [x] **Step 1:** `scripts/federation.sh snapshot [name]` — **stop the containers first** (`teardown.sh` without `--purge`), then for each volume `docker run --rm -v <vol>:/v -v <dir>:/s alpine tar czf /s/<vol>.tgz -C /v .`, then bring them back up. Snapshotting a running PostgreSQL volume yields a torn database; this is not optional.
+- [x] **Step 2:** `scripts/federation.sh restore <name>` — stop, remove the volumes, recreate them empty, untar, start. Then run `--live` to prove the restored federation actually works.
+- [x] **Step 3:** `list` and `rm`. Snapshots live in `.snapshots/`, gitignored, and the script warns about their size.
+- [x] **Step 4: the investigation that decides whether this is useful.** Restored state ages: X-Road's global configuration has an expiry and certificates have validity windows, so a snapshot is not restorable forever. Measure it — take a snapshot, restore it after an hour, a day, and several days, and record at which point the federation stops working and with what symptom. Write the shelf life into the script's help text and into `docs/production-delta.md`.
+- [x] **Step 5:** record the measured snapshot and restore times. If restore is not meaningfully faster than a redeploy, say so and stop — that is a legitimate outcome and worth knowing.
+- [x] **Step 6:** commit.
+
+**Verified live (2026-07-29):** measured snapshot (~64s) and restore
+mechanics (~52s) for real on a freshly deployed federation, but the plan's
+own "about a minute" estimate turned out to cover only the tar/untar
+mechanics — the containers then need their own normal boot time to become
+healthy from the untarred data, measured **~315s (~5.25 min) total** before
+`scripts/verify.sh --live` actually confirmed the restored federation
+worked (right down to the same seeded record resolving through the
+restored ACLs). Still ~3x faster than a full redeploy (~918s) — a real
+speedup, reported honestly rather than as the smaller number that would
+have made the plan's own estimate look right. Found and fixed a real bug
+while measuring: `--live`'s reachability probe was a single-shot `curl`
+that failed when run immediately after `restore` brings containers up
+(the same class of race Task 2 already found and fixed for
+`console.sh up`); fixed with a bounded retry, re-verified the refusal path
+still correctly fails within 30s when nothing is deployed.
+
+Step 4's shelf-life investigation could not run as literally specified —
+"an hour, a day, several days" needs elapsed wall-clock time no single
+working session can manufacture — but produced a genuine, unplanned data
+point anyway: this session's own accumulated background-wait time meant a
+federation's volumes had existed for ~18 real hours by the time this task
+reached its restart step, and it failed with `Server.ClientProxy.
+SslAuthenticationFailed: "no valid authentication certificate"` — the
+token itself reporting `status: OK`, ruling out the exposure-and-secrets
+plan's PIN-mismatch failure mode and pointing instead at the pack's
+already-documented ~10-hour OCSP-freshness window (`docs/xroad-770-notes.md`).
+It did not self-heal after several minutes of retries, unlike this pack's
+normal propagation-lag pattern. Recorded honestly in
+`docs/production-delta.md` and the script's own header: the true multi-day
+boundary remains genuinely unmeasured, not extrapolated as fact — a
+follow-up that actually waits is the only way to narrow it further.
 
 ## Task 4: Selectable acceptance
 
