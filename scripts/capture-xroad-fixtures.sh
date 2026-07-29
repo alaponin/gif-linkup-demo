@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Capture (or, with --check, re-capture and diff) the real X-Road responses
+# apps/console/tests/test_xroad.py's fixtures record -- testing-strategy
+# plan Task 6. Recorded fixtures that nobody re-records eventually describe
+# a server that no longer exists; --check is what stops that silently.
+#
+#   scripts/capture-xroad-fixtures.sh          # (re-)write the committed fixtures
+#   scripts/capture-xroad-fixtures.sh --check  # re-capture into a temp dir, diff
+#                                               # status+body against the committed
+#                                               # ones, fail on drift
+#
+# Needs a running federation with PNEA:EXAMS currently granted identity-api
+# (the pack's own committed default ACL state) -- restores that grant
+# itself after the revoke/re-grant round trip either mode requires.
+set -euo pipefail
+PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$PACK_DIR/scripts/lib.sh"
+
+FIXTURE_DIR="$PACK_DIR/apps/console/tests/fixtures/xroad"
+CLIENT_ID="PROGRESSA:GOV:PNIA:IDENTITY"
+SUBJECT_ID="PROGRESSA:GOV:PNEA:EXAMS"
+UNGRANTED_SUBJECT="PROGRESSA:GOV:MOEYS:PEMIS"
+SVC=identity-api
+
+if [ "${1:-}" = "--check" ]; then
+  OUT_DIR=$(mktemp -d)
+else
+  OUT_DIR="$FIXTURE_DIR"
+fi
+mkdir -p "$OUT_DIR"
+
+jar=$(api_key "localhost:${SS_UI[ss-pnia]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
+token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
+RAW_TMP=$(mktemp -d)
+
+_capture() {  # $1=name $2=context $3...=curl args (after -ksi)
+  local name=$1 context=$2; shift 2
+  curl -ksi "$@" > "$RAW_TMP/$name.raw"
+  python3 "$PACK_DIR/scripts/mkfixture.py" "$RAW_TMP/$name.raw" "$OUT_DIR/$name.json" "$context"
+}
+
+log "capturing read_acl_404"
+_capture read_acl_404 \
+  "GET /clients/{id}/service-clients/{subject}/access-rights where subject is not a service-client on this resource at all" \
+  -b "$jar" -X GET "https://localhost:${SS_UI[ss-pnia]}/api/v1/clients/${CLIENT_ID}/service-clients/${UNGRANTED_SUBJECT}/access-rights" \
+  -H "X-XSRF-TOKEN: ${token}"
+
+log "capturing grant_409_duplicate"
+_capture grant_409_duplicate \
+  "POST /clients/{id}/service-clients/{subject}/access-rights granting a right already held" \
+  -b "$jar" -X POST "https://localhost:${SS_UI[ss-pnia]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+  -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
+
+log "revoking, capturing revoke_409_not_found, then restoring the grant"
+curl -ksf -b "$jar" -X POST "https://localhost:${SS_UI[ss-pnia]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+  -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
+_capture revoke_409_not_found \
+  "POST /clients/{id}/service-clients/{subject}/access-rights/delete revoking a right already revoked" \
+  -b "$jar" -X POST "https://localhost:${SS_UI[ss-pnia]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+  -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
+curl -ksf -b "$jar" -X POST "https://localhost:${SS_UI[ss-pnia]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+  -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
+
+log "capturing exchange_access_denied"
+_capture exchange_access_denied \
+  "GET /r1/.../identity-api/persons/{nin} from a caller (MOEYS:PEMIS) not granted access -- provider-side ACL denial" \
+  -H "X-Road-Client: PROGRESSA/GOV/MOEYS/PEMIS" \
+  "http://localhost:${SS_REST[ss-moeys]}/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/02831663233"
+
+rm -rf "$RAW_TMP"
+
+if [ "${1:-}" = "--check" ]; then
+  DRIFTED=0
+  for f in "$FIXTURE_DIR"/*.json; do
+    name=$(basename "$f")
+    [ -f "$OUT_DIR/$name" ] || { echo "no fresh capture for $name"; DRIFTED=1; continue; }
+    # Compare status+body only, with "detail" stripped from the body --
+    # headers carry a fresh Date/correlation-id every single call and would
+    # never match; captured/context are this tool's own metadata, not
+    # X-Road's behaviour; and X-Road's own error bodies put a random
+    # per-request trace UUID in "detail" (found live: this made every
+    # exchange_access_denied re-capture "drift" even with zero real change
+    # -- the UUID is never the same value twice by design, not a regression).
+    a=$(python3 -c "
+import json
+d = json.load(open('$f'))
+b = d['body']
+if isinstance(b, dict) and 'detail' in b:
+    b = {k: v for k, v in b.items() if k != 'detail'}
+print(json.dumps({'status': d['status'], 'body': b}, sort_keys=True))
+")
+    b=$(python3 -c "
+import json
+d = json.load(open('$OUT_DIR/$name'))
+b = d['body']
+if isinstance(b, dict) and 'detail' in b:
+    b = {k: v for k, v in b.items() if k != 'detail'}
+print(json.dumps({'status': d['status'], 'body': b}, sort_keys=True))
+")
+    if [ "$a" != "$b" ]; then
+      echo "DRIFT in $name:"
+      echo "  committed: $a"
+      echo "  live now:  $b"
+      DRIFTED=1
+    fi
+  done
+  rm -rf "$OUT_DIR"
+  [ "$DRIFTED" = 0 ] || fail "X-Road's behaviour has moved since apps/console/tests/fixtures/xroad/ was recorded -- re-record it (scripts/capture-xroad-fixtures.sh) only after confirming the new shape is real, not a regression."
+  log "xroad fixtures still match live behaviour"
+fi

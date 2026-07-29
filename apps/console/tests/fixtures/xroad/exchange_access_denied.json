@@ -1,0 +1,16 @@
+{
+  "status": 500,
+  "headers": {
+    "Date": "Wed, 29 Jul 2026 18:48:20 GMT",
+    "X-Road-Error": "Server.ServerProxy.AccessDenied",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked"
+  },
+  "body": {
+    "type": "Server.ServerProxy.AccessDenied",
+    "message": "Request is not allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api",
+    "detail": "35e718ea-ddc1-42b6-8fa3-e0d259bccfc8"
+  },
+  "captured": "2026-07-29T18:48:34Z",
+  "context": "GET /r1/.../identity-api/persons/{nin} from a caller (MOEYS:PEMIS) not granted access -- provider-side ACL denial"
+}

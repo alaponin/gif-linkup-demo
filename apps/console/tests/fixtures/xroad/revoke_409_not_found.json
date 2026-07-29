@@ -1,0 +1,26 @@
+{
+  "status": 409,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6a4acb2dbd621eac0853e1f6fa7594",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Wed, 29 Jul 2026 18:47:40 GMT"
+  },
+  "body": {
+    "status": 409,
+    "error": {
+      "code": "accessright_not_found"
+    }
+  },
+  "captured": "2026-07-29T18:48:00Z",
+  "context": "POST /clients/{id}/service-clients/{subject}/access-rights/delete revoking a right already revoked"
+}

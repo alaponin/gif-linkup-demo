@@ -120,7 +120,8 @@ over `/etc/xroad/conf.d/local.ini` in `docker-compose.yml`. Re-measured
 under the override, same 5-run methodology: **4.5s–5.6s**. A demo can
 afford trading a little proxy CPU for a faster-to-reflect ACL change; a
 production federation should not tune this down without understanding the
-trade-off, which is why it is called out in `docs/production-delta.md`.
+trade-off, which is why it is called out in `docs/production-delta.md`. The
+response this lag eventually produces is recorded as a fixture in §10.
 
 ## 7. Retiring a member from a running federation, without `teardown.sh --purge`
 
@@ -228,6 +229,46 @@ reveals anything is wrong. This is not benign: it is exactly the confusing
 failure mode the plan set out to catch before it wastes someone's afternoon,
 which is why Task 6's fingerprint check is a hard failure at deploy time,
 not a warning.
+
+## 10. The console's ACL-mutation error shapes, recorded not guessed
+
+Four behaviours the demo console (`apps/console/`) depends on cost a live
+federation to discover the first time, and used to cost hand-written
+approximations to re-confirm. Real, live-recorded fixtures now back the
+tests that exercise each one (`apps/console/tests/fixtures/xroad/`,
+testing-strategy plan Task 6), and `scripts/capture-xroad-fixtures.sh
+--check` re-captures and diffs them so drift is caught rather than assumed
+away:
+
+- **`read_acl_404.json`** — a subject with zero access rights is not a
+  service-client at all, so `GET .../service-clients/{subject}/access-rights`
+  404s rather than returning `[]`. Real body:
+  `{"status":404,"error":{"code":"service_client_not_found"}}` — the
+  hand-written `{"detail": "not found"}` this replaced happened to exercise
+  the same code path in a test without ever matching what the admin API
+  actually sends.
+- **`grant_409_duplicate.json`** — granting a right already held returns
+  `409` with `{"status":409,"error":{"code":"duplicate_accessright"}}`,
+  not the hand-written `{"error": "already granted"}` this replaced.
+- **`revoke_409_not_found.json`** — revoking a right already revoked
+  returns `409` with `{"status":409,"error":{"code":"accessright_not_found"}}`
+  — the one fixture of the four whose hand-written predecessor already
+  matched reality (it was itself written from a live observation, dated
+  2026-07-26); re-recording confirmed that rather than assuming it still
+  held.
+- **`exchange_access_denied.json`** — a denied r1 call's real body is
+  `{"type":"Server.ServerProxy.AccessDenied","message":"Request is not
+  allowed: SERVICE:<the exact service id>","detail":"<a random per-request
+  trace UUID>"}`. The hand-written version this replaced dropped the
+  `SERVICE:...` suffix and the `detail` field entirely — a parser that
+  happens to check only `.type` would never have caught either omission.
+  `detail` is excluded from the drift check specifically because it is a
+  fresh UUID every single call by design, not a stable part of the shape.
+
+The fourth behaviour the plan named, the proxy's own authorisation-cache
+lag, is §6 above — a timing property, not a distinct response shape (the
+"denied" response it eventually produces is the exact same
+`exchange_access_denied.json` shape, just delayed).
 
 ## Sources
 

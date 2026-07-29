@@ -10,6 +10,16 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from xroad import AdminSession, exchange  # noqa: E402
 
+FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "xroad"
+
+
+def _fixture(name: str) -> dict:
+    """A real recorded response (status + headers + body), not a
+    hand-written guess -- testing-strategy plan Task 6. Recorded live
+    2026-07-29; see the fixture's own "context" field and
+    docs/xroad-770-notes.md for what each one documents."""
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
 
 def _login_response(request: httpx.Request) -> httpx.Response:
     return httpx.Response(
@@ -58,15 +68,22 @@ def test_read_subjects_and_read_acl():
 
 
 def test_read_acl_returns_empty_list_on_404_not_raises():
-    """Confirmed live (2026-07-27): a subject with zero access rights isn't
-    a service-client at all, so the admin API 404s here rather than
-    returning []. Found because app.py's _mutate_acl reads this to
-    determine prior_state before mutating -- the fully-revoked case must
-    read as [], or the caller can never observe "nothing currently granted"."""
+    """Confirmed live (2026-07-27, re-recorded 2026-07-29): a subject with
+    zero access rights isn't a service-client at all, so the admin API
+    404s here rather than returning []. Found because app.py's
+    _mutate_acl reads this to determine prior_state before mutating -- the
+    fully-revoked case must read as [], or the caller can never observe
+    "nothing currently granted". The real body is
+    {"status":404,"error":{"code":"service_client_not_found"}} -- a hand-
+    written {"detail": "not found"} would have passed this test just as
+    well without ever matching what X-Road actually sends. See
+    docs/xroad-770-notes.md §10."""
+    fx = _fixture("read_acl_404")
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
             return _login_response(request)
-        return httpx.Response(404, json={"detail": "not found"}, request=request)
+        return httpx.Response(fx["status"], json=fx["body"], request=request)
 
     session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
     assert session.read_acl("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS") == []
@@ -87,23 +104,36 @@ def test_grant_success():
 
 
 def test_grant_already_granted_409_is_success_not_failure():
+    """Real body (recorded 2026-07-29):
+    {"status":409,"error":{"code":"duplicate_accessright"}} -- the earlier
+    hand-written {"error": "already granted"} exercised the same code path
+    but never matched what X-Road actually sends. See
+    docs/xroad-770-notes.md §10."""
+    fx = _fixture("grant_409_duplicate")
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
             return _login_response(request)
-        return httpx.Response(409, json={"error": "already granted"}, request=request)
+        return httpx.Response(fx["status"], json=fx["body"], request=request)
 
     session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
     session.grant("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS", "identity-api")  # must not raise
 
 
 def test_revoke_already_revoked_409_is_success_not_failure():
-    """Confirmed live 2026-07-26: revoking an already-revoked right returns
-    409 accessright_not_found -- the target state already holds, so this
-    must not raise (load-bearing for reset()'s crash-recovery replay)."""
+    """Confirmed live 2026-07-26, re-recorded 2026-07-29: revoking an
+    already-revoked right returns 409 accessright_not_found -- the target
+    state already holds, so this must not raise (load-bearing for
+    reset()'s crash-recovery replay). The hand-written version of this
+    fixture already matched reality when it was written; re-recording it
+    confirmed that, rather than assuming it still did. See
+    docs/xroad-770-notes.md §10."""
+    fx = _fixture("revoke_409_not_found")
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
             return _login_response(request)
-        return httpx.Response(409, json={"error": {"code": "accessright_not_found"}}, request=request)
+        return httpx.Response(fx["status"], json=fx["body"], request=request)
 
     session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
     session.revoke("PROGRESSA:GOV:PNIA:IDENTITY", "PROGRESSA:GOV:PNEA:EXAMS", "identity-api")  # must not raise
@@ -147,12 +177,18 @@ def test_exchange_happy_path():
 
 
 def test_exchange_denied_parses_exact_fault_shape():
+    """Real body (recorded 2026-07-29 from a live denied r1 call):
+    {"type":"Server.ServerProxy.AccessDenied","message":"Request is not
+    allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api","detail":
+    "<uuid>"} -- the earlier hand-written version was missing both the
+    "SERVICE:..." suffix on message and the "detail" field entirely; a
+    parser that happened to read only .type would never have caught that
+    it was checking against an incomplete shape. See
+    docs/xroad-770-notes.md §10."""
+    fx = _fixture("exchange_access_denied")
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            500,
-            json={"type": "Server.ServerProxy.AccessDenied", "message": "Request is not allowed"},
-            request=request,
-        )
+        return httpx.Response(fx["status"], json=fx["body"], request=request)
 
     results = exchange(
         "http://ss-plr:8080", CALLS, "123", "PROGRESSA/GOV/MOEYS/PEMIS",

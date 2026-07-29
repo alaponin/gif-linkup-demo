@@ -1,0 +1,26 @@
+{
+  "status": 404,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6a4a44b115a6199815119463639a4f",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Wed, 29 Jul 2026 18:45:24 GMT"
+  },
+  "body": {
+    "status": 404,
+    "error": {
+      "code": "service_client_not_found"
+    }
+  },
+  "captured": "2026-07-29T18:45:48Z",
+  "context": "GET /clients/{id}/service-clients/{subject}/access-rights where subject is not a service-client on this resource at all"
+}

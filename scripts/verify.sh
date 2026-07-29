@@ -83,6 +83,12 @@ run_full() {
     [ "$_i" = 6 ] && fail "console health check still failing 30s after scripts/console.sh up"
     sleep 5
   done
+
+  # Guard against silent rot: recorded fixtures nobody re-records
+  # eventually describe a server that no longer exists (testing-strategy
+  # plan Task 6).
+  log "xroad fixture drift check"
+  "$PACK_DIR/scripts/capture-xroad-fixtures.sh" --check
 }
 
 case "${1:-}" in
