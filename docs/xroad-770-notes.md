@@ -21,7 +21,7 @@ resolved.
 
 | Assumption in the draft | What 7.7.0 actually does |
 | --- | --- |
-| Authenticate with an API key created via `POST /api/v1/api-keys` | **Session login.** `POST /login` with form params `username`/`password`, capture the `XSRF-TOKEN` cookie, and send it as an `X-XSRF-TOKEN` header on every subsequent call. `scripts/lib.sh`'s `api_key()` was never going to work as written. |
+| Authenticate with an API key created via `POST /api/v1/api-keys` | **Session login.** `POST /login` with form params `username`/`password`, capture the `XSRF-TOKEN` cookie, and send it as an `X-XSRF-TOKEN` header on every subsequent call. `scripts/lib-stack.sh`'s `api_key()` was never going to work as written. |
 | Write `auto-approve-*` flags into `/etc/xroad/conf.d/local.ini` on the CS and restart `xroad-center`, so registration requests self-approve | **Not needed.** The scenario approves explicitly: `GET /api/v1/management-requests?sort=id&desc=true&status=WAITING` → `POST /api/v1/management-requests/{id}/approval`. No file is written into a container, nothing is restarted, and the approval step stays visible in the run — which is also better teaching. The flags remain a legitimate convenience for someone configuring by hand. |
 | The Test CA's certificates must be renamed to `ca.pem` / `ocsp.pem` / `tsa.pem` before upload | **Already named that way.** The `xrddev-testca` image writes them into `/home/ca/certs`; upstream mounts that directory into the runner's `--file-root` as `ca/`, and the multipart upload references `file,ca/ca.pem;` directly. `hurl/compose.hurl.yml` reproduces the shared volume. |
 | Generate a key, then generate a CSR against it | **One call:** `POST /api/v1/tokens/0/keys-with-csrs` returns both `key.id` and `csr_id`. |

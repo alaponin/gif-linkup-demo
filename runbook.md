@@ -124,7 +124,7 @@ ssh -L 4000:localhost:4000 -L 8090:localhost:8090 user@host
 console). This keeps the host's own exposure at zero while still letting a
 remote workstation reach it. Setting `network.bind` to anything else
 publishes the X-Road proxy ports — which have no authentication of their
-own — to whatever that address reaches; see `scripts/lib.sh`'s refusal and
+own — to whatever that address reaches; see `scripts/lib-stack.sh`'s refusal and
 `docs/production-delta.md` before ever doing that on a shared or public host.
 
 ## Known traps

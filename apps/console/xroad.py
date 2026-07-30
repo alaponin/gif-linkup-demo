@@ -2,7 +2,7 @@
 X-Road. Two distinct clients, because they hit two distinct surfaces:
 
 - AdminSession: the Security Server admin REST API on :4000, session-login
-  authenticated (mirrors scripts/lib.sh's api_key()/api() exactly). Used for
+  authenticated (mirrors scripts/lib-stack.sh's api_key()/api() exactly). Used for
   reading and mutating ACLs.
 - exchange(): the r1 proxy interface on :8080, authenticated by the
   X-Road-Client header, not an admin session. Used for the counter/inspector
@@ -26,7 +26,7 @@ class AdminSession:
     Confirmed live (2026-07-25/26): the admin API authenticates by session
     login and XSRF token, not API key -- POST /login with form params, then
     send the XSRF-TOKEN cookie back as X-XSRF-TOKEN on every call. Same
-    mechanics as scripts/lib.sh's api_key()/api().
+    mechanics as scripts/lib-stack.sh's api_key()/api().
     """
 
     def __init__(self, host: str, user: str, password: str, *, client: httpx.Client | None = None):
