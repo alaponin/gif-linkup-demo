@@ -26,7 +26,7 @@ set -euo pipefail
 
 PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PACK_DIR"
-. scripts/lib.sh
+. scripts/lib-stack.sh
 
 BUILD_DIR="$PACK_DIR/hurl/.build"
 DRY=0
@@ -104,7 +104,7 @@ HURL_END=$(date +%s)
 } | tee "$PACK_DIR/out/deploy-timings.txt"
 
 # Fingerprint, never the PIN itself: the software token on every server is
-# now initialised with this value. scripts/lib.sh refuses a later run whose
+# now initialised with this value. scripts/lib-stack.sh refuses a later run whose
 # .env disagrees with this fingerprint while the volumes still exist --
 # changing .env alone does not change the token (docs/xroad-770-notes.md
 # §9), and this is what lets that be caught here instead of 20 minutes into

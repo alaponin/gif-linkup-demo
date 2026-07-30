@@ -4,7 +4,7 @@
 # prompts/member.md and committing what it produces, not by this script
 # writing config by hand -- that is the pack's teaching claim.
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-core.sh"
 
 usage() {
   cat <<'USAGE'

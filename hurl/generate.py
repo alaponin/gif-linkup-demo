@@ -56,7 +56,7 @@ CSR_COUNTRY = "FI"
 
 # Under the lite profile, these members are NOT brought up as their own
 # Security Server -- they're extra clients on the shared provider SS. Mirrors
-# scripts/lib.sh's HOST_SS lite branch; the two must move together if this
+# scripts/lib-stack.sh's HOST_SS lite branch; the two must move together if this
 # pack's lite topology ever changes (only one lite arrangement exists today,
 # so this is a fixed fact of docker-compose.yml, not a general N-way mapping
 # -- see docs/superpowers/specs/2026-07-26-deployment-spec-and-lite-profile-design.md).
@@ -1518,12 +1518,12 @@ HTTP 200
     print("  wrote hurl/topology.json")
 
     # -- hurl/topology.sh -----------------------------------------------
-    # scripts/lib.sh sources this instead of declaring SS_UI/SS_REST/
+    # scripts/lib-stack.sh sources this instead of declaring SS_UI/SS_REST/
     # SS_ORDER/HOST_SS itself -- one topology, generated once, consumed by
     # both the console (topology.json) and bash (topology.sh), exactly the
     # same values either way. PDGA:MANAGEMENT is not in topology.json's
     # subsystems list (that list is discovered members only; PDGA is the
-    # federation owner, not a member) but lib.sh has always declared it,
+    # federation owner, not a member) but lib-stack.sh has always declared it,
     # so it is added here explicitly rather than silently dropped.
     ss_lines = "\n".join(f"  [{s['host']}]={s['host_ui_port']}" for s in security_servers)
     rest_lines = "\n".join(f"  [{s['host']}]={s['host_proxy_port']}" for s in security_servers)
@@ -1556,7 +1556,7 @@ declare -A HOST_SS=(
     # Security Server gets a service block here instead, mirroring the
     # canonical blocks' shape exactly. A joined member that is hosted
     # (hosted_on_map) owns no container at all and never appears here.
-    # scripts/lib.sh adds this file to COMPOSE/COMPOSE_ALL when it exists.
+    # scripts/lib-stack.sh adds this file to COMPOSE/COMPOSE_ALL when it exists.
     joined_owner_keys = [
         key for key in members
         if key not in hosted_on_map

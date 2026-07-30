@@ -4,7 +4,7 @@
 # the mock providers so they reload. Institution names + BB ids stay identical
 # across packs (join keys for the cumulative Progressa solution).
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-stack.sh"
 
 log "regenerating seed CSVs (deterministic)"
 python3 "$PACK_DIR/scripts/gen_seed_data.py" "$PACK_DIR/apps/data"

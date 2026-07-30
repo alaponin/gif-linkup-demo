@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Assert every published port in the rendered Compose configuration binds to
-# loopback -- the tested form of scripts/lib.sh's own deploy-time refusal.
+# loopback -- the tested form of scripts/lib-stack.sh's own deploy-time refusal.
 # S1 (docs/reviews/2026-07-28-branch-review.md) was a one-line-per-service
 # mistake; without this, it is a one-line-per-service mistake again the next
 # time a service is added. Reads the RENDERED config, not deployment.yaml's
@@ -9,7 +9,7 @@
 # activated (full/demo/tools) so the check covers the console and the Hurl
 # runner too, not just whatever profile happens to be active right now.
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-core.sh"
 
 COMPOSE_FILES=(-f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml")
 [ -f "$PACK_DIR/hurl/compose.members.yml" ] && COMPOSE_FILES+=(-f "$PACK_DIR/hurl/compose.members.yml")

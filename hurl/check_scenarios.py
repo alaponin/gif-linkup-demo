@@ -191,7 +191,7 @@ def main() -> None:
 
     # A spec that would publish the stack outside this host, without saying
     # so twice, should not pass the ship gate quietly -- same rule scripts/
-    # lib.sh enforces at deploy time (member-parameterisation Task 2), pinned
+    # lib-stack.sh enforces at deploy time (member-parameterisation Task 2), pinned
     # here too so a bad deployment.yaml is caught by --ready as well.
     network = deployment.get("network") or {}
     bind = network.get("bind", "127.0.0.1")

@@ -39,7 +39,7 @@ restart_containers() {
   bash -c '
     set -euo pipefail
     cd "'"$PACK_DIR"'"
-    . scripts/lib.sh
+    . scripts/lib-stack.sh
     "${COMPOSE[@]}" -f hurl/compose.hurl.yml up -d
   '
 }

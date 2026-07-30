@@ -20,7 +20,7 @@
 # job, not this one -- it owns module 2.6's four assertions, two of which are
 # beyond what a Hurl scenario can assert.
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-stack.sh"
 
 log "delegating to hurl/run-linkup.sh (X-Road 7.7.0 admin APIs)"
 exec "$PACK_DIR/hurl/run-linkup.sh" "${1:---setup}"

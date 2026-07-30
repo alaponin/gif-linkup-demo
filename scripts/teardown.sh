@@ -3,7 +3,7 @@
 # persists). --purge: delete volumes too — full reset to zero. The P5
 # reproducibility proof is: --purge, deploy, seed, acceptance green.
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-stack.sh"
 
 # COMPOSE_ALL always enables the "full" profile so every service is torn down
 # even if LITE was flipped after a full deploy.

@@ -14,7 +14,7 @@
 # itself after the revoke/re-grant round trip either mode requires.
 set -euo pipefail
 PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$PACK_DIR/scripts/lib.sh"
+. "$PACK_DIR/scripts/lib-stack.sh"
 
 FIXTURE_DIR="$PACK_DIR/apps/console/tests/fixtures/xroad"
 CLIENT_ID="PROGRESSA:GOV:PNIA:IDENTITY"

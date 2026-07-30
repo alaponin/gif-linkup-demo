@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the KP2 acceptance suite — one check per module in acceptance/, in order.
 # Exit non-zero on first failure. 2.6 is the framework's acceptance (Module 5.6).
-# Checks are same-shell functions (no bash -c subshells); topology comes from lib.sh.
+# Checks are same-shell functions (no bash -c subshells); topology comes from lib-stack.sh.
 #
 #   scripts/acceptance.sh                # everything, unchanged
 #   scripts/acceptance.sh --only 2.6      # only checks whose id is (or starts
@@ -14,7 +14,7 @@
 # literal "2.4" id to select; --only/--from match against what actually
 # runs today, not the pre-generalisation module numbers).
 set -euo pipefail
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/lib-stack.sh"
 
 SELECT_MODE=all
 SELECT_ARG=""
@@ -105,7 +105,7 @@ check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
 # Registration status is global-conf propagation, same asynchrony as the Hurl
 # runner itself -- confirmed at P5 (2025-07-25): a cold reproducibility run hit
 # PNEA:EXAMS still short of REGISTERED the instant acceptance.sh started right
-# after deploy, though it settled seconds later. Retry, don't fail (lib.sh's
+# after deploy, though it settled seconds later. Retry, don't fail (lib-core.sh's
 # retry(), same as everywhere else this asynchrony shows up in this pack).
 for pair in $(printf '%s\n' "${!HOST_SS[@]}" | sort); do
   [ "$pair" = "PDGA:MANAGEMENT" ] && continue
