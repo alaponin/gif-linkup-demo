@@ -56,6 +56,41 @@ COMPOSE_HURL=("${COMPOSE[@]}" -f "$PACK_DIR/hurl/compose.hurl.yml")
 # minutes to discover; now it costs seconds (testing-strategy plan Task 2).
 "$PACK_DIR/scripts/verify.sh" --fast
 
+# A correctly-formatted PIN can still be the WRONG one: every server's
+# software token was initialised with whatever PIN was in .env the last
+# time this script actually deployed (recorded below, as a fingerprint,
+# never the value, in out/.token-fingerprint). Changing .env afterwards does
+# not change the token -- confirmed live (docs/xroad-770-notes.md §9) that
+# the mismatch surfaces as Server.ClientProxy.SslAuthenticationFailed, which
+# reads like a certificate problem, not a PIN one. Only refuse while the
+# federation's own volumes still exist: teardown.sh --purge deletes them but
+# not this host-side file, and a stale fingerprint must not block a
+# legitimate fresh redeploy with a new .env.
+#
+# A deploy-time check, not a source-time one: this used to run inside
+# lib-stack.sh and fired for any script that merely sourced it (console.sh
+# status, member.sh list), which have no business refusing over a PIN they
+# never use. Called just below, immediately before containers come up --
+# scripts/deploy.sh execs into this script, so it is covered too.
+check_token_fingerprint() {
+  local fp="$PACK_DIR/out/.token-fingerprint"
+  if [ -f "$fp" ] && docker volume inspect kp2-cs-db >/dev/null 2>&1; then
+    local current stored
+    current=$(printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256 | cut -d' ' -f1)
+    stored=$(cat "$fp")
+    if [ "$current" != "$stored" ]; then
+      echo "lib-stack.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
+federation's software token was initialised with. Changing .env alone does
+not change the token -- the mismatch surfaces as X-Road errors that look
+like certificate faults, not PIN errors (docs/xroad-770-notes.md §9).
+Restore the original .env, or scripts/teardown.sh --purge and redeploy with
+the new one." >&2
+      exit 1
+    fi
+  fi
+}
+check_token_fingerprint
+
 # Phase timings (testing-strategy plan Task 5) -- nobody knew which part of
 # the ~918s deploy dominates: container boot, global-conf propagation, or
 # the certificate sequences. Three timestamps, not more: "containers
@@ -104,9 +139,9 @@ HURL_END=$(date +%s)
 } | tee "$PACK_DIR/out/deploy-timings.txt"
 
 # Fingerprint, never the PIN itself: the software token on every server is
-# now initialised with this value. scripts/lib-stack.sh refuses a later run whose
-# .env disagrees with this fingerprint while the volumes still exist --
-# changing .env alone does not change the token (docs/xroad-770-notes.md
+# now initialised with this value. check_token_fingerprint() above refuses a
+# later run whose .env disagrees with this fingerprint while the volumes
+# still exist -- changing .env alone does not change the token (docs/xroad-770-notes.md
 # §9), and this is what lets that be caught here instead of 20 minutes into
 # a confusing SslAuthenticationFailed.
 mkdir -p "$PACK_DIR/out"

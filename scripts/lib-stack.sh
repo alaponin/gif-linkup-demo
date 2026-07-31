@@ -31,31 +31,15 @@ read its warning about the software token's PIN first)." >&2
 done
 unset _cred_var
 
-# A correctly-formatted PIN can still be the WRONG one: every server's
-# software token was initialised with whatever PIN was in .env the last
-# time hurl/run-linkup.sh actually deployed (recorded there as a fingerprint,
-# never the value, in out/.token-fingerprint). Changing .env afterwards does
-# not change the token -- confirmed live (docs/xroad-770-notes.md §9) that
-# the mismatch surfaces as Server.ClientProxy.SslAuthenticationFailed, which
-# reads like a certificate problem, not a PIN one. Only refuse while the
-# federation's own volumes still exist: teardown.sh --purge deletes them but
-# not this host-side file, and a stale fingerprint must not block a
-# legitimate fresh redeploy with a new .env.
-TOKEN_FINGERPRINT="$PACK_DIR/out/.token-fingerprint"
-if [ -f "$TOKEN_FINGERPRINT" ] && docker volume inspect kp2-cs-db >/dev/null 2>&1; then
-  _current_fp=$(printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256 | cut -d' ' -f1)
-  _stored_fp=$(cat "$TOKEN_FINGERPRINT")
-  if [ "$_current_fp" != "$_stored_fp" ]; then
-    echo "lib-stack.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
-federation's software token was initialised with. Changing .env alone does
-not change the token -- the mismatch surfaces as X-Road errors that look
-like certificate faults, not PIN errors (docs/xroad-770-notes.md §9).
-Restore the original .env, or scripts/teardown.sh --purge and redeploy with
-the new one." >&2
-    exit 1
-  fi
-  unset _current_fp _stored_fp
-fi
+# The PIN-fingerprint guard (a correctly-formatted PIN can still be the WRONG
+# one -- every server's software token was initialised with whatever PIN was
+# in .env the last time hurl/run-linkup.sh actually deployed) used to run
+# here, at source time. That meant scripts with no reason to care --
+# console.sh status, member.sh list -- paid for a `docker volume inspect`
+# just because they happen to source this file. It is a deploy-time check,
+# so it now lives as check_token_fingerprint() in hurl/run-linkup.sh, called
+# immediately before that script brings containers up (and so covers
+# scripts/deploy.sh, which execs into it).
 
 # deployment.yaml is the analyst-facing spec (topology profile, X-Road version
 # pins); .env carries only secrets. See
