@@ -77,7 +77,7 @@ committed corpus exactly (no drift) before being written down as fact.
 - [ ] **Step 1:** write `scripts/verify.sh`:
 
 ```
-scripts/verify.sh --fast    # static + golden + pytest. No Docker. Target: <30s
+scripts/verify.sh --fast    # static + golden + pytest. No running containers. Target: <30s
 scripts/verify.sh --live    # --fast, then acceptance.sh against a RUNNING stack. ~1 min
 scripts/verify.sh --full    # purge, deploy, seed, acceptance, console smoke. ~15 min
 ```

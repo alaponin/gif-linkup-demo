@@ -16,30 +16,31 @@ that check. What's actually true is narrower and was measured, not assumed:
 That last point was confirmed for real on 2026-07-31 by stopping the local
 Docker daemon outright (`colima stop`, not just `docker compose down`) and
 running `scripts/verify.sh --fast` against it: green, ~5s, 27 pytest passes
-included. This file is what stops that claim drifting back to false the next
-time someone adds a check to `--fast` that assumes a daemon is there.
+included.
 
-RECURSION GUARD: `scripts/verify.sh --fast`'s own last step is
-`pytest tests/ apps/console/tests/`, which collects this very file. A test
-here that shells out to `scripts/verify.sh --fast` would therefore spawn a
-second `--fast` run whose own pytest step collects this file again --
-unbounded recursion (confirmed the hard way: an earlier draft of this file
-forked 168+ nested pytest/verify.sh processes before being killed). Every
-subprocess call below sets _GUARD_ENV in the child's environment and checks
-it first -- present means "already inside a `--fast` invoked by this file",
-so the test skips instead of shelling out again. This caps recursion at
-exactly one extra level.
+These tests exercise `scripts/check-exposure.sh` directly rather than the
+whole `scripts/verify.sh --fast` pipeline. check-exposure.sh is the *only*
+step `--fast` runs that touches Docker at all -- `check_scenarios.py`, the
+kp-solution-verify ship gate, and the rest of `pytest tests/
+apps/console/tests/` are plain Python with no `docker` calls in them, so
+they need no coverage here. (An earlier draft of this file called
+`scripts/verify.sh --fast` directly instead. `--fast`'s own last step is
+`pytest tests/ apps/console/tests/`, which collects this file -- so that
+call recursed into a second, nested `--fast` per test, tripling every real,
+non-nested `--fast` run's cost forever and needing a recursion guard to
+avoid forking without bound. Caught in review; calling check-exposure.sh
+directly removes both problems and is a closer test of the actual claim.)
 
-test_fast_succeeds_with_docker_daemon_unreachable does NOT itself stop the
-system Docker daemon -- doing that from inside a test would mean either
-fighting for root on Linux or touching machine state a CI runner's other
-jobs may depend on, which is a worse trade than the thing it is testing.
-Instead it points DOCKER_HOST at a socket path that does not exist. `docker
-info` against that path fails with the identical error family observed
-against the truly stopped daemon ("connect: no such file or directory"),
-which is what `docker compose config` would see in both cases: no daemon to
-dial. Confirmed equivalent by hand against the real daemon-down case above
-before relying on it here.
+test_check_exposure_succeeds_with_docker_daemon_unreachable does NOT itself
+stop the system Docker daemon -- doing that from inside a test would mean
+either fighting for root on Linux or touching machine state a CI runner's
+other jobs may depend on, which is a worse trade than the thing it is
+testing. Instead it points DOCKER_HOST at a socket path that does not
+exist. `docker info` against that path fails with the identical error
+family observed against the truly stopped daemon ("connect: no such file or
+directory"), which is what `docker compose config` would see in both cases:
+no daemon to dial. Confirmed equivalent by hand against the real
+daemon-down case above before relying on it here.
 """
 from __future__ import annotations
 
@@ -47,21 +48,13 @@ import os
 import pathlib
 import subprocess
 
-import pytest
-
 PACK = pathlib.Path(__file__).resolve().parent.parent
-_GUARD_ENV = "KP2_TEST_TIERS_NESTED"
 
 
-def _run_fast(extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    if os.environ.get(_GUARD_ENV):
-        pytest.skip(
-            "nested inside scripts/verify.sh --fast's own pytest step -- "
-            "see this module's RECURSION GUARD docstring section"
-        )
-    env = {**os.environ, _GUARD_ENV: "1", **(extra_env or {})}
+def _run_check_exposure(extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    env = {**os.environ, **(extra_env or {})}
     return subprocess.run(
-        ["scripts/verify.sh", "--fast"],
+        ["scripts/check-exposure.sh"],
         cwd=PACK,
         capture_output=True,
         text=True,
@@ -69,25 +62,26 @@ def _run_fast(extra_env: dict[str, str] | None = None) -> subprocess.CompletedPr
     )
 
 
-def test_fast_succeeds_with_no_federation():
-    """scripts/verify.sh --fast must succeed with no containers running --
-    it never touches one. This is the contract; it does not depend on
-    whether a federation happens to be up on the machine running the test."""
-    result = _run_fast()
+def test_check_exposure_succeeds_with_no_federation():
+    """check-exposure.sh -- the one --fast step that shells out to Docker --
+    must succeed with no containers running. It renders Compose config and
+    never queries container state, so this holds regardless of whether a
+    federation happens to be up on the machine running the test; this
+    assertion is what stops that from being just an assumption."""
+    result = _run_check_exposure()
     assert result.returncode == 0, (
-        f"scripts/verify.sh --fast failed:\n{result.stdout}\n{result.stderr}"
+        f"scripts/check-exposure.sh failed:\n{result.stdout}\n{result.stderr}"
     )
 
 
-def test_fast_succeeds_with_docker_daemon_unreachable():
-    """--fast must also succeed with no Docker DAEMON reachable -- a
-    stronger claim than "no containers", since check-exposure.sh still
-    shells out to `docker compose config`. See this module's docstring for
-    why DOCKER_HOST is redirected here instead of stopping the real daemon,
-    and for the manual confirmation that the two are equivalent."""
+def test_check_exposure_succeeds_with_docker_daemon_unreachable():
+    """check-exposure.sh must also succeed with no Docker DAEMON reachable
+    -- a stronger claim than "no containers". See this module's docstring
+    for why DOCKER_HOST is redirected here instead of stopping the real
+    daemon, and for the manual confirmation that the two are equivalent."""
     fake_docker_host = f"unix://{PACK}/.nonexistent-docker-for-test.sock"
-    result = _run_fast({"DOCKER_HOST": fake_docker_host})
+    result = _run_check_exposure({"DOCKER_HOST": fake_docker_host})
     assert result.returncode == 0, (
-        f"scripts/verify.sh --fast failed with DOCKER_HOST unreachable:\n"
+        f"scripts/check-exposure.sh failed with DOCKER_HOST unreachable:\n"
         f"{result.stdout}\n{result.stderr}"
     )
