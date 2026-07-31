@@ -17,9 +17,14 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. Measured on this
   pack (2026-07-28): `--fast` (static checks, the ship gate, exposure,
-  `pytest tests/ apps/console/tests/` — no Docker container, no network, no
-  federation) **~8s**; `--live` (`--fast`, then `acceptance.sh` against a
-  running stack; refuses rather than deploying one if nothing is reachable)
+  `pytest tests/ apps/console/tests/` — no running containers, no network,
+  no federation, but the Docker CLI is required: `check-exposure.sh` reads
+  the *rendered* Compose config, profiles and `${VAR}` interpolation
+  resolved, which is what makes it worth having, and that read needs
+  neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
+  daemon itself stopped, see `tests/test_tiers.py`) **~8s**; `--live`
+  (`--fast`, then `acceptance.sh` against a running stack; refuses rather
+  than deploying one if nothing is reachable)
   **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
   reproducibility proof) **~918s (~15 min)**. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each

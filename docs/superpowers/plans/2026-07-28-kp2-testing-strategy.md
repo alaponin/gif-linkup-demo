@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **This plan does not change deployment behaviour.** `hurl/run-linkup.sh` must still produce the same federation, and `scripts/acceptance.sh` must still assert the same things. If a generated artefact changes, something is wrong.
-- **The fast tier needs no Docker, no network and no federation.** If any check in it requires a container, it belongs in a different tier.
+- **The fast tier needs no running containers, no network and no federation.** It does need the Docker CLI: `check-exposure.sh` reads the *rendered* Compose config, and that is what makes it worth having (see `docs/superpowers/plans/2026-07-29-kp2-lib-split-and-tier-honesty.md` decision 3). Confirmed 2026-07-31 that this read still succeeds with the Docker daemon itself stopped, not just with no federation up. If any check in it requires a *running container*, it belongs in a different tier.
 - **A tier that is not honest is worse than a slow one.** No check may be moved to a cheaper tier by weakening it. Where a check genuinely cannot run cheaply, it stays expensive and is documented as such.
 - **Generated artefacts stay gitignored.** The golden corpus under `tests/golden/` is a *fixture*, which is a different thing from a working artefact, and `.gitignore` should say so where it excludes the working copies.
 - Commit after every task.
