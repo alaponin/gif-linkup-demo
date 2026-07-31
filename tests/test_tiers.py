@@ -78,8 +78,15 @@ def test_check_exposure_succeeds_with_docker_daemon_unreachable():
     """check-exposure.sh must also succeed with no Docker DAEMON reachable
     -- a stronger claim than "no containers". See this module's docstring
     for why DOCKER_HOST is redirected here instead of stopping the real
-    daemon, and for the manual confirmation that the two are equivalent."""
-    fake_docker_host = f"unix://{PACK}/.nonexistent-docker-for-test.sock"
+    daemon, and for the manual confirmation that the two are equivalent.
+
+    The fake socket lives under /tmp, not under PACK: PACK's absolute path
+    varies by checkout location, and on a deeply nested CI checkout it pushes
+    the socket path past the kernel's ~108-byte sun_path limit, making
+    `docker` fail with "unix socket path ... too long" instead of the
+    intended "no such file or directory" -- a different error that breaks
+    the equivalence this test relies on."""
+    fake_docker_host = f"unix:///tmp/.nonexistent-docker-for-test-{os.getpid()}.sock"
     result = _run_check_exposure({"DOCKER_HOST": fake_docker_host})
     assert result.returncode == 0, (
         f"scripts/check-exposure.sh failed with DOCKER_HOST unreachable:\n"
