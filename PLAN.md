@@ -76,7 +76,7 @@ steady state — measured at P0 (2026-07-25) via `docker stats --no-stream` on a
 headroom — tight but workable; a smaller host should use the lite profile. A **lite profile** ships for smaller machines (compose profile
 "full" on ss-pnia/ss-moeys; `LITE=1` skips it): `ss-pdga` (management) + `ss-pnea`
 (consumer) + `ss-plr` as shared provider SS hosting the PLR, PNIA and PEMIS
-subsystems (an SS legitimately hosts multiple members' clients; `scripts/lib.sh
+subsystems (an SS legitimately hosts multiple members' clients; `scripts/lib-stack.sh
 HOST_SS` is the single source of truth). The cross-server call stays real
 (consumer SS → provider SS); the video story keeps the full five-SS layout.
 *v0.3 gap:* the Hurl scenarios only generate the full topology and
@@ -319,7 +319,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   federation stands up from zero via `hurl/run-linkup.sh` in ~9–10 minutes.
   Two real bugs found and fixed in the process: MoEYS's member_name contains a
   comma, which broke X-Road's server-side DN construction for its AUTH/SIGN
-  CSRs (`hurl/generate.py`'s `dn_escape()`); and `scripts/lib.sh`'s
+  CSRs (`hurl/generate.py`'s `dn_escape()`); and `scripts/lib-stack.sh`'s
   `COMPOSE_ALL` never referenced `hurl/compose.hurl.yml`, so `teardown.sh
   --purge` could not remove the overlay's `kp2-ca-certs` volume, which would
   have handed a fresh CA container stale certs on the next "clean" run.

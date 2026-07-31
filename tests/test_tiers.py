@@ -85,3 +85,30 @@ def test_check_exposure_succeeds_with_docker_daemon_unreachable():
         f"scripts/check-exposure.sh failed with DOCKER_HOST unreachable:\n"
         f"{result.stdout}\n{result.stderr}"
     )
+
+
+def test_check_exposure_fails_on_unacknowledged_public_bind(tmp_path):
+    """Regression test for lib-split-and-tier-honesty's final review finding
+    2: check-exposure.sh duplicates lib-stack.sh's XROAD_BIND/XROAD_VERSION/
+    XROAD_CS_TAG/TESTCA_TAG exports (deliberately -- see check-exposure.sh's
+    own comment for why it can't just source lib-stack.sh). If a new
+    `${VAR}` substitution were ever added to docker-compose.yml's `ports:`
+    and exported from lib-stack.sh only, check-exposure.sh would silently
+    render it via Compose's own fallback default and pass a config that is
+    actually publicly exposed -- the exact class of bug a prior task-level
+    review caught once, by hand, with no automated guard against it
+    recurring. This exercises the check end-to-end (via check-exposure.sh's
+    KP2_DEPLOY_SPEC override, added for this test) against a deployment.yaml
+    with network.bind: 0.0.0.0 and no acknowledge_public_exposure: it must
+    fail, non-zero, and name the exposed ports."""
+    text = (PACK / "deployment.yaml").read_text()
+    assert "bind: 127.0.0.1" in text, "deployment.yaml no longer binds loopback by default -- update this fixture"
+    tmp_deploy = tmp_path / "deployment.yaml"
+    tmp_deploy.write_text(text.replace("bind: 127.0.0.1", "bind: 0.0.0.0"))
+
+    result = _run_check_exposure({"KP2_DEPLOY_SPEC": str(tmp_deploy)})
+    assert result.returncode != 0, (
+        f"scripts/check-exposure.sh should fail on network.bind: 0.0.0.0 with "
+        f"no acknowledge_public_exposure, but passed:\n{result.stdout}\n{result.stderr}"
+    )
+    assert "0.0.0.0" in result.stdout, f"expected exposed ports listed in output:\n{result.stdout}"

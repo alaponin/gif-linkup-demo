@@ -11,7 +11,7 @@ network:
   # elsewhere is an SSH tunnel or a VPN, not a change here.
   #
   # Any other value ALSO requires acknowledge_public_exposure: true below --
-  # see scripts/lib.sh's refusal for what is actually being exposed.
+  # see scripts/lib-stack.sh's refusal for what is actually being exposed.
   bind: 127.0.0.1
   # acknowledge_public_exposure: true
 

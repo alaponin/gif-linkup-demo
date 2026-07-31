@@ -4,7 +4,7 @@ Review date: 2026-07-19. **Status: fixes applied same day** — §3 resolved via
 option (a) (repo copy of check_pack.py; propagate upstream), all §4 items fixed
 (retry shift, same-shell checks, negative check re-routed via MOEYS's own SS,
 denial asserted on the X-Road error, 2.6.3 tightened to exact-set equality, SS
-order deduped, lite via compose profiles + HOST_SS, ports centralised in lib.sh,
+order deduped, lite via compose profiles + HOST_SS, ports centralised in lib-stack.sh,
 .gitignore, README refreshed, minor items), and §2/§5 items applied where
 offline-possible (manifest video_ref crosswalk, prompt preconditions, 2.2 role
 note, application-JSON artefact with provenance, message-log evidence noted,
@@ -100,14 +100,14 @@ implementation KP. Decide before P5, or VERIFIED is unreachable by definition.
 
 ## 4. Concrete defects in the drafts (fix at next pass)
 
-1. **`lib.sh retry()` drops the command's first word.** Signature comment says
+1. **`lib-core.sh retry()` drops the command's first word.** Signature comment says
    `retry <tries> <sleep> <desc> -- <cmd…>` (`shift 4`), but every call site
    omits the `--`, so `shift 4` eats the command name (`curl`, `docker`).
    Every retry would fail. Fix: `shift 3`, drop the `--` convention.
 2. **`acceptance.sh` calls shell functions inside `bash -c`.** `api`/`api_key`
    are defined in the parent shell; the `bash -c` subshells in `check` won't
    see them (not `export -f`ed). The 2.1 and 2.x checks fail before touching
-   X-Road. Fix: `export -f api api_key` in lib.sh, or restructure `check` to
+   X-Road. Fix: `export -f api api_key` in lib-stack.sh, or restructure `check` to
    run in the current shell.
 3. **Wrong design for the 2.6.4 negative check.** It sends
    `X-Road-Client: MOEYS/PEMIS` through **ss-pnea**. PEMIS is not a client of
@@ -139,8 +139,8 @@ implementation KP. Decide before P5, or VERIFIED is unreachable by definition.
    LITE branch in deploy (host provider subsystems on ss-plr), and gate the
    acceptance loop on LITE.
 8. **acceptance.sh scrapes ports out of docker-compose.yml with grep.** Brittle
-   (breaks on reformatting) and duplicates knowledge lib.sh already has. Put
-   one SS→port map in lib.sh and use it everywhere.
+   (breaks on reformatting) and duplicates knowledge lib-stack.sh already has. Put
+   one SS→port map in lib-stack.sh and use it everywhere.
 9. **No `.gitignore`.** `.env` (contains the PIN and admin password) and
    `__pycache__/` would be committed. Add one next to `.env.example`.
 10. **Pack README is stale.** It predates the draft: no mention of

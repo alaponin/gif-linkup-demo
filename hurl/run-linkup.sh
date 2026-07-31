@@ -79,7 +79,7 @@ check_token_fingerprint() {
     current=$(printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256 | cut -d' ' -f1)
     stored=$(cat "$fp")
     if [ "$current" != "$stored" ]; then
-      echo "lib-stack.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
+      echo "run-linkup.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
 federation's software token was initialised with. Changing .env alone does
 not change the token -- the mismatch surfaces as X-Road errors that look
 like certificate faults, not PIN errors (docs/xroad-770-notes.md §9).

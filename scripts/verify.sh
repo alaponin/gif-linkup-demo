@@ -4,8 +4,10 @@
 # teardown.sh --purge -> hurl/run-linkup.sh cycle, so anything that felt
 # like real verification cost a quarter of an hour.
 #
-#   scripts/verify.sh --fast    # static + golden + pytest. No Docker container,
-#                                # no network, no federation. Measured: see README.md.
+#   scripts/verify.sh --fast    # static + golden + pytest. No running containers,
+#                                # no network, no federation -- but the Docker CLI
+#                                # is required (check-exposure.sh reads the rendered
+#                                # Compose config). Measured: see README.md.
 #   scripts/verify.sh --live    # --fast, then acceptance.sh against a RUNNING stack.
 #                                # Refuses if nothing is deployed -- never deploys one.
 #   scripts/verify.sh --full    # purge, deploy, seed, acceptance, console smoke.

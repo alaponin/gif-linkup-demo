@@ -21,7 +21,11 @@ set -euo pipefail
 # fallback silently renders every port as loopback regardless of what
 # deployment.yaml actually says -- which is exactly the exposure this script
 # exists to catch.
-DEPLOY_SPEC="$PACK_DIR/deployment.yaml"
+#
+# KP2_DEPLOY_SPEC overrides the path -- tests only (tests/test_tiers.py),
+# so the exposure regression this script exists to catch can be exercised
+# against a throwaway deployment.yaml without touching the real one.
+DEPLOY_SPEC="${KP2_DEPLOY_SPEC:-$PACK_DIR/deployment.yaml}"
 export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
@@ -35,7 +39,7 @@ docker compose "${COMPOSE_FILES[@]}" --profile full --profile demo --profile too
 import json, sys, yaml
 
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
-deployment = yaml.safe_load(open('$PACK_DIR/deployment.yaml'))
+deployment = yaml.safe_load(open('$DEPLOY_SPEC'))
 acknowledged = (deployment.get('network') or {}).get('acknowledge_public_exposure') is True
 
 config = json.load(sys.stdin)

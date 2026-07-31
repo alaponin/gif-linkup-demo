@@ -3,7 +3,7 @@
 # Full profile: CS + Test CA + 5 Security Servers + 3 mock providers (~16 GB RAM).
 # Lite profile: LITE=1 in .env — scripts then omit "--profile full", so ss-pnia
 # and ss-moeys (profile "full") do not run and their subsystems are hosted on
-# ss-plr (see scripts/lib.sh HOST_SS).
+# ss-plr (see scripts/lib-stack.sh HOST_SS).
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
 x-sidecar: &sidecar

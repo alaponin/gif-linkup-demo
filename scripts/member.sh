@@ -24,7 +24,9 @@ USAGE
 }
 
 cmd_list() {
-  python3 - "$PACK_DIR/hurl/topology.json" <<'PY'
+  local topo="$PACK_DIR/hurl/topology.json"
+  [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
+  python3 - "$topo" <<'PY'
 import json, sys
 topo = json.load(open(sys.argv[1]))
 ports = {s["host"]: (s["host_ui_port"], s["host_proxy_port"]) for s in topo["security_servers"]}
