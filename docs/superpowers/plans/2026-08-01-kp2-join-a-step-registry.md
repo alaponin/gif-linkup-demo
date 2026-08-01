@@ -194,29 +194,65 @@ splits the flow. `build_ss_file()`, `build_hosted_client()` and
 `build_service_file()` are the three functions in play and they are best read
 together.
 
-- [ ] **Step 1:** convert `build_ss_file()`'s sequence: anchor upload, owner
+- [x] **Step 1:** convert `build_ss_file()`'s sequence: anchor upload, owner
       init, token login, AUTH then SIGN key-with-CSR, CSR download as **PEM**
       (`?csr_format=PEM`, not the DER it was generated as — `PLAN.md` §8),
       Test CA signing, cert import, AUTH registration, CS approval, activation,
       timestamping service.
-- [ ] **Step 2:** convert `build_hosted_client()`. Its ordering is
+
+      Implementation note: the AUTH-key-CSR/`ca_name` half of this (steps
+      `ss.bringup_init` through `ss.auth_key_csr`) was already done in Task 2,
+      forced by the shared template. This step converted the rest:
+      `ss.sign_key_csr` (`MEMBER_SIGN_KEY.hurl.tmpl`), `ss.bringup_register`,
+      `ss.activate`, `ss.tsa_post`, `ss.client_add`, `ss.client_register`.
+- [x] **Step 2:** convert `build_hosted_client()`. Its ordering is
       load-bearing and was found live: **client-add must precede its SIGN-key
       generation, which must precede its registration**
       (`2026-07-26-deployment-spec-and-lite-profile.md`). The registry order is
       now the thing that encodes that; add a comment on those three steps saying
       so, because a future reader reordering a list is more likely than a future
       reader reordering a template.
-- [ ] **Step 3:** convert `build_service_file()`: service-description POST with
+
+      Implementation note: comment added both on the three `Step` entries in
+      `hurl/steps.py` and at `build_hosted_client()`'s call site.
+- [x] **Step 3:** convert `build_service_file()`: service-description POST with
       `type: OPENAPI3`, then the separate enable (services are disabled when
       added — `PLAN.md` §8), then the ACL grants. Note the observed response
       codes that disagree with the OpenAPI model (register 204 not 200, enable
       200 not 204) travel with the templates and must not be "corrected".
-- [ ] **Step 4:** set `actor` on every step now that all of them exist. Under
+- [x] **Step 4:** set `actor` on every step now that all of them exist. Under
       `hosted_on`, every step is `operator`. For a member with its own server,
       the anchor-upload through cert-import run is `member`; CS approval is
       `operator`. This is the field Plan C's `BLOCKED` keys off, so getting the
       boundary right here saves a pass later.
-- [ ] **Step 5:** verify byte-identical **under both profiles** after each
+
+      Implementation note: a genuine tension surfaced here that the plan
+      didn't call out — several step ids are shared between a joining
+      member's own-server bring-up (`build_ss_file`, where `actor` should
+      read as declared below) and two contexts where it should not:
+      `main()`'s 10-ss-pdga block (the *operator's* own management server,
+      never a joining member) and `build_hosted_client()`/the hosted branch
+      of `build_service_file()` (Task 3 Step 2's "under `hosted_on`, every
+      step is `operator`"). `Step.actor` is one static field per id, so it
+      cannot vary by call site. Resolved by declaring the own-server-member
+      default on each `Step` and documenting both exceptions as call-site
+      overrides in a comment block in `hurl/steps.py` (above `ss.bringup_init`)
+      and inline at `build_hosted_client()` — Plan A has no executor to read
+      either value yet (design decision 6), so this is a documentation gap,
+      not a correctness one; Plan B's per-step runner will need to apply the
+      hosted/pdga override itself rather than trust the registry's default
+      blindly for those two call sites.
+
+      Final assignment: `member` — `ss.bringup_init`, `ss.auth_key_csr`,
+      `ss.sign_key_csr`, `ss.activate`, `ss.tsa_post`, `ss.client_add`,
+      `service.publish`. `operator` — everything CS-side (`cs.*`),
+      `ss.bringup_register` and `ss.client_register` (both bundle a CS
+      approval as their dominant/gating action), `service.acl` (matches
+      `PLAN.md` §11: ACL grant/revoke is a console/operator action), and the
+      three PDGA-only steps `ss.ca_name_capture`, `ss.mgmt_register`,
+      `ss.tsa_capture` (always accurate — never rendered for a joining
+      member).
+- [x] **Step 5:** verify byte-identical **under both profiles** after each
       conversion — lite is where the hosted path is exercised, and it is the
       profile most likely to reveal a mis-scoped capture prefix. Commit each
       separately.

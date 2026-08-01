@@ -443,7 +443,7 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         P=prefix,
     )
     body += render(
-        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
+        steps_module.BY_ID["ss.sign_key_csr"].template,
         SS_CODE=ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
@@ -451,9 +451,9 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
-    body += render("fragments/SS_BRINGUP_REGISTER.hurl.tmpl", HOSTVAR=host_var, P=prefix)
-    body += render("fragments/SS_ACTIVATE.hurl.tmpl", HOSTVAR=host_var, P=prefix)
-    body += render("fragments/SS_TSA_POST.hurl.tmpl", HOSTVAR=host_var, P=prefix)
+    body += render(steps_module.BY_ID["ss.bringup_register"].template, HOSTVAR=host_var, P=prefix)
+    body += render(steps_module.BY_ID["ss.activate"].template, HOSTVAR=host_var, P=prefix)
+    body += render(steps_module.BY_ID["ss.tsa_post"].template, HOSTVAR=host_var, P=prefix)
     client_kwargs = dict(
         SS=ss["dns_name"],
         MEMBER_CODE=m["member_code"],
@@ -463,8 +463,10 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
-    body += render("fragments/MEMBER_CLIENT_ADD.hurl.tmpl", **client_kwargs)
-    body += render("fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl", **client_kwargs)
+    # ss.client_add -> ss.client_register: see hurl/steps.py's comment on
+    # these ids for why this order is load-bearing.
+    body += render(steps_module.BY_ID["ss.client_add"].template, **client_kwargs)
+    body += render(steps_module.BY_ID["ss.client_register"].template, **client_kwargs)
     return body
 
 
@@ -477,7 +479,7 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
         service_code = svc["code"]
         sc = service_code.replace("-", "_")
         out += render(
-            "fragments/SERVICE_PUBLISH.hurl.tmpl",
+            steps_module.BY_ID["service.publish"].template,
             MEMBER_CODE=m["member_code"],
             SUBSYSTEM=sub_cfg["code"],
             SERVICE_CODE=service_code,
@@ -489,7 +491,7 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
         )
         for subject in svc.get("access") or []:
             out += render(
-                "fragments/SERVICE_ACL.hurl.tmpl",
+                steps_module.BY_ID["service.acl"].template,
                 SERVICE_CODE=service_code,
                 HOSTVAR=host_var,
                 SESS_P=sess_p,
@@ -523,8 +525,11 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     host_ss = host_member["security_server"]
     sess_p = ss_prefix(host_ss["dns_name"])
     cap_p = ss_prefix(member["security_server"]["dns_name"])
+    # ss.client_add -> ss.sign_key_csr -> ss.client_register, in that order:
+    # see hurl/steps.py's comment on those ids -- this is the exact ordering
+    # bug this docstring's own paragraph above describes.
     body = render(
-        "fragments/MEMBER_CLIENT_ADD.hurl.tmpl",
+        steps_module.BY_ID["ss.client_add"].template,
         SS=host_ss["dns_name"],
         MEMBER_CODE=m["member_code"],
         SUBSYSTEM=sub_cfg["code"],
@@ -534,7 +539,7 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
         CAP_P=cap_p,
     )
     body += render(
-        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
+        steps_module.BY_ID["ss.sign_key_csr"].template,
         SS_CODE=host_ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
@@ -543,7 +548,7 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
         CAP_P=cap_p,
     )
     body += render(
-        "fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl",
+        steps_module.BY_ID["ss.client_register"].template,
         HOSTVAR=host_var,
         SESS_P=sess_p,
         CAP_P=cap_p,

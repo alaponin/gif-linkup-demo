@@ -96,10 +96,25 @@ REGISTRY: tuple[Step, ...] = (
     # conflation design decision 2 warns about: whatever sub() leaves inside
     # {{...}} or a [Captures] name is a Hurl runtime identifier regardless of
     # whether it still contains an @token@ pending its own substitution.
+    #
+    # `actor` below is declared for the join lifecycle a joining member goes
+    # through (build_ss_file's own-server path): "the anchor-upload through
+    # cert-import run is member; CS approval is operator" (join-a plan Task 3
+    # Step 4). Two call sites are declared exceptions to these defaults,
+    # documented at the call site rather than as a second field, because Plan
+    # A has no executor to read either value yet (design decision 6):
+    #   - main()'s 10-ss-pdga block reuses ss.bringup_init/ss.auth_key_csr/
+    #     ss.sign_key_csr/ss.activate/ss.tsa_post to bring up the *operator's*
+    #     own management Security Server, never a joining member's -- read
+    #     "operator" there regardless of the default below.
+    #   - build_hosted_client()'s ss.client_add/ss.sign_key_csr/service.publish/
+    #     service.acl steps run against the HOST's Security Server on behalf of
+    #     a member with none of its own -- "under hosted_on, every step is
+    #     operator" (Task 3 Step 4), regardless of the defaults below.
     Step(
         id="ss.bringup_init",
         template="fragments/SS_BRINGUP_INIT.hurl.tmpl",
-        actor="operator",
+        actor="member",
         requires=("@HOSTVAR@", "ss_admin_user", "ss_admin_password", "gconf_anchor", "member_class", "token_pin"),
         provides=("@P@_xsrf_token",),
     ),
@@ -119,14 +134,14 @@ REGISTRY: tuple[Step, ...] = (
     Step(
         id="ss.auth_key_csr",
         template="fragments/SS_AUTH_KEY_CSR.hurl.tmpl",
-        actor="operator",
+        actor="member",
         requires=("@HOSTVAR@", "@P@_xsrf_token", "ca_name", "csr_country", "xroad_instance", "member_class", "ca_host"),
         provides=("@P@_auth_key_id", "@P@_auth_key_csr_id", "@P@_auth_key_csr", "@P@_auth_key_cert", "@P@_auth_key_cert_hash"),
     ),
     Step(
         id="ss.sign_key_csr",
         template="fragments/MEMBER_SIGN_KEY.hurl.tmpl",
-        actor="operator",
+        actor="member",
         requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "ca_name", "xroad_instance", "member_class", "csr_country", "ca_host"),
         provides=("@CAP_P@_sign_key_id", "@CAP_P@_sign_key_csr_id", "@CAP_P@_sign_key_csr", "@CAP_P@_sign_key_cert", "@CAP_P@_sign_key_cert_hash"),
     ),
@@ -150,7 +165,7 @@ REGISTRY: tuple[Step, ...] = (
     Step(
         id="ss.activate",
         template="fragments/SS_ACTIVATE.hurl.tmpl",
-        actor="operator",
+        actor="member",
         requires=("@HOSTVAR@", "@P@_auth_key_cert_hash", "@P@_xsrf_token"),
         provides=(),
     ),
@@ -166,8 +181,43 @@ REGISTRY: tuple[Step, ...] = (
     Step(
         id="ss.tsa_post",
         template="fragments/SS_TSA_POST.hurl.tmpl",
-        actor="operator",
+        actor="member",
         requires=("@HOSTVAR@", "@P@_xsrf_token", "tsa_name", "tsa_url"),
+        provides=(),
+    ),
+    # ss.client_add -> [ss.sign_key_csr] -> ss.client_register is the order
+    # every caller must render these in (build_ss_file, build_hosted_client):
+    # client-add must precede its SIGN-key generation, which must precede its
+    # registration -- the signer rejects a member_id it doesn't yet recognize
+    # as a client with 400 client_not_found (found live for the lite profile,
+    # 2026-07-26-deployment-spec-and-lite-profile.md). Reordering this list
+    # reintroduces that bug; join-a plan Task 3 Step 2.
+    Step(
+        id="ss.client_add",
+        template="fragments/MEMBER_CLIENT_ADD.hurl.tmpl",
+        actor="member",
+        requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "member_class"),
+        provides=("@CAP_P@_client_id",),
+    ),
+    Step(
+        id="ss.client_register",
+        template="fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl",
+        actor="operator",
+        requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "cs_host", "cs_xsrf_token"),
+        provides=("@CAP_P@_client_req_id",),
+    ),
+    Step(
+        id="service.publish",
+        template="fragments/SERVICE_PUBLISH.hurl.tmpl",
+        actor="member",
+        requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "@SPECVAR@"),
+        provides=("@CAP_P@_@SC@_description_id",),
+    ),
+    Step(
+        id="service.acl",
+        template="fragments/SERVICE_ACL.hurl.tmpl",
+        actor="operator",
+        requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token"),
         provides=(),
     ),
 )
