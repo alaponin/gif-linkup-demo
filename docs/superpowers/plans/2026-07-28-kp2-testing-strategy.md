@@ -4,7 +4,7 @@
 
 **Goal:** Cut the everyday verification loop from ~15 minutes to under a minute, without weakening what is checked. Today there are effectively two modes — a handful of static scripts, or a full `teardown.sh --purge` → `hurl/run-linkup.sh` cycle measured at **880–898 seconds** — so anything that feels like real verification costs a quarter of an hour, and an agent with no cheaper option will spend it.
 
-**Architecture:** Four moves. (1) A committed **golden corpus** turns the pack's central invariant — byte-identical generated artefacts for both profiles — from a manual `cp -r /tmp` ritual into a two-second test. (2) **Federation snapshots** turn "reset to a known-good deployed state" from 15 minutes into about a minute, because the state is only 19 named volumes. (3) A single **tiered entry point** so the choice of how much to verify is made by the tool, not by whoever is typing. (4) **Instrumentation**, so the next optimisation is chosen from data rather than intuition.
+**Architecture:** Four moves. (1) A committed **golden corpus** turns the pack's central invariant — byte-identical generated artefacts for both profiles — from a manual `cp -r /tmp` ritual into a two-second test. (2) **Federation snapshots** were built to turn "reset to a known-good deployed state" from 15 minutes into about a minute — measured instead at ~315s, a real but much smaller win, and retired once `profile: lite`'s own ~370s full cycle turned out to be the honest comparison, not a full-profile redeploy (two-decisions plan Task 2 — see this plan's own Task 3 for the numbers and the reasoning). (3) A single **tiered entry point** so the choice of how much to verify is made by the tool, not by whoever is typing. (4) **Instrumentation**, so the next optimisation is chosen from data rather than intuition.
 
 **Tech Stack:** Unchanged — bash, Python 3 + PyYAML, pytest, Docker Compose v2, Hurl.
 
@@ -153,6 +153,22 @@ normal propagation-lag pattern. Recorded honestly in
 `docs/production-delta.md` and the script's own header: the true multi-day
 boundary remains genuinely unmeasured, not extrapolated as fact — a
 follow-up that actually waits is the only way to narrow it further.
+
+**RETIRED 2026-08-01** by `docs/superpowers/plans/2026-07-29-kp2-two-decisions.md`
+Task 2 (T2). `scripts/federation.sh` measured a real ~3x speedup over a
+*full-profile* redeploy (~918s), but that was never the honest comparison
+once `profile: lite`'s own `--full` cycle was actually timed: ~370s
+(`docs/production-delta.md` "Lite profile's full cycle, measured"),
+against the snapshot's own ~315s restore. A ~15% edge, paid for with a
+shelf life that silently expires (~10 hours, this task's own finding
+above), an unencrypted-key-material liability
+(`docs/superpowers/plans/2026-07-29-kp2-host-portability.md` Task 3, now
+also withdrawn), and 123 lines of script plus a `.snapshots/` mechanism to
+maintain — not a trade worth making against a fresh deploy that has no
+shelf life at all. `scripts/federation.sh` is deleted; `.gitignore`'s
+`.snapshots/` entry is removed with it. This task's own honest
+measurements above are exactly what made the retirement decision possible
+and are left in place as the record of why.
 
 ## Task 4: Selectable acceptance
 

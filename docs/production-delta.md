@@ -173,9 +173,15 @@ days — is the only way to narrow this further; guessing at it here would
 be exactly the "asserting a failure mode nobody observed" this plan's own
 Task 6 sequencing note warns against.
 
-**Recommendation:** use a snapshot soon after taking it, for fast
-iteration within roughly the same working session — not as long-term cold
-storage of a "known-good" federation to come back to days later.
+**Recommendation, superseded — see below:** this section originally
+recommended using a snapshot soon after taking it, for fast iteration
+within roughly the same working session. **`scripts/federation.sh` is
+retired as of 2026-08-01** (two-decisions plan Task 2/T2): once `profile:
+lite`'s own full cycle was actually timed (~370s, below) instead of
+assumed, the snapshot's ~315s restore was only ~15% faster — not enough
+to carry its shelf life, its unencrypted key material sitting in
+`.snapshots/`, or its 123 lines of script. The measurements above are left
+in place as the record of why; the mechanism itself is deleted.
 
 ## Where the ~900s deploy actually goes (testing-strategy Task 5)
 
