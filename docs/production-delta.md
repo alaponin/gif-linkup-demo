@@ -288,3 +288,24 @@ cycle is close enough to the snapshot mechanism's own ~315s restore time
 (below) that the snapshot's already-thin 3x speedup over a full-profile
 redeploy shrinks further once lite is the point of comparison instead of
 full — see the snapshot section below for the actual decision.
+
+## Bumping X-Road means bumping three digests together (reproducible-builds plan Task 2)
+
+`deployment.yaml`'s `xroad.cs_digest` and `xroad.ss_digest` (added alongside
+`cs_tag`/`version` for readability, same `tag@sha256:…` style as
+`testca_tag`) pin the Central Server and Security Server sidecar images by
+digest, resolved 2026-08-01 from the images this pack was actually running
+(`docker image inspect --format '{{index .RepoDigests 0}}'`), the same rule
+`testca_tag` already followed. `docs/xroad-770-notes.md` §4 explains why the
+Hurl scenarios and the images have to move together — a scenario written
+against one X-Road tag can call admin-API endpoints a different tag's server
+has never heard of. Bumping X-Road therefore means re-resolving and updating
+all three pins (`cs_digest`, `ss_digest`, `testca_tag`) in the same change
+that bumps the scenarios, not one at a time. `python:3.12-slim`'s digest
+(both Dockerfiles) is unrelated to the X-Road version and is pinned/re-pinned
+on its own schedule — see the trade-off note at each `FROM` line: a
+digest-pinned base image stops receiving security patches until someone
+re-pins it, unlike the X-Road images, which only move when X-Road does.
+`ghcr.io/orange-opensource/hurl` is pinned inline in `hurl/compose.hurl.yml`
+rather than via a `deployment.yaml` key, since it is a build/test tool this
+pack depends on, not part of the federation it deploys.

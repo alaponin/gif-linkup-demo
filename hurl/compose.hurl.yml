@@ -52,7 +52,13 @@ services:
     healthcheck: *ss-health
 
   hurl:
-    image: ghcr.io/orange-opensource/hurl:latest
+    # Pinned inline, not via a deployment.yaml key (C13): hurl is a build/test
+    # tool this pack depends on, not part of the federation it deploys, so it
+    # does not move in lockstep with an X-Road version bump the way
+    # cs/ss/testca do. Resolved 2026-08-01 from the image this pack was last
+    # deployed with (docker image inspect --format
+    # '{{index .RepoDigests 0}}' ghcr.io/orange-opensource/hurl:latest).
+    image: ghcr.io/orange-opensource/hurl:latest@sha256:d7727dcc0166de8aea88916e73ea435ee09bfecb8ba0c281200206b6cf37cf64
     container_name: hurl
     # "tools" keeps it out of `docker compose up`; `docker compose run hurl`
     # activates the profile on its own.

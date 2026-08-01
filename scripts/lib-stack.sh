@@ -53,6 +53,10 @@ esac
 export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
+# Digest pins -- docker-compose.yml prefers these over XROAD_CS_TAG/
+# XROAD_VERSION when set (C13, docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md).
+export XROAD_CS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.cs_digest)
+export XROAD_SS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.ss_digest)
 export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
 # A non-loopback bind publishes, with no authentication, the X-Road proxy
 # ports (X-Road-Client is a self-asserted header, not a credential), the

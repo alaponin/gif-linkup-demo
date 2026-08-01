@@ -7,7 +7,9 @@
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
 x-sidecar: &sidecar
-  image: niis/xroad-security-server-sidecar:${XROAD_VERSION:-7.7.0}
+  # XROAD_SS_DIGEST (deployment.yaml xroad.ss_digest, C13) wins when set;
+  # XROAD_VERSION is the plain-tag fallback.
+  image: niis/xroad-security-server-sidecar:${XROAD_SS_DIGEST:-${XROAD_VERSION:-7.7.0}}
   environment: &sidecar-env
     XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
     XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
@@ -23,7 +25,9 @@ x-mock: &mock
 services:
   cs:
     # Central Server — operated by PDGA. Test/dev image: UI creds fixed xrd/secret.
-    image: niis/xroad-central-server:${XROAD_CS_TAG:-noble-7.7.0}
+    # XROAD_CS_DIGEST (deployment.yaml xroad.cs_digest, C13) wins when set;
+    # XROAD_CS_TAG is the plain-tag fallback.
+    image: niis/xroad-central-server:${XROAD_CS_DIGEST:-${XROAD_CS_TAG:-noble-7.7.0}}
     container_name: cs
     environment:
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
