@@ -18,7 +18,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. Measured on this
   pack (2026-07-28): `--fast` (static checks, the ship gate, exposure,
-  `pytest tests/ apps/console/tests/` — no running containers, no network,
+  `pytest tests/ apps/console/tests/ apps/mock-registry/tests/` — no running containers, no network,
   no federation, but the Docker CLI is required: `check-exposure.sh` reads
   the *rendered* Compose config, profiles and `${VAR}` interpolation
   resolved, which is what makes it worth having, and that read needs
