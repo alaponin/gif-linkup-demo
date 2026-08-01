@@ -4,8 +4,9 @@
 # on name/url -- a Security Server can have multiple approved timestamping
 # services, so a repeat may silently add a duplicate entry rather than 409.
 # The (future) executor decides from the raw body whether tsa_name/tsa_url
-# are already present. UNVERIFIED against a live Security Server as of this
-# probe's authoring.
+# are already present. CONFIRMED LIVE (Task 5 Step 4, 2026-08-01):
+# GET /api/v1/timestamping-services returns 200 with a JSON array on a live
+# Security Server.
 GET https://{{@HOSTVAR@}}:4000/api/v1/timestamping-services
 X-XSRF-TOKEN: {{@P@_xsrf_token}}
 

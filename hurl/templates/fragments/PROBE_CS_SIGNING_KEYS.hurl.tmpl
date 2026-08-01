@@ -4,15 +4,23 @@
 # a NEW key every call, so a resumed-but-already-done retry would silently
 # double the Central Server's signing keys rather than 409. Captures the raw
 # body, not a filtered field: whether INTERNAL/EXTERNAL already has a key is
-# a decision the (future) executor makes in Python, the same way this
-# fragment's sibling steps capture a whole CSR/cert body rather than filter
-# it in Hurl. UNVERIFIED against a live Central Server as of this probe's
-# authoring -- confirm the response shape against a real GET before Plan B
-# relies on it.
-GET https://{{cs_host}}:4000/api/v1/configuration-sources
+# a decision the (future) executor makes in Python.
+#
+# CONFIRMED LIVE (Task 5 Step 4, 2026-08-01): the Central Server has no
+# /configuration-sources list endpoint at all -- its own OpenAPI spec
+# (BOOT-INF/lib/openapi-model-1.0.jar!openapi-definition.yaml inside
+# centralserver-admin-service.jar) only exposes
+# /configuration-sources/{type}/signing-keys as a POST. The CS's own signing
+# keys live on its token instead: GET /api/v1/tokens returns
+# tokens[].configuration_signing_keys[], each with source_type
+# (INTERNAL/EXTERNAL) and label.label ("Internal signing key"/"External
+# signing key" -- CS_SIGNING_KEYS.hurl.tmpl's literal key_label values).
+# Verified against a live Central Server: the list is present and populated
+# exactly this way after cs.signing_keys has run once.
+GET https://{{cs_host}}:4000/api/v1/tokens
 X-XSRF-TOKEN: {{cs_xsrf_token}}
 
 HTTP 200
 
 [Captures]
-cs_configuration_sources: body
+cs_tokens: body

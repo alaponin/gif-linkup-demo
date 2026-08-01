@@ -7,9 +7,12 @@
 # still outstanding, so re-running the whole step and treating any 409 as
 # "step done" is not safe here; the executor needs the cert's own status.
 # The (future) executor reads @P@_auth_cert_status: X-Road's token-certificate
-# status enum (SAVED before registration, REGISTERED once both submitted and
-# approved -- exact intermediate values UNVERIFIED as of this probe's
-# authoring, confirm against a live Security Server).
+# status enum. CONFIRMED LIVE (Task 5 Step 4, 2026-08-01):
+# GET /api/v1/token-certificates/{hash} returns {"status":"REGISTERED",...}
+# for a fully registered+approved AUTH cert on a live Security Server; the
+# full enum (SAVED, REGISTRATION_IN_PROGRESS, REGISTERED, DELETION_IN_PROGRESS,
+# GLOBAL_ERROR) comes straight from the Security Server's own OpenAPI spec
+# (CertificateStatus).
 GET https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}
 X-XSRF-TOKEN: {{@P@_xsrf_token}}
 

@@ -1,9 +1,18 @@
 
 # Probe for ss.sign_key_csr (join-a plan Task 5): same reasoning as
 # PROBE_SS_AUTH_KEY.hurl.tmpl -- the (future) executor decides from the raw
-# token body whether a key labelled "Sign key" (MEMBER_SIGN_KEY.hurl.tmpl's
-# literal key_label) already exists. UNVERIFIED against a live Security
-# Server as of this probe's authoring.
+# token body whether a matching SIGN key already exists.
+#
+# CONFIRMED LIVE (Task 5 Step 4, 2026-08-01), and unlike ss.auth_key_csr this
+# one is NOT a simple label check: under the lite profile's hosted_on pattern
+# (ss-plr hosting PNIA and MoEYS alongside its own PLR), a shared host's
+# token carries MULTIPLE keys all labelled "Sign key" -- one per hosted
+# member. Confirmed on a live ss-plr: three SIGNING keys labelled "Sign key",
+# distinguished only by keys[].certificates[].owner_id ("PROGRESSA:GOV:PLR",
+# "PROGRESSA:GOV:PNIA", "PROGRESSA:GOV:MOEYS"). The (future) executor must
+# correlate by owner_id (or subject_common_name), not by label alone, or a
+# hosted member's resume would false-positive on a *different* hosted
+# member's key.
 GET https://{{@HOSTVAR@}}:4000/api/v1/tokens/0
 X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 

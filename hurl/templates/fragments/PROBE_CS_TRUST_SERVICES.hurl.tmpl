@@ -2,8 +2,9 @@
 # Probe for cs.trust_services (join-a plan Task 5): "has this already
 # happened?" This pack only ever registers one Test CA, so a non-empty list
 # is a sufficient signal -- decided in Python from the raw body, same
-# reasoning as PROBE_CS_SIGNING_KEYS.hurl.tmpl. UNVERIFIED against a live
-# Central Server as of this probe's authoring.
+# reasoning as PROBE_CS_SIGNING_KEYS.hurl.tmpl. CONFIRMED LIVE (Task 5 Step 4,
+# 2026-08-01): GET /api/v1/certification-services returns
+# [{"id":1,"name":"Test CA",...}] against a live Central Server.
 GET https://{{cs_host}}:4000/api/v1/certification-services
 X-XSRF-TOKEN: {{cs_xsrf_token}}
 

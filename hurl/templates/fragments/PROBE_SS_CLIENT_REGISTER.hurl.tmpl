@@ -2,9 +2,13 @@
 # Probe for ss.client_register (join-a plan Task 5): same partial-completion
 # reasoning as PROBE_SS_BRINGUP_REGISTER.hurl.tmpl -- PUT .../register then
 # GET-pending-then-approve can diverge if the process died between them. The
-# (future) executor reads @CAP_P@_client_status: X-Road's client status enum
-# (SAVED before registration, REGISTERED once approved -- UNVERIFIED as of
-# this probe's authoring, confirm against a live Security Server).
+# (future) executor reads @CAP_P@_client_status: X-Road's client status enum.
+# CONFIRMED LIVE (Task 5 Step 4, 2026-08-01): GET /api/v1/clients/{id} returns
+# {"status":"REGISTERED",...} for a fully registered+approved client on a
+# live Security Server; the full enum (REGISTERED, SAVED, GLOBAL_ERROR,
+# REGISTRATION_IN_PROGRESS, DELETION_IN_PROGRESS, DISABLED,
+# DISABLING_IN_PROGRESS, ENABLING_IN_PROGRESS) comes straight from the
+# Security Server's own OpenAPI spec (ClientStatus).
 GET https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}
 X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 

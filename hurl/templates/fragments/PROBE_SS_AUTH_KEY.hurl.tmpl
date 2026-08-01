@@ -3,9 +3,12 @@
 # happened?" POST .../keys-with-csrs creates a NEW key every call -- no
 # natural uniqueness, so a resumed-but-already-done retry would silently
 # generate a second AUTH key rather than 409. The (future) executor decides
-# from the raw token body whether a key labelled "Auth key" (the literal
-# key_label SS_AUTH_KEY_CSR.hurl.tmpl uses) already exists. UNVERIFIED
-# against a live Security Server as of this probe's authoring.
+# from the raw token body whether a key with usage AUTHENTICATION and label
+# "Auth key" (SS_AUTH_KEY_CSR.hurl.tmpl's literal key_label) already exists.
+# CONFIRMED LIVE (Task 5 Step 4, 2026-08-01): GET /api/v1/tokens/0 returns
+# {"keys":[{"usage":"AUTHENTICATION","label":"Auth key",...}, ...]} against a
+# live Security Server -- exactly one AUTHENTICATION key per server (unlike
+# ss.sign_key_csr's probe, no per-member correlation needed here).
 GET https://{{@HOSTVAR@}}:4000/api/v1/tokens/0
 X-XSRF-TOKEN: {{@P@_xsrf_token}}
 

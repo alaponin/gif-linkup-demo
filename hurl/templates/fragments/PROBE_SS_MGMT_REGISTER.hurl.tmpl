@@ -6,8 +6,10 @@
 # is the only caller (never a joining member's own bring-up) -- lower
 # priority for Plan B, kept for registry completeness. The (future) executor
 # compares mgmt_service_provider_id against this Security Server's own
-# management-subsystem client id. UNVERIFIED against a live Central Server
-# as of this probe's authoring.
+# management-subsystem client id. CONFIRMED LIVE (Task 5 Step 4, 2026-08-01):
+# GET /api/v1/management-services-configuration returns
+# {"service_provider_id":"SUBSYSTEM:PROGRESSA:GOV:PDGA:MANAGEMENT",...} on a
+# live Central Server that has already run ss.mgmt_register once.
 GET https://{{cs_host}}:4000/api/v1/management-services-configuration
 X-XSRF-TOKEN: {{cs_xsrf_token}}
 

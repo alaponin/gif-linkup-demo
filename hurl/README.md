@@ -96,6 +96,74 @@ Hurl emission at all — it's the member/service loops, and the
 `topology.json`/`topology.sh`/`compose.members.yml` generation, none of
 which this plan's scope (moving f-string Hurl blocks) touches.
 
+## Step registry (`hurl/steps.py`)
+
+The admin-API sequence the templates above encode is also expressed as an
+ordered registry of named `Step`s — `hurl/steps.py`, added by
+`docs/superpowers/plans/2026-08-01-kp2-join-a-step-registry.md` ("Plan A").
+`generate.py` renders the registry in order to build `hurl/scenarios/`; the
+bytes are identical to what a direct `render()` call would have produced —
+nothing about cold deploy changed. What the registry adds is that the
+sequence now has *names* a later caller can address one at a time: the
+future join API (Plan B) needs to run step 14 of ~24 without re-running
+steps 1-13, which the concatenated Hurl files alone cannot support (Hurl
+captures do not cross file boundaries).
+
+- **Step ids are stable identifiers other things persist.** `id` (e.g.
+  `"ss.auth_key_csr"`) is dotted, never renumbered, and never reused for a
+  different step — Plan B persists it in a job's context to know what to
+  resume from, and Plan C (DELETE) will attach a reversal to it. Renaming one
+  is a migration, not a refactor.
+- **`requires`/`provides` are Hurl *runtime* identifiers — `{{var}}` names
+  and `[Captures]` names — never `generate.py`'s `sub()` `@name@` tokens**,
+  which are substituted in Python before Hurl ever sees the file. A
+  per-member step (anything under `ss.*`/`service.*`) still carries
+  `@HOSTVAR@`/`@P@`/`@SESS_P@`/`@CAP_P@`/`@SPECVAR@` placeholders in its
+  declared `requires`/`provides` at this stage, because the concrete Hurl
+  identifier (`"pdga_xsrf_token"` vs `"pnia_xsrf_token"`) only exists after
+  `generate.py` substitutes a specific member in — the placeholder form is
+  what's structurally true across every member the step is ever rendered
+  for. See `hurl/steps.py`'s module docstring for the full reasoning.
+- **`tests/test_steps.py` is what keeps the declarations honest.** It parses
+  each step's raw `.tmpl` source (never the rendered `hurl/scenarios/`
+  output, which reflects only one already-chosen member/profile) and
+  asserts: `provides` equals the template's exact capture set; every
+  `{{name}}` reference is accounted for by `requires`, `provides`, or a known
+  `vars.env` global; and, walking the registry in order, every `requires` is
+  satisfied by an earlier step's `provides` or a global. A declared contract
+  nobody checks is documentation that rots — this is what makes it not.
+- **`actor`** (`"operator"` | `"member"`) records who performs a step in the
+  join lifecycle a joining member with its own Security Server goes through.
+  Two call sites are documented exceptions to a step's declared default
+  rather than a second field (`hurl/steps.py`'s comment above
+  `ss.bringup_init` has the details): `main()`'s bring-up of the *operator's*
+  own management Security Server, and `build_hosted_client()`'s steps, which
+  "under `hosted_on`, every step is `operator`" regardless of the default.
+- **`probe`** (a template path, or `None`) is set only where a step's 409
+  behaviour on repeat is ambiguous — most of the registry is not: a repeat
+  either conflicts cleanly (`409`, this pack's proven default — `PLAN.md`
+  Section 11) or is naturally idempotent. Audited counts (Task 5 of the
+  join-a plan, 2026-08-01): 3 read-only, 10 `409`-safe, 8 ambiguous (probed),
+  0 unsafe to repeat. The 8 probes were written, then run live against a real
+  deployed federation (`docker run` the pinned `hurl` image directly against
+  a real Central Server and Security Server, not just re-derived from the
+  OpenAPI spec) — one endpoint guess turned out wrong
+  (`PROBE_CS_SIGNING_KEYS.hurl.tmpl` first assumed a
+  `GET /configuration-sources` list that does not exist; the Central
+  Server's own signing keys are on its token, `GET /tokens`) and was fixed
+  from the live response, not just the spec. See each `PROBE_*.hurl.tmpl`'s
+  own comment for what it confirmed and any correlation caveats found live
+  (e.g. `PROBE_SS_SIGN_KEY.hurl.tmpl`: a shared host's token under
+  `hosted_on` carries one same-labelled key per hosted member, so a probe
+  reading the label alone is not enough).
+- **`unsafe_to_repeat`** defaults `False`; `tests/test_steps.py` asserts the
+  registry has none today. If a future step ever needs it, Plan B's runner
+  must refuse to resume across it rather than trust `409`-as-success blindly.
+
+Nothing in this pack runs the registry per-step yet — that is Plan B's job.
+Plan A's value is that the sequence now has a name and a checked contract
+independent of any executor.
+
 ## Do not hand-edit
 
 `scenarios/` and `vars.env` are artefacts. The identifiers come from

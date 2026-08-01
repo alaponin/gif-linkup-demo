@@ -326,30 +326,74 @@ independent of Plan B.
 
 **Files:** `hurl/steps.py`, `tests/test_steps.py`, `hurl/README.md`, `docs/superpowers/specs/2026-08-01-member-join-api-design.md`
 
-- [ ] **Step 1:** walk the registry and classify every step: (a) read-only, (b)
+- [x] **Step 1:** walk the registry and classify every step: (a) read-only, (b)
       mutation that returns `409` on repeat, (c) mutation where `409` would be
       ambiguous, (d) mutation that is not safe to repeat at all. Record the
       classification as a field or a comment per step, with the reason.
-- [ ] **Step 2:** for class (c) only, add a `probe` — a template that answers
+
+      Result: 3 (a), 10 (b), 8 (c), 0 (d) of 21 steps. Recorded as a one-line
+      comment above each `Step` in `hurl/steps.py`, plus a legend at the top
+      of `REGISTRY`.
+- [x] **Step 2:** for class (c) only, add a `probe` — a template that answers
       "has this already happened?" — and declare it in the registry. Expect this
       to be a small number of steps. If it turns out to be most of them, stop
       and say so in the spec: that would invalidate design decision §5.3 and is
       worth knowing before Plan B builds on it.
-- [ ] **Step 3:** for class (d), if any exist, they cannot be resumed onto and
+
+      8 of 21 (38%) needed one — more than "small", short of "most" (this
+      plan's own threshold for stopping). Recorded in the spec, not treated
+      as invalidating §5.3. Wrote 8 `PROBE_*.hurl.tmpl` fragments and a new
+      `Step.probe` field, then validated all 8 **live**: extracted the real
+      Central/Security Server OpenAPI specs from the running images
+      (`docker cp` + `unzip` the `openapi-model-*.jar`), confirmed field
+      names against them, then ran the actual pinned `hurl` image against a
+      real deployed federation end to end (`docker run ... hurl --test`).
+      One endpoint assumption was wrong and fixed from the live response
+      (`cs.signing_keys`'s probe: no `/configuration-sources` list exists;
+      the Central Server's own signing keys are on its token, `GET
+      /tokens`). One structural finding surfaced only by testing against the
+      lite profile's `hosted_on` topology: a shared host's token carries one
+      identically-labelled SIGN key **per hosted member**, so
+      `ss.sign_key_csr`'s probe must correlate by the certificate's
+      `owner_id`, not by label alone — documented in that probe's own
+      comment.
+- [x] **Step 3:** for class (d), if any exist, they cannot be resumed onto and
       Plan B must not try. Add a test asserting class (d) is empty, or, if it is
       not, that every class (d) step is flagged so Plan B's runner can refuse to
       resume across it. An unresumable step that nobody flagged is the worst
       outcome this plan can produce.
-- [ ] **Step 4:** `scripts/verify.sh --fast` green. Then the real proof:
+
+      Class (d) is empty. Added `Step.unsafe_to_repeat` (defaults `False`)
+      and `tests/test_steps.py::test_no_step_is_unsafe_to_repeat`, plus
+      `test_ambiguous_steps_have_a_probe` (every declared `probe` path
+      exists on disk).
+- [x] **Step 4:** `scripts/verify.sh --fast` green. Then the real proof:
       `scripts/teardown.sh --purge` → `scripts/verify.sh --full` under
       `profile: lite`, green. The golden corpus proves the bytes are identical;
       only a deploy proves the bytes still stand a federation up. Once, at the
       end, not per task.
-- [ ] **Step 5:** document in `hurl/README.md`: what `hurl/steps.py` is, that
+
+      Both green. `--full`'s first acceptance run hit a transient 2.6.2
+      failure (empty cross-server response); re-running the same, unchanged
+      acceptance suite against the same already-deployed stack passed
+      cleanly — the already-documented asynchronous-propagation flake
+      (`scripts/acceptance.sh`'s own comment on `fetch_retry`, "confirmed
+      live at P5"), not a regression from this plan's refactor. Every
+      Hurl-scenario-driven module (2.1 through 2.6.1 — everything Tasks 1-4
+      touched) passed on the first run. Console smoke also green. Left the
+      federation running afterward (known-good state) rather than tearing it
+      down unprompted.
+
+      Bonus, opportunistic given the live stack was already up: resolved
+      design spec §"Open questions" item 3 (Hurl JSON capture extraction) —
+      ran `--report-json` against a real request and confirmed
+      `entries[].captures` is a `{name, value}` array per `[Captures]` block,
+      exactly the granularity Plan B's executor needs. See that section.
+- [x] **Step 5:** document in `hurl/README.md`: what `hurl/steps.py` is, that
       step ids are stable identifiers other things persist, that `requires`/
       `provides` are Hurl runtime names and not `@name@` tokens, and that
       `tests/test_steps.py` is what keeps the declarations honest.
-- [ ] **Step 6:** record the outcome in the design spec — the actual step count,
+- [x] **Step 6:** record the outcome in the design spec — the actual step count,
       the class (c) list from Step 2, and whether Step 3 found anything. §5.3's
       claim that probes are rare is a prediction; replace it with the measured
       answer. Commit.
