@@ -32,13 +32,16 @@ run_fast() {
   log "check-exposure.sh"
   "$PACK_DIR/scripts/check-exposure.sh"
 
-  # Landed by the simplification plan, not this one -- run it if and only
-  # if it exists, per this plan's own Task 2 Step 2. Its absence is not a
-  # failure of THIS plan.
-  if [ -x "$PACK_DIR/scripts/check-python-floor.sh" ]; then
-    log "check-python-floor.sh"
-    "$PACK_DIR/scripts/check-python-floor.sh"
-  fi
+  # A Python-floor lint was considered here and withdrawn (C10, two-decisions
+  # plan) when the host floor was raised to 3.9+ -- see hurl/README.md's
+  # "Host Python runtime" note for what it would have enforced.
+  #
+  # scripts/preflight.sh's python3/PyYAML check does not belong here either
+  # (shell-python-boundary plan, Design decision 3): --fast is meant to stay
+  # ~8s, and adding a dependency check to it would need this tier's public
+  # claims (T1, tests/test_tiers.py) revisited again. Preflight runs once, in
+  # the deploy path (hurl/run-linkup.sh), where the cost it guards against
+  # actually lives.
 
   log "pytest tests/ apps/console/tests/"
   [ -x "$PYTEST" ] || fail "$PYTEST not found -- set up a venv with pytest/httpx/fastapi/pyyaml (see apps/console/tests/ and tests/test_golden.py for what they need)."
