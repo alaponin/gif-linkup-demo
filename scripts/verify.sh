@@ -76,9 +76,12 @@ run_full() {
   "$PACK_DIR/scripts/acceptance.sh"
   log "console smoke"
   "$PACK_DIR/scripts/console.sh" up
-  # console.sh up returning does not mean the FastAPI app inside is already
-  # accepting connections yet -- found live, a bare curl right after up
-  # failed on a container that was healthy two seconds later.
+  # console.sh up now passes --wait (D12, reproducible-builds plan Task 3
+  # Step 5), so its own HEALTHCHECK already blocked until the FastAPI app was
+  # accepting connections. This loop stays anyway as a backstop for any other
+  # caller that brings the container up without --wait -- a recorded decision,
+  # not an oversight -- and costs nothing extra: it succeeds on the first
+  # curl once the container is already healthy.
   local _i
   for _i in 1 2 3 4 5 6; do
     curl -sf --max-time 3 http://localhost:8090/api/health >/dev/null 2>&1 && break
