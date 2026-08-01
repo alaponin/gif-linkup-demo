@@ -355,6 +355,33 @@ def check_policy(core: dict) -> None:
         )
 
 
+# The four keys apps/join-api/validate.py enforces (spec S8) -- kept here as
+# well so a fifth key sitting undetected in configs/x-road-bus/2.7.yaml is a
+# generate-time failure, not something only discovered when a join is
+# submitted. Value-correctness for each of the four is validate.py's job (it
+# is the code that actually applies join: policy at request time); this is
+# purely the same "no undeclared decoration" guard check_policy() already
+# applies to the bus policy above.
+JOIN_POLICY_KEYS = frozenset({"member_class", "approval", "default_hosting", "allowed_methods"})
+
+
+def check_join_policy(join_config: dict) -> None:
+    """Sibling to check_policy() above, same reasoning, for
+    configs/x-road-bus/2.7.yaml's join: block -- spec S16.2 records three
+    keys (max_services, require_semantic_for_provenance, backend_auth) that
+    were invented and deleted for exactly this: a key nothing applies reads
+    as configuration and is decoration."""
+    join = join_config.get("join") or {}
+    extra = set(join) - JOIN_POLICY_KEYS
+    if extra:
+        raise SystemExit(
+            "generate.py: configs/x-road-bus/2.7.yaml join: declares "
+            f"unrecognised key(s) {sorted(extra)} -- apps/join-api/validate.py "
+            f"only enforces {sorted(JOIN_POLICY_KEYS)}. Either implement "
+            "enforcement for the new key or remove it (spec S16.2)."
+        )
+
+
 def write(name: str, src: str, body: str) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / name).write_text(HEADER.format(src=src) + body.lstrip("\n"))
@@ -607,6 +634,7 @@ def main() -> None:
         raise SystemExit(f"generate.py: deployment.yaml profile must be 'full' or 'lite' (got {profile!r})")
     core = load("configs/x-road-bus/2.1.yaml")
     check_policy(core)
+    check_join_policy(load("configs/x-road-bus/2.7.yaml"))
     env = read_env()
     members = discover_members(PACK, identity)
     # member:/subsystem: no longer live in configs/*.yaml (removed 2026-07-26,

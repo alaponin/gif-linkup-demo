@@ -1,0 +1,79 @@
+"""Unit tests for apps/join-api/schema.py (join-b Task 2). The one property
+that matters most: JoinPayload has no origin field at all, and extra="forbid"
+means a payload that tries to smuggle one in fails to parse rather than
+having it silently discarded."""
+from __future__ import annotations
+
+import pathlib
+import sys
+
+import pydantic
+import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from schema import BackendAuth, JoinPayload  # noqa: E402
+
+
+def _consume_only(**overrides) -> dict:
+    base = {
+        "code": "PTSB",
+        "name": "Progressa Tertiary Scholarship Board",
+        "subsystem": "SCHOLARSHIP",
+        "subsystem_description": "Scholarship award management",
+        "security_server": {"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
+        "backend": {"auth": "network_allowlist"},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_consume_only_payload_parses_with_no_services():
+    payload = JoinPayload(**_consume_only())
+    assert payload.services == []
+    assert payload.requested_access == []
+    assert payload.semantic is None
+
+
+def test_publishing_payload_parses():
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id", "status"]},
+    ))
+    assert payload.services[0].code == "awards-api"
+    assert payload.semantic.entity == "award"
+
+
+def test_origin_field_is_rejected_not_silently_dropped():
+    """The whole safeguard: there is no path through this schema by which a
+    payload-supplied "origin" reaches anything downstream."""
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(origin="canonical"))
+
+
+def test_unknown_field_is_rejected():
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(not_a_real_field=True))
+
+
+def test_missing_backend_is_rejected():
+    raw = _consume_only()
+    del raw["backend"]
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**raw)
+
+
+def test_invalid_backend_auth_value_is_rejected():
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(backend={"auth": "shared_api_key"}))
+
+
+def test_backend_auth_enum_has_exactly_the_three_spec_values():
+    assert {m.value for m in BackendAuth} == {"none", "network_allowlist", "proxy_injected"}
+
+
+def test_hosted_on_defaults_to_none():
+    raw = _consume_only()
+    raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb"}
+    payload = JoinPayload(**raw)
+    assert payload.security_server.hosted_on is None

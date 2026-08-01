@@ -1,0 +1,23 @@
+# Fixture OpenAPI document (join-b Task 2, brief Step 6) -- same reachable
+# backend as clean.yaml, but with a DELETE operation: check 10 (allowed
+# methods) must reject this even though check 9 (reachability) passes it,
+# because the API Builder-generated spec of a real form-backed app is
+# exactly this shape (spec S2.3 -- the whole reason check 10 exists).
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:18765
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK
+    delete:
+      operationId: deleteAward
+      responses:
+        "204":
+          description: No Content

@@ -1,0 +1,19 @@
+# Fixture OpenAPI document (join-b Task 2, brief Step 6) -- same shape as
+# clean.yaml (GET only, reachable), used with a join payload whose
+# services[].code contains a character check 12 rejects (a space or a
+# slash, per the task-2 brief). Check 12 runs last (spec S8's own order),
+# after checks 9-11 already passed against this same reachable, GET-only
+# spec -- the bad character lives on the payload, not in this document.
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:18765
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK

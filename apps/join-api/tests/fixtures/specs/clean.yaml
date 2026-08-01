@@ -1,0 +1,17 @@
+# Fixture OpenAPI document (join-b Task 2, brief Step 6) -- a clean,
+# read-only spec: one GET, servers.url reachable. apps/join-api/tests/
+# test_validate.py's local HTTP server binds exactly this port
+# (REACHABLE_PORT) for the duration of each test that uses this fixture.
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:18765
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK

@@ -1,0 +1,39 @@
+"""Unit tests for hurl/generate.py's check_join_policy() (join-b Task 2,
+Step 2) -- the same "a declared key the code does not apply is a hard
+failure" rule check_policy() already applies to the bus policy, extended to
+configs/x-road-bus/2.7.yaml's join: block.
+"""
+from __future__ import annotations
+
+import pathlib
+import sys
+
+import pytest
+import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "hurl"))
+from generate import JOIN_POLICY_KEYS, check_join_policy  # noqa: E402
+
+PACK = pathlib.Path(__file__).resolve().parent.parent
+
+
+def test_the_committed_2_7_yaml_passes():
+    config = yaml.safe_load((PACK / "configs/x-road-bus/2.7.yaml").read_text())
+    check_join_policy(config)  # does not raise
+
+
+def test_exactly_four_keys_are_recognised():
+    assert JOIN_POLICY_KEYS == {"member_class", "approval", "default_hosting", "allowed_methods"}
+
+
+def test_an_undeclared_fifth_key_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="max_services"):
+        check_join_policy({"join": {"member_class": "GOV", "max_services": 4}})
+
+
+def test_an_empty_join_block_passes():
+    check_join_policy({"join": {}})  # does not raise -- nothing declared, nothing to contradict
+
+
+def test_a_missing_join_block_passes():
+    check_join_policy({})  # does not raise

@@ -1,0 +1,18 @@
+# Fixture OpenAPI document (join-b Task 2, brief Step 6) -- fetches fine,
+# but servers.url is a port nothing listens on (127.0.0.1:1, a privileged
+# port; connection refused immediately, no DNS lookup, no timeout wait).
+# This is spec S2.4's registry-perfect-but-dead member: check 9 must reject
+# it and name the URL it could not reach.
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:1
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK

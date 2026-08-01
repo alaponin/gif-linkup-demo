@@ -1,0 +1,21 @@
+# Module 2.7 — the join policy. Written by hand for join-b Task 2 (there is
+# no prompts/2.7.md yet -- this block is config, not a scenario, and has no
+# bb-config-gen prompt to generate it from). Spec:
+# docs/superpowers/specs/2026-08-01-member-join-api-design.md §8.
+#
+# Exactly four keys. Do not add a fifth: an earlier draft invented
+# max_services, require_semantic_for_provenance and backend_auth and all
+# three were deleted (spec §16.2) because nothing applied them -- "a block
+# the generator silently ignores is worse than no block at all: it reads as
+# configuration and is decoration" (hurl/generate.py's check_policy()
+# docstring, and now also check_join_policy(), which hard-fails
+# hurl/generate.py at generate time if a fifth key ever appears here). The
+# test for a new key, before adding one: can it be set to another value, and
+# does something observably change?
+module: "2.7"
+building_block: x-road-bus
+join:
+  member_class: GOV          # Progressa's federation admits government bodies only
+  approval: explicit         # a human operator approves; never automatic
+  default_hosting: hosted_on # a join defaults to hosting; own_server must be asked for
+  allowed_methods: [GET]     # a joined member publishes read services only (§2.3)
