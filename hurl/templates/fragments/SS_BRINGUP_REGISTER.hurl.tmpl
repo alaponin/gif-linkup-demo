@@ -1,0 +1,26 @@
+
+# Register the AUTH certificate (the SS's address is its DNS name on the linkup network)
+PUT https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}/register
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "address": "{{@HOSTVAR@}}"
+}
+
+# setup.hurl@7.7.0: 204, although the OpenAPI model says 200.
+HTTP 204
+
+# Approve the registration request on the Central Server.
+# This is the explicit alternative to the auto-approve-* flags in local.ini:
+# nothing has to be written into /etc/xroad/conf.d on the CS.
+GET https://{{cs_host}}:4000/api/v1/management-requests?sort=id&desc=true&status=WAITING
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@P@_auth_cert_req_id: jsonpath "$.items[0].id"
+
+POST https://{{cs_host}}:4000/api/v1/management-requests/{{@P@_auth_cert_req_id}}/approval
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200

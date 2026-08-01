@@ -1,0 +1,68 @@
+
+# Generate the SIGN key and its CSR for @MEMBER_CODE@
+POST https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/keys-with-csrs
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+Content-Type: application/json
+{
+  "key_label": "Sign key",
+  "csr_generate_request": {
+    "key_usage_type": "SIGNING",
+    "ca_name": "{{ca_name}}",
+    "csr_format": "DER",
+    "member_id": "{{xroad_instance}}:{{member_class}}:@MEMBER_CODE@",
+    "subject_field_values": {
+      "CN": "@MEMBER_CODE@",
+      "C": "{{csr_country}}",
+      "O": "@MEMBER_NAME@",
+      "subjectAltName": "{{@HOSTVAR@}}",
+      "serialNumber": "{{xroad_instance}}/@SS_CODE@/{{member_class}}"
+    }
+  }
+}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_sign_key_id: jsonpath "$.key.id"
+@CAP_P@_sign_key_csr_id: jsonpath "$.csr_id"
+
+# Download the SIGN CSR in PEM
+GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@CAP_P@_sign_key_id}}/csrs/{{@CAP_P@_sign_key_csr_id}}?csr_format=PEM
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_sign_key_csr: body
+
+# Sign the SIGN CSR against the Test CA
+POST http://{{ca_host}}:8888/testca/sign
+Content-Type: multipart/form-data; boundary=certboundary
+```
+--certboundary
+Content-Disposition: form-data; name="type"
+
+sign
+--certboundary
+Content-Disposition: form-data; name="certreq"; filename="sign.csr.pem"
+
+{{@CAP_P@_sign_key_csr}}
+--certboundary--
+```
+
+HTTP 200
+[Captures]
+@CAP_P@_sign_key_cert: body
+
+# Import the SIGN certificate
+POST https://{{@HOSTVAR@}}:4000/api/v1/token-certificates
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+Content-Type: application/octet-stream
+```
+{{@CAP_P@_sign_key_cert}}
+```
+
+HTTP 201
+
+[Captures]
+@CAP_P@_sign_key_cert_hash: jsonpath "$.certificate_details.hash"

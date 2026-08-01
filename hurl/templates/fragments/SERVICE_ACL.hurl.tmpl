@@ -1,0 +1,15 @@
+
+# Grant @ACL_SUBJECT@ access to @SERVICE_CODE@ -- and nobody else.
+# The omission is deliberate: @NEGATIVE@ is left out so the negative check in
+# acceptance/2.6.md proves the ACL, not an accident of configuration.
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-clients/@ACL_SUBJECT@/access-rights
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+{
+  "items": [
+    {
+      "service_code": "@SERVICE_CODE@"
+    }
+  ]
+}
+
+HTTP 201

@@ -1,0 +1,10 @@
+
+# Capture the Test CA's name from the global configuration. Captured once on the
+# management Security Server and reused by every later CSR in the run.
+GET https://{{@HOSTVAR@}}:4000/api/v1/certificate-authorities
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+ca_name: jsonpath "$[0].name"

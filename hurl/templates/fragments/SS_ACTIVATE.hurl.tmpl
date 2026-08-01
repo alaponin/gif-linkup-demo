@@ -1,0 +1,6 @@
+
+# Activate the AUTH certificate
+PUT https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}/activate
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 204

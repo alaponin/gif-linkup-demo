@@ -1,0 +1,18 @@
+
+# Add @MEMBER_CODE@:@SUBSYSTEM@ as a client of @SS@
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+{
+  "ignore_warnings": true,
+  "client": {
+    "member_class": "{{member_class}}",
+    "member_code": "@MEMBER_CODE@",
+    "subsystem_code": "@SUBSYSTEM@",
+    "connection_type": "@CONNECTION_TYPE@"
+  }
+}
+
+HTTP 201
+
+[Captures]
+@CAP_P@_client_id: jsonpath "$.id"

@@ -1,0 +1,121 @@
+
+############################################################
+# @SS@ -- @MEMBER_NAME@ (@SS_CODE@)
+############################################################
+
+# Check that the Security Server UI is up
+GET https://{{@HOSTVAR@}}:4000
+
+HTTP 200
+
+# Log in to the Security Server
+POST https://{{@HOSTVAR@}}:4000/login
+[FormParams]
+username: {{ss_admin_user}}
+password: {{ss_admin_password}}
+
+HTTP 200
+[Captures]
+@P@_xsrf_token: cookie "XSRF-TOKEN"
+
+# Upload the global configuration anchor downloaded from the Central Server
+POST https://{{@HOSTVAR@}}:4000/api/v1/system/anchor
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+Content-Type: application/octet-stream
+```
+{{gconf_anchor}}
+```
+
+HTTP 201
+
+# Initialise the Security Server (owner + server code + token PIN)
+POST https://{{@HOSTVAR@}}:4000/api/v1/initialization
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+Content-Type: application/json
+{
+  "owner_member_class": "{{member_class}}",
+  "owner_member_code": "@MEMBER_CODE@",
+  "security_server_code": "@SS_CODE@",
+  "software_token_pin": "{{token_pin}}",
+  "ignore_warnings": true
+}
+
+HTTP 201
+
+# Log in to the software token
+PUT https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/login
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+Content-Type: application/json
+{
+  "password": "{{token_pin}}"
+}
+
+HTTP *
+@CANAME@
+# Generate the AUTH key and its CSR in one call
+POST https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/keys-with-csrs
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+Content-Type: application/json
+{
+  "key_label": "Auth key",
+  "csr_generate_request": {
+    "key_usage_type": "AUTHENTICATION",
+    "ca_name": "{{ca_name}}",
+    "csr_format": "DER",
+    "subject_field_values": {
+      "CN": "{{@HOSTVAR@}}",
+      "C": "{{csr_country}}",
+      "O": "@MEMBER_NAME@",
+      "subjectAltName": "{{@HOSTVAR@}}",
+      "serialNumber": "{{xroad_instance}}/@SS_CODE@/{{member_class}}"
+    }
+  }
+}
+
+# setup.hurl@7.7.0 notes the API returns 200 here although the OpenAPI model says 201.
+HTTP 200
+
+[Captures]
+@P@_auth_key_id: jsonpath "$.key.id"
+@P@_auth_key_csr_id: jsonpath "$.csr_id"
+
+# Download the AUTH CSR in PEM (the Test CA signs PEM, the SS generates DER)
+GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@P@_auth_key_id}}/csrs/{{@P@_auth_key_csr_id}}?csr_format=PEM
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@P@_auth_key_csr: body
+
+# Sign the AUTH CSR against the Test CA (needs a filename, hence the raw multipart body)
+POST http://{{ca_host}}:8888/testca/sign
+Content-Type: multipart/form-data; boundary=certboundary
+```
+--certboundary
+Content-Disposition: form-data; name="type"
+
+auth
+--certboundary
+Content-Disposition: form-data; name="certreq"; filename="auth.csr.pem"
+
+{{@P@_auth_key_csr}}
+--certboundary--
+```
+
+HTTP 200
+[Captures]
+@P@_auth_key_cert: body
+
+# Import the AUTH certificate
+POST https://{{@HOSTVAR@}}:4000/api/v1/token-certificates
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+Content-Type: application/octet-stream
+```
+{{@P@_auth_key_cert}}
+```
+
+HTTP 201
+
+[Captures]
+@P@_auth_key_cert_hash: jsonpath "$.certificate_details.hash"

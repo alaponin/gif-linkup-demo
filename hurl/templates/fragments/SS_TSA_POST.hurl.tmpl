@@ -1,0 +1,10 @@
+
+# Point the Security Server at that timestamping service
+POST https://{{@HOSTVAR@}}:4000/api/v1/system/timestamping-services
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "name": "{{tsa_name}}",
+  "url": "{{tsa_url}}"
+}
+
+HTTP 201

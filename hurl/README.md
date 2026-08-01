@@ -85,6 +85,17 @@ The golden corpus (below) is what makes editing a template safe: every
 change is checked against a byte-exact baseline for both profiles before it
 can be trusted.
 
+**Measured result** (docs/reviews/2026-08-01-branch-review.md finding C14):
+`generate.py` went from 1639 to 1085 lines (-34%); `main()` from 706 to 521
+lines (-26%). `grep -n '{{{{' hurl/generate.py` returns nothing — no
+quadrupled-brace Hurl block survives. 16 `.hurl.tmpl` files exist: 5 scenario
+templates plus 11 single-purpose fragments under `hurl/templates/fragments/`.
+`main()`'s reduction is smaller than the finding's "~700 lines" framing might
+suggest, because most of what remains in `main()` after this plan is not
+Hurl emission at all — it's the member/service loops, and the
+`topology.json`/`topology.sh`/`compose.members.yml` generation, none of
+which this plan's scope (moving f-string Hurl blocks) touches.
+
 ## Do not hand-edit
 
 `scenarios/` and `vars.env` are artefacts. The identifiers come from

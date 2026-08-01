@@ -1,0 +1,26 @@
+
+############################################################
+# @MEMBER_CODE@:@SUBSYSTEM@ -- publish @SERVICE_CODE@ (OPENAPI3)
+############################################################
+
+# Add the OpenAPI 3 service description. The Security Server parses servers.url
+# from the spec as the forwarding target.
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-descriptions
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+{
+  "url": "{{@SPECVAR@}}",
+  "type": "OPENAPI3",
+  "rest_service_code": "@SERVICE_CODE@"
+}
+
+HTTP 201
+
+[Captures]
+@CAP_P@_@SC@_description_id: jsonpath "$.id"
+
+# Services are disabled when added -- enable it explicitly
+PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@CAP_P@_@SC@_description_id}}/enable
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+# setup.hurl@7.7.0: 200, although the OpenAPI model says 204.
+HTTP 200

@@ -398,386 +398,6 @@ def dn_escape(value: str) -> str:
     return value.replace(",", "\\\\,")
 
 
-# ---------------------------------------------------------------------------
-# Reusable fragment: bring one Security Server up to a registered auth cert.
-# Mirrors setup.hurl's SS0/SS1 sequences request for request.
-# ---------------------------------------------------------------------------
-
-SS_BRINGUP_INIT = """
-############################################################
-# @SS@ -- @MEMBER_NAME@ (@SS_CODE@)
-############################################################
-
-# Check that the Security Server UI is up
-GET https://{{@HOSTVAR@}}:4000
-
-HTTP 200
-
-# Log in to the Security Server
-POST https://{{@HOSTVAR@}}:4000/login
-[FormParams]
-username: {{ss_admin_user}}
-password: {{ss_admin_password}}
-
-HTTP 200
-[Captures]
-@P@_xsrf_token: cookie "XSRF-TOKEN"
-
-# Upload the global configuration anchor downloaded from the Central Server
-POST https://{{@HOSTVAR@}}:4000/api/v1/system/anchor
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-Content-Type: application/octet-stream
-```
-{{gconf_anchor}}
-```
-
-HTTP 201
-
-# Initialise the Security Server (owner + server code + token PIN)
-POST https://{{@HOSTVAR@}}:4000/api/v1/initialization
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-Content-Type: application/json
-{
-  "owner_member_class": "{{member_class}}",
-  "owner_member_code": "@MEMBER_CODE@",
-  "security_server_code": "@SS_CODE@",
-  "software_token_pin": "{{token_pin}}",
-  "ignore_warnings": true
-}
-
-HTTP 201
-
-# Log in to the software token
-PUT https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/login
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-Content-Type: application/json
-{
-  "password": "{{token_pin}}"
-}
-
-HTTP *
-@CANAME@
-# Generate the AUTH key and its CSR in one call
-POST https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/keys-with-csrs
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-Content-Type: application/json
-{
-  "key_label": "Auth key",
-  "csr_generate_request": {
-    "key_usage_type": "AUTHENTICATION",
-    "ca_name": "{{ca_name}}",
-    "csr_format": "DER",
-    "subject_field_values": {
-      "CN": "{{@HOSTVAR@}}",
-      "C": "{{csr_country}}",
-      "O": "@MEMBER_NAME@",
-      "subjectAltName": "{{@HOSTVAR@}}",
-      "serialNumber": "{{xroad_instance}}/@SS_CODE@/{{member_class}}"
-    }
-  }
-}
-
-# setup.hurl@7.7.0 notes the API returns 200 here although the OpenAPI model says 201.
-HTTP 200
-
-[Captures]
-@P@_auth_key_id: jsonpath "$.key.id"
-@P@_auth_key_csr_id: jsonpath "$.csr_id"
-
-# Download the AUTH CSR in PEM (the Test CA signs PEM, the SS generates DER)
-GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@P@_auth_key_id}}/csrs/{{@P@_auth_key_csr_id}}?csr_format=PEM
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-@P@_auth_key_csr: body
-
-# Sign the AUTH CSR against the Test CA (needs a filename, hence the raw multipart body)
-POST http://{{ca_host}}:8888/testca/sign
-Content-Type: multipart/form-data; boundary=certboundary
-```
---certboundary
-Content-Disposition: form-data; name="type"
-
-auth
---certboundary
-Content-Disposition: form-data; name="certreq"; filename="auth.csr.pem"
-
-{{@P@_auth_key_csr}}
---certboundary--
-```
-
-HTTP 200
-[Captures]
-@P@_auth_key_cert: body
-
-# Import the AUTH certificate
-POST https://{{@HOSTVAR@}}:4000/api/v1/token-certificates
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-Content-Type: application/octet-stream
-```
-{{@P@_auth_key_cert}}
-```
-
-HTTP 201
-
-[Captures]
-@P@_auth_key_cert_hash: jsonpath "$.certificate_details.hash"
-"""
-
-# Extracted so it can also run for a member HOSTED on someone else's Security
-# Server (the lite profile's PNIA/MoEYS-on-ss-plr pattern): SESS_P is whose
-# already-open session authenticates the request; CAP_P is this member's own
-# capture namespace, so a hosted member's client_id/sign_key never collides
-# with the hosting SS's own. The owning member's own bring-up (build_ss_file)
-# calls this with SESS_P == CAP_P -- identical behavior to before this split.
-MEMBER_SIGN_KEY = """
-# Generate the SIGN key and its CSR for @MEMBER_CODE@
-POST https://{{@HOSTVAR@}}:4000/api/v1/tokens/0/keys-with-csrs
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-Content-Type: application/json
-{
-  "key_label": "Sign key",
-  "csr_generate_request": {
-    "key_usage_type": "SIGNING",
-    "ca_name": "{{ca_name}}",
-    "csr_format": "DER",
-    "member_id": "{{xroad_instance}}:{{member_class}}:@MEMBER_CODE@",
-    "subject_field_values": {
-      "CN": "@MEMBER_CODE@",
-      "C": "{{csr_country}}",
-      "O": "@MEMBER_NAME@",
-      "subjectAltName": "{{@HOSTVAR@}}",
-      "serialNumber": "{{xroad_instance}}/@SS_CODE@/{{member_class}}"
-    }
-  }
-}
-
-HTTP 200
-
-[Captures]
-@CAP_P@_sign_key_id: jsonpath "$.key.id"
-@CAP_P@_sign_key_csr_id: jsonpath "$.csr_id"
-
-# Download the SIGN CSR in PEM
-GET https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@CAP_P@_sign_key_id}}/csrs/{{@CAP_P@_sign_key_csr_id}}?csr_format=PEM
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-@CAP_P@_sign_key_csr: body
-
-# Sign the SIGN CSR against the Test CA
-POST http://{{ca_host}}:8888/testca/sign
-Content-Type: multipart/form-data; boundary=certboundary
-```
---certboundary
-Content-Disposition: form-data; name="type"
-
-sign
---certboundary
-Content-Disposition: form-data; name="certreq"; filename="sign.csr.pem"
-
-{{@CAP_P@_sign_key_csr}}
---certboundary--
-```
-
-HTTP 200
-[Captures]
-@CAP_P@_sign_key_cert: body
-
-# Import the SIGN certificate
-POST https://{{@HOSTVAR@}}:4000/api/v1/token-certificates
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-Content-Type: application/octet-stream
-```
-{{@CAP_P@_sign_key_cert}}
-```
-
-HTTP 201
-
-[Captures]
-@CAP_P@_sign_key_cert_hash: jsonpath "$.certificate_details.hash"
-"""
-
-SS_BRINGUP_REGISTER = """
-# Register the AUTH certificate (the SS's address is its DNS name on the linkup network)
-PUT https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}/register
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "address": "{{@HOSTVAR@}}"
-}
-
-# setup.hurl@7.7.0: 204, although the OpenAPI model says 200.
-HTTP 204
-
-# Approve the registration request on the Central Server.
-# This is the explicit alternative to the auto-approve-* flags in local.ini:
-# nothing has to be written into /etc/xroad/conf.d on the CS.
-GET https://{{cs_host}}:4000/api/v1/management-requests?sort=id&desc=true&status=WAITING
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-@P@_auth_cert_req_id: jsonpath "$.items[0].id"
-
-POST https://{{cs_host}}:4000/api/v1/management-requests/{{@P@_auth_cert_req_id}}/approval
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-"""
-
-SS_ACTIVATE = """
-# Activate the AUTH certificate
-PUT https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}/activate
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-
-HTTP 204
-"""
-
-# Captured once, on the management Security Server, after its auth certificate is
-# active -- the global list is only readable from an initialised server. Every
-# later server reuses the captured name/url.
-TSA_CAPTURE = """
-# Read the timestamping service out of the global configuration
-GET https://{{@HOSTVAR@}}:4000/api/v1/timestamping-services
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-tsa_name: jsonpath "$[0].name"
-tsa_url: jsonpath "$[0].url"
-"""
-
-SS_TSA_POST = """
-# Point the Security Server at that timestamping service
-POST https://{{@HOSTVAR@}}:4000/api/v1/system/timestamping-services
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "name": "{{tsa_name}}",
-  "url": "{{tsa_url}}"
-}
-
-HTTP 201
-"""
-
-# Extracted alongside MEMBER_SIGN_KEY for the same reason -- SESS_P/CAP_P let a
-# hosted member register as a client using the hosting SS's session while
-# keeping its own capture namespace. Split into ADD/REGISTER because a hosted
-# member's SIGN key must be generated *between* the two: the signer rejects a
-# member_id it doesn't yet know as a client (client_not_found) if generated
-# before ADD, but /register rejects a member with no certificate yet
-# (core.Signer.UnknownMember) if called before the SIGN key is imported.
-# Confirmed live at P0 for lite, 2026-07-26. build_ss_file calls ADD then
-# REGISTER back-to-back (SESS_P == CAP_P, unchanged full-mode behavior);
-# build_hosted_client interleaves ADD -> MEMBER_SIGN_KEY -> REGISTER.
-MEMBER_CLIENT_ADD = """
-# Add @MEMBER_CODE@:@SUBSYSTEM@ as a client of @SS@
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-{
-  "ignore_warnings": true,
-  "client": {
-    "member_class": "{{member_class}}",
-    "member_code": "@MEMBER_CODE@",
-    "subsystem_code": "@SUBSYSTEM@",
-    "connection_type": "@CONNECTION_TYPE@"
-  }
-}
-
-HTTP 201
-
-[Captures]
-@CAP_P@_client_id: jsonpath "$.id"
-"""
-
-MEMBER_CLIENT_REGISTER = """
-# Register the subsystem
-PUT https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/register
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-
-HTTP 204
-
-# Approve the client registration request on the Central Server
-GET https://{{cs_host}}:4000/api/v1/management-requests?sort=id&desc=true&status=WAITING
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-@CAP_P@_client_req_id: jsonpath "$.items[0].id"
-
-POST https://{{cs_host}}:4000/api/v1/management-requests/{{@CAP_P@_client_req_id}}/approval
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-"""
-
-CA_NAME_CAPTURE = """
-# Capture the Test CA's name from the global configuration. Captured once on the
-# management Security Server and reused by every later CSR in the run.
-GET https://{{@HOSTVAR@}}:4000/api/v1/certificate-authorities
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-ca_name: jsonpath "$[0].name"
-"""
-
-# SESS_P/CAP_P split for the same reason as MEMBER_SIGN_KEY/MEMBER_CLIENT: a
-# hosted member's service publish authenticates with the host SS's session
-# but must operate on its OWN client_id, not the host's.
-SERVICE_PUBLISH = """
-############################################################
-# @MEMBER_CODE@:@SUBSYSTEM@ -- publish @SERVICE_CODE@ (OPENAPI3)
-############################################################
-
-# Add the OpenAPI 3 service description. The Security Server parses servers.url
-# from the spec as the forwarding target.
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-descriptions
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-{
-  "url": "{{@SPECVAR@}}",
-  "type": "OPENAPI3",
-  "rest_service_code": "@SERVICE_CODE@"
-}
-
-HTTP 201
-
-[Captures]
-@CAP_P@_@SC@_description_id: jsonpath "$.id"
-
-# Services are disabled when added -- enable it explicitly
-PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@CAP_P@_@SC@_description_id}}/enable
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-
-# setup.hurl@7.7.0: 200, although the OpenAPI model says 204.
-HTTP 200
-"""
-
-SERVICE_ACL = """
-# Grant @ACL_SUBJECT@ access to @SERVICE_CODE@ -- and nobody else.
-# The omission is deliberate: @NEGATIVE@ is left out so the negative check in
-# acceptance/2.6.md proves the ACL, not an accident of configuration.
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-clients/@ACL_SUBJECT@/access-rights
-X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
-{
-  "items": [
-    {
-      "service_code": "@SERVICE_CODE@"
-    }
-  ]
-}
-
-HTTP 201
-"""
-
-
 def ss_prefix(dns_name: str) -> str:
     return dns_name.replace("-", "_")
 
@@ -795,18 +415,18 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     m, sub_cfg, ss = member["member"], member["subsystem"], member["security_server"]
     prefix = ss_prefix(ss["dns_name"])
     conn = member.get("client", {}).get("connection_type", "HTTP")
-    body = sub(
-        SS_BRINGUP_INIT,
+    body = render(
+        "fragments/SS_BRINGUP_INIT.hurl.tmpl",
         SS=ss["dns_name"],
         SS_CODE=ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
         HOSTVAR=host_var,
         P=prefix,
-        CANAME=sub(CA_NAME_CAPTURE, HOSTVAR=host_var, P=prefix) if capture_ca_name else "",
+        CANAME=render("fragments/CA_NAME_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=prefix) if capture_ca_name else "",
     )
-    body += sub(
-        MEMBER_SIGN_KEY,
+    body += render(
+        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
         SS_CODE=ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
@@ -814,9 +434,9 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
-    body += sub(SS_BRINGUP_REGISTER, HOSTVAR=host_var, P=prefix)
-    body += sub(SS_ACTIVATE, HOSTVAR=host_var, P=prefix)
-    body += sub(SS_TSA_POST, HOSTVAR=host_var, P=prefix)
+    body += render("fragments/SS_BRINGUP_REGISTER.hurl.tmpl", HOSTVAR=host_var, P=prefix)
+    body += render("fragments/SS_ACTIVATE.hurl.tmpl", HOSTVAR=host_var, P=prefix)
+    body += render("fragments/SS_TSA_POST.hurl.tmpl", HOSTVAR=host_var, P=prefix)
     client_kwargs = dict(
         SS=ss["dns_name"],
         MEMBER_CODE=m["member_code"],
@@ -826,8 +446,8 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
-    body += sub(MEMBER_CLIENT_ADD, **client_kwargs)
-    body += sub(MEMBER_CLIENT_REGISTER, **client_kwargs)
+    body += render("fragments/MEMBER_CLIENT_ADD.hurl.tmpl", **client_kwargs)
+    body += render("fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl", **client_kwargs)
     return body
 
 
@@ -839,8 +459,8 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
     for svc in member.get("services") or []:
         service_code = svc["code"]
         sc = service_code.replace("-", "_")
-        out += sub(
-            SERVICE_PUBLISH,
+        out += render(
+            "fragments/SERVICE_PUBLISH.hurl.tmpl",
             MEMBER_CODE=m["member_code"],
             SUBSYSTEM=sub_cfg["code"],
             SERVICE_CODE=service_code,
@@ -851,8 +471,8 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
             SPECVAR=f"{m['member_code'].lower()}_spec_url",
         )
         for subject in svc.get("access") or []:
-            out += sub(
-                SERVICE_ACL,
+            out += render(
+                "fragments/SERVICE_ACL.hurl.tmpl",
                 SERVICE_CODE=service_code,
                 HOSTVAR=host_var,
                 SESS_P=sess_p,
@@ -886,8 +506,8 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     host_ss = host_member["security_server"]
     sess_p = ss_prefix(host_ss["dns_name"])
     cap_p = ss_prefix(member["security_server"]["dns_name"])
-    body = sub(
-        MEMBER_CLIENT_ADD,
+    body = render(
+        "fragments/MEMBER_CLIENT_ADD.hurl.tmpl",
         SS=host_ss["dns_name"],
         MEMBER_CODE=m["member_code"],
         SUBSYSTEM=sub_cfg["code"],
@@ -896,8 +516,8 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
         SESS_P=sess_p,
         CAP_P=cap_p,
     )
-    body += sub(
-        MEMBER_SIGN_KEY,
+    body += render(
+        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
         SS_CODE=host_ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
@@ -905,8 +525,8 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
         SESS_P=sess_p,
         CAP_P=cap_p,
     )
-    body += sub(
-        MEMBER_CLIENT_REGISTER,
+    body += render(
+        "fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl",
         HOSTVAR=host_var,
         SESS_P=sess_p,
         CAP_P=cap_p,
@@ -1073,18 +693,18 @@ def main() -> None:
 
     # -- 10 management security server -------------------------------------
     host_var = f"{pdga_prefix}_host"
-    body = sub(
-        SS_BRINGUP_INIT,
+    body = render(
+        "fragments/SS_BRINGUP_INIT.hurl.tmpl",
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["code"],
         MEMBER_NAME=dn_escape(owner["name"]),
         HOSTVAR=host_var,
         P=pdga_prefix,
-        CANAME=sub(CA_NAME_CAPTURE, HOSTVAR=host_var, P=pdga_prefix),
+        CANAME=render("fragments/CA_NAME_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix),
     )
-    body += sub(
-        MEMBER_SIGN_KEY,
+    body += render(
+        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["code"],
         MEMBER_NAME=dn_escape(owner["name"]),
@@ -1092,7 +712,7 @@ def main() -> None:
         SESS_P=pdga_prefix,
         CAP_P=pdga_prefix,
     )
-    body += sub(SS_BRINGUP_REGISTER, HOSTVAR=host_var, P=pdga_prefix)
+    body += render("fragments/SS_BRINGUP_REGISTER.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
     body += sub(
         """
 # Nominate this Security Server as the one hosting the management services
@@ -1191,9 +811,9 @@ HTTP 200
         HOSTVAR=host_var,
         P=pdga_prefix,
     )
-    body += sub(SS_ACTIVATE, HOSTVAR=host_var, P=pdga_prefix)
-    body += sub(TSA_CAPTURE, HOSTVAR=host_var, P=pdga_prefix)
-    body += sub(SS_TSA_POST, HOSTVAR=host_var, P=pdga_prefix)
+    body += render("fragments/SS_ACTIVATE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
+    body += render("fragments/TSA_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
+    body += render("fragments/SS_TSA_POST.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
     write("10-ss-pdga.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 2x member security servers ----------------------------------------

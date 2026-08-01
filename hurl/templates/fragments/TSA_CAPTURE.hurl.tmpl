@@ -1,0 +1,10 @@
+
+# Read the timestamping service out of the global configuration
+GET https://{{@HOSTVAR@}}:4000/api/v1/timestamping-services
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+tsa_name: jsonpath "$[0].name"
+tsa_url: jsonpath "$[0].url"

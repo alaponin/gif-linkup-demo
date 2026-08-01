@@ -1,0 +1,20 @@
+
+# Register the subsystem
+PUT https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/register
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 204
+
+# Approve the client registration request on the Central Server
+GET https://{{cs_host}}:4000/api/v1/management-requests?sort=id&desc=true&status=WAITING
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_client_req_id: jsonpath "$.items[0].id"
+
+POST https://{{cs_host}}:4000/api/v1/management-requests/{{@CAP_P@_client_req_id}}/approval
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
