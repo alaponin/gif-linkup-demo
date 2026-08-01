@@ -1,0 +1,14 @@
+############################################################
+# Central Server -- global configuration anchor
+# Captured once and uploaded to every Security Server later in the run. This is
+# why the scenarios are concatenated into a single Hurl file: captures do not
+# cross file boundaries.
+############################################################
+
+GET https://{{cs_host}}:4000/api/v1/configuration-sources/INTERNAL/anchor/download
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+gconf_anchor: body

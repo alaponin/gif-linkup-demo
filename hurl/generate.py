@@ -1068,22 +1068,7 @@ def main() -> None:
     write("02-cs-members.hurl", "configs/member-*/2.*.yaml", body)
 
     # -- 03 anchor ----------------------------------------------------------
-    body = """
-############################################################
-# Central Server -- global configuration anchor
-# Captured once and uploaded to every Security Server later in the run. This is
-# why the scenarios are concatenated into a single Hurl file: captures do not
-# cross file boundaries.
-############################################################
-
-GET https://{{cs_host}}:4000/api/v1/configuration-sources/INTERNAL/anchor/download
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-gconf_anchor: body
-"""
+    body = render("03-cs-anchor.hurl.tmpl")
     write("03-cs-anchor.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 10 management security server -------------------------------------
