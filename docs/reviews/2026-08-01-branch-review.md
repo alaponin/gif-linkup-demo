@@ -300,7 +300,7 @@ produces a different console. For a pack whose headline claim is *reproducibilit
 `--full` tier is *the reproducibility proof*, this is the largest remaining hole in that
 claim — and it is a supply-chain exposure too, not only a determinism one.
 
-## 🟠 C14 — the concrete way out of `generate.py` (C1)
+## 🟠 C14 — the concrete way out of `generate.py` (C1) — RESOLVED 2026-08-01
 
 C1 says "three tools in one file" and is right, but "split it" is a big ask. There is a much
 smaller change that removes most of the pain and is nearly risk-free, because the golden
@@ -330,6 +330,19 @@ the existing `sub()`.** Then:
 
 Do it one template at a time; `tests/test_golden.py` fails loudly on any byte that changes.
 This is the single highest-value simplification available in the pack.
+
+**Resolved** by `docs/superpowers/plans/2026-08-01-kp2-generate-templates.md`, exactly this
+way: one template at a time, golden corpus as the guard. Measured result: `generate.py` 1639
+→ 1085 lines (-34%), `main()` 706 → 521 lines (-26%), `grep -n '{{{{' hurl/generate.py` now
+returns nothing. 16 `.hurl.tmpl` files exist under `hurl/templates/` — 5 scenario templates
+(`00`–`03`, `02`'s owner/member split) plus 11 single-purpose fragments (the constants this
+finding already flagged as "the right answer") under `hurl/templates/fragments/`. `main()`'s
+reduction is smaller than "~700 lines" implied, because most of what remains after this plan
+is not Hurl emission — it's the member/service loops and the `topology.json`/`topology.sh`/
+`compose.members.yml` generation, none of which this fix's scope (moving f-string Hurl blocks)
+touched. Byte-identical for both profiles at every step; live-verified with a full
+`teardown.sh --purge` → deploy → seed → acceptance → console-smoke cycle under `profile: lite`
+(2026-08-01) — ACCEPTANCE GREEN.
 
 ## 🟠 C15 — shell-to-Python string interpolation, used as a pattern — RESOLVED 2026-08-01
 
