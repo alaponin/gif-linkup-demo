@@ -142,9 +142,9 @@ def test_schema_failure_is_reported_as_check_schema():
 
 
 def test_key_derivation_rejects_a_code_that_lowers_to_an_invalid_key():
-    # "." is not a bad identifier character (check 12 tolerates it) but does
+    # "-" is not a bad identifier character (check 12 tolerates it) but does
     # break the [a-z0-9]+ key the directory name and manifest map key need.
-    _rejects(_payload(code="PT.SB"), "key_derivation")
+    _rejects(_payload(code="PT-SB"), "key_derivation")
 
 
 # -- check 3: collision --------------------------------------------------------
@@ -178,12 +178,11 @@ def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_me
               "not_canonical")
 
 
-# -- check 5: member class -----------------------------------------------------
-
-
-def test_member_class_rejects_a_policy_class_that_disagrees_with_the_federation():
-    bad_policy = dict(POLICY, member_class="PRIVATE")
-    _rejects(_payload(), "member_class", policy=bad_policy)
+# Check 5 (member class) has no per-request test here -- join-b Task 2
+# review finding 2: the payload schema has no member_class field, so there
+# was nothing about a submitted request for that check to evaluate. The
+# join.member_class vs identity.member_class consistency assertion moved to
+# hurl/generate.py's check_join_policy() (tests/test_join_policy.py).
 
 
 # -- check 6: hosting -----------------------------------------------------------
@@ -314,5 +313,19 @@ def test_identifier_characters_rejects_a_slash_in_subsystem():
 
 def test_identifier_characters_rejects_a_bad_service_code_last_after_9_10_11_pass():
     raw = _payload(services=[{"code": "awards api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                                "access": []}])
+    _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))
+
+
+def test_identifier_characters_rejects_a_dotted_service_code():
+    """join-b Task 2 review finding 1: design spec S8 check 12 names dots
+    as a plausible bad character alongside spaces and slashes ("a service
+    code copied from a third-party tool's human-facing API name" -- e.g.
+    Joget API Builder's own operation naming, "awards.list"). Uses the
+    service-code field specifically, not the top-level `code` field: a dot
+    in `code` is caught earlier, by check 2 (key_derivation)'s [a-z0-9]+
+    regex -- services[].code isn't looked at by that check, so this is the
+    field that actually isolates check 12's own dot rejection."""
+    raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": []}])
     _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))

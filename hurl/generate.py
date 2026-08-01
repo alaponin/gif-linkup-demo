@@ -365,12 +365,23 @@ def check_policy(core: dict) -> None:
 JOIN_POLICY_KEYS = frozenset({"member_class", "approval", "default_hosting", "allowed_methods"})
 
 
-def check_join_policy(join_config: dict) -> None:
+def check_join_policy(join_config: dict, manifest: dict) -> None:
     """Sibling to check_policy() above, same reasoning, for
     configs/x-road-bus/2.7.yaml's join: block -- spec S16.2 records three
     keys (max_services, require_semantic_for_provenance, backend_auth) that
     were invented and deleted for exactly this: a key nothing applies reads
-    as configuration and is decoration."""
+    as configuration and is decoration.
+
+    Also carries the one value-correctness assertion that belongs here
+    rather than in apps/join-api/validate.py: join.member_class must agree
+    with manifest.yaml's identity.member_class. This is a static
+    operator-misconfiguration check -- Progressa is a single-member_class
+    federation by design, so nothing about a submitted join payload could
+    ever make this comparison come out differently. It moved here from
+    validate.py's per-request check 5 (join-b Task 2 review finding 2):
+    a check two static config files disagree on is a generate-time
+    consistency failure, not a fact about any particular join request.
+    """
     join = join_config.get("join") or {}
     extra = set(join) - JOIN_POLICY_KEYS
     if extra:
@@ -379,6 +390,14 @@ def check_join_policy(join_config: dict) -> None:
             f"unrecognised key(s) {sorted(extra)} -- apps/join-api/validate.py "
             f"only enforces {sorted(JOIN_POLICY_KEYS)}. Either implement "
             "enforcement for the new key or remove it (spec S16.2)."
+        )
+    policy_class = join.get("member_class")
+    federation_class = manifest["identity"]["member_class"]
+    if policy_class is not None and policy_class != federation_class:
+        raise SystemExit(
+            "generate.py: configs/x-road-bus/2.7.yaml join.member_class "
+            f"({policy_class!r}) does not match manifest.yaml "
+            f"identity.member_class ({federation_class!r})"
         )
 
 
@@ -634,7 +653,7 @@ def main() -> None:
         raise SystemExit(f"generate.py: deployment.yaml profile must be 'full' or 'lite' (got {profile!r})")
     core = load("configs/x-road-bus/2.1.yaml")
     check_policy(core)
-    check_join_policy(load("configs/x-road-bus/2.7.yaml"))
+    check_join_policy(load("configs/x-road-bus/2.7.yaml"), manifest)
     env = read_env()
     members = discover_members(PACK, identity)
     # member:/subsystem: no longer live in configs/*.yaml (removed 2026-07-26,

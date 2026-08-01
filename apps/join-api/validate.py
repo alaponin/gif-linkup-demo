@@ -175,23 +175,21 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
     return None
 
 
-def _check_member_class(ctx: ValidationContext) -> str | None:
-    """The payload carries no member_class of its own -- Progressa is a
-    single-member_class federation by design (manifest.yaml identity.
-    member_class: GOV; spec S9's own "Explicitly out of scope" list excludes
-    multi-federation joins). This check (spec S8 check 5) instead confirms
-    join.member_class agrees with the federation's own configured class, so
-    a join can never silently be evaluated against a class the federation
-    itself does not have."""
-    federation_class = ctx.manifest["identity"]["member_class"]
-    policy_class = ctx.policy.get("member_class")
-    if policy_class != federation_class:
-        return (
-            f"configs/x-road-bus/2.7.yaml join.member_class ({policy_class!r}) "
-            f"does not match manifest.yaml identity.member_class "
-            f"({federation_class!r})"
-        )
-    return None
+# Spec S8 check 5 ("member class -- matches the policy") has no per-request
+# implementation here, on purpose (join-b Task 2 review finding 2). The
+# payload schema (schema.py) carries no member_class field of its own --
+# Progressa is a single-member_class federation by design (spec S9's
+# "Explicitly out of scope" excludes multi-federation joins) -- so there is
+# currently nothing about a *submitted request* for a check 5 to compare.
+# The one real assertion that name suggested -- join.member_class must
+# agree with manifest.yaml's identity.member_class -- is a static
+# operator-misconfiguration check, not a fact about any given join, and now
+# lives at generate time instead: hurl/generate.py's check_join_policy().
+# If the payload schema ever grows a field this check could legitimately
+# evaluate per-request (e.g. multi-class support), reintroduce check 5 here
+# against that field -- don't resurrect the old version, which compared two
+# static config files and could never fail differently for two different
+# payloads.
 
 
 def _check_hosting(ctx: ValidationContext) -> str | None:
@@ -324,8 +322,13 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
 # restrictive fields than member_name, so reject the characters X-Road's own
 # REST message protocol uses to separate identifier components, plus
 # whitespace and control characters, rather than wait for one of these to
-# break something downstream that looks like an unrelated failure.
-_BAD_CHARS = frozenset("/:;%")
+# break something downstream that looks like an unrelated failure. Design
+# spec S8 check 12 names spaces, dots and slashes as the plausible source
+# ("a service code copied from a third-party tool's human-facing API name")
+# -- '.' is included here for exactly that reason (join-b Task 2 review
+# finding 1: it was missing, and a dotted service code like "awards.list"
+# passed every check without it).
+_BAD_CHARS = frozenset("/:;%.")
 
 
 def _bad_identifier(value: str) -> bool:
@@ -337,9 +340,9 @@ def _bad_identifier(value: str) -> bool:
 def _check_identifier_characters(ctx: ValidationContext) -> str | None:
     """code, subsystem, and every service code satisfy X-Road's identifier
     restrictions (spec S8 check 12). Reject empty, whitespace, and the
-    characters X-Road uses as identifier separators (/, :, ;, %) and control
-    characters -- named in the rejection message, per spec, rather than
-    discovered later inside certificate signing."""
+    characters X-Road uses as identifier separators (/, :, ;, %, .) and
+    control characters -- named in the rejection message, per spec, rather
+    than discovered later inside certificate signing."""
     candidates = [("code", ctx.payload.code), ("subsystem", ctx.payload.subsystem)]
     for svc in ctx.payload.services:
         candidates.append(("services[].code", svc.code))
@@ -348,8 +351,8 @@ def _check_identifier_characters(ctx: ValidationContext) -> str | None:
             return (
                 f"{label} {value!r} is not a valid X-Road identifier -- "
                 "identifiers must be non-empty, contain no whitespace or "
-                "control characters, and must not contain '/', ':', ';' or "
-                "'%' (X-Road: Message Protocol for REST)"
+                "control characters, and must not contain '/', ':', ';', "
+                "'%' or '.' (X-Road: Message Protocol for REST)"
             )
     return None
 
@@ -391,14 +394,15 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     return None
 
 
-# Checks run in this exact order -- spec S8's own numbered list, verbatim.
-# Check 1 (schema) happens in validate() itself, before a ValidationContext
-# can even be built.
+# Checks run in this exact order -- spec S8's own numbered list, verbatim,
+# minus check 5 (member_class), which has no per-request implementation --
+# see the comment above where _check_member_class used to be. Check 1
+# (schema) happens in validate() itself, before a ValidationContext can even
+# be built.
 _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("key_derivation", _check_key_derivation),
     ("collision", _check_collision),
     ("not_canonical", _check_not_canonical),
-    ("member_class", _check_member_class),
     ("hosting", _check_hosting),
     ("acl_sanity", _check_acl_sanity),
     ("purpose_limitation", _check_purpose_limitation),
