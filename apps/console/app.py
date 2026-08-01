@@ -17,7 +17,7 @@ import time
 
 import httpx
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 import journal as journal_mod
@@ -47,6 +47,41 @@ def _validated_nin(nin: str) -> str:
     if not NIN_RE.match(nin):
         raise HTTPException(400, "nin must be 11 digits")  # never echo the value back
     return nin
+
+
+# Request-boundary plan (S13): a cross-origin <form method=POST> is sent by
+# the browser regardless of CORS -- CORS only stops the attacker reading the
+# response, and the attacker does not need to read it, the side effect IS
+# the attack. Loopback bind is not a control either: the browser is on the
+# same host as the console. Two independent checks, since they fail in
+# different ways and neither is expensive:
+#   - a required custom header a cross-origin form cannot set (setting a
+#     custom header from another origin triggers a CORS preflight, which
+#     this app never answers with permission -- the browser refuses to send
+#     the real request);
+#   - Origin, when present, must match this request's own Host.
+#     Sec-Fetch-Site: same-origin is a useful second signal on modern
+#     browsers, but its ABSENCE is inconclusive (not every client sends it)
+#     -- only its presence with a non-same-origin value counts against the
+#     request.
+CONSOLE_HEADER = "x-kp2-console"
+
+
+def _require_console_origin(request: Request) -> None:
+    if request.headers.get(CONSOLE_HEADER) != "1":
+        raise HTTPException(
+            403,
+            f"missing required header {CONSOLE_HEADER}: 1 -- this endpoint "
+            "refuses requests without it (add the header and retry)",
+        )
+    origin = request.headers.get("origin")
+    if origin is not None:
+        host = request.headers.get("host", "")
+        if origin not in (f"http://{host}", f"https://{host}"):
+            raise HTTPException(403, f"Origin {origin!r} does not match this console's own host {host!r}")
+    sec_fetch_site = request.headers.get("sec-fetch-site")
+    if sec_fetch_site is not None and sec_fetch_site != "same-origin":
+        raise HTTPException(403, f"Sec-Fetch-Site {sec_fetch_site!r} is not same-origin")
 
 # Loaded once at startup, not per-request: a stale Truth after a redeploy
 # means the container needs restarting anyway (deployment.yaml/topology.json
@@ -160,11 +195,19 @@ def get_learners():
     return {"learners": learners}
 
 
-@app.get("/api/exchange/{nin}")
+@app.get("/api/exchange/{nin}", dependencies=[Depends(_require_console_origin)])
 def get_exchange(nin: str):
     """The assembled application with per-field provenance -- the same shape
     acceptance.sh already writes to out/application-{nin}.json -- plus the
-    per-call technical detail the inspector tab renders."""
+    per-call technical detail the inspector tab renders.
+
+    Guarded too (request-boundary plan S13 Step 5), even though a read
+    doesn't mutate the ACL: it does cause the console to issue real,
+    authenticated calls over the X-Road bus, so a cross-origin
+    `<img src>` (no fetch, no CORS preflight needed for a plain GET) could
+    make the federation do work on an attacker's behalf. Guarding costs
+    nothing extra here -- the page's own api() helper already sends the
+    required header on every call, GET included."""
     nin = _validated_nin(nin)
     results = xroad.exchange(
         TRUTH.consumer_entrypoint,
@@ -221,12 +264,16 @@ def _identity_held_fields(nin: str) -> list[str]:
         return []
 
 
-@app.get("/api/exchange/{nin}/negative")
+@app.get("/api/exchange/{nin}/negative", dependencies=[Depends(_require_console_origin)])
 def get_exchange_negative(nin: str):
     """The negative check (Module 5.6): the same calls, run as the
     unauthorised client through ITS OWN Security Server -- confirmed live
     this must be routed this way, or the denial comes from a consumer SS
-    rejecting a client it doesn't host rather than from the provider's ACL."""
+    rejecting a client it doesn't host rather than from the provider's ACL.
+
+    Guarded for the same reason as get_exchange above: it issues real bus
+    calls too, and leaving it unguarded while guarding get_exchange would
+    just hand an attacker the sibling endpoint instead."""
     nin = _validated_nin(nin)
     negative = TRUTH.exchange["negative_check"]
     results = xroad.exchange(
@@ -290,17 +337,17 @@ def _mutate_acl(action: str) -> dict:
     return {"ok": True, "action": action, "service_code": MUTABLE_SERVICE}
 
 
-@app.post("/api/acl/revoke")
+@app.post("/api/acl/revoke", dependencies=[Depends(_require_console_origin)])
 def post_acl_revoke():
     return _mutate_acl("revoke")
 
 
-@app.post("/api/acl/grant")
+@app.post("/api/acl/grant", dependencies=[Depends(_require_console_origin)])
 def post_acl_grant():
     return _mutate_acl("grant")
 
 
-@app.post("/api/reset")
+@app.post("/api/reset", dependencies=[Depends(_require_console_origin)])
 def post_reset():
     """Reverses the journal newest-first and verifies the result equals
     truth.expected_acl exactly -- never a silent 'reset ok' (Task 5 Step 2)."""

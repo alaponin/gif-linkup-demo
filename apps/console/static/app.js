@@ -28,8 +28,15 @@ function esc(value) {
   return String(value).replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
 }
 
+// Request-boundary plan (S13): every endpoint below requires this header --
+// a cross-origin form or <img> can't set it (a custom header on a
+// cross-origin fetch would need a CORS preflight this server never answers
+// with permission). Sent on every call, GET included, so the read endpoints
+// that trigger real bus calls (the two /api/exchange/* routes) are covered
+// too, not just the three that write.
 async function api(path, opts) {
-  const resp = await fetch(path, opts);
+  const merged = { ...opts, headers: { ...(opts && opts.headers), "X-KP2-Console": "1" } };
+  const resp = await fetch(path, merged);
   return resp.json();
 }
 

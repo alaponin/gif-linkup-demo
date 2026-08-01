@@ -93,16 +93,22 @@ def test_identity_held_fields_rejects_bad_nin_directly():
         _assert_rejected(app._identity_held_fields, nin)
 
 
+# The CSRF guard (request-boundary plan S13, test_app_csrf.py) runs before
+# these handlers do, so it needs satisfying here too -- these tests are
+# about the NIN boundary, not the CSRF one.
+CSRF_HEADERS = {"X-KP2-Console": "1"}
+
+
 def test_get_exchange_rejects_bad_nin_over_http():
     for nin in REACHES_HANDLER_OVER_HTTP:
-        resp = client.get(f"/api/exchange/{urllib.parse.quote(nin, safe='')}")
+        resp = client.get(f"/api/exchange/{urllib.parse.quote(nin, safe='')}", headers=CSRF_HEADERS)
         assert resp.status_code == 400, (nin, resp.status_code, resp.text)
         assert nin not in resp.text
 
 
 def test_get_exchange_negative_rejects_bad_nin_over_http():
     for nin in REACHES_HANDLER_OVER_HTTP:
-        resp = client.get(f"/api/exchange/{urllib.parse.quote(nin, safe='')}/negative")
+        resp = client.get(f"/api/exchange/{urllib.parse.quote(nin, safe='')}/negative", headers=CSRF_HEADERS)
         assert resp.status_code == 400, (nin, resp.status_code, resp.text)
         assert nin not in resp.text
 
