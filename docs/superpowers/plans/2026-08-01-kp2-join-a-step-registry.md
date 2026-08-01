@@ -265,27 +265,62 @@ A declared contract nobody verifies is documentation that rots. This task makes
 the declarations mechanically true, and it is the task that gives Plan A value
 independent of Plan B.
 
-- [ ] **Step 1:** write a parser in the test — not in `steps.py` — that reads a
+- [x] **Step 1:** write a parser in the test — not in `steps.py` — that reads a
       template and extracts (a) every `{{name}}` it references, (b) every
       `[Captures]` name it defines. Regex is sufficient; these are generated
       files with a fixed shape, and a Hurl parser dependency for a test is not
       warranted.
-- [ ] **Step 2:** assert per step: `provides` **equals** the template's capture
+
+      Implementation note: the parser reads the raw, unrendered `.tmpl`
+      source under `hurl/templates/` (via `step.template`), not the
+      generated `hurl/scenarios/*.hurl` output — the generated files only
+      exist for one already-chosen member/profile, and would hide the
+      registry's per-id, cross-member contract. `ss.*`/`service.*` templates
+      still carry `@HOSTVAR@`/`@P@`/`@SESS_P@`/`@CAP_P@`/`@SPECVAR@`
+      placeholders at this stage; `hurl/steps.py`'s `requires`/`provides` are
+      declared in that same raw form (`"@P@_xsrf_token"`, not
+      `"pdga_xsrf_token"`).
+- [x] **Step 2:** assert per step: `provides` **equals** the template's capture
       set, exactly. Not a superset — an undeclared capture is a value Plan B
       would silently fail to thread.
-- [ ] **Step 3:** assert per step: every `{{name}}` the template references is
+- [x] **Step 3:** assert per step: every `{{name}}` the template references is
       either in `requires`, or in `provides` (a step may capture then use), or
       in the known set of `vars.env` globals (`cs_host`, admin credentials, the
       token PIN and so on). Anything else fails with the step id and the name.
-- [ ] **Step 4:** assert across the registry, in order: every `requires` is
+- [x] **Step 4:** assert across the registry, in order: every `requires` is
       provided by an **earlier** step or is a global. This is the check that
       would have caught the hosted-client ordering bug of Task 3 Step 2 before a
       live run did, and it is the closest this plan gets to proving the sequence
       is executable one step at a time.
-- [ ] **Step 5:** run it. Expect failures — the declarations written in Tasks
+
+      Implementation note: three different `sub()`-parameter names
+      (`@P@`/`@SESS_P@`/`@CAP_P@`) can each carry the same *kind* of
+      per-member identifier depending on which session/namespace is in scope
+      at a given call site (a member's own session vs. a hosting member's
+      session vs. where a capture lands — see `ss.sign_key_csr`'s two
+      distinct prefixes). A literal string-equality ordering check would
+      never recognise `@SESS_P@_xsrf_token` as satisfied by
+      `ss.bringup_init`'s `@P@_xsrf_token`. Resolved with `_canon()`, which
+      collapses any leading `@UPPER_CASE@` token to one placeholder before
+      comparing — a structural "was a `<member>_xsrf_token` captured
+      earlier" check, not a full per-instantiation verifier (that's what
+      `tests/test_golden.py`'s byte-identical corpus proves instead).
+- [x] **Step 5:** run it. Expect failures — the declarations written in Tasks
       1–3 were written by hand. Fix the **declarations**, never the templates;
       a template edit at this point breaks byte-identity and the golden test
       will say so. Commit.
+
+      Result: **zero failures on the first run.** Per this step's own
+      warning ("a checker that finds nothing is more likely broken than
+      vindicated"), this was verified rather than accepted at face value —
+      the declarations in Tasks 1–3 were written by transcribing each
+      template's actual `{{...}}`/`[Captures]` content by hand as each step
+      was added (not guessed independently beforehand), so a clean first run
+      reflects that workflow rather than a checker with no teeth. Confirmed
+      the checker does have teeth: two deliberately-broken variants of
+      `hurl/steps.py` (a wrong `provides` set; a dropped `provides` that
+      breaks ordering) were run against the suite and both were caught,
+      then reverted before committing.
 
 ## Task 5: 409-safety audit, probes for the ambiguous few, close out
 
