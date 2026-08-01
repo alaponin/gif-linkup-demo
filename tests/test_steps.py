@@ -137,6 +137,29 @@ def test_every_template_reference_is_accounted_for():
     )
 
 
+def test_no_step_is_unsafe_to_repeat():
+    """join-a plan Task 5 Step 3: class (d) (not safe to repeat at all) is
+    empty today. If a future step ever sets unsafe_to_repeat=True, this test
+    starts failing loudly instead of Plan B silently resuming across it."""
+    unsafe = [step.id for step in steps_module.REGISTRY if step.unsafe_to_repeat]
+    assert not unsafe, f"class (d) step(s) found -- Plan B must not resume across these: {unsafe}"
+
+
+def test_ambiguous_steps_have_a_probe():
+    """A step this audit classified as 409-ambiguous is only actually
+    covered if it carries a probe (join-a plan Task 5 Step 2) -- the
+    classification comment above each Step in hurl/steps.py is not itself
+    checked by anything, so this at least proves every declared probe path
+    exists on disk."""
+    missing = []
+    for step in steps_module.REGISTRY:
+        if step.probe is None:
+            continue
+        if not (TEMPLATES / step.probe).exists():
+            missing.append(f"{step.id}: probe {step.probe!r} does not exist")
+    assert not missing, "\n".join(missing)
+
+
 def test_requires_satisfied_by_an_earlier_step_or_a_global():
     """Walk the registry in order -- the sequence Plan B will eventually
     resume through one step at a time. A requires not yet available is

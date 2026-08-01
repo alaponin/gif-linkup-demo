@@ -1,0 +1,13 @@
+
+# Probe for ss.sign_key_csr (join-a plan Task 5): same reasoning as
+# PROBE_SS_AUTH_KEY.hurl.tmpl -- the (future) executor decides from the raw
+# token body whether a key labelled "Sign key" (MEMBER_SIGN_KEY.hurl.tmpl's
+# literal key_label) already exists. UNVERIFIED against a live Security
+# Server as of this probe's authoring.
+GET https://{{@HOSTVAR@}}:4000/api/v1/tokens/0
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_token: body

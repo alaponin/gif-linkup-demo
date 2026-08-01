@@ -1,0 +1,15 @@
+
+# Probe for ss.auth_key_csr (join-a plan Task 5): "has this already
+# happened?" POST .../keys-with-csrs creates a NEW key every call -- no
+# natural uniqueness, so a resumed-but-already-done retry would silently
+# generate a second AUTH key rather than 409. The (future) executor decides
+# from the raw token body whether a key labelled "Auth key" (the literal
+# key_label SS_AUTH_KEY_CSR.hurl.tmpl uses) already exists. UNVERIFIED
+# against a live Security Server as of this probe's authoring.
+GET https://{{@HOSTVAR@}}:4000/api/v1/tokens/0
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@P@_token: body

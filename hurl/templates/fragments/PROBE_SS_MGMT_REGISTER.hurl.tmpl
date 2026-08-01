@@ -1,0 +1,17 @@
+
+# Probe for ss.mgmt_register (join-a plan Task 5): "has this already
+# happened?" ss.mgmt_register bundles six sub-actions (register-provider,
+# client-add, service-description, PATCH, ACL grant, enable) with the same
+# partial-completion risk as PROBE_SS_BRINGUP_REGISTER.hurl.tmpl, and PDGA
+# is the only caller (never a joining member's own bring-up) -- lower
+# priority for Plan B, kept for registry completeness. The (future) executor
+# compares mgmt_service_provider_id against this Security Server's own
+# management-subsystem client id. UNVERIFIED against a live Central Server
+# as of this probe's authoring.
+GET https://{{cs_host}}:4000/api/v1/management-services-configuration
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+mgmt_service_provider_id: jsonpath "$.service_provider_id"

@@ -23,12 +23,50 @@ class Step:
     actor: str                  # "operator" | "member" -- see design decision 5
     requires: tuple[str, ...]   # Hurl {{var}} names this step reads
     provides: tuple[str, ...]   # Hurl [Captures] names this step writes
+    # "has this already happened?" -- filename under hurl/templates/, or None.
+    # Set only for the 409-ambiguous class from the join-a plan Task 5 audit
+    # (see that plan's Task 5 Step 1 classification comment above each step
+    # below). Read-only and 409-safe steps need no probe: design spec Section
+    # 5.3's default is 409-as-success, proven live for service.acl
+    # (PLAN.md Section 11, apps/console/xroad.py's 409 handling).
+    probe: str | None = None
+    # Class (d) from the same audit: True means Plan B's runner must refuse
+    # to resume across this step (no probe can save it -- neither read-only
+    # nor 409-safe nor resolvable by reading state back). Defaults False;
+    # tests/test_steps.py asserts the registry has none today.
+    unsafe_to_repeat: bool = False
 
 
 # Ordered registry: generate.py renders these in order. Order here IS the
 # executable sequence -- Task 3 relies on this for the hosted-client
 # ordering bug it must not reintroduce.
+#
+# -- 409-safety classification (join-a plan Task 5 Step 1) --------------
+# Every step below is tagged with one of:
+#   (a) read-only        -- no mutation, always safe to re-run.
+#   (b) 409-safe mutation -- repeat either conflicts cleanly (409, per
+#       design spec Section 5.3's default -- proven live for service.acl,
+#       PLAN.md Section 11 / apps/console/xroad.py) or is a state-setting
+#       call that's naturally idempotent (e.g. a PATCH to the same value).
+#   (c) ambiguous -- carries a `probe` (Step 2). Two distinct failure modes
+#       land here, both worth a probe even though only one is what design
+#       spec Section 5.3 anticipated: some of these create a NEW resource
+#       with no natural uniqueness constraint (a repeat silently doubles
+#       key/CA material rather than 409ing at all -- not "ambiguous 409",
+#       genuinely ABSENT 409, arguably the harder case); others bundle a
+#       submit-then-approve pair whose completion can diverge if the
+#       process died in between (a repeat's submit half may cleanly 409
+#       while the approval half is still outstanding).
+#   (d) unsafe to repeat at all -- none found; tests/test_steps.py asserts
+#       this class stays empty (Task 5 Step 3).
+# Audited count: 3 (a), 10 (b), 8 (c), 0 (d) of 21 steps -- roughly a third
+# need a probe, more than Section 5.3's "rare" framing anticipated but not
+# "most" of them; recorded in the design spec Section 15/5.3 (Task 5 Step 6).
 REGISTRY: tuple[Step, ...] = (
+    # (b) POST /login is a re-authenticate (idempotent); POST /initialization
+    # is a bootstrap-once call X-Road is expected to 409 on repeat, per
+    # Section 5.3's general claim -- UNVERIFIED for this specific endpoint
+    # until the Task 5 Step 4 live deploy.
     Step(
         id="cs.init",
         template="fragments/CS_INIT.hurl.tmpl",
@@ -36,6 +74,8 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_admin_user", "cs_admin_password", "token_pin", "xroad_instance"),
         provides=("cs_xsrf_token",),
     ),
+    # (b) POST /member-classes has a natural unique key (code) -- repeat
+    # conflicts.
     Step(
         id="cs.member_class",
         template="fragments/CS_MEMBER_CLASS.hurl.tmpl",
@@ -43,6 +83,8 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_xsrf_token", "member_class"),
         provides=(),
     ),
+    # (b) PUT /tokens/0/login on an already-logged-in token is naturally
+    # idempotent.
     Step(
         id="cs.token_login",
         template="fragments/CS_TOKEN_LOGIN.hurl.tmpl",
@@ -50,20 +92,33 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_xsrf_token", "token_pin"),
         provides=(),
     ),
+    # (c) POST .../signing-keys creates a NEW key every call -- no natural
+    # uniqueness, so a repeat silently doubles the CS's signing keys rather
+    # than 409ing. Cold-deploy-only (Plan B's join flow never reaches this
+    # step), so lower urgency than the ss.*/service.* probes below, but
+    # audited and probed for registry completeness.
     Step(
         id="cs.signing_keys",
         template="fragments/CS_SIGNING_KEYS.hurl.tmpl",
         actor="operator",
         requires=("cs_host", "cs_xsrf_token"),
         provides=(),
+        probe="fragments/PROBE_CS_SIGNING_KEYS.hurl.tmpl",
     ),
+    # (c) Same reasoning as cs.signing_keys: POST /certification-services
+    # (and the OCSP-responder/timestamping-service POSTs bundled in the same
+    # step) have no confirmed uniqueness constraint. Cold-deploy-only.
     Step(
         id="cs.trust_services",
         template="01-cs-trust-services.hurl.tmpl",
         actor="operator",
         requires=("cs_host", "cs_xsrf_token", "ca_host"),
         provides=("ca_id",),
+        probe="fragments/PROBE_CS_TRUST_SERVICES.hurl.tmpl",
     ),
+    # (b) POST /members and /subsystems have a natural unique key
+    # (member_id/subsystem_id); the PATCH to management-services-configuration
+    # is idempotent (same value every time for the owner).
     Step(
         id="cs.members_owner",
         template="02-cs-members-owner.hurl.tmpl",
@@ -71,6 +126,8 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_xsrf_token", "member_class", "xroad_instance"),
         provides=(),
     ),
+    # (b) Same reasoning as cs.members_owner -- and the one cs.* step Plan B's
+    # join flow actually reaches (a new member's own registration on the CS).
     # Rendered once per member, in a loop, in generate.py -- the registry
     # holds this step once (design decision 4 of the templates plan; join-a
     # plan Task 2 Step 2 applies the same rule here).
@@ -81,6 +138,7 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_xsrf_token", "member_class"),
         provides=(),
     ),
+    # (a) read-only: downloads the current anchor, nothing to conflict on.
     Step(
         id="cs.anchor",
         template="03-cs-anchor.hurl.tmpl",
@@ -111,6 +169,9 @@ REGISTRY: tuple[Step, ...] = (
     #     service.acl steps run against the HOST's Security Server on behalf of
     #     a member with none of its own -- "under hosted_on, every step is
     #     operator" (Task 3 Step 4), regardless of the defaults below.
+    # (b) bundles anchor upload (replace-with-same-content is a no-op),
+    # login (idempotent) and initialization (bootstrap-once, same reasoning
+    # as cs.init) and token-login (idempotent).
     Step(
         id="ss.bringup_init",
         template="fragments/SS_BRINGUP_INIT.hurl.tmpl",
@@ -118,12 +179,12 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "ss_admin_user", "ss_admin_password", "gconf_anchor", "member_class", "token_pin"),
         provides=("@P@_xsrf_token",),
     ),
-    # PDGA-only today (main()'s 10-ss-pdga block always renders this; a
-    # regular member's build_ss_file() never does -- Task 3 must not start
-    # rendering it for a member unless it also becomes that member's own
-    # ca_name source). ca_name is the single most-depended-on `provides` in
-    # the registry: every ss.auth_key_csr and ss.sign_key_csr step, for
-    # every member, reads it back (Tasks 2 and 3).
+    # (a) read-only. PDGA-only today (main()'s 10-ss-pdga block always
+    # renders this; a regular member's build_ss_file() never does -- Task 3
+    # must not start rendering it for a member unless it also becomes that
+    # member's own ca_name source). ca_name is the single most-depended-on
+    # `provides` in the registry: every ss.auth_key_csr and ss.sign_key_csr
+    # step, for every member, reads it back (Tasks 2 and 3).
     Step(
         id="ss.ca_name_capture",
         template="fragments/CA_NAME_CAPTURE.hurl.tmpl",
@@ -131,29 +192,41 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@P@_xsrf_token"),
         provides=("ca_name",),
     ),
+    # (c) POST .../keys-with-csrs creates a NEW AUTH key every call -- no
+    # natural uniqueness. Join-relevant (every member's own bring-up runs
+    # this).
     Step(
         id="ss.auth_key_csr",
         template="fragments/SS_AUTH_KEY_CSR.hurl.tmpl",
         actor="member",
         requires=("@HOSTVAR@", "@P@_xsrf_token", "ca_name", "csr_country", "xroad_instance", "member_class", "ca_host"),
         provides=("@P@_auth_key_id", "@P@_auth_key_csr_id", "@P@_auth_key_csr", "@P@_auth_key_cert", "@P@_auth_key_cert_hash"),
+        probe="fragments/PROBE_SS_AUTH_KEY.hurl.tmpl",
     ),
+    # (c) Same reasoning as ss.auth_key_csr, for the SIGN key. Join-relevant.
     Step(
         id="ss.sign_key_csr",
         template="fragments/MEMBER_SIGN_KEY.hurl.tmpl",
         actor="member",
         requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "ca_name", "xroad_instance", "member_class", "csr_country", "ca_host"),
         provides=("@CAP_P@_sign_key_id", "@CAP_P@_sign_key_csr_id", "@CAP_P@_sign_key_csr", "@CAP_P@_sign_key_cert", "@CAP_P@_sign_key_cert_hash"),
+        probe="fragments/PROBE_SS_SIGN_KEY.hurl.tmpl",
     ),
+    # (c) bundles PUT .../register with a GET-pending-then-approve pair whose
+    # completion can diverge on a process death in between. Join-relevant.
     Step(
         id="ss.bringup_register",
         template="fragments/SS_BRINGUP_REGISTER.hurl.tmpl",
         actor="operator",
         requires=("@HOSTVAR@", "@P@_auth_key_cert_hash", "@P@_xsrf_token", "cs_host", "cs_xsrf_token"),
         provides=("@P@_auth_cert_req_id",),
+        probe="fragments/PROBE_SS_BRINGUP_REGISTER.hurl.tmpl",
     ),
-    # PDGA-only: nominates the management Security Server as the provider of
-    # the CS's own management services. No other member's bring-up runs this.
+    # (c) Same partial-completion risk as ss.bringup_register, across six
+    # bundled sub-actions. PDGA-only: nominates the management Security
+    # Server as the provider of the CS's own management services. No other
+    # member's bring-up runs this -- lower priority for Plan B than the
+    # join-relevant probes above, kept for registry completeness.
     Step(
         id="ss.mgmt_register",
         template="fragments/SS_MGMT_REGISTER.hurl.tmpl",
@@ -161,7 +234,10 @@ REGISTRY: tuple[Step, ...] = (
         requires=("cs_host", "cs_xsrf_token", "xroad_instance", "member_class", "@HOSTVAR@", "@P@_xsrf_token"),
         provides=("@P@_client_id", "cs_management_service_address", "cs_management_service_wsdl",
                    "@P@_management_description_id", "@P@_auth_cert_deletion_service_id"),
+        probe="fragments/PROBE_SS_MGMT_REGISTER.hurl.tmpl",
     ),
+    # (b) PUT .../activate on an already-active cert is a state-transition
+    # X-Road is expected to 409 on repeat, per Section 5.3's default.
     Step(
         id="ss.activate",
         template="fragments/SS_ACTIVATE.hurl.tmpl",
@@ -169,8 +245,8 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@P@_auth_key_cert_hash", "@P@_xsrf_token"),
         provides=(),
     ),
-    # PDGA-only: tsa_name/tsa_url are captured once here and reused by every
-    # later ss.tsa_post -- same pattern as ca_name.
+    # (a) read-only. PDGA-only: tsa_name/tsa_url are captured once here and
+    # reused by every later ss.tsa_post -- same pattern as ca_name.
     Step(
         id="ss.tsa_capture",
         template="fragments/TSA_CAPTURE.hurl.tmpl",
@@ -178,12 +254,17 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@P@_xsrf_token"),
         provides=("tsa_name", "tsa_url"),
     ),
+    # (c) POST /system/timestamping-services has no confirmed uniqueness
+    # constraint on name/url (a Security Server can have multiple approved
+    # TSAs) -- same "new resource, no natural key" reasoning as
+    # ss.auth_key_csr/ss.sign_key_csr. Join-relevant.
     Step(
         id="ss.tsa_post",
         template="fragments/SS_TSA_POST.hurl.tmpl",
         actor="member",
         requires=("@HOSTVAR@", "@P@_xsrf_token", "tsa_name", "tsa_url"),
         provides=(),
+        probe="fragments/PROBE_SS_TSA_POST.hurl.tmpl",
     ),
     # ss.client_add -> [ss.sign_key_csr] -> ss.client_register is the order
     # every caller must render these in (build_ss_file, build_hosted_client):
@@ -192,6 +273,8 @@ REGISTRY: tuple[Step, ...] = (
     # as a client with 400 client_not_found (found live for the lite profile,
     # 2026-07-26-deployment-spec-and-lite-profile.md). Reordering this list
     # reintroduces that bug; join-a plan Task 3 Step 2.
+    # (b) POST /clients has a natural unique key (member_class+member_code+
+    # subsystem_code) -- repeat conflicts.
     Step(
         id="ss.client_add",
         template="fragments/MEMBER_CLIENT_ADD.hurl.tmpl",
@@ -199,13 +282,21 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "member_class"),
         provides=("@CAP_P@_client_id",),
     ),
+    # (c) Same partial-completion risk as ss.bringup_register (PUT
+    # .../register then GET-pending-then-approve). Join-relevant -- every
+    # member's own bring-up AND every hosted client runs this.
     Step(
         id="ss.client_register",
         template="fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl",
         actor="operator",
         requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "cs_host", "cs_xsrf_token"),
         provides=("@CAP_P@_client_req_id",),
+        probe="fragments/PROBE_SS_CLIENT_REGISTER.hurl.tmpl",
     ),
+    # (b) POST .../service-descriptions has a natural unique key
+    # (rest_service_code per client) -- repeat conflicts; the separate PUT
+    # .../enable on an already-enabled description is a state-transition
+    # X-Road is expected to 409 on repeat, per Section 5.3's default.
     Step(
         id="service.publish",
         template="fragments/SERVICE_PUBLISH.hurl.tmpl",
@@ -213,6 +304,9 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "@SPECVAR@"),
         provides=("@CAP_P@_@SC@_description_id",),
     ),
+    # (b) proven live: 409 on an already-granted access right is treated as
+    # success (PLAN.md Section 11, apps/console/xroad.py's 409 handling) --
+    # the one step in this registry with confirmed, not inferred, evidence.
     Step(
         id="service.acl",
         template="fragments/SERVICE_ACL.hurl.tmpl",

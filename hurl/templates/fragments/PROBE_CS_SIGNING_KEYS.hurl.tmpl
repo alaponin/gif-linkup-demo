@@ -1,0 +1,18 @@
+
+# Probe for cs.signing_keys (join-a plan Task 5): "has this already happened?"
+# Repeating cs.signing_keys does not conflict -- POST .../signing-keys creates
+# a NEW key every call, so a resumed-but-already-done retry would silently
+# double the Central Server's signing keys rather than 409. Captures the raw
+# body, not a filtered field: whether INTERNAL/EXTERNAL already has a key is
+# a decision the (future) executor makes in Python, the same way this
+# fragment's sibling steps capture a whole CSR/cert body rather than filter
+# it in Hurl. UNVERIFIED against a live Central Server as of this probe's
+# authoring -- confirm the response shape against a real GET before Plan B
+# relies on it.
+GET https://{{cs_host}}:4000/api/v1/configuration-sources
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+cs_configuration_sources: body

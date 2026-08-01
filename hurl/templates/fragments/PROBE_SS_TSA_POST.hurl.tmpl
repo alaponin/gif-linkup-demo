@@ -1,0 +1,15 @@
+
+# Probe for ss.tsa_post (join-a plan Task 5): "has this already happened?"
+# POST /system/timestamping-services has no confirmed uniqueness constraint
+# on name/url -- a Security Server can have multiple approved timestamping
+# services, so a repeat may silently add a duplicate entry rather than 409.
+# The (future) executor decides from the raw body whether tsa_name/tsa_url
+# are already present. UNVERIFIED against a live Security Server as of this
+# probe's authoring.
+GET https://{{@HOSTVAR@}}:4000/api/v1/timestamping-services
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@P@_timestamping_services: body

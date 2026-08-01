@@ -1,0 +1,19 @@
+
+# Probe for ss.bringup_register (join-a plan Task 5): "has this already
+# happened?" ss.bringup_register bundles two sub-actions (PUT .../register,
+# then GET pending + POST approval) whose completion can diverge if the
+# process died in between -- register succeeded but approval didn't. A
+# resumed retry's PUT would then 409 (already registered) while approval is
+# still outstanding, so re-running the whole step and treating any 409 as
+# "step done" is not safe here; the executor needs the cert's own status.
+# The (future) executor reads @P@_auth_cert_status: X-Road's token-certificate
+# status enum (SAVED before registration, REGISTERED once both submitted and
+# approved -- exact intermediate values UNVERIFIED as of this probe's
+# authoring, confirm against a live Security Server).
+GET https://{{@HOSTVAR@}}:4000/api/v1/token-certificates/{{@P@_auth_key_cert_hash}}
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@P@_auth_cert_status: jsonpath "$.status"

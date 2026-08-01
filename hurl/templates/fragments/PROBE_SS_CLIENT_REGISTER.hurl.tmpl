@@ -1,0 +1,14 @@
+
+# Probe for ss.client_register (join-a plan Task 5): same partial-completion
+# reasoning as PROBE_SS_BRINGUP_REGISTER.hurl.tmpl -- PUT .../register then
+# GET-pending-then-approve can diverge if the process died between them. The
+# (future) executor reads @CAP_P@_client_status: X-Road's client status enum
+# (SAVED before registration, REGISTERED once approved -- UNVERIFIED as of
+# this probe's authoring, confirm against a live Security Server).
+GET https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_client_status: jsonpath "$.status"
