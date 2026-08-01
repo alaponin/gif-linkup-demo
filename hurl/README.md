@@ -84,6 +84,38 @@ here instead.
 `check_pack.py` executes any `<pack>/<tool>/check_*.py` it finds, so a scenario set
 with an undefined variable or a drifted credential cannot pass `--ready`.
 
+## Host Python runtime (two-decisions plan Task 3/C10)
+
+Host-run scripts (`hurl/generate.py`, `hurl/check_scenarios.py`,
+`scripts/gen_seed_data.py`, `scripts/assert_record.py`,
+`scripts/mkfixture.py`, and `scripts/lib.sh`'s inline `yq_get`) run under
+whatever `python3` resolves to on the operator's machine — not a container,
+which is why they used to avoid 3.9+ idioms (`str.removeprefix`, etc.):
+`generate.py` had a comment claiming "host runs system python3.7.9".
+
+**That comment was wrong about *why*.** Investigated live (2026-08-01): the
+actual Apple-shipped `python3` (`/usr/bin/python3`, the Xcode Command Line
+Tools stub) is **3.9.6**, not 3.7. The 3.7.9 came from a stray Homebrew
+install at `/usr/local/bin/python3` shadowing it earlier in `PATH` — an
+artefact of one developer's machine, not a constraint macOS itself imposes.
+All six host-run entry points' only hard dependency beyond the standard
+library is PyYAML (`generate.py`'s `import yaml`) — already a required
+install step regardless of interpreter version, so the floor was never
+"whatever ships with macOS", it was "whatever the operator happens to have
+installed".
+
+**Decision: raise the floor to 3.9+.** This deletes the invisible
+host-vs-container idiom rule (C8 in the simplification plan) — both sides
+now support `removeprefix`/`removesuffix` — and CI's `python-version` moves
+off an EOL 3.7 pin (`.github/workflows/kp2-fast.yml`) that would eventually
+stop being satisfiable on hosted runner images at all. The
+`scripts/check-python-floor.sh` lint queued in the simplification plan's
+Task 5 is withdrawn: there is no longer a restriction for it to enforce.
+Cost, paid honestly: an operator on a stock Mac whose `python3` still
+resolves to something older than 3.9 needs to fix that — but they need a
+non-ancient interpreter to install PyYAML cleanly anyway, so this is not a
+new burden, it is naming one that already existed.
+
 ## Golden corpus
 
 `tests/golden/{full,lite}/` is a committed fixture of exactly what
