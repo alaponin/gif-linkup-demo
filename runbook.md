@@ -6,6 +6,13 @@ host, and run the once-only exchange that proves it. Demo only — see
 
 ## Prerequisites
 
+- Run `scripts/preflight.sh` first -- checks for Docker, Docker Compose v2,
+  `jq`, `curl`, `python3` 3.9+ with PyYAML, a SHA-256 tool, and bash 4+, and
+  reports every gap at once rather than one at a time as the deploy hits
+  each of them (D11). Checks only -- it prints the install line for each
+  gap it finds instead of running it. `hurl/run-linkup.sh` also runs this
+  automatically before it does anything expensive; running it by hand here
+  first is what turns a mid-deploy failure into a pre-deploy one.
 - Docker ≥ 24 with Docker Compose ≥ 2.24.
 - ~13 GB RAM in steady state for the full profile (5 Security Servers), measured
   P0 2026-07-25 on a 16 GB colima VM via `docker stats --no-stream`: ~2.0–2.3 GB

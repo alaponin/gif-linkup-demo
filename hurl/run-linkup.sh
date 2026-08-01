@@ -26,6 +26,12 @@ set -euo pipefail
 
 PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PACK_DIR"
+
+# Before anything else: lib-stack.sh itself needs python3+PyYAML (yq_get)
+# and can shell out to docker compose, so a missing dependency has to be
+# caught here, not partway into sourcing it (D11).
+scripts/preflight.sh
+
 . scripts/lib-stack.sh
 
 BUILD_DIR="$PACK_DIR/hurl/.build"
