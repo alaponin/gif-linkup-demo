@@ -149,22 +149,50 @@ async def _watchdog() -> None:
     """Belt and braces (design decision 3): a demo that silently leaves the
     ACL revoked and makes acceptance.sh fail an hour later for an
     unrelated-looking reason is exactly the kind of thing that discredits
-    the pack. Reset after HEARTBEAT_TIMEOUT_S with no page heartbeat."""
+    the pack. Reset after HEARTBEAT_TIMEOUT_S with no page heartbeat.
+
+    reset() performs several blocking HTTPS logins at up to 10s timeout
+    each (S17) -- without to_thread, the whole ASGI event loop stops for
+    that period: /api/health and /api/heartbeat cannot answer, so the
+    page's own heartbeat cannot land, so the watchdog's own timeout logic
+    is being starved by the watchdog."""
     global _last_heartbeat
     while True:
         await asyncio.sleep(WATCHDOG_POLL_S)
         if time.time() - _last_heartbeat > HEARTBEAT_TIMEOUT_S and JOURNAL.is_dirty():
-            _reset_locked()
+            await asyncio.to_thread(_reset_locked)
             _last_heartbeat = time.time()
 
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
+    startup_reset_task = None
     if JOURNAL.is_dirty():
-        _reset_locked()
+        # Non-blocking, a deliberate choice (S17 Step 2) between two real
+        # alternatives: blocking startup until the reset completes means
+        # /api/health cannot answer until every reset HTTP call finishes
+        # (several, at up to 10s timeout each) -- very likely what
+        # verify.sh --full's "console health check still failing 30s after
+        # console.sh up" retry loop was silently papering over. A console
+        # that briefly reports healthy while a startup reset reconciles a
+        # dirty journal in the background is acceptable for a demo tool
+        # that is explicitly outside the acceptance path (Global
+        # Constraints): the mutate lock and the watchdog still enforce the
+        # invariant either way, and blocking here doesn't make the
+        # underlying federation any less dirty -- it only makes the
+        # console slower to admit it is up.
+        startup_reset_task = asyncio.create_task(asyncio.to_thread(_reset_locked))
     watchdog_task = asyncio.create_task(_watchdog())
     yield
     watchdog_task.cancel()
+    # Cancelling a task awaiting asyncio.to_thread raises CancelledError at
+    # the await promptly -- it does not and cannot stop the underlying OS
+    # thread already running reset() (Python threads are not preemptible),
+    # but shutdown itself does not hang on it (confirmed in
+    # test_app_mutate_acl.py). The thread finishes reset() in the background,
+    # harmlessly, under the same lock.
+    if startup_reset_task is not None:
+        startup_reset_task.cancel()
 
 
 app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)
