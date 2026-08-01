@@ -1,0 +1,44 @@
+############################################################
+# Central Server -- members and subsystems (modules 2.1-2.5)
+# PDGA owns the federation and provides the management services; the four
+# education-sector members are registered here and attach their Security
+# Servers later in the run.
+############################################################
+
+# @OWNER_NAME@ -- federation owner
+POST https://{{cs_host}}:4000/api/v1/members
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "member_id": {
+    "member_class": "{{member_class}}",
+    "member_code": "@OWNER_CODE@"
+  },
+  "member_name": "@OWNER_NAME@"
+}
+
+HTTP 201
+
+# The MANAGEMENT subsystem, through which the CS's own management services run
+POST https://{{cs_host}}:4000/api/v1/subsystems
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "subsystem_id": {
+    "member_class": "{{member_class}}",
+    "member_code": "@OWNER_CODE@",
+    "subsystem_code": "@MGMT_SUBSYSTEM@"
+  }
+}
+
+HTTP 201
+
+# Nominate it as the Central Server's management service provider
+PATCH https://{{cs_host}}:4000/api/v1/management-services-configuration
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "service_provider_id": "{{xroad_instance}}:{{member_class}}:@OWNER_CODE@:@MGMT_SUBSYSTEM@"
+}
+
+HTTP 200

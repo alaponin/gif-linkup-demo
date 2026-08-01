@@ -1049,84 +1049,22 @@ def main() -> None:
     write("01-cs-trust-services.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 02 members ---------------------------------------------------------
-    body = f"""
-############################################################
-# Central Server -- members and subsystems (modules 2.1-2.5)
-# PDGA owns the federation and provides the management services; the four
-# education-sector members are registered here and attach their Security
-# Servers later in the run.
-############################################################
-
-# {owner['name']} -- federation owner
-POST https://{{{{cs_host}}}}:4000/api/v1/members
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "member_id": {{
-    "member_class": "{{{{member_class}}}}",
-    "member_code": "{owner['code']}"
-  }},
-  "member_name": "{owner['name']}"
-}}
-
-HTTP 201
-
-# The MANAGEMENT subsystem, through which the CS's own management services run
-POST https://{{{{cs_host}}}}:4000/api/v1/subsystems
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "subsystem_id": {{
-    "member_class": "{{{{member_class}}}}",
-    "member_code": "{owner['code']}",
-    "subsystem_code": "{owner['management_subsystem']}"
-  }}
-}}
-
-HTTP 201
-
-# Nominate it as the Central Server's management service provider
-PATCH https://{{{{cs_host}}}}:4000/api/v1/management-services-configuration
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "service_provider_id": "{{{{xroad_instance}}}}:{{{{member_class}}}}:{owner['code']}:{owner['management_subsystem']}"
-}}
-
-HTTP 200
-"""
+    body = render(
+        "02-cs-members-owner.hurl.tmpl",
+        OWNER_NAME=owner["name"],
+        OWNER_CODE=owner["code"],
+        MGMT_SUBSYSTEM=owner["management_subsystem"],
+    )
     for key in ("pnia", "plr", "moeys", "pnea"):
         m = members[key]["member"]
         s = members[key]["subsystem"]
-        body += f"""
-# {m['member_name']}
-POST https://{{{{cs_host}}}}:4000/api/v1/members
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "member_id": {{
-    "member_class": "{{{{member_class}}}}",
-    "member_code": "{m['member_code']}"
-  }},
-  "member_name": "{m['member_name']}"
-}}
-
-HTTP 201
-
-# {s['code']} -- {s['description']}
-POST https://{{{{cs_host}}}}:4000/api/v1/subsystems
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "subsystem_id": {{
-    "member_class": "{{{{member_class}}}}",
-    "member_code": "{m['member_code']}",
-    "subsystem_code": "{s['code']}"
-  }}
-}}
-
-HTTP 201
-"""
+        body += render(
+            "02-cs-members-member.hurl.tmpl",
+            MEMBER_NAME=m["member_name"],
+            MEMBER_CODE=m["member_code"],
+            SUBSYSTEM_CODE=s["code"],
+            SUBSYSTEM_DESCRIPTION=s["description"],
+        )
     write("02-cs-members.hurl", "configs/member-*/2.*.yaml", body)
 
     # -- 03 anchor ----------------------------------------------------------

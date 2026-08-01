@@ -1,0 +1,28 @@
+
+# @MEMBER_NAME@
+POST https://{{cs_host}}:4000/api/v1/members
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "member_id": {
+    "member_class": "{{member_class}}",
+    "member_code": "@MEMBER_CODE@"
+  },
+  "member_name": "@MEMBER_NAME@"
+}
+
+HTTP 201
+
+# @SUBSYSTEM_CODE@ -- @SUBSYSTEM_DESCRIPTION@
+POST https://{{cs_host}}:4000/api/v1/subsystems
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "subsystem_id": {
+    "member_class": "{{member_class}}",
+    "member_code": "@MEMBER_CODE@",
+    "subsystem_code": "@SUBSYSTEM_CODE@"
+  }
+}
+
+HTTP 201
