@@ -331,7 +331,7 @@ the existing `sub()`.** Then:
 Do it one template at a time; `tests/test_golden.py` fails loudly on any byte that changes.
 This is the single highest-value simplification available in the pack.
 
-## 🟠 C15 — shell-to-Python string interpolation, used as a pattern
+## 🟠 C15 — shell-to-Python string interpolation, used as a pattern — RESOLVED 2026-08-01
 
 Five places build a Python program by string-substituting shell variables into its *source*:
 
@@ -352,13 +352,33 @@ uses `python3 - "$key" "$PACK_DIR/manifest.yaml" <<'PY'` and reads `sys.argv`. A
 everywhere; it is mechanical, and it makes the heredocs quoted (`<<'PY'`), which also stops
 shell expansion inside the Python.
 
+Resolved by `docs/superpowers/plans/2026-08-01-kp2-shell-python-boundary.md` Task 1: all five
+sites converted to `python3 - <args...> <<'PY'` reading `sys.argv`, `yq_get` first and alone
+(sourced by every script in the pack) with the missing-key error text unchanged byte for byte.
+`check-exposure.sh` needed a different shape than the other four: its script already reads the
+rendered Compose config from stdin, and a heredoc's `<<'PY'` claims stdin for the program text,
+so the JSON now travels via argv (captured to a variable first) instead of a pipe.
+`member.sh`'s `cmd_remove` now uses the same pattern as its own manifest-edit block a few lines
+below, closing the "demonstrates both the right and the wrong way" trap this finding named.
+
+Verified live: `check-exposure.sh` and `member.sh list` both threw a Python `SyntaxError` when
+run from `/tmp/kp2 don't/` before the fix; both — plus `gen-secrets.sh`, `generate.py`,
+`check_scenarios.py`, and `preflight.sh` — ran clean from that path after. `grep -n "<<[A-Z]"
+scripts/ hurl/` finds only `gen-secrets.sh`'s intentionally-unquoted `EOF` (writing `.env`,
+expected to expand shell variables) — every Python heredoc is quoted. All four generated
+artefacts (`scenarios/`, `vars.env`, `topology.json`, `topology.sh`, `compose.members.yml`)
+byte-identical for both `full` and `lite` profiles, before vs after. `scripts/verify.sh
+--fast` and `--live` both green against a running federation, including every converted
+`acceptance.sh` block (2.1 through 2.6.5) executing correctly.
+
 ## 🟡 C16 — housekeeping
 
 - `.DS_Store` is committed at the pack root and under `docs/superpowers/`, and is **not** in
   `.gitignore` — which is otherwise the most carefully-reasoned `.gitignore` I have read.
 - No `.dockerignore`. Both image builds send their whole context; `apps/console`'s context
   includes `tests/` (with all four fixture trees) and `__pycache__/`.
-- `scripts/check-python-floor.sh` is referenced by `verify.sh` and does not exist (C10).
+- ~~`scripts/check-python-floor.sh` is referenced by `verify.sh` and does not exist (C10).~~
+  Removed by `docs/superpowers/plans/2026-08-01-kp2-shell-python-boundary.md` Task 3.
 
 ---
 
@@ -429,7 +449,7 @@ front of the admin UIs and the console — is a substantially larger piece of wo
 `acknowledge_public_exposure` gate exists precisely so nobody reaches for it casually. Say so
 in `deployment.yaml`'s comment block for `target: do-droplet`, and keep the gate.
 
-**🟠 D11 — Host-tool portability, beyond S9.** A minimal Ubuntu droplet does not have: `jq`
+**🟠 D11 — Host-tool portability, beyond S9. — RESOLVED 2026-08-01** A minimal Ubuntu droplet does not have: `jq`
 (used throughout `acceptance.sh`), `hurl` (containerised — fine), `shasum` (S9), or a Python
 with PyYAML. `docker compose` v2 as a plugin is present on DO's Docker marketplace image but
 not on a bare one. The cloud contract needs a `scripts/preflight.sh` that checks for these by
@@ -437,6 +457,22 @@ name and fails with an install line, rather than each one failing separately and
 somewhere inside a 6-minute deploy. Note also that `acceptance.sh` uses `mapfile` and
 `topology.sh` uses `declare -A`, so bash ≥4 is a hard requirement — true on Ubuntu, worth
 asserting.
+
+Resolved by `docs/superpowers/plans/2026-08-01-kp2-shell-python-boundary.md` Task 2:
+`scripts/preflight.sh` checks docker, docker compose (v2 plugin form specifically — a
+standalone `docker-compose` v1 does not satisfy it), `jq`, `curl`, `python3` ≥3.9 with PyYAML,
+a SHA-256 tool, and bash ≥4 (checked against `$BASH_VERSINFO`, the interpreter actually
+running the scripts, not against `/bin/bash`), reporting every failure together rather than
+exiting on the first, and printing (never running) the install line for the detected platform.
+Wired into the top of `hurl/run-linkup.sh`, before `lib-stack.sh` is even sourced — it needs
+python3+PyYAML itself — and documented as the first step in `runbook.md`'s prerequisites and
+`README.md`'s "Stand it up" line. Left out of `verify.sh --fast` on purpose: that tier is ~8s
+and the pack has twice had to correct public claims about what it requires (T1).
+
+Verified live: each failure branch forced independently (`jq` stripped from `PATH`, a bare
+venv without PyYAML, `/bin/bash` 3.2 on macOS) and reported correctly and in isolation; all
+three forced simultaneously and reported together in one run, not the first.
+`hurl/run-linkup.sh --dry-run` runs preflight first, then proceeds unchanged.
 
 **🟠 D12 — Container hardening is not started. — RESOLVED 2026-08-01** Both images run as root, neither declares a
 `USER`, neither has a `HEALTHCHECK` (the console's health is checked externally by
