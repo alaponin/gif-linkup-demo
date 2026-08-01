@@ -1,0 +1,24 @@
+
+# Internal configuration signing key -- signs the global conf the Security
+# Servers download. Without it there is no anchor to hand out.
+POST https://{{cs_host}}:4000/api/v1/configuration-sources/INTERNAL/signing-keys
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "key_label": "Internal signing key",
+  "token_id": 0
+}
+
+HTTP 200
+
+# External configuration signing key -- signs the conf a federated instance
+# would consume. Not federated in the demonstration, generated for completeness.
+POST https://{{cs_host}}:4000/api/v1/configuration-sources/EXTERNAL/signing-keys
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "key_label": "External signing key",
+  "token_id": 0
+}
+
+HTTP 200

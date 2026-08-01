@@ -1,0 +1,89 @@
+
+# Nominate this Security Server as the one hosting the management services
+POST https://{{cs_host}}:4000/api/v1/management-services-configuration/register-provider
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+{
+  "security_server_id": "{{xroad_instance}}:{{member_class}}:@MEMBER_CODE@:@SS_CODE@"
+}
+
+HTTP 200
+
+# Add the MANAGEMENT subsystem as a client of @SS@
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "ignore_warnings": true,
+  "client": {
+    "member_class": "{{member_class}}",
+    "member_code": "@MEMBER_CODE@",
+    "subsystem_code": "@SUBSYSTEM@",
+    "connection_type": "HTTP"
+  }
+}
+
+HTTP 201
+
+[Captures]
+@P@_client_id: jsonpath "$.id"
+
+# Read the management service addresses the Central Server publishes
+GET https://{{cs_host}}:4000/api/v1/management-services-configuration
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+cs_management_service_address: jsonpath "$.services_address"
+cs_management_service_wsdl: jsonpath "$.wsdl_address"
+
+# Publish the management services (WSDL) on the management Security Server
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-descriptions
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "url": "{{cs_management_service_wsdl}}",
+  "type": "WSDL",
+  "ignore_warnings": true
+}
+
+HTTP 201
+
+[Captures]
+@P@_management_description_id: jsonpath "$.id"
+@P@_auth_cert_deletion_service_id: jsonpath "$.services[0].id"
+
+# Point every management service at the CS's services address
+PATCH https://{{@HOSTVAR@}}:4000/api/v1/services/{{@P@_auth_cert_deletion_service_id}}
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "ignore_warnings": true,
+  "ssl_auth": false,
+  "ssl_auth_all": true,
+  "timeout": 60,
+  "timeout_all": true,
+  "url": "{{cs_management_service_address}}",
+  "url_all": true
+}
+
+# Grant the security-server-owners global group access to the management services
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-clients/{{xroad_instance}}:security-server-owners/access-rights
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+{
+  "items": [
+    { "service_code": "authCertDeletion" },
+    { "service_code": "clientDeletion" },
+    { "service_code": "clientReg" },
+    { "service_code": "ownerChange" },
+    { "service_code": "clientEnable" },
+    { "service_code": "clientDisable" },
+    { "service_code": "addressChange" },
+    { "service_code": "clientRename" },
+    { "service_code": "maintenanceModeEnable" },
+    { "service_code": "maintenanceModeDisable" }
+  ]
+}
+
+# Enable the management service description
+PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@P@_management_description_id}}/enable
+X-XSRF-TOKEN: {{@P@_xsrf_token}}
+
+HTTP 200

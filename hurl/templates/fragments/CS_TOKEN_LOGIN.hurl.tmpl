@@ -1,0 +1,10 @@
+
+# Log in to the Central Server's software token
+PUT https://{{cs_host}}:4000/api/v1/tokens/0/login
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "password": "{{token_pin}}"
+}
+
+HTTP *

@@ -1,0 +1,11 @@
+
+# Add the member class. Progressa's federation admits government bodies only.
+POST https://{{cs_host}}:4000/api/v1/member-classes
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "code": "{{member_class}}",
+  "description": "@DESCRIPTION@"
+}
+
+HTTP 201

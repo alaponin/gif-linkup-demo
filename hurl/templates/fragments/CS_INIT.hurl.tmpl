@@ -1,0 +1,31 @@
+############################################################
+# Central Server -- initialisation (module 2.1)
+############################################################
+
+# Check that the Central Server UI is up
+GET https://{{cs_host}}:4000
+
+HTTP 200
+
+# Log in to the Central Server
+POST https://{{cs_host}}:4000/login
+[FormParams]
+username: {{cs_admin_user}}
+password: {{cs_admin_password}}
+
+HTTP 200
+[Captures]
+cs_xsrf_token: cookie "XSRF-TOKEN"
+
+# Initialise the Central Server: instance identifier, address, token PIN
+POST https://{{cs_host}}:4000/api/v1/initialization
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+Content-Type: application/json
+{
+  "software_token_pin": "{{token_pin}}",
+  "instance_identifier": "{{xroad_instance}}",
+  "central_server_address": "{{cs_host}}"
+}
+
+# setup.hurl@7.7.0: 200, although the OpenAPI model says 201.
+HTTP 200

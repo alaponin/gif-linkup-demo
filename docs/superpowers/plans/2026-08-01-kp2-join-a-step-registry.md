@@ -147,22 +147,42 @@ Scenarios `00`–`03` and `10`. These share one context — they run once, again
 one host, in a fixed order, with no per-member loop — so converting them
 together means holding one mental model rather than five.
 
-- [ ] **Step 1:** convert `00-cs-init.hurl`'s blocks: instance init, software
+- [x] **Step 1:** convert `00-cs-init.hurl`'s blocks: instance init, software
       token login, INTERNAL and EXTERNAL signing keys, member class. Note the
       init response is **200, not 201** (`PLAN.md` §8) — the assertion moves
       with the template unchanged.
-- [ ] **Step 2:** convert `02-cs-members.hurl`. This emits a block **per
+
+      Implementation note: the four blocks were physically split out of the
+      single `00-cs-init.hurl.tmpl` into `fragments/CS_INIT.hurl.tmpl`,
+      `CS_MEMBER_CLASS.hurl.tmpl`, `CS_TOKEN_LOGIN.hurl.tmpl`,
+      `CS_SIGNING_KEYS.hurl.tmpl` (verified byte-for-byte reassembly before
+      wiring) — steps `cs.init`, `cs.member_class`, `cs.token_login`,
+      `cs.signing_keys`.
+- [x] **Step 2:** convert `02-cs-members.hurl`. This emits a block **per
       member**, so the per-member fragment is one `Step` rendered in a loop and
       joined in Python — the same rule Design decision 4 of the templates plan
       set, for the same reason. The registry holds the step once; the loop is
       `generate.py`'s.
-- [ ] **Step 3:** convert `03-cs-anchor.hurl` and `10-ss-pdga.hurl`. The
+- [x] **Step 3:** convert `03-cs-anchor.hurl` and `10-ss-pdga.hurl`. The
       management server is where `ca_name` is captured and reused by every later
       CSR — this is the single most-depended-on `provides` in the registry, so
       declare it carefully and note in a comment that steps in Tasks 3 read it.
-- [ ] **Step 4:** verify byte-identical after each conversion, not at the end.
+
+      Implementation note: `SS_BRINGUP_INIT.hurl.tmpl` was split at the
+      AUTH-key/CSR boundary (verified byte-for-byte reassembly) into
+      `ss.bringup_init` (unchanged name, truncated content) and a new
+      `ss.auth_key_csr` (`fragments/SS_AUTH_KEY_CSR.hurl.tmpl`) so
+      `ss.ca_name_capture` could become its own step instead of a Python
+      string-splice (`@CANAME@`), matching the design spec §5.2 example id.
+      The inline management-registration block (~90 lines, previously a raw
+      `sub()` string literal in `main()`) was extracted to
+      `fragments/SS_MGMT_REGISTER.hurl.tmpl` (step `ss.mgmt_register`).
+      `build_ss_file()` (Task 3's function) shares `SS_BRINGUP_INIT.hurl.tmpl`
+      with the pdga path, so its call site needed the same split applied here
+      to stay byte-identical — Task 3 still owns the rest of that function.
+- [x] **Step 4:** verify byte-identical after each conversion, not at the end.
       `check_scenarios.py` counts unmoved.
-- [ ] **Step 5:** commit each conversion separately.
+- [x] **Step 5:** commit each conversion separately.
 
 ## Task 3: Convert the member sequences
 

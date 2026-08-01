@@ -417,15 +417,30 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     m, sub_cfg, ss = member["member"], member["subsystem"], member["security_server"]
     prefix = ss_prefix(ss["dns_name"])
     conn = member.get("client", {}).get("connection_type", "HTTP")
+    # SS_BRINGUP_INIT was split at the AUTH-key/CSR boundary so ca_name
+    # capture (management-server-only, join-a plan Task 2) could become its
+    # own registry step -- see hurl/steps.py "ss.bringup_init" /
+    # "ss.ca_name_capture" / "ss.auth_key_csr". capture_ca_name is always
+    # False for a member's own bring-up today (only 10-ss-pdga passes it).
     body = render(
-        "fragments/SS_BRINGUP_INIT.hurl.tmpl",
+        steps_module.BY_ID["ss.bringup_init"].template,
         SS=ss["dns_name"],
         SS_CODE=ss["code"],
         MEMBER_CODE=m["member_code"],
         MEMBER_NAME=dn_escape(m["member_name"]),
         HOSTVAR=host_var,
         P=prefix,
-        CANAME=render("fragments/CA_NAME_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=prefix) if capture_ca_name else "",
+    )
+    if capture_ca_name:
+        body += render(steps_module.BY_ID["ss.ca_name_capture"].template, HOSTVAR=host_var, P=prefix)
+    body += "\n"
+    body += render(
+        steps_module.BY_ID["ss.auth_key_csr"].template,
+        SS_CODE=ss["code"],
+        MEMBER_CODE=m["member_code"],
+        MEMBER_NAME=dn_escape(m["member_name"]),
+        HOSTVAR=host_var,
+        P=prefix,
     )
     body += render(
         "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
@@ -654,10 +669,17 @@ def main() -> None:
     print("  wrote hurl/vars.env")
 
     # -- 00 Central Server initialisation ----------------------------------
-    body = render(
-        "00-cs-init.hurl.tmpl",
+    # instance init, member class, software token login, INTERNAL/EXTERNAL
+    # signing keys -- four steps in the registry, one file here (join-a plan
+    # Task 2 Step 1). The init response is 200, not 201 (PLAN.md #8) -- the
+    # assertion lives in fragments/CS_INIT.hurl.tmpl, unchanged.
+    body = render(steps_module.BY_ID["cs.init"].template)
+    body += render(
+        steps_module.BY_ID["cs.member_class"].template,
         DESCRIPTION=core["central_server"]["member_classes"][0]["description"],
     )
+    body += render(steps_module.BY_ID["cs.token_login"].template)
+    body += render(steps_module.BY_ID["cs.signing_keys"].template)
     write("00-cs-init.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 01 trust services --------------------------------------------------
@@ -673,16 +695,17 @@ def main() -> None:
 
     # -- 02 members ---------------------------------------------------------
     body = render(
-        "02-cs-members-owner.hurl.tmpl",
+        steps_module.BY_ID["cs.members_owner"].template,
         OWNER_NAME=owner["name"],
         OWNER_CODE=owner["code"],
         MGMT_SUBSYSTEM=owner["management_subsystem"],
     )
+    members_member_step = steps_module.BY_ID["cs.members_member"]
     for key in ("pnia", "plr", "moeys", "pnea"):
         m = members[key]["member"]
         s = members[key]["subsystem"]
         body += render(
-            "02-cs-members-member.hurl.tmpl",
+            members_member_step.template,
             MEMBER_NAME=m["member_name"],
             MEMBER_CODE=m["member_code"],
             SUBSYSTEM_CODE=s["code"],
@@ -691,23 +714,32 @@ def main() -> None:
     write("02-cs-members.hurl", "configs/member-*/2.*.yaml", body)
 
     # -- 03 anchor ----------------------------------------------------------
-    body = render("03-cs-anchor.hurl.tmpl")
+    body = render(steps_module.BY_ID["cs.anchor"].template)
     write("03-cs-anchor.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 10 management security server -------------------------------------
     host_var = f"{pdga_prefix}_host"
     body = render(
-        "fragments/SS_BRINGUP_INIT.hurl.tmpl",
+        steps_module.BY_ID["ss.bringup_init"].template,
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["code"],
         MEMBER_NAME=dn_escape(owner["name"]),
         HOSTVAR=host_var,
         P=pdga_prefix,
-        CANAME=render("fragments/CA_NAME_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix),
+    )
+    body += render(steps_module.BY_ID["ss.ca_name_capture"].template, HOSTVAR=host_var, P=pdga_prefix)
+    body += "\n"
+    body += render(
+        steps_module.BY_ID["ss.auth_key_csr"].template,
+        SS_CODE=mgmt_ss["code"],
+        MEMBER_CODE=owner["code"],
+        MEMBER_NAME=dn_escape(owner["name"]),
+        HOSTVAR=host_var,
+        P=pdga_prefix,
     )
     body += render(
-        "fragments/MEMBER_SIGN_KEY.hurl.tmpl",
+        steps_module.BY_ID["ss.sign_key_csr"].template,
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["code"],
         MEMBER_NAME=dn_escape(owner["name"]),
@@ -715,98 +747,9 @@ def main() -> None:
         SESS_P=pdga_prefix,
         CAP_P=pdga_prefix,
     )
-    body += render("fragments/SS_BRINGUP_REGISTER.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
-    body += sub(
-        """
-# Nominate this Security Server as the one hosting the management services
-POST https://{{cs_host}}:4000/api/v1/management-services-configuration/register-provider
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-{
-  "security_server_id": "{{xroad_instance}}:{{member_class}}:@MEMBER_CODE@:@SS_CODE@"
-}
-
-HTTP 200
-
-# Add the MANAGEMENT subsystem as a client of @SS@
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "ignore_warnings": true,
-  "client": {
-    "member_class": "{{member_class}}",
-    "member_code": "@MEMBER_CODE@",
-    "subsystem_code": "@SUBSYSTEM@",
-    "connection_type": "HTTP"
-  }
-}
-
-HTTP 201
-
-[Captures]
-@P@_client_id: jsonpath "$.id"
-
-# Read the management service addresses the Central Server publishes
-GET https://{{cs_host}}:4000/api/v1/management-services-configuration
-X-XSRF-TOKEN: {{cs_xsrf_token}}
-
-HTTP 200
-
-[Captures]
-cs_management_service_address: jsonpath "$.services_address"
-cs_management_service_wsdl: jsonpath "$.wsdl_address"
-
-# Publish the management services (WSDL) on the management Security Server
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-descriptions
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "url": "{{cs_management_service_wsdl}}",
-  "type": "WSDL",
-  "ignore_warnings": true
-}
-
-HTTP 201
-
-[Captures]
-@P@_management_description_id: jsonpath "$.id"
-@P@_auth_cert_deletion_service_id: jsonpath "$.services[0].id"
-
-# Point every management service at the CS's services address
-PATCH https://{{@HOSTVAR@}}:4000/api/v1/services/{{@P@_auth_cert_deletion_service_id}}
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "ignore_warnings": true,
-  "ssl_auth": false,
-  "ssl_auth_all": true,
-  "timeout": 60,
-  "timeout_all": true,
-  "url": "{{cs_management_service_address}}",
-  "url_all": true
-}
-
-# Grant the security-server-owners global group access to the management services
-POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@P@_client_id}}/service-clients/{{xroad_instance}}:security-server-owners/access-rights
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-{
-  "items": [
-    { "service_code": "authCertDeletion" },
-    { "service_code": "clientDeletion" },
-    { "service_code": "clientReg" },
-    { "service_code": "ownerChange" },
-    { "service_code": "clientEnable" },
-    { "service_code": "clientDisable" },
-    { "service_code": "addressChange" },
-    { "service_code": "clientRename" },
-    { "service_code": "maintenanceModeEnable" },
-    { "service_code": "maintenanceModeDisable" }
-  ]
-}
-
-# Enable the management service description
-PUT https://{{@HOSTVAR@}}:4000/api/v1/service-descriptions/{{@P@_management_description_id}}/enable
-X-XSRF-TOKEN: {{@P@_xsrf_token}}
-
-HTTP 200
-""",
+    body += render(steps_module.BY_ID["ss.bringup_register"].template, HOSTVAR=host_var, P=pdga_prefix)
+    body += render(
+        steps_module.BY_ID["ss.mgmt_register"].template,
         SS=mgmt_ss["dns_name"],
         SS_CODE=mgmt_ss["code"],
         MEMBER_CODE=owner["code"],
@@ -814,9 +757,9 @@ HTTP 200
         HOSTVAR=host_var,
         P=pdga_prefix,
     )
-    body += render("fragments/SS_ACTIVATE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
-    body += render("fragments/TSA_CAPTURE.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
-    body += render("fragments/SS_TSA_POST.hurl.tmpl", HOSTVAR=host_var, P=pdga_prefix)
+    body += render(steps_module.BY_ID["ss.activate"].template, HOSTVAR=host_var, P=pdga_prefix)
+    body += render(steps_module.BY_ID["ss.tsa_capture"].template, HOSTVAR=host_var, P=pdga_prefix)
+    body += render(steps_module.BY_ID["ss.tsa_post"].template, HOSTVAR=host_var, P=pdga_prefix)
     write("10-ss-pdga.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 2x member security servers ----------------------------------------
