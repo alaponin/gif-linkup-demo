@@ -36,21 +36,27 @@ export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
 COMPOSE_FILES=(-f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml")
 [ -f "$PACK_DIR/hurl/compose.members.yml" ] && COMPOSE_FILES+=(-f "$PACK_DIR/hurl/compose.members.yml")
 
-docker compose "${COMPOSE_FILES[@]}" --profile full --profile demo --profile tools \
-  config --format json | python3 -c "
+# Captured to a variable, not piped straight into python3: a quoted heredoc
+# supplies the program text over stdin, so the rendered config has to travel
+# as an argv value instead (C15) -- same reasoning as yq_get, just with the
+# JSON payload standing in for a path.
+CONFIG_JSON=$(docker compose "${COMPOSE_FILES[@]}" --profile full --profile demo --profile tools \
+  config --format json)
+
+python3 - "$DEPLOY_SPEC" "$CONFIG_JSON" <<'PY'
 import json, sys, yaml
 
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
-deployment = yaml.safe_load(open('$DEPLOY_SPEC'))
+deployment = yaml.safe_load(open(sys.argv[1]))
 acknowledged = (deployment.get('network') or {}).get('acknowledge_public_exposure') is True
 
-config = json.load(sys.stdin)
+config = json.loads(sys.argv[2])
 exposed = []
 for name, svc in config.get('services', {}).items():
     for port in svc.get('ports', []):
         host_ip = port.get('host_ip')
         if host_ip not in LOOPBACK:
-            exposed.append(f\"{name}: {host_ip or '0.0.0.0'}:{port['published']} -> {port['target']}/{port['protocol']}\")
+            exposed.append(f"{name}: {host_ip or '0.0.0.0'}:{port['published']} -> {port['target']}/{port['protocol']}")
 
 if not exposed:
     print('check-exposure: every published port binds to loopback')
@@ -61,4 +67,4 @@ print(f'check-exposure: {label}:')
 for e in exposed:
     print(f'  {e}')
 sys.exit(0 if acknowledged else 1)
-"
+PY

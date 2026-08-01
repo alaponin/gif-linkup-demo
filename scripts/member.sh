@@ -45,11 +45,12 @@ cmd_remove() {
   [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to remove"
 
   local origin
-  origin=$(python3 -c "
-import yaml
-m = yaml.safe_load(open('$PACK_DIR/manifest.yaml'))['identity']['members'].get('$key') or {}
+  origin=$(python3 - "$PACK_DIR/manifest.yaml" "$key" <<'PY'
+import sys, yaml
+m = yaml.safe_load(open(sys.argv[1]))['identity']['members'].get(sys.argv[2]) or {}
 print(m.get('origin', 'canonical'))
-")
+PY
+)
   [ "$origin" = "canonical" ] && fail "'$key' is a canonical member -- the canonical five never renumber or leave. Only a joined member can be removed."
 
   rm -r "$dir"

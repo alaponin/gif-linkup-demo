@@ -142,26 +142,31 @@ while IFS=$'\t' read -r ss client_id svc want_json; do
   check_svc() { retry 12 5 "${svc} ACL settled" check_acl_exact "$ss" "$client_id" "$svc" "$want_json"; }
   want_desc=$(printf '%s' "$want_json" | python3 -c "import json,sys; a=json.load(sys.stdin); print(', '.join(a) if a else '(nobody)')")
   check "2.x.acl(${svc})" "${svc} grants exactly ${want_desc}" check_svc
-done < <(python3 -c "
-import json
-topo = json.load(open('$PACK_DIR/hurl/topology.json'))
+done < <(python3 - "$PACK_DIR/hurl/topology.json" <<'PY'
+import json, sys
+topo = json.load(open(sys.argv[1]))
 for sub in topo['subsystems']:
     for svc in sub['services']:
         access = [a.replace('/', ':') for a in svc['access']]
-        print(f\"{sub['hosted_on']}\t{sub['id']}\t{svc['code']}\t{json.dumps(access)}\")
-")
+        print(f"{sub['hosted_on']}\t{sub['id']}\t{svc['code']}\t{json.dumps(access)}")
+PY
+)
 
 # ---- 2.6 the once-only exchange ---------------------------------------------
-NIN=$(python3 -c "
-import csv
-p={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/persons.csv'))}
-e={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/enrolments.csv'))}
-print(sorted(p&e)[0])")
-MISSING_NIN=$(python3 -c "
-import csv
-p={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/persons.csv'))}
-e={r['nin'] for r in csv.DictReader(open('$PACK_DIR/apps/data/enrolments.csv'))}
-print(sorted(p-e)[0])")
+NIN=$(python3 - "$PACK_DIR/apps/data/persons.csv" "$PACK_DIR/apps/data/enrolments.csv" <<'PY'
+import csv, sys
+p={r['nin'] for r in csv.DictReader(open(sys.argv[1]))}
+e={r['nin'] for r in csv.DictReader(open(sys.argv[2]))}
+print(sorted(p&e)[0])
+PY
+)
+MISSING_NIN=$(python3 - "$PACK_DIR/apps/data/persons.csv" "$PACK_DIR/apps/data/enrolments.csv" <<'PY'
+import csv, sys
+p={r['nin'] for r in csv.DictReader(open(sys.argv[1]))}
+e={r['nin'] for r in csv.DictReader(open(sys.argv[2]))}
+print(sorted(p-e)[0])
+PY
+)
 
 # The exchange's shape (consumer, negative caller, the two r1 paths) comes
 # from configs/x-road-bus/2.6.yaml -- not restated as bash literals. Its
@@ -170,14 +175,15 @@ print(sorted(p-e)[0])")
 # consumer/negative-caller can be hosted elsewhere, so the entrypoint is
 # resolved from HOST_SS/SS_REST instead, the same live-confirmed trap
 # apps/console/truth.py already documents and avoids.
-mapfile -t _exchange < <(python3 -c "
-import yaml
-cfg = yaml.safe_load(open('$PACK_DIR/configs/x-road-bus/2.6.yaml'))['exchange']
+mapfile -t _exchange < <(python3 - "$PACK_DIR/configs/x-road-bus/2.6.yaml" <<'PY'
+import sys, yaml
+cfg = yaml.safe_load(open(sys.argv[1]))['exchange']
 print(cfg['headers']['X-Road-Client'])
 print(cfg['negative_check']['unauthorised_client'])
 print(cfg['calls'][0]['r1_path'])
 print(cfg['calls'][1]['r1_path'])
-")
+PY
+)
 CLIENT="X-Road-Client: ${_exchange[0]}"
 BADCLIENT="X-Road-Client: ${_exchange[1]}"
 ID_PATH_TMPL="${_exchange[2]}"

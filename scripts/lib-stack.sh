@@ -114,7 +114,11 @@ fi
 # quietly wrong for whatever is about to run.
 TOPO_JSON="$PACK_DIR/hurl/topology.json"
 if [ -f "$TOPO_JSON" ]; then
-  topo_profile=$(python3 -c "import json; print(json.load(open('$TOPO_JSON'))['profile'])")
+  topo_profile=$(python3 - "$TOPO_JSON" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1]))['profile'])
+PY
+)
   deploy_profile=$(yq_get "$DEPLOY_SPEC" profile)
   if [ "$topo_profile" != "$deploy_profile" ]; then
     echo "lib-stack.sh: hurl/topology.json was generated for profile '$topo_profile' but deployment.yaml now says '$deploy_profile' -- run python3 hurl/generate.py (hurl/run-linkup.sh does this for you) before continuing" >&2
