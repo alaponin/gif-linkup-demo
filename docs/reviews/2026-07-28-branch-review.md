@@ -131,7 +131,12 @@ places in `apps/console/`, so when a real CA arrives there is no switch to throw
 from `deployment.yaml` now, defaulting to `False` for `target: docker-local`, so the real-CA
 path is a config change rather than a code change.
 
-## 🟡 S7 — Images pinned by mutable tag
+## 🟡 S7 — Images pinned by mutable tag — RESOLVED 2026-08-01
+
+Resolved by `docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md` Task 2: `ss` and
+`cs` are now digest-pinned (`ss_digest`/`cs_digest` in `deployment.yaml`), alongside `hurl`
+and `python:3.12-slim`, which S7 did not name but the same reproducibility gap covered
+(see C13 in `docs/reviews/2026-08-01-branch-review.md`).
 
 `testca` is digest-pinned (good, and deliberate). `niis/xroad-security-server-sidecar:7.7.0`
 and `niis/xroad-central-server:noble-7.7.0` are not. A cloud deployment should digest-pin

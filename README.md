@@ -43,7 +43,8 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   tell a `--fast`-only claim from a `--full` one.
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
-profile, X-Road version pins; `.env` carries only secrets), `docker-compose.yml`
+profile, X-Road version pins, and (`cs_digest`/`ss_digest`/`testca_tag`) the
+digest pins that back them; `.env` carries only secrets), `docker-compose.yml`
 (X-Road 7.7.0: Central Server, Test CA, five Security Servers — `deployment.yaml`'s
 `profile: lite` runs three, PNIA and MoEYS hosted as extra clients on ss-plr;
 see `hurl/README.md` "Known limits"), `configs/` (declarative YAML per module),
