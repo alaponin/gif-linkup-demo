@@ -24,10 +24,9 @@ ENV_FIXTURE = GOLDEN / "env.fixture"
 
 def _generate(tmp_path: pathlib.Path, profile: str) -> pathlib.Path:
     out_dir = tmp_path / profile
-    # The pack's own system python3 (see hurl/README.md's host-runtime note),
-    # not whatever interpreter is running pytest -- generate.py's own
-    # constraints (no str.removeprefix, no dict[] at runtime) are about that
-    # host interpreter, and this test should exercise it, not sidestep it.
+    # The pack's own system python3 (see hurl/README.md's host-runtime note:
+    # 3.9+, not whatever interpreter is running pytest), so this test
+    # exercises the host floor rather than sidestepping it.
     result = subprocess.run(
         [
             "python3", "hurl/generate.py",

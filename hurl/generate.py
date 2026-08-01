@@ -201,7 +201,7 @@ def discover_members(pack: pathlib.Path, identity: dict) -> dict[str, dict]:
     for member_dir in sorted(configs_dir.glob("member-*")):
         if not member_dir.is_dir():
             continue
-        key = member_dir.name[len("member-"):]  # host runs system python3.7 -- no str.removeprefix
+        key = member_dir.name.removeprefix("member-")
         yaml_files = sorted(member_dir.glob("*.yaml"))
         if not yaml_files:
             raise SystemExit(f"generate.py: configs/{member_dir.name}/ has no config file")
