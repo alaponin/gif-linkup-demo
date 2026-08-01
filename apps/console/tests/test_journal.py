@@ -1,5 +1,6 @@
 """Unit tests for apps/console/journal.py. A FakeSession stands in for
 xroad.AdminSession -- no network, no Docker."""
+import dataclasses
 import json
 import pathlib
 import sys
@@ -111,6 +112,62 @@ def test_refusal_to_empty_journal_when_verification_fails(tmp_path):
     assert result["ok"] is False
     assert result["discrepancies"][0]["service_code"] == "identity-api"
     assert journal.entries() != []  # journal NOT cleared
+
+
+def test_truncated_file_raises_runtime_error_naming_the_path(tmp_path):
+    """S15: a crash mid-write must refuse loudly -- never a silent [] that
+    would convert 'the federation may be mid-mutation' into 'nothing to
+    do'. Truncating to half the bytes simulates write_text's old
+    truncate-then-write window."""
+    path = tmp_path / "journal.json"
+    journal = Journal(path)
+    journal.append_pending(JournalEntry(
+        ts=1.0, action="revoke", ss="ss-plr", client_id=CLIENT_ID,
+        subject=SUBJECT, service_code="identity-api", prior_state="granted",
+    ))
+    full = path.read_text()
+    path.write_text(full[: len(full) // 2])
+
+    with pytest.raises(RuntimeError) as exc_info:
+        journal.entries()
+    assert str(path) in str(exc_info.value)
+    assert not issubclass(exc_info.type, json.JSONDecodeError)
+
+
+def test_missing_and_empty_file_both_read_as_empty_list(tmp_path):
+    """Existing behaviour, now explicitly pinned -- neither case is the
+    corruption Task 1 refuses."""
+    missing = Journal(tmp_path / "does-not-exist.json")
+    assert missing.entries() == []
+
+    empty_path = tmp_path / "empty.json"
+    empty_path.write_text("")
+    assert Journal(empty_path).entries() == []
+
+
+def test_no_tmp_file_remains_after_append_pending(tmp_path):
+    path = tmp_path / "journal.json"
+    journal = Journal(path)
+    journal.append_pending(JournalEntry(
+        ts=1.0, action="revoke", ss="ss-plr", client_id=CLIENT_ID,
+        subject=SUBJECT, service_code="identity-api", prior_state="granted",
+    ))
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == [], f"leftover temp file(s): {tmp_files}"
+
+
+def test_pre_existing_journal_from_old_code_path_reads_identically(tmp_path):
+    """Format compatibility: a journal written by plain write_text (the
+    pre-Task-1 code path, no .tmp/rename involved) must still read the
+    same as one written by the new atomic _write."""
+    path = tmp_path / "journal.json"
+    entry = JournalEntry(
+        ts=1.0, action="revoke", ss="ss-plr", client_id=CLIENT_ID,
+        subject=SUBJECT, service_code="identity-api", prior_state="granted",
+    )
+    path.write_text(json.dumps([dataclasses.asdict(entry)], indent=2))
+
+    assert Journal(path).entries() == [dataclasses.asdict(entry)]
 
 
 def test_is_dirty():

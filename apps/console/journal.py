@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import pathlib
 import time
 from typing import Callable
@@ -39,11 +40,33 @@ class Journal:
         text = self.path.read_text().strip()
         if not text:
             return []
-        return json.loads(text)
+        # Journal integrity plan (S15): a corrupt file must refuse loudly,
+        # never be silently treated as "nothing to do" -- that would convert
+        # "the federation may be mid-mutation and I cannot tell" into a
+        # silent reset-ok, exactly what this module exists to prevent.
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"{self.path} is not valid JSON -- an interrupted write or a "
+                "hand-edit, not something this reader should guess about. "
+                "Either inspect and repair the file, or, only if you are "
+                "certain no mutation is outstanding, delete it."
+            ) from exc
 
     def _write(self, entries: list[dict]) -> None:
+        """Atomic on POSIX: a temp file beside the target (same filesystem,
+        so os.replace's atomicity guarantee actually holds -- OUT_DIR is a
+        Docker bind mount, and rename(2) across filesystems is not atomic)
+        renamed onto the real path. A reader never sees a partially-written
+        file. If the process dies before os.replace runs, the .tmp file is
+        a write that was never adopted -- the real journal at self.path is
+        still whatever it was before, and the stray .tmp is safe to delete,
+        not a sign of corruption in the live file beside it."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(entries, indent=2))
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(json.dumps(entries, indent=2))
+        os.replace(tmp, self.path)
 
     def is_dirty(self) -> bool:
         return len(self._read()) > 0
