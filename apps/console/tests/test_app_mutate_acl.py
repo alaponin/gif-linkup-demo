@@ -8,6 +8,8 @@ existing test fixtures; the admin session is monkeypatched."""
 import os
 import pathlib
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 os.environ["PACK_DIR"] = str(pathlib.Path(__file__).resolve().parent / "fixtures" / "full")
 os.environ["OUT_DIR"] = "/tmp"
@@ -38,6 +40,23 @@ class _FakeSession:
 
     def revoke(self, client_id, subject_id, service_code):
         self._live = [s for s in self._live if s != service_code]
+
+
+class _SlowFakeSession(_FakeSession):
+    """Sleeps inside grant/revoke to widen the read-modify-write window --
+    enough for two real OS threads to interleave without the lock."""
+
+    def __init__(self, *args, delay=0.05, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._delay = delay
+
+    def grant(self, client_id, subject_id, service_code):
+        time.sleep(self._delay)
+        super().grant(client_id, subject_id, service_code)
+
+    def revoke(self, client_id, subject_id, service_code):
+        time.sleep(self._delay)
+        super().revoke(client_id, subject_id, service_code)
 
 
 def test_grant_when_already_granted_journals_correct_prior_state(monkeypatch, tmp_path):
@@ -85,3 +104,22 @@ def test_redundant_grant_then_reset_leaves_correct_final_state(monkeypatch, tmp_
 
     assert result["ok"] is True
     assert "identity-api" in sessions["ss-pnia"].read_acl(None, None)
+
+
+def test_concurrent_mutations_do_not_lose_a_journal_entry(monkeypatch, tmp_path):
+    """S16: append_pending/mark_applied are read-modify-write with no lock
+    of their own, and _mutate_acl is reached from a `def` (not `async def`)
+    endpoint, so FastAPI runs it in a threadpool -- two concurrent POSTs
+    genuinely interleave. Two real OS threads, not asyncio tasks, because
+    the race is a threading race: FastAPI's threadpool, not the event
+    loop, is what makes two _mutate_acl calls run concurrently."""
+    app.JOURNAL = app.journal_mod.Journal(tmp_path / "journal.json")
+    fake = _SlowFakeSession(["identity-api"])
+    monkeypatch.setattr(app, "_admin_session", lambda host: fake)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(app._mutate_acl, "revoke"), pool.submit(app._mutate_acl, "grant")]
+        for f in futures:
+            f.result()
+
+    assert len(app.JOURNAL.entries()) == 2

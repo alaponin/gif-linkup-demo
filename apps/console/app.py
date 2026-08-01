@@ -13,6 +13,7 @@ import dataclasses
 import os
 import pathlib
 import re
+import threading
 import time
 
 import httpx
@@ -35,6 +36,17 @@ ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 MUTABLE_SERVICE = "identity-api"
 HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
+
+# Journal integrity plan (S16): _mutate_acl is reached from `def` (not
+# `async def`) endpoints, so FastAPI runs it in a threadpool -- two
+# concurrent POSTs genuinely interleave without this. Serialises every
+# path that reads-then-writes the journal or calls reset(): _mutate_acl,
+# post_reset, and the watchdog/lifespan resets. Scope: this lock
+# serialises mutations WITHIN ONE CONSOLE PROCESS. It is not a
+# distributed lock and does not protect against two consoles pointed at
+# one federation -- which this pack does not do and should not start
+# doing.
+_MUTATE_LOCK = threading.Lock()
 
 # Request-boundary plan (S12): shape confirmed against apps/data/persons.csv
 # (scripts/gen_seed_data.py's nin() -- 11 digits, 0-9). \A/\Z rather than
@@ -124,6 +136,15 @@ def _journal_is_dirty() -> bool:
     return JOURNAL.is_dirty()
 
 
+def _reset_locked() -> dict:
+    """The one place that calls journal_mod.reset() -- post_reset, the
+    watchdog, and the lifespan's startup reset all go through this, so the
+    S16 lock and (Task 3) the off-event-loop wrapping only need stating
+    once."""
+    with _MUTATE_LOCK:
+        return journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+
+
 async def _watchdog() -> None:
     """Belt and braces (design decision 3): a demo that silently leaves the
     ACL revoked and makes acceptance.sh fail an hour later for an
@@ -133,14 +154,14 @@ async def _watchdog() -> None:
     while True:
         await asyncio.sleep(WATCHDOG_POLL_S)
         if time.time() - _last_heartbeat > HEARTBEAT_TIMEOUT_S and JOURNAL.is_dirty():
-            journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+            _reset_locked()
             _last_heartbeat = time.time()
 
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
     if JOURNAL.is_dirty():
-        journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+        _reset_locked()
     watchdog_task = asyncio.create_task(_watchdog())
     yield
     watchdog_task.cancel()
@@ -310,31 +331,39 @@ def _mutate_acl(action: str) -> dict:
     if not subjects:
         raise HTTPException(400, f"{MUTABLE_SERVICE} has no expected subject to mutate")
     subject = subjects[0]
-    session = _admin_session(subsystem["hosted_on"])
 
-    # prior_state must come from the actual live state, never inferred as
-    # "the opposite of the requested action" -- grant()/revoke() are both
-    # idempotent-safe at the X-Road layer (xroad.py's 409 handling: calling
-    # grant when already granted, or revoke when already revoked, is a
-    # success no-op). If prior_state assumed a transition happened when it
-    # didn't, reset()'s reversal would apply the wrong action and corrupt
-    # the real state -- confirmed live: calling this endpoint twice with the
-    # same action left the journal permanently dirty and unable to verify.
-    prior_state = "granted" if MUTABLE_SERVICE in session.read_acl(subsystem["id"], subject) else "revoked"
+    # Held across the read that establishes prior_state, the journal write,
+    # the live call, AND mark_applied (S16) -- releasing it earlier would
+    # let a second mutation read a prior_state the first has already
+    # invalidated but not yet applied, the exact interleave that loses a
+    # journal entry: A reads [], B reads [], A writes [x], B writes [y] --
+    # x is gone from the journal even though its live mutation happened.
+    with _MUTATE_LOCK:
+        session = _admin_session(subsystem["hosted_on"])
 
-    # Journalled BEFORE the live call -- a crash between this write and the
-    # next leaves enough on disk for reset() to reverse (journal.py docstring).
-    idx = JOURNAL.append_pending(journal_mod.JournalEntry(
-        ts=time.time(), action=action, ss=subsystem["hosted_on"],
-        client_id=subsystem["id"], subject=subject, service_code=MUTABLE_SERVICE,
-        prior_state=prior_state,
-    ))
-    if action == "revoke":
-        session.revoke(subsystem["id"], subject, MUTABLE_SERVICE)
-    else:
-        session.grant(subsystem["id"], subject, MUTABLE_SERVICE)
-    JOURNAL.mark_applied(idx)
-    return {"ok": True, "action": action, "service_code": MUTABLE_SERVICE}
+        # prior_state must come from the actual live state, never inferred as
+        # "the opposite of the requested action" -- grant()/revoke() are both
+        # idempotent-safe at the X-Road layer (xroad.py's 409 handling: calling
+        # grant when already granted, or revoke when already revoked, is a
+        # success no-op). If prior_state assumed a transition happened when it
+        # didn't, reset()'s reversal would apply the wrong action and corrupt
+        # the real state -- confirmed live: calling this endpoint twice with the
+        # same action left the journal permanently dirty and unable to verify.
+        prior_state = "granted" if MUTABLE_SERVICE in session.read_acl(subsystem["id"], subject) else "revoked"
+
+        # Journalled BEFORE the live call -- a crash between this write and the
+        # next leaves enough on disk for reset() to reverse (journal.py docstring).
+        idx = JOURNAL.append_pending(journal_mod.JournalEntry(
+            ts=time.time(), action=action, ss=subsystem["hosted_on"],
+            client_id=subsystem["id"], subject=subject, service_code=MUTABLE_SERVICE,
+            prior_state=prior_state,
+        ))
+        if action == "revoke":
+            session.revoke(subsystem["id"], subject, MUTABLE_SERVICE)
+        else:
+            session.grant(subsystem["id"], subject, MUTABLE_SERVICE)
+        JOURNAL.mark_applied(idx)
+        return {"ok": True, "action": action, "service_code": MUTABLE_SERVICE}
 
 
 @app.post("/api/acl/revoke", dependencies=[Depends(_require_console_origin)])
@@ -353,7 +382,7 @@ def post_reset():
     truth.expected_acl exactly -- never a silent 'reset ok' (Task 5 Step 2)."""
     global _last_heartbeat
     _last_heartbeat = time.time()
-    result = journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
+    result = _reset_locked()
     if not result["ok"]:
         raise HTTPException(409, result)
     return result
