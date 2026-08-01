@@ -26,7 +26,13 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   (`--fast`, then `acceptance.sh` against a running stack; refuses rather
   than deploying one if nothing is reachable)
   **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
-  reproducibility proof) **~918s (~15 min)**. See
+  reproducibility proof) **~918s (~15 min) under `profile: full`, ~370s
+  (~6.2 min) under `profile: lite`** (two independent cold runs each;
+  see `docs/production-delta.md` "Lite profile's full cycle, measured").
+  Lite proves everything except PNIA's and MoEYS's own certificate
+  sequences (hosted as clients on `ss-plr` instead) — develop against
+  lite for the cheap full cycle, run one `--full` under full profile
+  before closing out a plan. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
   tier replaced. **When to run which, inside a plan:** `--fast` after each
   step (it's the one that's always cheap enough to run every time), `--live`

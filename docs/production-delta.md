@@ -225,3 +225,55 @@ prerequisite fix) is very likely worth revisiting** — the bottleneck is
 exactly the shape parallelism collapses, four *serial* per-member
 propagation waits that could instead overlap, and the four retried entries
 above are precisely the four sequences that would run concurrently.
+
+## Lite profile's full cycle, measured (two-decisions plan Task 1/T2)
+
+The full-profile figures above measure everything except the alternative:
+nobody had timed `--full` under `profile: lite` (three Security Servers —
+PDGA, PLR, PNEA — instead of five, PNIA and MoEYS hosted as clients on
+`ss-plr`). Two independent cold runs (`teardown.sh --purge` → `scripts/verify.sh
+--full`), back to back:
+
+| | Run 1 | Run 2 |
+| --- | --- | --- |
+| Containers healthy | 119s | 113s |
+| Hurl admin-API run | 283s | 223s |
+| **Total** | **402s** | **336s** |
+
+**~370s (~6.2 min) average, against ~918s (~15.3 min) for full — lite's
+deploy cycle is not merely a bit cheaper, it is roughly 2.5x faster,**
+consistent with fewer members needing their own subsystem-registration
+propagation wait (the dominant cost identified above): lite runs that wait
+for three member sequences instead of four (PNIA and MoEYS's registrations
+happen as fragments inside `ss-plr`'s own sequence, not as separate waits).
+
+**What this does not prove:** PNIA and MoEYS run as hosted clients on
+`ss-plr` under lite, not as their own servers, so a lite-only cycle never
+exercises two of the five certificate sequences or the cross-server path
+to those two providers as independent Security Servers. That is exactly
+why "prove on full" stays part of the recommendation below, not a reason
+to distrust the timing.
+
+**One real bug found and fixed while measuring:** `scripts/capture-xroad-fixtures.sh`
+(part of `--full`'s fixture-drift check) hardcoded `SS_UI[ss-pnia]` and
+`SS_REST[ss-moeys]`, which do not exist in lite's topology (`unbound
+variable`) — the same lite/full trap `scripts/acceptance.sh` already
+resolves via `HOST_SS`. Fixed the same way.
+
+**One transient, self-healing race observed, not chased further:** one of
+the two runs' acceptance suite hit `MISMATCH ... empty response` on the
+first post-deploy exchange call — `fetch_retry`'s success check is the
+curl exit code (an HTTP success status), which does not catch an X-Road
+REST response that returns 200 with a body that is not yet valid JSON in
+the seconds right after a fresh deploy. Re-running `scripts/acceptance.sh`
+against the same, unchanged federation moments later passed cleanly end to
+end — consistent with the propagation-lag pattern this pack already
+documents elsewhere, not a new failure mode. Recorded honestly; not
+investigated further, since diagnosing `fetch_retry`'s success criterion
+is outside what this measurement task asked.
+
+**Recommendation (feeds Task 2's snapshot decision):** lite's ~370s full
+cycle is close enough to the snapshot mechanism's own ~315s restore time
+(below) that the snapshot's already-thin 3x speedup over a full-profile
+redeploy shrinks further once lite is the point of comparison instead of
+full — see the snapshot section below for the actual decision.
