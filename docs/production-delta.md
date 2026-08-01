@@ -266,17 +266,22 @@ to distrust the timing.
 variable`) — the same lite/full trap `scripts/acceptance.sh` already
 resolves via `HOST_SS`. Fixed the same way.
 
-**One transient, self-healing race observed, not chased further:** one of
-the two runs' acceptance suite hit `MISMATCH ... empty response` on the
-first post-deploy exchange call — `fetch_retry`'s success check is the
-curl exit code (an HTTP success status), which does not catch an X-Road
-REST response that returns 200 with a body that is not yet valid JSON in
-the seconds right after a fresh deploy. Re-running `scripts/acceptance.sh`
-against the same, unchanged federation moments later passed cleanly end to
-end — consistent with the propagation-lag pattern this pack already
-documents elsewhere, not a new failure mode. Recorded honestly; not
-investigated further, since diagnosing `fetch_retry`'s success criterion
-is outside what this measurement task asked.
+**One transient, self-healing race observed, not chased further:** 2 of
+the 3 fresh deploys run for this task (one lite, and separately the
+full-profile restore in Task 1 Step 4 below) hit the same `MISMATCH ...
+empty response` on the first post-deploy exchange call — common enough
+that "rare" would undersell it. `fetch_retry`'s success check is the curl
+exit code (an HTTP success status), which does not catch an X-Road REST
+response that returns 200 with a body that is not yet valid JSON in the
+seconds right after a fresh deploy. Re-running `scripts/acceptance.sh`
+against the same, unchanged federation moments later passed cleanly both
+times — consistent with the propagation-lag pattern this pack already
+documents elsewhere, not a new failure mode, but frequent enough that
+`fetch_retry`'s success criterion is worth a follow-up fix (validate the
+body parses as JSON, not just that curl exited 0) rather than living with
+a suite that fails outright on roughly two thirds of fresh deploys.
+Recorded honestly; not fixed here, since diagnosing and fixing it is
+outside what this measurement task asked.
 
 **Recommendation (feeds Task 2's snapshot decision):** lite's ~370s full
 cycle is close enough to the snapshot mechanism's own ~315s restore time
