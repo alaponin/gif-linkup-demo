@@ -24,17 +24,21 @@ retry() {
 }
 
 # yq wrapper (python fallback: hard deps stay curl+jq+python3). Clean error
-# on a missing key instead of a traceback.
-yq_get() { python3 -c "
+# on a missing key instead of a traceback. Values arrive via argv, never
+# spliced into the program text -- a path or key containing a quote must not
+# become a Python SyntaxError or worse (C15, docs/reviews/2026-08-01-branch-review.md).
+yq_get() { python3 - "$1" "$2" <<'PY'
 import sys, yaml
+path, key = sys.argv[1], sys.argv[2]
 try:
-    doc = yaml.safe_load(open('$1'))
+    doc = yaml.safe_load(open(path))
     node = doc
-    for part in '$2'.split('.'):
+    for part in key.split('.'):
         node = node[int(part)] if part.isdigit() else node[part]
     print(node)
 except (KeyError, IndexError, TypeError):
-    sys.exit('yq_get: no key \\'$2\\' in $1')
-"; }
+    sys.exit(f"yq_get: no key '{key}' in {path}")
+PY
+}
 
 export -f log fail retry
