@@ -13,6 +13,7 @@ expected status code is taken from the upstream scenario at that tag.
 ```
 hurl/
   generate.py          scenarios and vars.env are GENERATED from configs/
+  templates/*.hurl.tmpl source templates generate.py renders (see below)
   check_scenarios.py   static check — undefined variables, ordering, manifest drift
   run-linkup.sh        concatenate, bring the stack up, run
   compose.hurl.yml     overlay: the runner, the CA cert volume, healthchecks
@@ -60,6 +61,29 @@ thing NIIS's `run-hurl.sh` does. The numbering is the execution order:
 Which module each scenario realises is recorded in `manifest.yaml` (`scenarios:`
 per module), so the chain runs config → prompt → scenario → acceptance.
 `check_scenarios.py` fails if a scenario is unclaimed or a claim does not resolve.
+
+## Templates (`hurl/templates/`)
+
+`generate.py`'s emitted scenarios are rendered from `.hurl.tmpl` files here,
+not built as Python f-strings. Hurl's own variable syntax is `{{var}}`;
+Python f-strings also use `{}`, so an f-string emitting Hurl needs every
+literal brace doubled and every Hurl variable quadrupled — a standing tax on
+editing the pack's most important generated artefact, and a class of bug (a
+miscounted brace produces either a Python error or valid-but-wrong Hurl).
+`.hurl.tmpl` files are plain text: Hurl's `{{var}}` passes through untouched,
+and `generate.py`'s own substitutions use the `@name@` convention (`sub()` /
+`render()`) instead, which cannot collide with it. `.tmpl` — not bare `.hurl`
+— marks them as source belonging in git, distinct from the generated,
+gitignored `hurl/scenarios/`.
+
+Templates are always read from the real pack checkout, never from `--out`'s
+redirected output directory — `generate.py`'s `TEMPLATES` constant makes the
+same PACK-not-HURL_DIR distinction already documented at line 32 for
+`manifest.yaml` and `configs/`.
+
+The golden corpus (below) is what makes editing a template safe: every
+change is checked against a byte-exact baseline for both profiles before it
+can be trusted.
 
 ## Do not hand-edit
 

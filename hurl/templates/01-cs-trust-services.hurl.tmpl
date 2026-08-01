@@ -1,0 +1,38 @@
+############################################################
+# Central Server -- trust services (module 2.1)
+# The Test CA is the demonstration trust anchor. Certificates are read from the
+# shared ca volume at {file-root}/ca; no renaming is needed with the
+# xrddev-testca image, which writes ca.pem / ocsp.pem / tsa.pem itself.
+############################################################
+
+# Register the Test CA as a certification service
+POST https://{{cs_host}}:4000/api/v1/certification-services
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+[MultipartFormData]
+certificate_profile_info: @CERT_PROFILE@
+tls_auth: false
+acme_server_directory_url: http://{{ca_host}}:8887
+certificate: file,ca/ca.pem;
+
+HTTP 201
+
+[Captures]
+ca_id: jsonpath "$.id"
+
+# Register the OCSP responder against that CA
+POST https://{{cs_host}}:4000/api/v1/certification-services/{{ca_id}}/ocsp-responders
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+[MultipartFormData]
+url: @OCSP_URL@
+certificate: file,ca/ocsp.pem;
+
+HTTP 201
+
+# Register the timestamping authority
+POST https://{{cs_host}}:4000/api/v1/timestamping-services
+X-XSRF-TOKEN: {{cs_xsrf_token}}
+[MultipartFormData]
+url: @TSA_URL@
+certificate: file,ca/tsa.pem;
+
+HTTP 201

@@ -366,6 +366,17 @@ def sub(tpl: str, **kw) -> str:
     return tpl
 
 
+# Templates are source, not output: always read from the real pack, never
+# from HURL_DIR, which main() reassigns under --out (tests/test_golden.py
+# only). Same distinction generate.py already draws for manifest.yaml and
+# configs/ at line 32.
+TEMPLATES = PACK / "hurl" / "templates"
+
+
+def render(name: str, **kw) -> str:
+    return sub((TEMPLATES / name).read_text(), **kw)
+
+
 def dn_escape(value: str) -> str:
     """Escape a comma for RFC 2253 DN embedding in a subject_field_values value.
 
@@ -1103,46 +1114,12 @@ HTTP 200
 
     # -- 01 trust services --------------------------------------------------
     ts = core["trust_services"]
-    body = f"""
-############################################################
-# Central Server -- trust services (module 2.1)
-# The Test CA is the demonstration trust anchor. Certificates are read from the
-# shared ca volume at {{file-root}}/ca; no renaming is needed with the
-# xrddev-testca image, which writes ca.pem / ocsp.pem / tsa.pem itself.
-############################################################
-
-# Register the Test CA as a certification service
-POST https://{{{{cs_host}}}}:4000/api/v1/certification-services
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-[MultipartFormData]
-certificate_profile_info: {ts['certification_service']['certificate_profile']}
-tls_auth: false
-acme_server_directory_url: http://{{{{ca_host}}}}:8887
-certificate: file,ca/ca.pem;
-
-HTTP 201
-
-[Captures]
-ca_id: jsonpath "$.id"
-
-# Register the OCSP responder against that CA
-POST https://{{{{cs_host}}}}:4000/api/v1/certification-services/{{{{ca_id}}}}/ocsp-responders
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-[MultipartFormData]
-url: {ts['certification_service']['ocsp_responder']['url'].replace('ca:', '{{ca_host}}:')}
-certificate: file,ca/ocsp.pem;
-
-HTTP 201
-
-# Register the timestamping authority
-POST https://{{{{cs_host}}}}:4000/api/v1/timestamping-services
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-[MultipartFormData]
-url: {ts['timestamping_service']['url'].replace('ca:', '{{ca_host}}:')}
-certificate: file,ca/tsa.pem;
-
-HTTP 201
-"""
+    body = render(
+        "01-cs-trust-services.hurl.tmpl",
+        CERT_PROFILE=ts["certification_service"]["certificate_profile"],
+        OCSP_URL=ts["certification_service"]["ocsp_responder"]["url"].replace("ca:", "{{ca_host}}:"),
+        TSA_URL=ts["timestamping_service"]["url"].replace("ca:", "{{ca_host}}:"),
+    )
     write("01-cs-trust-services.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 02 members ---------------------------------------------------------
