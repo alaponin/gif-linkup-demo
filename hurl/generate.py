@@ -28,6 +28,8 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("generate.py needs PyYAML: pip install pyyaml")
 
+import steps as steps_module
+
 PACK = pathlib.Path(__file__).resolve().parent.parent
 # HURL_DIR/OUT/ENV_PATH are reassigned in main() when --out/--env are passed
 # (tests/test_golden.py only -- see testing-strategy plan Task 1). Every
@@ -660,8 +662,9 @@ def main() -> None:
 
     # -- 01 trust services --------------------------------------------------
     ts = core["trust_services"]
+    trust_services_step = steps_module.BY_ID["cs.trust_services"]
     body = render(
-        "01-cs-trust-services.hurl.tmpl",
+        trust_services_step.template,
         CERT_PROFILE=ts["certification_service"]["certificate_profile"],
         OCSP_URL=ts["certification_service"]["ocsp_responder"]["url"].replace("ca:", "{{ca_host}}:"),
         TSA_URL=ts["timestamping_service"]["url"].replace("ca:", "{{ca_host}}:"),
