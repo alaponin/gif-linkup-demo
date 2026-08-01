@@ -1032,84 +1032,10 @@ def main() -> None:
     print("  wrote hurl/vars.env")
 
     # -- 00 Central Server initialisation ----------------------------------
-    body = f"""
-############################################################
-# Central Server -- initialisation (module 2.1)
-############################################################
-
-# Check that the Central Server UI is up
-GET https://{{{{cs_host}}}}:4000
-
-HTTP 200
-
-# Log in to the Central Server
-POST https://{{{{cs_host}}}}:4000/login
-[FormParams]
-username: {{{{cs_admin_user}}}}
-password: {{{{cs_admin_password}}}}
-
-HTTP 200
-[Captures]
-cs_xsrf_token: cookie "XSRF-TOKEN"
-
-# Initialise the Central Server: instance identifier, address, token PIN
-POST https://{{{{cs_host}}}}:4000/api/v1/initialization
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "software_token_pin": "{{{{token_pin}}}}",
-  "instance_identifier": "{{{{xroad_instance}}}}",
-  "central_server_address": "{{{{cs_host}}}}"
-}}
-
-# setup.hurl@7.7.0: 200, although the OpenAPI model says 201.
-HTTP 200
-
-# Add the member class. Progressa's federation admits government bodies only.
-POST https://{{{{cs_host}}}}:4000/api/v1/member-classes
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "code": "{{{{member_class}}}}",
-  "description": "{core['central_server']['member_classes'][0]['description']}"
-}}
-
-HTTP 201
-
-# Log in to the Central Server's software token
-PUT https://{{{{cs_host}}}}:4000/api/v1/tokens/0/login
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "password": "{{{{token_pin}}}}"
-}}
-
-HTTP *
-
-# Internal configuration signing key -- signs the global conf the Security
-# Servers download. Without it there is no anchor to hand out.
-POST https://{{{{cs_host}}}}:4000/api/v1/configuration-sources/INTERNAL/signing-keys
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "key_label": "Internal signing key",
-  "token_id": 0
-}}
-
-HTTP 200
-
-# External configuration signing key -- signs the conf a federated instance
-# would consume. Not federated in the demonstration, generated for completeness.
-POST https://{{{{cs_host}}}}:4000/api/v1/configuration-sources/EXTERNAL/signing-keys
-X-XSRF-TOKEN: {{{{cs_xsrf_token}}}}
-Content-Type: application/json
-{{
-  "key_label": "External signing key",
-  "token_id": 0
-}}
-
-HTTP 200
-"""
+    body = render(
+        "00-cs-init.hurl.tmpl",
+        DESCRIPTION=core["central_server"]["member_classes"][0]["description"],
+    )
     write("00-cs-init.hurl", "configs/x-road-bus/2.1.yaml", body)
 
     # -- 01 trust services --------------------------------------------------
