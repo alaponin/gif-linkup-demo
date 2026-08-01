@@ -12,6 +12,7 @@ import csv
 import dataclasses
 import os
 import pathlib
+import re
 import time
 
 import httpx
@@ -34,6 +35,18 @@ ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 MUTABLE_SERVICE = "identity-api"
 HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
+
+# Request-boundary plan (S12): shape confirmed against apps/data/persons.csv
+# (scripts/gen_seed_data.py's nin() -- 11 digits, 0-9). \A/\Z rather than
+# ^/$: $ matches before a trailing newline in Python, exactly the kind of
+# near-miss this validator exists to stop.
+NIN_RE = re.compile(r"\A[0-9]{11}\Z")
+
+
+def _validated_nin(nin: str) -> str:
+    if not NIN_RE.match(nin):
+        raise HTTPException(400, "nin must be 11 digits")  # never echo the value back
+    return nin
 
 # Loaded once at startup, not per-request: a stale Truth after a redeploy
 # means the container needs restarting anyway (deployment.yaml/topology.json
@@ -152,6 +165,7 @@ def get_exchange(nin: str):
     """The assembled application with per-field provenance -- the same shape
     acceptance.sh already writes to out/application-{nin}.json -- plus the
     per-call technical detail the inspector tab renders."""
+    nin = _validated_nin(nin)
     results = xroad.exchange(
         TRUTH.consumer_entrypoint,
         TRUTH.exchange["calls"],
@@ -194,6 +208,11 @@ def _identity_held_fields(nin: str) -> list[str]:
     """Field names PNIA's own record carries but its published contract
     doesn't send -- read directly from the mock, off the bus entirely,
     never through xroad.py (UX plan Task 5, Step 3). Never the values."""
+    # Validated again even though get_exchange already validated its nin --
+    # deliberate double-check (request-boundary plan S12): this is a
+    # module-level function a future caller could reach directly, not just
+    # via get_exchange, and it builds its own URL below.
+    nin = _validated_nin(nin)
     try:
         resp = httpx.get(f"{TRUTH.identity_mock_base_url}/persons/{nin}/held-fields", timeout=3.0)
         resp.raise_for_status()
@@ -208,6 +227,7 @@ def get_exchange_negative(nin: str):
     unauthorised client through ITS OWN Security Server -- confirmed live
     this must be routed this way, or the denial comes from a consumer SS
     rejecting a client it doesn't host rather than from the provider's ACL."""
+    nin = _validated_nin(nin)
     negative = TRUTH.exchange["negative_check"]
     results = xroad.exchange(
         TRUTH.negative_check_entrypoint,

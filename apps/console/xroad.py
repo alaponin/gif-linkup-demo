@@ -132,6 +132,10 @@ def exchange(
     HTTP 500 with body {"type": "Server.ServerProxy.AccessDenied", ...}; a
     transport failure never reaches that far and must not be presented as a
     permission decision.
+
+    `nin` is expected to already be validated by the caller -- app.py is the
+    boundary (request-boundary plan S12), not this library function. A
+    second check here would be a second place to keep in sync.
     """
     client = http_client or httpx.Client(verify=False, timeout=10.0)
     results: list[CallResult] = []
