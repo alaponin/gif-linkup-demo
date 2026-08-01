@@ -384,7 +384,7 @@ byte-identical for both `full` and `lite` profiles, before vs after. `scripts/ve
 
 ## Testing
 
-## 🟠 T4 — there is no CI in this pack
+## 🟠 T4 — there is no CI in this pack — INVESTIGATED 2026-08-01, found already resolved
 
 The previous review cited "the CI workflow's own header" as one of the pack's best pieces of
 writing. There is no `.github/` directory in `KP2-build-pack` today. Either it lives at the
@@ -396,7 +396,36 @@ This matters more than it usually would, because `--fast` is ~8s and genuinely g
 missing piece is small: a workflow that runs `verify.sh --fast` on push. It needs C9 resolved
 first (the ship-gate path) — which is another reason to promote C9.
 
-## 🟠 T5 — the untested paths are the ones that would hurt
+Investigated per `docs/superpowers/plans/2026-08-01-kp2-shell-python-boundary.md`'s sibling
+plan, `2026-08-01-kp2-testing-gaps.md` Task 1: **it was the first branch, not the second.**
+`.github/workflows/kp2-fast.yml` exists at the monorepo root (`git log --all -- '**/kp2-fast.yml'`
+shows five commits, most recently today's C10 Python-floor work — the file was never deleted)
+and is correctly configured: triggers on push/PR touching this pack's path, sets up Python
+3.12 + PyYAML, builds the pytest venv, generates a fresh checkout's missing `.env`/`hurl/`
+artefacts, then runs `scripts/verify.sh --fast`. It already carries the "what green does not
+mean" paragraph the previous review singled out (no running federation, no network, no
+cross-server exchange), word for word what `README.md` says after T1.
+
+So this finding was never really T4 — it's **C9 wearing T4's clothes**, exactly as this
+finding's own second sentence predicted. The ship-gate path resolves correctly in CI today
+only because GitHub Actions checks out the *whole monorepo*
+(`10-Knowledge-Products/ITU-Giga-KP-Plugin/skills/kp-solution-verify/scripts/check_pack.py`
+genuinely exists at the path `verify.sh:18` hardcodes, relative to this pack) — the same fact
+that makes a standalone droplet checkout fail. Fixing that hard dependency is C9's job
+(`2026-07-29-kp2-host-portability.md` Task 4's `--require-ship-gate` flag), not this plan's;
+the workflow itself needs no change to keep working as CI, only C9 needs resolving to make the
+pack independently testable outside this monorepo. Decided: the workflow stays at the monorepo
+root — moving it into the pack would relocate a symptom, not fix C9.
+
+Proved the job fails when it should (Step 5): rather than push a throwaway branch to observe
+GitHub Actions (no `gh` CLI available in this environment to read the result, and a push is a
+visible, external action), ran the exact command the job runs, locally, against a deliberately
+broken `deployment.yaml` (`bind: 0.0.0.0`, no `acknowledge_public_exposure`): `scripts/verify.sh
+--fast` failed at the `check_scenarios.py` step with `exit 1` and a clear message naming the
+exposure; reverted, green again (`exit 0`, 66 tests). Confirmed sufficient with the plan's
+human partner rather than pushing to the remote.
+
+## 🟠 T5 — the untested paths are the ones that would hurt — RESOLVED 2026-08-01
 
 The console's unit tests are good — `test_xroad.py`'s four negative cases (409-as-success both
 ways, non-`AccessDenied` 500, transport failure) test exactly the distinctions that were
@@ -417,6 +446,49 @@ specific:
    (5000 and 7000, both documented in `production-delta.md`), and no test asserts that a
    forbidden port is actually refused. That is a regression waiting to happen in the one
    function whose bugs cost an afternoon each to diagnose.
+
+Resolved by `docs/superpowers/plans/2026-08-01-kp2-testing-gaps.md`:
+
+1. **Task 2:** `apps/mock-registry/tests/test_app.py`, against the real `persons.csv` and
+   `pnia-identity.openapi.yaml`, not a fixture copy. Exact declared-field-set equality; the
+   three withheld fields absent from both the parsed JSON and the raw response text (a value
+   leaking through an error message would pass a parsed-only check); `/held-fields` returns
+   exactly the withheld *names* and never their *values*; both endpoints 404 clean on an
+   unknown key; `/v1/health`'s count matches the CSV; and a coupling test pinning every
+   spec-declared field to an actual CSV column (`app.py`'s `lookup()` silently omits a field
+   the CSV doesn't carry — a real, previously-undetectable failure mode). Verified live:
+   temporarily adding `mother_name` to the spec's response schema fails the withheld-fields and
+   held-fields tests for the right reason, in both the isolated file and the full combined
+   pytest run; reverted. Caught a real bug while wiring this in — a second `import app` from
+   this new test collided with `apps/console/tests/test_app_mutate_acl.py`'s own `import app`
+   in `sys.modules` once both directories ran in one pytest session (`verify.sh`'s actual
+   invocation) — fixed by loading `apps/mock-registry/app.py` via `importlib` under a distinct
+   module name, caught only because the full suite was run, not the new file in isolation.
+2. **Already resolved** by `2026-08-01-kp2-console-journal-integrity.md` (landed before this
+   plan ran, though that plan's own checkboxes were never marked): `test_journal.py`'s
+   `test_truncated_file_raises_runtime_error_naming_the_path` matches this finding's spec
+   exactly — truncate to half the bytes, assert a `RuntimeError` naming the path, assert it is
+   *not* a `json.JSONDecodeError`. Confirmed passing; no new work needed.
+3. **Already resolved**, same plan: `test_app_mutate_acl.py`'s
+   `test_concurrent_mutations_do_not_lose_a_journal_entry` — two real `ThreadPoolExecutor`
+   threads against a fake session with a sleep in `grant`/`revoke`, asserting both journal
+   entries survive. Confirmed passing; no new work needed.
+4. **Task 4:** `tests/test_allocation.py` imports `allocate_ports`/`_allocate_numbers` directly
+   from `hurl/generate.py` (no `topology.py` extraction has landed yet, so this stays with
+   generate.py's current location). Covers the canonical five's exact pinned ports, a fresh
+   member never landing in the forbidden range or colliding with a pinned port, deterministic
+   allocation, and enough fresh members to walk past the 7000 incident and still avoid it — plus
+   the same shape of coverage for `_allocate_numbers`' scenario numbering. The forbidden-port
+   assertions check literal values (5000–5099, 7000), not membership against
+   `FORBIDDEN_PORT_RANGE` itself — a first draft that checked against the module's own constant
+   passed trivially when that constant was emptied, which is exactly the regression class this
+   test exists to catch. Verified live: emptying `FORBIDDEN_PORT_RANGE` fails 3 of 10 tests for
+   the right reason; reverted.
+
+`scripts/verify.sh --fast` green throughout, 66 tests (was 48 before this plan). Wall time
+~16s — already past the `README.md`-quoted ~8s figure before this plan touched anything (drift
+from other same-day plans' additions, not from Tasks 2 or 4 specifically, each of which added
+under a second); `README.md` updated with the current figure.
 
 ## 🟡 T6 — `fetch_retry`'s success criterion is known-wrong and recorded as such
 
