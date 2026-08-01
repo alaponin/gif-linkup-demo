@@ -43,9 +43,9 @@ run_fast() {
   # the deploy path (hurl/run-linkup.sh), where the cost it guards against
   # actually lives.
 
-  log "pytest tests/ apps/console/tests/ apps/mock-registry/tests/"
+  log "pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/"
   [ -x "$PYTEST" ] || fail "$PYTEST not found -- set up a venv with pytest/httpx/fastapi/pyyaml (see apps/console/tests/ and tests/test_golden.py for what they need)."
-  "$PYTEST" -m pytest "$PACK_DIR/tests" "$PACK_DIR/apps/console/tests" "$PACK_DIR/apps/mock-registry/tests" -q
+  "$PYTEST" -m pytest "$PACK_DIR/tests" "$PACK_DIR/apps/console/tests" "$PACK_DIR/apps/join-api/tests" "$PACK_DIR/apps/mock-registry/tests" -q
 }
 
 run_live() {
