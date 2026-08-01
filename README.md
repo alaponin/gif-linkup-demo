@@ -16,14 +16,16 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
   `REVIEW.md` (self-review; open decisions)
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
-  tiers, chosen by the tool, not by whoever is typing. Measured on this
-  pack (2026-07-28): `--fast` (static checks, the ship gate, exposure,
+  tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/mock-registry/tests/` — no running containers, no network,
   no federation, but the Docker CLI is required: `check-exposure.sh` reads
   the *rendered* Compose config, profiles and `${VAR}` interpolation
   resolved, which is what makes it worth having, and that read needs
   neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
-  daemon itself stopped, see `tests/test_tiers.py`) **~8s**; `--live`
+  daemon itself stopped, see `tests/test_tiers.py`) **~16s** (measured
+  2026-08-01, 66 tests — was ~8s/48 tests on 2026-07-28; the growth is
+  tests added across several same-day plans, not a regression in any
+  single one of them); `--live`
   (`--fast`, then `acceptance.sh` against a running stack; refuses rather
   than deploying one if nothing is reachable)
   **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
