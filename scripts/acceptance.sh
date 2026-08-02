@@ -300,69 +300,32 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # shape as 2.6.4/2.6.5. join-api is brought up here only to prove module
 # 2.7's building block deploys; see acceptance.sh's Task-5 report for the
 # alternative readings considered.)
-_selection_touches_27() {
-  case "$SELECT_MODE" in
-    all) return 0 ;;
-    only) case "$SELECT_ARG" in 2.7|2.7.*|2.7'('*) return 0 ;; *) return 1 ;; esac ;;
-    from)
-      [ "$_FROM_REACHED" = 1 ] && return 0
-      case "$SELECT_ARG" in 2.7|2.7.*|2.7'('*) return 0 ;; *) return 1 ;; esac
-      ;;
-  esac
-}
-
-if _selection_touches_27; then
-  "$(dirname "$0")/join.sh" up
-
-  check_271() { curl -sf "http://localhost:8091/health" | jq -e '.status=="ok"' >/dev/null; }
-  check 2.7.1 "join-api deploys and reports healthy" check_271
-
-  # Every currently joined member (origin: joined in hurl/topology.json,
-  # discovered the same generic way acceptance/member.md already discovers
-  # any member) that has published a service with a non-empty access: list.
-  # A service with an EMPTY access: list has nobody to authorize -- there is
-  # nothing for the r1 clause to prove that member.md's own exactness check
-  # (no subjects at all) does not already prove, so it is skipped, not
-  # failed. If no member has joined yet, or nobody who has joined has
-  # published anything, this loop iterates zero times and the section passes
-  # vacuously -- there is nothing wrong with a federation nobody has joined.
-  #
-  # The endpoint this check calls comes from out/join/<id>.json's
-  # endpoint_baseline (join-b Task 5's fix to validate.validate() -- it used
-  # to discard the OpenAPI document check 9 fetches, so nothing preserved
-  # its endpoint set past submission). That is a deliberate choice, not an
-  # oversight: hurl/topology.json's services carry only {code, access}, and
-  # a joined member's spec_url is an internal linkup-network hostname
-  # (app-<key>:8000) this host-side script cannot reach directly -- only
-  # join-api's own container, on that network, ever fetched it, at
-  # submission time. A member with no ACTIVE out/join record (joined by hand
-  # via prompts/member.md rather than through the API) has no such baseline
-  # and is skipped with a logged reason -- this section proves the JOIN API's
-  # own effect, module 2.7, not every possible way a member can join.
-  while IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path; do
-    GOOD_SS=${HOST_SS[$good_pair]:-}
-    BAD_SS=${HOST_SS[$bad_pair]:-}
-    if [ -z "$GOOD_SS" ] || [ -z "$BAD_SS" ]; then
-      log "SKIP 2.7 r1(${code}.${svc}) -- ${good_pair} or ${bad_pair} not in this deployment's HOST_SS"
-      continue
-    fi
-    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
-    BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
-
-    check_r1_ok() {
-      local http_code
-      http_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
-      [[ "$http_code" =~ ^2[0-9][0-9]$ ]]
-    }
-    check_r1_ok_retry() { retry 12 5 "${svc} r1 settled" check_r1_ok; }
-    check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} returns 2xx" check_r1_ok_retry
-
-    check_r1_denied() {
-      curl -sk -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
-        | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
-    }
-    check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
-  done < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
+# The rows this section will check, computed up front -- cheap (local files
+# only: hurl/topology.json + out/join/*.json, no Docker, no join-api) -- so
+# both _selection_touches_27() below and the actual check loop read the same
+# data once. Every currently joined member (origin: joined in
+# hurl/topology.json, discovered the same generic way acceptance/member.md
+# already discovers any member) that has published a service with a
+# non-empty access: list. A service with an EMPTY access: list has nobody to
+# authorize -- there is nothing for the r1 clause to prove that member.md's
+# own exactness check (no subjects at all) does not already prove, so it is
+# skipped, not failed. If no member has joined yet, or nobody who has joined
+# has published anything, this produces zero rows and the section passes
+# vacuously -- there is nothing wrong with a federation nobody has joined.
+#
+# The endpoint each row calls comes from out/join/<id>.json's
+# endpoint_baseline (join-b Task 5's fix to validate.validate() -- it used to
+# discard the OpenAPI document check 9 fetches, so nothing preserved its
+# endpoint set past submission). That is a deliberate choice, not an
+# oversight: hurl/topology.json's services carry only {code, access}, and a
+# joined member's spec_url is an internal linkup-network hostname
+# (app-<key>:8000) this host-side script cannot reach directly -- only
+# join-api's own container, on that network, ever fetched it, at submission
+# time. A member with no ACTIVE out/join record (joined by hand via
+# prompts/member.md rather than through the API) has no such baseline and is
+# skipped with a logged reason -- this section proves the JOIN API's own
+# effect, module 2.7, not every possible way a member can join.
+mapfile -t _27_ROWS < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
 import json, pathlib, sys
 
 topo = json.load(open(sys.argv[1]))
@@ -431,7 +394,74 @@ for sub in subs:
 PY
 )
 
+# The real ids this section can emit -- 2.7.1 always, plus one 2.7.r1(...)/
+# 2.7.deny(...) pair per row above. Built before deciding whether to run, so
+# _selection_touches_27() can test each one with _id_matches() itself (the
+# file's own hierarchical-prefix rule, ~line 27) instead of a parallel,
+# narrower `case` pattern -- found in review: the earlier version only
+# recognised a SELECT_ARG that itself started with "2.7", so a coarser
+# `--only 2` (which _id_matches() says SHOULD match every id under module 2,
+# same as it already does for 2.1/2.6) silently skipped this whole section
+# with no SKIP log line to say so.
+_27_IDS=(2.7.1)
+for _row in "${_27_ROWS[@]}"; do
+  IFS=$'\t' read -r _ _code _svc _ _ _ _ _ <<<"$_row"
+  _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})")
+done
+
+_selection_touches_27() {
+  [ "$SELECT_MODE" = all ] && return 0
+  local id
+  for id in "${_27_IDS[@]}"; do
+    [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 1 ] && return 0
+    _id_matches "$id" "$SELECT_ARG" && return 0
+  done
+  return 1
+}
+
+if _selection_touches_27; then
+  # join-api must come back down even if a check below fails -- check()'s
+  # failure path runs fail() (lib-core.sh), which exits the whole script
+  # directly rather than returning here, so the plain "down" call at the end
+  # of this block would never run on failure without this trap. Scoped to
+  # this block only (set right before "up", cleared right after this
+  # block's own clean "down") so a normal successful run does not double-
+  # stop it, and nothing outside this section is affected -- acceptance.sh
+  # sets no other EXIT trap.
+  trap '"$(dirname "$0")/join.sh" down' EXIT
+  "$(dirname "$0")/join.sh" up
+
+  check_271() { curl -sf "http://localhost:8091/health" | jq -e '.status=="ok"' >/dev/null; }
+  check 2.7.1 "join-api deploys and reports healthy" check_271
+
+  for _row in "${_27_ROWS[@]}"; do
+    IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path <<<"$_row"
+    GOOD_SS=${HOST_SS[$good_pair]:-}
+    BAD_SS=${HOST_SS[$bad_pair]:-}
+    if [ -z "$GOOD_SS" ] || [ -z "$BAD_SS" ]; then
+      log "SKIP 2.7 r1(${code}.${svc}) -- ${good_pair} or ${bad_pair} not in this deployment's HOST_SS"
+      continue
+    fi
+    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
+    BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
+
+    check_r1_ok() {
+      local http_code
+      http_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
+      [[ "$http_code" =~ ^2[0-9][0-9]$ ]]
+    }
+    check_r1_ok_retry() { retry 12 5 "${svc} r1 settled" check_r1_ok; }
+    check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} returns 2xx" check_r1_ok_retry
+
+    check_r1_denied() {
+      curl -sk -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
+        | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
+    }
+    check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
+  done
+
   "$(dirname "$0")/join.sh" down
+  trap - EXIT
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
