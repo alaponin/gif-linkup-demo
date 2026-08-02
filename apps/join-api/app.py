@@ -213,7 +213,7 @@ def submit_request(
     submitted_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     try:
-        payload = validate.validate(
+        payload, vctx = validate.validate(
             raw,
             manifest=_load_manifest(),
             policy=_load_join_policy(),
@@ -263,6 +263,16 @@ def submit_request(
         "submitted_at": submitted_at,
         "payload": payload.model_dump(mode="json"),
         "diff": diff,
+        # The join-time drift baseline (spec S5.4): each published service's
+        # endpoint set, as check 9 (_check_backend_reachability) already
+        # fetched and parsed it into vctx.fetched_specs. scripts/member.sh
+        # drift re-fetches the *current* spec later and diffs its paths
+        # against this -- the whole point being that this baseline is
+        # captured once, at join time, and never re-derived.
+        "endpoint_baseline": {
+            code: sorted((spec_doc or {}).get("paths", {}).keys())
+            for code, spec_doc in vctx.fetched_specs.items()
+        },
     }
     _save_request(record)
     return record

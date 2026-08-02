@@ -421,11 +421,18 @@ def validate(
     existing_servers: dict,
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
-) -> JoinPayload:
-    """Runs all twelve checks (spec S8) in order. Returns the validated
-    JoinPayload on success. Raises RejectionError(check, message) naming the
-    first failing check on failure -- the caller (a later task's endpoint)
-    catches it to set the request REJECTED with that check name (spec S4)."""
+) -> tuple[JoinPayload, ValidationContext]:
+    """Runs all twelve checks (spec S8) in order. Returns
+    (validated JoinPayload, the ValidationContext checks ran against) on
+    success -- the context is returned too because check 9 populates
+    ctx.fetched_specs with every service's parsed OpenAPI document, and
+    module 2.7's join-time drift baseline (spec S5.4, scripts/member.sh
+    drift) needs that document's endpoint set. Discarding the context here
+    (as this function used to) meant the only place that data existed was
+    gone by the time app.py persisted the SUBMITTED record. Raises
+    RejectionError(check, message) naming the first failing check on
+    failure -- the caller (a later task's endpoint) catches it to set the
+    request REJECTED with that check name (spec S4)."""
     try:
         payload = JoinPayload(**raw)
     except pydantic.ValidationError as exc:
@@ -443,4 +450,4 @@ def validate(
         error = check_fn(ctx)
         if error:
             raise RejectionError(name, error)
-    return payload
+    return payload, ctx

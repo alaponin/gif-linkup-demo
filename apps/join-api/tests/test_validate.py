@@ -99,7 +99,11 @@ def _payload(**overrides) -> dict:
 
 
 def _run(raw: dict, *, manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS, **kw):
-    return validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers, **kw)
+    # validate() returns (payload, ValidationContext) since Task 5 (the
+    # context's fetched_specs feeds module 2.7's join-time drift baseline) --
+    # every caller in this file wants just the payload.
+    payload, _ctx = validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers, **kw)
+    return payload
 
 
 def _rejects(raw: dict, check: str, **kw):

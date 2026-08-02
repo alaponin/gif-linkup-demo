@@ -10,6 +10,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/member.sh list
        scripts/member.sh remove <key>
+       scripts/member.sh drift <key>
 
   list          Print the deployed member set (key, origin, server, ports),
                 read from hurl/topology.json.
@@ -18,6 +19,13 @@ Usage: scripts/member.sh list
                 canonical member. Does not touch a running federation --
                 the member stays registered there until
                 scripts/teardown.sh --purge.
+  drift <key>   Re-fetch a joined member's current OpenAPI spec and diff its
+                endpoint set against the baseline captured at join time
+                (design spec §2.4/§5.4). No auth, no HTTP to the join API --
+                works whether or not it is even running. Fails clearly if
+                '<key>' has no ACTIVE out/join/*.json record to compare
+                against (never joined through the API, or joined before this
+                feature existed).
 
 There is no "add": run prompts/member.md against an agency brief instead.
 USAGE
@@ -80,8 +88,98 @@ PY
   log "the live federation (if one is running) still holds '$key' until: scripts/teardown.sh --purge"
 }
 
+cmd_drift() {
+  local key=${1:?"drift needs a member key -- see: scripts/member.sh"}
+  local dir="$PACK_DIR/configs/member-$key"
+  [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to check"
+
+  # The join-time baseline (spec S5.4) lives in the job context, i.e. the
+  # most recently-submitted ACTIVE out/join/*.json record whose payload.code
+  # matches this key (case-insensitively) -- nothing enforces there is only
+  # ever one, so pick the newest on ambiguity rather than assume. A member
+  # added by hand via prompts/member.md, or one whose join predates this
+  # feature, has no such record: fail clearly here, the same house style
+  # cmd_remove uses for its canonical-member refusal, rather than crash on a
+  # missing file further down.
+  local record_json
+  record_json=$(python3 - "$PACK_DIR/out/join" "$key" <<'PY'
+import glob, json, os, sys
+
+join_dir, key = sys.argv[1], sys.argv[2]
+best = None
+for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
+    try:
+        rec = json.load(open(path))
+    except Exception:
+        continue
+    if rec.get("state") != "ACTIVE":
+        continue
+    code = (rec.get("payload") or {}).get("code", "")
+    if code.lower() != key.lower():
+        continue
+    if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
+        best = rec
+print(json.dumps(best) if best is not None else "")
+PY
+)
+  [ -n "$record_json" ] || fail "no ACTIVE out/join/*.json record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
+
+  python3 - "$dir" "$key" "$record_json" <<'PY'
+import glob, json, os, sys, urllib.request
+
+import yaml
+
+member_dir, key, record_json = sys.argv[1], sys.argv[2], sys.argv[3]
+record = json.loads(record_json)
+baseline = record.get("endpoint_baseline") or {}
+
+yaml_files = sorted(glob.glob(os.path.join(member_dir, "*.yaml")))
+if not yaml_files:
+    sys.exit(f"member.sh drift: no config found under {member_dir}")
+cfg = yaml.safe_load(open(yaml_files[0])) or {}
+services = cfg.get("services") or []
+if not services:
+    print(f"{key}: publishes no services -- nothing to diff")
+    sys.exit(0)
+
+any_drift = False
+for svc in services:
+    code, spec_url = svc["code"], svc["spec_url"]
+    base_paths = set(baseline.get(code, []))
+    try:
+        with urllib.request.urlopen(spec_url, timeout=10) as resp:
+            spec_doc = yaml.safe_load(resp.read())
+        current_paths = set((spec_doc or {}).get("paths", {}).keys())
+    except Exception as exc:
+        any_drift = True
+        print(f"{code}: could not fetch current spec at {spec_url}: {exc}")
+        print(f"  (a docker-internal demo hostname like this one is only reachable "
+              f"from inside the linkup network -- run this from a container on it, "
+              f"e.g. docker compose exec join-api, if that is why this failed)")
+        continue
+    if code not in baseline:
+        any_drift = True
+        print(f"{code}: no join-time baseline for this service (published after join?) "
+              f"-- current endpoints: {sorted(current_paths)}")
+        continue
+    added, removed = sorted(current_paths - base_paths), sorted(base_paths - current_paths)
+    if not added and not removed:
+        print(f"{code}: no drift ({len(current_paths)} endpoint(s), unchanged since join)")
+        continue
+    any_drift = True
+    print(f"{code}: DRIFT")
+    for p in added:
+        print(f"  + {p}")
+    for p in removed:
+        print(f"  - {p}")
+
+sys.exit(1 if any_drift else 0)
+PY
+}
+
 case "${1:-}" in
   list)   cmd_list ;;
   remove) shift; cmd_remove "$@" ;;
+  drift)  shift; cmd_drift "$@" ;;
   *)      usage; exit 1 ;;
 esac

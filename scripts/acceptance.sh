@@ -8,8 +8,9 @@
 #                                          # with) 2.6 -- matches 2.6.1..2.6.5
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
-# Ids today are 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>) and
-# 2.6.1-2.6.5 (member-parameterisation Task 7 generalised what used to be
+# Ids today are 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>),
+# 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>) and 2.7.deny(<member>.
+# <service>) (member-parameterisation Task 7 generalised what used to be
 # discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
 # literal "2.4" id to select; --only/--from match against what actually
 # runs today, not the pre-generalisation module numbers).
@@ -276,11 +277,168 @@ print(json.dumps({"credential_application": app}, indent=2))
 PY
 log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + provenance)"
 
+# ---- 2.7 a new member joins the bus -- the join API -------------------------
+# acceptance/2.7.md's clause: a real r1 call through an authorized consumer's
+# own Security Server against a joined member's service returns 2xx, and the
+# same call from an unauthorized subsystem is denied by the provider ACL --
+# the one assertion in this suite that would catch a registry-perfect-but-
+# dead member (design spec §2.4). Registry state itself (REGISTERED, exact
+# ACL) is NOT re-asserted here -- acceptance/member.md's existing generic
+# checks already cover any member, joined or not; duplicating them here was
+# explicitly ruled out (spec §12, "do not duplicate").
+#
+# This is the one section that starts and stops its own building block
+# (join-api, profile "demo") rather than assuming it is already up --
+# proving module 2.7's own service deploys and reports healthy is part of
+# what "2.7 is first-class" means, the same way every other module's
+# acceptance implicitly proves its building block came up. Gated on whether
+# the current selection would touch a 2.7 id at all, mirroring check()'s own
+# SELECT_MODE/_FROM_REACHED reasoning -- an unrelated `--only 2.6` run must
+# never bring join-api up, and a full run must leave it stopped afterward,
+# not just running. (This section's own r1 assertion needs no join-api of
+# its own -- it is a plain HTTP call through a Security Server, the same
+# shape as 2.6.4/2.6.5. join-api is brought up here only to prove module
+# 2.7's building block deploys; see acceptance.sh's Task-5 report for the
+# alternative readings considered.)
+_selection_touches_27() {
+  case "$SELECT_MODE" in
+    all) return 0 ;;
+    only) case "$SELECT_ARG" in 2.7|2.7.*|2.7'('*) return 0 ;; *) return 1 ;; esac ;;
+    from)
+      [ "$_FROM_REACHED" = 1 ] && return 0
+      case "$SELECT_ARG" in 2.7|2.7.*|2.7'('*) return 0 ;; *) return 1 ;; esac
+      ;;
+  esac
+}
+
+if _selection_touches_27; then
+  "$(dirname "$0")/join.sh" up
+
+  check_271() { curl -sf "http://localhost:8091/health" | jq -e '.status=="ok"' >/dev/null; }
+  check 2.7.1 "join-api deploys and reports healthy" check_271
+
+  # Every currently joined member (origin: joined in hurl/topology.json,
+  # discovered the same generic way acceptance/member.md already discovers
+  # any member) that has published a service with a non-empty access: list.
+  # A service with an EMPTY access: list has nobody to authorize -- there is
+  # nothing for the r1 clause to prove that member.md's own exactness check
+  # (no subjects at all) does not already prove, so it is skipped, not
+  # failed. If no member has joined yet, or nobody who has joined has
+  # published anything, this loop iterates zero times and the section passes
+  # vacuously -- there is nothing wrong with a federation nobody has joined.
+  #
+  # The endpoint this check calls comes from out/join/<id>.json's
+  # endpoint_baseline (join-b Task 5's fix to validate.validate() -- it used
+  # to discard the OpenAPI document check 9 fetches, so nothing preserved
+  # its endpoint set past submission). That is a deliberate choice, not an
+  # oversight: hurl/topology.json's services carry only {code, access}, and
+  # a joined member's spec_url is an internal linkup-network hostname
+  # (app-<key>:8000) this host-side script cannot reach directly -- only
+  # join-api's own container, on that network, ever fetched it, at
+  # submission time. A member with no ACTIVE out/join record (joined by hand
+  # via prompts/member.md rather than through the API) has no such baseline
+  # and is skipped with a logged reason -- this section proves the JOIN API's
+  # own effect, module 2.7, not every possible way a member can join.
+  while IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path; do
+    GOOD_SS=${HOST_SS[$good_pair]:-}
+    BAD_SS=${HOST_SS[$bad_pair]:-}
+    if [ -z "$GOOD_SS" ] || [ -z "$BAD_SS" ]; then
+      log "SKIP 2.7 r1(${code}.${svc}) -- ${good_pair} or ${bad_pair} not in this deployment's HOST_SS"
+      continue
+    fi
+    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
+    BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
+
+    check_r1_ok() {
+      local http_code
+      http_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
+      [[ "$http_code" =~ ^2[0-9][0-9]$ ]]
+    }
+    check_r1_ok_retry() { retry 12 5 "${svc} r1 settled" check_r1_ok; }
+    check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} returns 2xx" check_r1_ok_retry
+
+    check_r1_denied() {
+      curl -sk -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
+        | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
+    }
+    check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
+  done < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
+import json, pathlib, sys
+
+topo = json.load(open(sys.argv[1]))
+join_dir = pathlib.Path(sys.argv[2])
+instance, mclass = topo["instance"], topo["member_class"]
+subs = topo["subsystems"]
+
+# The most recently-submitted ACTIVE out/join/*.json record per member code
+# (upper-cased) -- there should be at most one per key in practice, nothing
+# enforces that, so pick the newest on ambiguity rather than assume.
+baselines: dict[str, dict] = {}
+if join_dir.is_dir():
+    for f in sorted(join_dir.glob("*.json")):
+        try:
+            rec = json.loads(f.read_text())
+        except Exception:
+            continue
+        if rec.get("state") != "ACTIVE":
+            continue
+        rec_code = (rec.get("payload") or {}).get("code")
+        if not rec_code:
+            continue
+        prev = baselines.get(rec_code.upper())
+        if prev is None or rec.get("submitted_at", "") > prev.get("submitted_at", ""):
+            baselines[rec_code.upper()] = rec
+
+for sub in subs:
+    if sub.get("origin") != "joined":
+        continue
+    code = sub["member_code"]
+    baseline_rec = baselines.get(code.upper())
+    for svc in sub.get("services") or []:
+        access = svc.get("access") or []
+        if not access:
+            continue  # nobody to authorize; member.md already proves "no subjects"
+        if baseline_rec is None:
+            print(f"no ACTIVE out/join record for {code} -- endpoint unknown from the host, skipping {svc['code']}", file=sys.stderr)
+            continue
+        paths = (baseline_rec.get("endpoint_baseline") or {}).get(svc["code"]) or []
+        # Prefer a path with no {param} -- a collection GET is far likelier
+        # to return 2xx unconditionally than one needing a real record id
+        # this script has no way to know.
+        plain = [p for p in paths if "{" not in p]
+        endpoint = (plain or paths or [None])[0]
+        if endpoint is None:
+            print(f"no endpoint in {code}'s join-time baseline for {svc['code']}, skipping", file=sys.stderr)
+            continue
+
+        good_str = access[0]  # "PROGRESSA/GOV/<CODE>/<SUBSYSTEM>"
+        good_pair = ":".join(good_str.split("/")[-2:])
+
+        bad = next(
+            (o for o in subs
+             if o["id"] != sub["id"]
+             and f"{instance}/{mclass}/{o['member_code']}/{o['subsystem_code']}" not in access),
+            None,
+        )
+        if bad is None:
+            print(f"no other subsystem exists to act as an unauthorized caller for {code}/{svc['code']}, skipping", file=sys.stderr)
+            continue
+        bad_str = f"{instance}/{mclass}/{bad['member_code']}/{bad['subsystem_code']}"
+        bad_pair = f"{bad['member_code']}:{bad['subsystem_code']}"
+
+        r1_path = f"/r1/{instance}/{mclass}/{code}/{sub['subsystem_code']}/{svc['code']}{endpoint}"
+        print(f"{sub['hosted_on']}\t{code}\t{svc['code']}\t{good_str}\t{good_pair}\t{bad_str}\t{bad_pair}\t{r1_path}")
+PY
+)
+
+  "$(dirname "$0")/join.sh" down
+fi
+
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>)."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>)."
 fi
 
 if [ "$SELECT_MODE" = all ]; then

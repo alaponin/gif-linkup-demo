@@ -117,3 +117,11 @@ modules:
     scenarios: ""   # proved by scripts/acceptance.sh, not by a scenario
     prompt: prompts/2.6.md
     acceptance: acceptance/2.6.md
+  - id: "2.7"
+    video_ref: "?"   # see below -- no existing Topic 5 subtopic covers this
+    title: "A new member joins the bus -- the join API"
+    building_blocks: [x-road-bus]
+    config: configs/x-road-bus/2.7.yaml
+    scenarios: ""   # the join API runs step fragments; no static scenario file
+    prompt: prompts/2.7.md
+    acceptance: acceptance/2.7.md
