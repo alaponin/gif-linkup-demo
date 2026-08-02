@@ -174,3 +174,93 @@ def test_requires_satisfied_by_an_earlier_step_or_a_global():
         for prov in step.provides:
             available.add(_canon(prov))
     assert not violations, "\n".join(violations)
+
+
+# -- join-c plan Task 2 Step 4: Step.reverse -----------------------------
+#
+# The id sequence apps/join-api/job.py's build_sequence() actually renders
+# for a hosted join (join-b plan Task 4's own add() calls), NOT the full
+# cold-deploy REGISTRY above: a hosted join never touches
+# cs.signing_keys/cs.trust_services/ss.auth_key_csr/ss.bringup_register/
+# ss.mgmt_register/ss.activate/ss.tsa_capture/ss.tsa_post at all, so those
+# steps' captures are not something a reversal can ever assume. Mirrored
+# here as a plain id list, rather than importing apps/join-api (a separate
+# package this test suite otherwise has no dependency on) -- this list is
+# the thing to update if build_sequence()'s own id sequence ever changes.
+HOSTED_JOIN_FORWARD_SEQUENCE: tuple[str, ...] = (
+    "cs.init",
+    "cs.members_member",
+    "cs.anchor",
+    "ss.bringup_init",
+    "ss.ca_name_capture",
+    "ss.client_add",
+    "ss.sign_key_csr",
+    "ss.client_register",
+    "service.publish",
+    "service.acl",
+)
+
+
+def test_every_reversal_has_a_probe():
+    """join-c plan Task 2 Step 3: reversal is the case probes exist for --
+    every step with a `reverse` must carry a `probe` (job.py has no other
+    way to tell, on resume, whether a reversal call already ran)."""
+    missing = [step.id for step in steps_module.REGISTRY if step.reverse and not step.probe]
+    assert not missing, f"step(s) with a reversal but no probe: {missing}"
+
+
+def test_reversal_templates_exist():
+    """Same reasoning as test_ambiguous_steps_have_a_probe -- a declared
+    `reverse` path that does not exist on disk is worse than none."""
+    missing = []
+    for step in steps_module.REGISTRY:
+        if step.reverse is None:
+            continue
+        if not (TEMPLATES / step.reverse).exists():
+            missing.append(f"{step.id}: reverse {step.reverse!r} does not exist")
+    assert not missing, "\n".join(missing)
+
+
+def test_reversal_requires_satisfiable_from_a_completed_forward_run():
+    """join-c plan Task 2 Step 4's headline check: a reversal template that
+    reads a Hurl {{var}} name no forward step of a hosted join ever
+    `provides` is the most likely defect in this task -- it would only
+    surface at runtime, on the first live reversal attempt.
+
+    "Available" here means job.py's persisted `context`, not the in-memory
+    `session` dict spec S5.4 forbids writing to disk (job.py module
+    docstring point 3): every HOSTED_JOIN_FORWARD_SEQUENCE step's
+    non-secret `provides` (a capture named *_xsrf_token is a session
+    capture, dropped -- job.py's `_is_secret()`). Session-shaped refs
+    inside a reversal template (every one of the six needs an XSRF token to
+    authenticate) are allowed regardless of whether some earlier step's
+    capture happens to be walked in here: JobStep.must_rerun guarantees
+    job.py re-establishes a fresh session token every run/resume, which is
+    a different, already-covered guarantee than "was this ever captured at
+    all" -- the thing this test exists to catch, per the concrete instance
+    Task 1 surfaced: @CAP_P@_@SC@_description_id (service.publish) and
+    @CAP_P@_sign_key_id (ss.sign_key_csr) are both forward [Captures], so a
+    reversal reading them back is legitimate -- they are not orphaned
+    references to something no forward step ever ran.
+    """
+    available = {_canon(g) for g in GLOBALS}
+    for step_id in HOSTED_JOIN_FORWARD_SEQUENCE:
+        for prov in steps_module.BY_ID[step_id].provides:
+            if prov.endswith("_xsrf_token"):
+                continue  # session, not context -- never persisted
+            available.add(_canon(prov))
+
+    violations = []
+    for step in steps_module.REGISTRY:
+        if step.reverse is None:
+            continue
+        refs, _ = _extract(step.reverse)
+        for ref in refs:
+            if ref.endswith("_xsrf_token"):
+                continue  # re-established every run (must_rerun), not a context lookup
+            if _canon(ref) not in available:
+                violations.append(
+                    f"{step.id} reverse {step.reverse!r} requires {ref!r}, not satisfiable "
+                    "from a completed hosted-join forward run's context"
+                )
+    assert not violations, "\n".join(violations)
