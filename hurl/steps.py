@@ -317,12 +317,18 @@ REGISTRY: tuple[Step, ...] = (
     # (b) proven live: 409 on an already-granted access right is treated as
     # success (PLAN.md Section 11, apps/console/xroad.py's 409 handling) --
     # the one step in this registry with confirmed, not inferred, evidence.
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 1) -- first step in the reversal order (REVERSAL_ORDER
+    # below): revoke the grant before the service description it grants
+    # access to is deleted.
     Step(
         id="service.acl",
         template="fragments/SERVICE_ACL.hurl.tmpl",
         actor="operator",
         requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token"),
         provides=(),
+        reverse="fragments/SERVICE_ACL_REVOKE.hurl.tmpl",
+        probe="fragments/PROBE_SERVICE_ACL_REVOKE.hurl.tmpl",
     ),
 )
 

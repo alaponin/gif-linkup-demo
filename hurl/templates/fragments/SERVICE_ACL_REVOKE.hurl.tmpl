@@ -1,0 +1,20 @@
+
+# Revoke @ACL_SUBJECT@'s access to @SERVICE_CODE@ -- reversal of
+# SERVICE_ACL.hurl.tmpl (join-c plan Task 2). Same body shape as the grant
+# (apps/console/xroad.py's revoke(), confirmed live). CONFIRMED LIVE
+# (apps/join-api/tests/fixtures/xroad/unjoin.acl_revoke.json,
+# docs/xroad-770-notes.md #11): 204 on the first attempt, no retry.
+# Repeating this call is safe: apps/console/tests/fixtures/xroad/
+# revoke_409_not_found.json records 409 accessright_not_found on an
+# already-revoked right.
+POST https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-clients/@ACL_SUBJECT@/access-rights/delete
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+{
+  "items": [
+    {
+      "service_code": "@SERVICE_CODE@"
+    }
+  ]
+}
+
+HTTP 204
