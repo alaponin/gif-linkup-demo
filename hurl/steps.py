@@ -35,6 +35,16 @@ class Step:
     # nor 409-safe nor resolvable by reading state back). Defaults False;
     # tests/test_steps.py asserts the registry has none today.
     unsafe_to_repeat: bool = False
+    # "how do I undo this?" -- filename under hurl/templates/, or None.
+    # Default None: most steps still do not have one, and that is correct --
+    # only the six steps join-c plan Task 1 live-verified a working reversal
+    # for (docs/xroad-770-notes.md #11) carry one. Like `template`, this is a
+    # template filename, not a second Step: the reversal's own `requires` are
+    # read straight off its .tmpl file (tests/test_steps.py's `_extract()`,
+    # same as for `template`), never declared a second time here. Reversal
+    # EXECUTION ORDER is not derivable from this field or from reversing
+    # REGISTRY -- see REVERSAL_ORDER below (join-c plan Task 2 Step 2b).
+    reverse: str | None = None
 
 
 # Ordered registry: generate.py renders these in order. Order here IS the
