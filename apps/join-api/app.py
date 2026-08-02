@@ -1,21 +1,40 @@
 """apps/join-api/app.py -- the KP2 member-join API. Task 1 (this file's
 first commit) is the skeleton: liveness, the credentials this service will
 drive the admin API with, and the same request-boundary guard
-apps/console/app.py uses. Later tasks (2-6, see
-docs/superpowers/specs/2026-08-01-member-join-api-design.md) add validation,
-config writing, the step engine, and the endpoints these credentials and
-this guard actually protect.
+apps/console/app.py uses. Task 3 (this commit) adds POST /requests and
+GET /requests/{id} -- validation (validate.py) and config-diff computation
+(writer.py's dry-run mode) run synchronously at submission; approval, the
+step engine and writer.apply_real() arrive in a later task. See
+docs/superpowers/specs/2026-08-01-member-join-api-design.md.
 
 Credentials come from the environment (.env via Docker Compose), read here
 once, never returned in a response or logged -- same rule as
 apps/console/app.py (see that file's own docstring)."""
 from __future__ import annotations
 
+import datetime
+import json
 import os
 import pathlib
+import re
 import secrets
+import sys
 
-from fastapi import FastAPI, HTTPException, Request
+import yaml
+from fastapi import Depends, FastAPI, HTTPException, Request
+
+# schema.py/validate.py/writer.py live beside this file. A bare `import
+# validate` (which itself does `from schema import ...`) only resolves if
+# this directory is on sys.path -- true when uvicorn runs `app:app` from
+# WORKDIR /app (mirrors apps/console/app.py's bare `import journal`), but
+# NOT when a test loads this file via importlib.util.spec_from_file_location
+# under a distinct module name (apps/join-api/tests/test_app_health.py's own
+# comment explains why that trick is used instead of `import app` +
+# sys.path.insert). Inserting this file's own directory here makes the
+# import work either way, without requiring every test file to do it.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import validate  # noqa: E402
+import writer  # noqa: E402
 
 PACK_DIR = pathlib.Path(os.environ.get("PACK_DIR", "/pack"))
 OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
@@ -118,3 +137,134 @@ app = FastAPI(title="KP2 member-join API")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# -- request persistence (spec S5.4) -----------------------------------------
+# out/join/<request-id>.json, the same OUT_DIR convention apps/console/
+# journal.py already uses for out/console-acl-journal.json. Task 3's record
+# carries only today's fields (id, state, submitted_at, payload, diff or
+# rejection) -- Task 4 extends this same file's schema with APPROVED/
+# RUNNING/ACTIVE/FAILED/BLOCKED and the job-execution fields; no state-
+# transition machinery is built here.
+
+_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _requests_dir() -> pathlib.Path:
+    d = OUT_DIR / "join"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _save_request(record: dict) -> None:
+    # Atomic on POSIX, same pattern as journal.py's _write: a temp file
+    # beside the target, renamed on -- a reader never sees a partial write.
+    path = _requests_dir() / f"{record['id']}.json"
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(record, indent=2))
+    os.replace(tmp, path)
+
+
+def _load_request(request_id: str) -> dict | None:
+    # request_id came off the URL path and becomes a filename below --
+    # reject anything outside secrets.token_urlsafe's own charset before it
+    # ever reaches the filesystem (trust-boundary input, not a cosmetic
+    # check: a path-traversal-shaped id must 404, not read outside out/join/).
+    if not _REQUEST_ID_RE.fullmatch(request_id):
+        return None
+    path = _requests_dir() / f"{request_id}.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+def _load_manifest() -> dict:
+    return yaml.safe_load((PACK_DIR / "manifest.yaml").read_text())
+
+
+def _load_join_policy() -> dict:
+    """configs/x-road-bus/2.7.yaml's join: block only (spec S8) -- not the
+    whole file, mirroring validate.py's own ValidationContext.policy."""
+    doc = yaml.safe_load((PACK_DIR / "configs" / "x-road-bus" / "2.7.yaml").read_text()) or {}
+    return doc.get("join") or {}
+
+
+@app.post("/requests", status_code=201)
+def submit_request(
+    raw: dict,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_applicant),
+) -> dict:
+    """Validate synchronously (spec S8's twelve checks), then either persist
+    a REJECTED record or -- on success -- write the candidate config to a
+    throwaway copy of the pack, run its generate.py, and persist a SUBMITTED
+    record carrying the resulting diff. Either way: 201 (spec S7 -- the
+    applicant retrieves the outcome via GET /requests/{id}, there is no
+    separate failure status here). A malformed body (bad JSON, wrong types,
+    an unrecognised key) is check 1 ("schema") -- validate() itself does
+    `JoinPayload(**raw)` and turns a pydantic.ValidationError into
+    RejectionError("schema", ...), so nothing here hand-rolls that check."""
+    request_id = secrets.token_urlsafe(8)
+    submitted_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    try:
+        payload = validate.validate(
+            raw,
+            manifest=_load_manifest(),
+            policy=_load_join_policy(),
+            existing_servers=validate.load_existing_security_servers(PACK_DIR),
+        )
+    except validate.RejectionError as exc:
+        record = {
+            "id": request_id,
+            "state": "REJECTED",
+            "submitted_at": submitted_at,
+            "payload": raw,
+            "rejection": {"check": exc.check, "message": exc.message},
+        }
+        _save_request(record)
+        return record
+
+    key = payload.code.lower()
+    try:
+        diff = writer.dry_run_diff(PACK_DIR, key, payload)
+    except writer.GenerateFailure as exc:
+        # Every twelve S8 checks passed, but generate.py itself still
+        # refused the result (e.g. check_join_policy's static cross-check) --
+        # a real, if rarer, rejection. Surfaced the same way: a REJECTED
+        # record, never a bare 500, per spec S7's "submission always
+        # returns 201" (task-3 brief step 3: stderr passed through verbatim).
+        record = {
+            "id": request_id,
+            "state": "REJECTED",
+            "submitted_at": submitted_at,
+            "payload": raw,
+            "rejection": {
+                "check": "generate_dry_run",
+                "message": f"hurl/generate.py rejected this join (exit {exc.returncode}):\n{exc.stderr}",
+            },
+        }
+        _save_request(record)
+        return record
+
+    record = {
+        "id": request_id,
+        "state": "SUBMITTED",
+        "submitted_at": submitted_at,
+        "payload": payload.model_dump(mode="json"),
+        "diff": diff,
+    }
+    _save_request(record)
+    return record
+
+
+@app.get("/requests/{request_id}")
+def get_request(
+    request_id: str,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_applicant),
+) -> dict:
+    record = _load_request(request_id)
+    if record is None:
+        raise HTTPException(404, f"no join request {request_id!r}")
+    return record
