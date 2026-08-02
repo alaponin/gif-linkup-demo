@@ -382,3 +382,26 @@ REGISTRY: tuple[Step, ...] = (
 )
 
 BY_ID: dict[str, Step] = {step.id: step for step in REGISTRY}
+
+# The reversal order (join-c plan Task 2 Step 2b), for a hosted client's six
+# reversal calls -- established LIVE (docs/xroad-770-notes.md #11 finding 5,
+# apps/join-api/tests/fixtures/xroad/unjoin.*.json), NOT `reversed(REGISTRY)`
+# and NOT simply build_hosted_client()'s own forward sequence
+# (ss.client_add -> ss.sign_key_csr -> ss.client_register) mirrored end to
+# end. A naive full mirror of that forward sequence would run
+# ss.client_register -> ss.sign_key_csr -> ss.client_add: the SIGN key would
+# be deleted before the client that owns it. What was established live
+# instead is ss.client_register -> ss.client_add -> ss.sign_key_csr -- the
+# client goes before its key, same relative order as forward, only
+# ss.client_register moves from last to first. The strict mirror (key before
+# client) was never tried live. Task 4 Step 2 walks this order; this task
+# only records it -- nothing in hurl/generate.py or Plan A's cold-deploy
+# rendering reads this constant.
+REVERSAL_ORDER: tuple[str, ...] = (
+    "service.acl",
+    "service.publish",
+    "ss.client_register",
+    "ss.client_add",
+    "ss.sign_key_csr",
+    "cs.members_member",
+)
