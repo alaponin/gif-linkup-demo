@@ -318,6 +318,31 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 .join-state-active { background: #1f6b45; color: #fff; }
 .join-state-failed { background: #8a2e2e; color: #fff; }
 .join-state-rejected { background: #4a4a4a; color: #fff; }
+/* BLOCKED is amber, not red: nothing has gone wrong -- the request is waiting
+   on the joining member's own infrastructure (design spec S4/S6.1). Its own
+   colour rather than reusing SUBMITTED's olive, because the two are the
+   states an operator most needs to tell apart at a glance: one wants a
+   decision, the other wants a command run. */
+.join-state-blocked { background: #a05a1e; color: #fff; }
+
+.join-blocked {
+  font-size: 14px;
+  background: color-mix(in srgb, #a05a1e 12%, var(--bg));
+  border: 1px solid #a05a1e;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.join-blocked-command {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow-x: auto;      /* copy-pasteable, never wrapped mid-command */
+  user-select: all;
+}
 
 .join-followup {
   font-size: 14px;

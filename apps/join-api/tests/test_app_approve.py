@@ -141,6 +141,21 @@ def test_resume_is_only_possible_from_failed(client):
     assert started == [record["id"]]
 
 
+def test_resume_is_also_the_exit_from_blocked(client):
+    """join-c plan Task 3 Step 6: BLOCKED leaves through this same endpoint --
+    no callback route, no work-order endpoint (spec S6.1). The operator runs
+    scripts/join-agent.sh, then resumes, and job.run() polls the server it
+    just stood up."""
+    record = _submit(client)
+    stored = app_module._load_request(record["id"])
+    stored["state"] = "BLOCKED"
+    stored["last_completed_step"] = "cs.anchor"
+    app_module._save_request(stored)
+    resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
+    assert resp.status_code == 202
+    assert started == [record["id"]]
+
+
 def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(client, monkeypatch):
     """apply_real's generate.py subprocess reads .env, so its stderr can
     carry a credential -- and this one string goes into both the response and

@@ -230,6 +230,22 @@ services:
       KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:?set in .env}
     volumes:
       - ../../..:/repo
+      # ...with one addition, for a checkout that is a git WORKTREE. There,
+      # /repo/.git is not a directory but a FILE holding
+      # "gitdir: <abs host path>/geatdm-framework/.git/worktrees/<name>" --
+      # an absolute HOST path that does not exist inside the container, so
+      # `git status --porcelain` exits 128 and every approval 409s with
+      # "could not check whether ... is a clean checkout" (found live,
+      # join-c plan Task 1; the fail-safe refusal itself is a join-b review
+      # finding and is not being relaxed). scripts/join.sh exports
+      # KP2_GIT_COMMON_DIR (`git rev-parse --git-common-dir`, absolutised),
+      # and this mounts it at its OWN host path -- the exact path that
+      # `gitdir:` pointer names. In a plain checkout the same variable
+      # resolves to the .git the /repo mount already carries, so this is one
+      # mount with one meaning, not a worktree special case. The default is
+      # for a bare `docker compose up` that never sourced join.sh: a
+      # self-mount of the same .git, i.e. a no-op.
+      - ${KP2_GIT_COMMON_DIR:-../../../.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}
 
 volumes:
   cs-db: {name: kp2-cs-db}

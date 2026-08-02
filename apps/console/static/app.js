@@ -638,9 +638,10 @@ function stopJoinPolling() {
 }
 
 // Steps come from join-api's own job.py sequence (id + actor + kind), never
-// hand-listed here -- a hosted join is uniformly "operator" today (job.py's
-// own docstring), but this reads the field so Plan C's own-server joins
-// (mixed actors) render correctly without a console change.
+// hand-listed here -- a hosted join is uniformly "operator", and an
+// own-server join (Plan C) has a run of actor: member steps in the middle,
+// which this renders from the same field with no console change beyond the
+// styling below.
 function renderJoinSteps(record) {
   const steps = record.steps;
   if (!steps || !steps.length) return "";
@@ -648,7 +649,9 @@ function renderJoinSteps(record) {
   const failedStep = record.error && record.error.step;
   const rows = steps.map((step, i) => {
     let status = i <= lastIdx ? "done" : "pending";
-    if (record.state === "RUNNING" && i === lastIdx + 1) status = "current";
+    // BLOCKED marks the same step RUNNING would: the next one, which is by
+    // construction the actor: member step the request is waiting on.
+    if ((record.state === "RUNNING" || record.state === "BLOCKED") && i === lastIdx + 1) status = "current";
     if (failedStep && step.id === failedStep) status = "failed";
     return `<li class="join-step ${status} actor-${esc(step.actor)}">`
       + `<span class="join-step-actor">${esc(step.actor)}</span>`
@@ -692,6 +695,23 @@ function renderJoinRequest(record) {
     html += `<div class="join-rejection">rejected (${esc(r.check || "?")}): ${esc(r.message || "")}</div>`;
   } else if (state === "APPROVED" || state === "RUNNING") {
     html += renderJoinSteps(record);
+  } else if (state === "BLOCKED") {
+    // A state whose exit condition is "a human runs a script" must name the
+    // script. The key is derived here rather than read off the record: it is
+    // the same code.toLowerCase() apps/join-api/validate.py's key_derivation
+    // check already constrains to [a-z0-9]+, and nothing else in the record
+    // is a better source for it.
+    const key = (payload.code || "").toLowerCase();
+    const blocked = record.blocked || {};
+    html += `<div class="join-blocked">Waiting on the joining member's own Security Server`
+      + `${blocked.server ? ` <code>${esc(blocked.server)}</code>` : ""} &mdash; `
+      + `this API cannot stand it up, and in a real federation could not. `
+      + `Run this on the Docker host, then Resume:`
+      + `<pre class="join-blocked-command">scripts/join-agent.sh ${esc(key)}</pre></div>`;
+    html += renderJoinSteps(record);
+    html += `<div class="join-actions">`
+      + `<button class="action join-resume-btn" data-id="${esc(record.id)}">Resume</button>`
+      + `</div>`;
   } else if (state === "FAILED") {
     const e = record.error || {};
     html += `<div class="join-error">failed at <code>${esc(e.step || "?")}</code>: `

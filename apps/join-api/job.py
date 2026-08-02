@@ -29,10 +29,19 @@ same templates, and all three follow from resumability (decision 5):
      JobStep.must_rerun), which is safe because those steps are all class
      (a)/(b) in hurl/steps.py's 409-safety audit.
 
-Hosted joins only (spec S8 check 6 rejects anything else), so every step's
-actor is "operator" regardless of hurl/steps.py's own `actor` default -- the
-override join-a plan Task 3 Step 4 documented at build_hosted_client()'s call
-sites, applied here rather than trusted from the registry.
+Two shapes of join (spec S6, join-c plan Task 3):
+
+  - **hosted_on**: the joining member's subsystem becomes an extra client on
+    an EXISTING member's Security Server. Every step is the operator's,
+    regardless of hurl/steps.py's own `actor` default -- the override join-a
+    plan Task 3 Step 4 documented at build_hosted_client()'s call sites,
+    applied here rather than trusted from the registry. There is no
+    member-side infrastructure in this path at all, so it never blocks.
+  - **own_server**: the joining member brings up its own Security Server.
+    Here the registry's per-step `actor` is read as declared -- the
+    anchor-upload/CSR/activation steps really are the member's -- so
+    `actor: member` steps genuinely exist in the sequence, and BLOCKED (the
+    state that waits for them) becomes reachable.
 """
 from __future__ import annotations
 
@@ -60,6 +69,19 @@ from schema import JoinPayload
 # 409-as-success (spec S5.3) makes safe.
 RETRY_BUDGET = 12
 RETRY_INTERVAL_SECONDS = 10.0
+
+# BLOCKED (spec S4, S6.1). Before an `actor: member` step -- one this API has
+# no business performing on its own, against a Security Server it does not
+# own -- the run polls that server's :4000. The poll IS the completion signal:
+# spec S6.1 records why the work-order queue and the callback endpoint an
+# earlier draft had were deleted, and this is what replaced them. Bounded, and
+# a bound that expires is NOT a failure: the request goes BLOCKED and stays
+# there, indefinitely, until someone runs scripts/join-agent.sh and resumes.
+# The bound exists only so the job stops holding app.py's single _JOB_LOCK
+# while it waits for a human -- 30s, matching scripts/join.sh's and
+# scripts/console.sh's own `--wait-timeout 30`.
+BLOCKED_POLL_ATTEMPTS = 15
+BLOCKED_POLL_INTERVAL_SECONDS = 2.0
 
 # Confirmed live (PLAN.md S8, docs/xroad-770-notes.md S9): a federation left
 # idle overnight fails every cross-server call with this, which reads like a
@@ -173,11 +195,34 @@ def scrub(text: str, secrets: dict[str, str]) -> str:
 # -- the sequence -------------------------------------------------------------
 
 
+def _own_server(payload: JoinPayload) -> bool:
+    """Which of the two shapes this join is. Derived from hosted_on alone,
+    never from the payload's own_server flag: validate.py's hosting check
+    already refused a request that set neither or both, so the two can never
+    disagree here -- and deriving it from one field means they cannot drift
+    if that check ever changes."""
+    return not payload.security_server.hosted_on
+
+
 def _host(pack_dir: pathlib.Path, payload: JoinPayload) -> dict:
-    """The existing member whose Security Server hosts this join. Resolved
-    from disk the same way validate.py's hosting check (S8 check 6) does, so
-    an approved request cannot resolve to a different host than the one that
-    was validated."""
+    """The Security Server this join's steps run against, and the identity
+    its session belongs to. Under hosted_on that is the existing member whose
+    server hosts the join, resolved from disk the same way validate.py's
+    hosting check (S8 check 6) does, so an approved request cannot resolve to
+    a different host than the one that was validated.
+
+    For an own-server join the member IS its own host -- so every @HOSTVAR@,
+    every session prefix and build_constants' `<prefix>_host` resolve to the
+    joining member's own server without a second branch anywhere else."""
+    if _own_server(payload):
+        ss = payload.security_server
+        return {
+            "key": payload.code.lower(),
+            "dns_name": ss.dns_name,
+            "code": ss.code,
+            "member_code": payload.code,
+            "member_name": payload.name,
+        }
     manifest = yaml.safe_load((pack_dir / "manifest.yaml").read_text())
     identity = manifest["identity"]
     servers = validate.load_existing_security_servers(pack_dir)
@@ -238,16 +283,33 @@ def _spec_var(member_code: str, service_code: str) -> str:
 
 
 def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep]:
-    """The steps a hosted_on join runs, in order, with every @TOKEN@ resolved.
+    """The steps this join runs, in order, with every @TOKEN@ resolved.
 
-    Steps 1-5 are the job's own re-establishment of what cold deploy captures
-    once and keeps in Hurl scope (see the module docstring); 6-8 are
-    build_hosted_client()'s sequence verbatim -- client-add, then the SIGN key,
-    then registration, the order hurl/steps.py's comment says is load-bearing;
-    9-10 are build_service_file()'s.
+    Both shapes share a prologue (the job's own re-establishment of what cold
+    deploy captures once and keeps in Hurl scope -- see the module docstring)
+    and an epilogue (build_service_file()'s publish/ACL steps, plus the r1
+    reachability call). The middle differs:
+
+      hosted_on   -- build_hosted_client()'s sequence verbatim: client-add,
+                     then the SIGN key, then registration, the order
+                     hurl/steps.py's comment says is load-bearing. Every step
+                     runs against the HOST's server, with the HOST's session.
+      own_server  -- build_ss_file()'s sequence verbatim (hurl/generate.py
+                     ~line 461), the same cold-deploy bring-up every canonical
+                     member got, against the joining member's OWN server:
+                     bringup_init, the AUTH key, the SIGN key, CS
+                     registration, activation, the timestamping service, then
+                     the client. Two reads cold deploy gets for free from
+                     PDGA's single Hurl scope -- ca_name and tsa_name/tsa_url
+                     -- are re-established here from the member's own server
+                     instead (both are GETs on the GLOBAL configuration, so
+                     any initialised Security Server answers them; this is the
+                     "unless it also becomes that member's own ca_name source"
+                     case hurl/steps.py's ss.ca_name_capture comment names).
     """
     generate, steps = _hurl_modules(pack_dir)
     host = _host(pack_dir, payload)
+    own = _own_server(payload)
     sess_p = generate.ss_prefix(host["dns_name"])
     cap_p = generate.ss_prefix(payload.security_server.dns_name)
     host_var = f"{sess_p}_host"
@@ -260,10 +322,13 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
             JobStep(
                 id=step_id + suffix,
                 kind="hurl",
-                # Not step.actor: under hosted_on every step is the operator's
-                # (join-a plan Task 3 Step 4) -- there is no member-side
-                # infrastructure in this path at all.
-                actor="operator",
+                # Under hosted_on, NOT step.actor: every step is the
+                # operator's (join-a plan Task 3 Step 4) -- there is no
+                # member-side infrastructure in that path at all. Under
+                # own_server the registry's own per-step actor is the truth
+                # and is read as declared, which is what puts `actor: member`
+                # steps in the sequence and makes BLOCKED reachable.
+                actor=step.actor if own else "operator",
                 template=step.template,
                 tokens=tokens,
                 requires=tuple(generate.sub(name, **tokens) for name in step.requires),
@@ -284,10 +349,12 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
         ),
     )
     add("cs.anchor", {})
-    # The HOST's own identity, not the joining member's: this step's
-    # /initialization body sets owner_member_code/security_server_code, and
-    # the host is already initialised with its own. Re-run only to obtain a
-    # session on it (the anchor upload and initialization 409 or no-op).
+    # Under hosted_on this is the HOST's own identity, not the joining
+    # member's: the step's /initialization body sets owner_member_code/
+    # security_server_code and the host is already initialised with its own,
+    # so it is re-run only to obtain a session on it (the anchor upload and
+    # initialization 409 or no-op). Under own_server it is the joining
+    # member's own identity, and the initialization is real.
     add(
         "ss.bringup_init",
         dict(
@@ -300,32 +367,58 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
         ),
     )
     add("ss.ca_name_capture", dict(HOSTVAR=host_var, P=sess_p))
-    add(
-        "ss.client_add",
-        dict(
-            SS=host["dns_name"],
-            MEMBER_CODE=code,
-            SUBSYSTEM=payload.subsystem,
-            CONNECTION_TYPE="HTTP",
-            HOSTVAR=host_var,
-            SESS_P=sess_p,
-            CAP_P=cap_p,
-        ),
+    # Both shapes run this, in different places: build_ss_file() puts it after
+    # the server is registered and active, build_hosted_client() puts it
+    # first. Only its POSITION differs, so the tokens are named once.
+    client_add = dict(
+        SS=host["dns_name"],
+        MEMBER_CODE=code,
+        SUBSYSTEM=payload.subsystem,
+        CONNECTION_TYPE="HTTP",
+        HOSTVAR=host_var,
+        SESS_P=sess_p,
+        CAP_P=cap_p,
     )
-    # SS_CODE is the HOST's, not this member's nominal one -- the cert lives
-    # on the host's token and naming a server that was never brought up would
-    # be a lie in the cert (build_hosted_client()'s docstring).
-    add(
-        "ss.sign_key_csr",
-        dict(
+    if own:
+        # build_ss_file()'s order, verbatim. The AUTH key/cert is what makes
+        # the server itself a member of the federation; the SIGN key is what
+        # makes its owner able to sign messages. SS_CODE/MEMBER_NAME are the
+        # joining member's own throughout -- unlike the hosted case below,
+        # there is no other server to name.
+        csr = dict(
             SS_CODE=host["code"],
             MEMBER_CODE=code,
             MEMBER_NAME=generate.dn_escape(payload.name),
             HOSTVAR=host_var,
-            SESS_P=sess_p,
-            CAP_P=cap_p,
-        ),
-    )
+        )
+        add("ss.auth_key_csr", dict(csr, P=sess_p))
+        add("ss.sign_key_csr", dict(csr, SESS_P=sess_p, CAP_P=cap_p))
+        add("ss.bringup_register", dict(HOSTVAR=host_var, P=sess_p))
+        add("ss.activate", dict(HOSTVAR=host_var, P=sess_p))
+        # Cold deploy captures tsa_name/tsa_url once on PDGA's server and
+        # every later ss.tsa_post reads them back out of the same Hurl scope.
+        # Nothing is in scope between this job's steps, so the capture is part
+        # of the sequence -- same re-establishment the module docstring
+        # describes for cs.init/cs.anchor/ca_name.
+        add("ss.tsa_capture", dict(HOSTVAR=host_var, P=sess_p))
+        add("ss.tsa_post", dict(HOSTVAR=host_var, P=sess_p))
+        add("ss.client_add", client_add)
+    else:
+        add("ss.client_add", client_add)
+        # SS_CODE is the HOST's, not this member's nominal one -- the cert
+        # lives on the host's token and naming a server that was never brought
+        # up would be a lie in the cert (build_hosted_client()'s docstring).
+        add(
+            "ss.sign_key_csr",
+            dict(
+                SS_CODE=host["code"],
+                MEMBER_CODE=code,
+                MEMBER_NAME=generate.dn_escape(payload.name),
+                HOSTVAR=host_var,
+                SESS_P=sess_p,
+                CAP_P=cap_p,
+            ),
+        )
     add("ss.client_register", dict(HOSTVAR=host_var, SESS_P=sess_p, CAP_P=cap_p))
     for svc in payload.services:
         add(
@@ -525,6 +618,35 @@ def _default_r1_call(url: str, client_header: str) -> tuple[bool, str]:
     return True, f"{url}: HTTP {resp.status_code}"
 
 
+def _default_server_up(dns_name: str) -> bool:
+    """Does this Security Server's admin API answer on :4000? The same
+    question hurl/compose.members.yml's generated HEALTHCHECK asks
+    (`curl -f -k https://localhost:4000`), asked from outside the container
+    instead -- join-api is on the linkup network, so the service name
+    resolves here exactly as it does for every other step.
+
+    ANY HTTP response counts, including the redirect or 401 an
+    unauthenticated GET gets: what this has to establish is that the TLS
+    listener is up and serving, not that a particular page renders. The
+    failure it exists to distinguish is the one Task 9 found live -- a
+    container that is "started" but whose Tomcat/TLS listener never comes up,
+    so a caller hangs mid-handshake instead of being refused."""
+    try:
+        httpx.get(f"https://{dns_name}:4000", verify=False, timeout=5.0)
+    except httpx.HTTPError:
+        return False
+    return True
+
+
+def _wait_for_server(dns_name: str, server_up: Callable[[str], bool], interval: float) -> bool:
+    for attempt in range(BLOCKED_POLL_ATTEMPTS):
+        if server_up(dns_name):
+            return True
+        if attempt + 1 < BLOCKED_POLL_ATTEMPTS:
+            time.sleep(interval)
+    return False
+
+
 def _captures(element: dict) -> dict[str, str]:
     """Every [Captures] value in the invocation, across all of the step's
     entries -- a single template renders more than one Hurl entry (cs.init is
@@ -561,10 +683,36 @@ def _failure_text(element: dict) -> str:
 
 
 # Probes are per-step reads, not a generic mechanism: each one returns raw
-# state and the executor decides. Only two of the eight probed steps are
-# reachable from a hosted join, so only two interpreters exist -- a probed
-# step with no interpreter here simply re-runs, which is what the 409-safety
-# default already covers.
+# state and the executor decides. A probed step with no interpreter here
+# simply re-runs, which is what the 409-safety default already covers -- so
+# an interpreter is only written where re-running is NOT safe.
+#
+# A hosted join reaches two of the eight probed steps; an own-server join
+# (join-c Task 3) reaches three more, one of which needed one:
+#   - ss.bringup_register: bundles register-then-approve, whose halves can
+#     diverge on a process death in between, so 409-as-success would report a
+#     half-done step as done. Skipping it costs nothing downstream: its one
+#     capture (@P@_auth_cert_req_id) is required by no later step.
+#   - ss.auth_key_csr is deliberately left WITHOUT one, even though it is the
+#     clearest (c) in the registry (POST .../keys-with-csrs has no natural
+#     uniqueness, so a resumed retry silently makes a SECOND AUTH key rather
+#     than 409ing). A probe here can only return a VERDICT -- _probe()
+#     discards the probe's own captures -- and skipping this step leaves
+#     @P@_auth_key_cert_hash unset, which ss.bringup_register and ss.activate
+#     both require: the resume would then fail outright. A duplicate AUTH key
+#     on the joining member's own (throwaway, demo) Security Server is the
+#     lesser harm than a resume that cannot complete. Threading a probe's
+#     captures back into the job context would fix this properly and is a
+#     change to the probe mechanism, not to this task.
+#   - ss.tsa_post is deliberately left WITHOUT one. Its probe template
+#     (PROBE_SS_TSA_POST.hurl.tmpl) reads GET /timestamping-services -- the
+#     GLOBAL approved list from the configuration, the same read
+#     TSA_CAPTURE.hurl.tmpl makes -- not GET /system/timestamping-services,
+#     the list the step itself POSTs to. It therefore cannot answer its own
+#     question: it is non-empty whether or not the step ran. Interpreting it
+#     would be worse than re-running, which at most leaves a duplicate
+#     (identical) approved timestamping entry on that one Security Server.
+#     Fixing the template is a registry change, not this task's.
 
 
 def _probe_client_registered(step: JobStep, captures: dict) -> bool:
@@ -593,9 +741,18 @@ def _probe_sign_key_exists(step: JobStep, captures: dict) -> bool:
     return False
 
 
+def _probe_auth_cert_registered(step: JobStep, captures: dict) -> bool:
+    """Only REGISTERED counts. REGISTRATION_IN_PROGRESS means the PUT landed
+    but the Central Server approval did not -- exactly the half-done case
+    409-as-success would misread as done (PROBE_SS_BRINGUP_REGISTER's own
+    comment)."""
+    return captures.get(f"{step.tokens['P']}_auth_cert_status") == "REGISTERED"
+
+
 PROBE_INTERPRETERS: dict[str, Callable[[JobStep, dict], bool]] = {
     "ss.client_register": _probe_client_registered,
     "ss.sign_key_csr": _probe_sign_key_exists,
+    "ss.bringup_register": _probe_auth_cert_registered,
 }
 
 
@@ -611,16 +768,28 @@ def run(
     save: Callable[[dict], None],
     run_hurl: Callable[[str, str, dict], dict] = _default_run_hurl,
     r1_call: Callable[[str, str], tuple[bool, str]] = _default_r1_call,
+    server_up: Callable[[str], bool] = _default_server_up,
     retry_interval: float = RETRY_INTERVAL_SECONDS,
+    blocked_poll_interval: float = BLOCKED_POLL_INTERVAL_SECONDS,
 ) -> dict:
-    """Drive `record` (an out/join/<id>.json request) to ACTIVE or FAILED,
-    persisting after every step via `save`. Mutates and returns the record.
+    """Drive `record` (an out/join/<id>.json request) to ACTIVE, FAILED or
+    BLOCKED, persisting after every step via `save`. Mutates and returns the
+    record.
 
     Resume: `record["last_completed_step"]` names the last step known to have
     completed; execution starts after it, re-injecting every persisted
     capture. Steps before it re-run only if they provide a session token
     (JobStep.must_rerun) -- nothing else is re-run, which is the guarantee
     Task 4 Step 6's resume test asserts.
+
+    BLOCKED: an own-server join's `actor: member` steps run against the
+    joining member's own Security Server, which this API cannot stand up. Any
+    such step is preceded by a bounded poll of that server's :4000; if the
+    bound expires the request goes BLOCKED (never FAILED -- there is nothing
+    wrong, the member has simply not brought its server up yet) and leaves
+    through the same POST /requests/{id}/resume a FAILED one does, which
+    re-enters here and polls again. A hosted_on join has no `actor: member`
+    step at all and can never reach this state.
     """
     payload = JoinPayload(**record["payload"])
     sequence = build_sequence(pack_dir, payload)
@@ -668,6 +837,7 @@ def run(
         record["queued"] = False
         record["started_at"] = _now()
         record["error"] = None
+        record["blocked"] = None
         # One budget per RUN (spec S5.5), so a resume starts with a full one --
         # the operator resuming is a new run, and the previous run's exhausted
         # budget is not evidence about this one.
@@ -686,6 +856,27 @@ def run(
                     "step": step.id,
                     "message": f"refusing to resume across {step.id}: it is flagged unsafe_to_repeat "
                     "in hurl/steps.py and no probe can establish whether it already ran",
+                }
+                save(record)
+                return record
+            if step.actor == "member" and not _wait_for_server(
+                payload.security_server.dns_name, server_up, blocked_poll_interval
+            ):
+                # Not a failure, and deliberately not counted against the
+                # retry budget: nothing has gone wrong. This step is the
+                # joining member's own (hurl/steps.py declares the actor), and
+                # its server is not there yet.
+                record["state"] = "BLOCKED"
+                record["blocked"] = {
+                    "step": step.id,
+                    "server": payload.security_server.dns_name,
+                    "message": (
+                        f"{payload.security_server.dns_name} is not answering on :4000. "
+                        f"{step.id} is the joining member's own step, not the operator's -- "
+                        f"this API cannot stand that server up. Run "
+                        f"`scripts/join-agent.sh {payload.code.lower()}` on the Docker host, "
+                        "then resume this request."
+                    ),
                 }
                 save(record)
                 return record

@@ -192,9 +192,43 @@ def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_me
 # -- check 6: hosting -----------------------------------------------------------
 
 
-def test_hosting_rejects_an_absent_hosted_on():
+def test_hosting_rejects_a_request_that_asks_for_neither_hosting_nor_its_own_server():
+    """join.default_hosting: hosted_on means "a join defaults to hosting;
+    own_server must be asked for" (configs/x-road-bus/2.7.yaml's own comment).
+    Since join-c Task 3 an own-server join is a real code path, so the reason
+    this is still a rejection is the fail-safe, not the missing feature: a
+    payload that simply forgot hosted_on must not silently become an
+    own-server join that then waits in BLOCKED for a server nobody agreed to
+    stand up."""
     raw = _payload()
     raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb"}
+    error = _rejects(raw, "hosting")
+    assert "own_server" in error.message
+
+
+def test_hosting_accepts_an_explicit_own_server_request():
+    """The other half of the same policy key: asked for explicitly, an own
+    Security Server is admissible (join-c plan Task 3)."""
+    raw = _payload()
+    raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb", "own_server": True}
+    payload = _run(raw)
+    assert payload.security_server.own_server is True
+    assert payload.security_server.hosted_on is None
+
+
+def test_hosting_rejects_a_request_that_asks_for_both():
+    raw = _payload()
+    raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb",
+                              "hosted_on": "ss-plr", "own_server": True}
+    _rejects(raw, "hosting")
+
+
+def test_hosting_still_validates_the_host_when_own_server_is_false():
+    """own_server: false is not a way past the host checks below -- it is the
+    default, and a hosted request is exactly what it describes."""
+    raw = _payload()
+    raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb",
+                              "hosted_on": "ss-nope", "own_server": False}
     _rejects(raw, "hosting")
 
 

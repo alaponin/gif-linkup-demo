@@ -148,10 +148,12 @@ def health():
 # -- request persistence (spec S5.4) -----------------------------------------
 # out/join/<request-id>.json, the same OUT_DIR convention apps/console/
 # journal.py already uses for out/console-acl-journal.json. One file per
-# request, carrying every state it has been through (spec S4's seven, minus
-# BLOCKED, which no hosted join can reach) and, since Task 4, the job's own
+# request, carrying every state it has been through (spec S4's seven -- join-c
+# Task 3 made the seventh, BLOCKED, reachable: an own-server join waits in it
+# for the member's own Security Server) and, since Task 4, the job's own
 # record: last_completed_step, the non-secret captures (context), verified,
-# queued, retry_budget_left, and {step, message} on FAILED.
+# queued, retry_budget_left, {step, message} on FAILED, and
+# {step, server, message} on BLOCKED.
 
 _REQUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -190,8 +192,9 @@ def _recover_interrupted_jobs() -> None:
     acceptance.sh's own 2.7 section (which brings join-api up and back down
     around its checks). job.run() itself already resumes correctly from any
     record carrying last_completed_step (see its own docstring), but
-    resume_request only accepts FAILED -- never RUNNING, so two runners can
-    never land on one live job -- so a record left at RUNNING is otherwise
+    resume_request only accepts FAILED or BLOCKED -- never RUNNING, so two
+    runners can never land on one live job -- so a record left at RUNNING is
+    otherwise
     unrecoverable through this API except by hand-editing out/join/<id>.json.
 
     Run once, at import time (review finding, 2026-08-02): this process is,
@@ -521,14 +524,20 @@ def resume_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """Re-run from last_completed_step. Only from FAILED (spec S7) -- resuming
-    a RUNNING job would put two runners on one federation, and resuming an
-    ACTIVE one has nothing left to do."""
+    """Re-run from last_completed_step. Only from FAILED or BLOCKED (spec S7,
+    S4's BLOCKED row) -- resuming a RUNNING job would put two runners on one
+    federation, and resuming an ACTIVE one has nothing left to do.
+
+    BLOCKED is the exit that spec S6.1 chose over a callback endpoint: the
+    operator runs scripts/join-agent.sh, then resumes, and job.run() polls the
+    now-existing Security Server and carries on. A resume that finds it still
+    absent re-enters BLOCKED rather than failing, as many times as it takes --
+    which is why this is not a state that expires."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
-    if record["state"] != "FAILED":
-        raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED")
+    if record["state"] not in ("FAILED", "BLOCKED"):
+        raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED or BLOCKED")
     record["queued"] = _JOB_LOCK.locked()
     _save_request(record)
     _start_job(request_id)

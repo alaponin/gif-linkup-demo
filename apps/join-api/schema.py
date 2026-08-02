@@ -44,11 +44,19 @@ class BackendAuth(str, Enum):
 class SecurityServer(_Strict):
     code: str
     dns_name: str
-    # A DNS name an EXISTING member already owns. Absent means "this member
-    # wants its own server" -- Plan C, out of scope here; validate.py's
-    # hosting check (S8 check 6) rejects an absent hosted_on outright rather
-    # than silently accepting an own-server request Plan B cannot service.
+    # A DNS name an EXISTING member already owns: this member's subsystem
+    # becomes an extra client on that server and owns no container at all.
     hosted_on: str | None = None
+    # Plan C: this member brings up its OWN Security Server (job.py's
+    # own-server branch, spec S6). Deliberately an EXPLICIT opt-in rather
+    # than inferred from an absent hosted_on -- configs/x-road-bus/2.7.yaml's
+    # join.default_hosting: hosted_on says in as many words that "own_server
+    # must be asked for", and a payload that simply forgot hosted_on would
+    # otherwise become a silent own-server join that sits in BLOCKED waiting
+    # for infrastructure nobody agreed to stand up. validate.py's hosting
+    # check (S8 check 6) rejects a request that sets neither, and one that
+    # sets both.
+    own_server: bool = False
 
 
 class Service(_Strict):

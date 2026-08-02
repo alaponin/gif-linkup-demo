@@ -151,6 +151,51 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     state is not persisted (`apps/join-api/job.py`'s own docstring: nothing
     named `*_xsrf_token` is ever written to disk) rather than replaying the
     whole sequence from scratch.
+  - **A join with the member's OWN Security Server:** set
+    `security_server.own_server: true` in the payload and leave `hosted_on`
+    out. It has to be asked for explicitly — a payload with neither is
+    rejected (`hosting`), because a forgotten `hosted_on` must not silently
+    become an own-server join. The job then runs the same bring-up sequence
+    cold deploy gives every canonical member (anchor, AUTH key, SIGN key, CS
+    registration, activation, timestamping, client), and the middle of it is
+    the *member's* work, not the operator's — so the request stops at
+    **`BLOCKED`** before the first such step, naming the server it is waiting
+    for. Stand it up:
+
+    ```
+    scripts/join-agent.sh <key>        # e.g. scripts/join-agent.sh ptsb
+    ```
+
+    then **Resume** (the console's button, or `POST /requests/{id}/resume` —
+    the same endpoint a `FAILED` job resumes through; there is no callback
+    and no work-order queue, by design: spec §6.1). A resume that still finds
+    the server absent goes back to `BLOCKED` rather than failing, as many
+    times as it takes — `BLOCKED` never expires into `FAILED`. Prefer
+    `hosted_on` unless the point of the demo is to show a server being stood
+    up: it costs zero extra containers, and is the only shape that fits
+    alongside a third-party backend on a 16 GB host.
+    - **A busy host port is a failure, not a re-allocation.**
+      `scripts/join-agent.sh` checks the two ports `hurl/generate.py`
+      allocated to that server (`lsof`) before starting anything, and refuses
+      with the port number and the process holding it. It will not pick a
+      different port: `hurl/topology.json`, `hurl/topology.sh`,
+      `hurl/compose.members.yml` and the console's "copy as curl" all already
+      name the allocated one, and the determinism the Global Constraint
+      depends on (same member set → same allocation, always) is worth more
+      than saving one `kill`. Free the port and re-run. (The AirPlay range —
+      5000–5099 and 7000, which macOS's ControlCenter *hangs* rather than
+      refuses — is already excluded by `generate.py` at allocation time; this
+      check is for everything else on a particular machine.)
+    - **Working in a git worktree:** `writer.apply_real()`'s dirty-checkout
+      guard runs `git status` inside the container, and a worktree's `.git`
+      is a *file* pointing at an absolute host path inside the main
+      checkout's `.git` — which the container has no mount for, so every
+      approval used to 409 with "could not check whether … is a clean
+      checkout". `scripts/join.sh` now exports `KP2_GIT_COMMON_DIR`
+      (`git rev-parse --git-common-dir`, absolutised) and `docker-compose.yml`
+      mounts it at its own host path. Start `join-api` through
+      `scripts/join.sh up`, not a bare `docker compose up join-api`, or that
+      variable is unset and the old failure comes back.
   - **The OCSP-staleness trap, as it shows up in a join:** the same fault
     this runbook already documents for a stale federation
     (`Server.ClientProxy.SslAuthenticationFailed`) can surface mid-job, on

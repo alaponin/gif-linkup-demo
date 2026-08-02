@@ -191,3 +191,34 @@ def test_join_render_paths_escape_every_payload_derived_field():
     ]
     for expected in must_be_escaped:
         assert expected in src, f"expected {expected!r} in app.js's join render path"
+
+
+# -- the BLOCKED card (join-c plan Task 3 Steps 5 and 7) ----------------------
+# Same static-source discipline as the escaping check above: no JS runtime
+# here, so these read the committed source for the two things Step 5 asks for.
+
+
+def test_the_blocked_card_names_the_agent_command_with_the_members_own_key():
+    """A state whose exit condition is "a human runs a script" must name the
+    script, with the right key -- otherwise the console shows an operator a
+    dead end and the request sits in BLOCKED forever."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert 'state === "BLOCKED"' in src
+    assert "scripts/join-agent.sh ${esc(key)}" in src
+    # ...derived from the payload's own code, not from a hand-typed literal.
+    assert '(payload.code || "").toLowerCase()' in src
+    # ...and the server name join-api reports is escaped like every other
+    # record-derived string on this tab.
+    assert "${blocked.server}" not in src
+    assert "esc(blocked.server" in src
+    # BLOCKED marks the actor: member step it is waiting on as the current one.
+    assert 'record.state === "BLOCKED") && i === lastIdx + 1' in src
+
+
+def test_the_blocked_state_has_its_own_style_like_every_other_state():
+    """The template lowercases the state into a class name, so a new state
+    renders unstyled but not broken -- this is the styling, not new
+    machinery."""
+    css = (pathlib.Path(__file__).resolve().parent.parent / "static" / "style.css").read_text()
+    assert ".join-state-blocked" in css
+    assert ".join-blocked-command" in css

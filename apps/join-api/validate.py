@@ -198,20 +198,45 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
 
 def _check_hosting(ctx: ValidationContext) -> str | None:
     """Reproduces resolve_hosted_on_map()'s (hurl/generate.py ~line 243) two
-    hard failures at request time -- unknown host, hosting chain -- plus
-    Plan B's own hosted-only constraint (spec S8 check 6, task-2 brief
-    point 5): join.default_hosting: hosted_on means an absent hosted_on is
-    rejected outright, not silently treated as an own-server request Plan B
-    has no code path for (that's Plan C)."""
+    hard failures at request time -- unknown host, hosting chain -- plus the
+    hosting decision itself (spec S8 check 6).
+
+    join.default_hosting: hosted_on no longer means "own-server requests are
+    rejected". Plan C gave this pack a real own-server code path
+    (job.py's build_sequence own-server branch, scripts/join-agent.sh), so
+    the key now means what configs/x-road-bus/2.7.yaml's own comment always
+    said it meant -- "a join defaults to hosting; own_server must be asked
+    for": a request that asks for NEITHER is rejected, and one that sets
+    security_server.own_server: true is an own-server join. The fail-safe is
+    unchanged in substance: an absent hosted_on is still never silently
+    treated as an own-server request, because own_server has to be there
+    too.
+    """
     hosted_on = ctx.payload.security_server.hosted_on
-    if ctx.policy.get("default_hosting") == "hosted_on" and not hosted_on:
+    own_server = ctx.payload.security_server.own_server
+    if hosted_on and own_server:
         return (
-            "security_server.hosted_on is required -- configs/x-road-bus/"
-            "2.7.yaml sets join.default_hosting: hosted_on and this API "
-            "supports hosted joins only; an own Security Server is Plan C, "
-            "out of scope here"
+            f"security_server sets both hosted_on {hosted_on!r} and "
+            "own_server: true -- a joining member's subsystem is either an "
+            "extra client on an existing member's Security Server or has one "
+            "of its own, never both"
         )
-    if not hosted_on:
+    if not hosted_on and not own_server:
+        if ctx.policy.get("default_hosting") == "hosted_on":
+            return (
+                "security_server.hosted_on is required -- configs/x-road-bus/"
+                "2.7.yaml sets join.default_hosting: hosted_on, so a join "
+                "defaults to hosting and an own Security Server must be asked "
+                "for explicitly (security_server.own_server: true)"
+            )
+        return None
+    if own_server:
+        # Nothing further to check here: there is no host to resolve, and
+        # the joining member's own dns_name/code were already checked for
+        # collision (check 3). Whether the server can actually be stood up is
+        # a fact about the operator's machine, not about this payload --
+        # scripts/join-agent.sh checks it, and job.py's BLOCKED state is what
+        # a request waits in until it has been.
         return None
     dns_to_key = {ss["dns_name"]: key for key, ss in ctx.existing_servers.items()}
     host_key = dns_to_key.get(hosted_on)

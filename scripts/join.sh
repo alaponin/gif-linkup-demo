@@ -16,6 +16,17 @@ set -euo pipefail
 . "$(dirname "$0")/lib-stack.sh"
 
 JOIN_URL="http://localhost:8091"
+
+# The one thing join-api's /repo mount cannot carry on its own: in a git
+# WORKTREE the checkout's .git is a file pointing at an absolute host path
+# inside the MAIN checkout's .git, which the container has no mount for --
+# see docker-compose.yml's join-api volumes. Exported here, resolved to an
+# absolute path, and identical to the plain checkout's own .git when this is
+# not a worktree.
+if git_common_dir=$(cd "$PACK_DIR" && git rev-parse --git-common-dir 2>/dev/null); then
+  KP2_GIT_COMMON_DIR=$(cd "$PACK_DIR" && cd "$git_common_dir" && pwd)
+  export KP2_GIT_COMMON_DIR
+fi
 # COMPOSE already carries --profile full/lite from deployment.yaml (lib-stack.sh);
 # --profile demo is additive, and only join-api is ever targeted below, so
 # this never starts or restarts the federation itself.

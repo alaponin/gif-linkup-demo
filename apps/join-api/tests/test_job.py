@@ -129,7 +129,7 @@ def _fake_r1(ok: bool = True, detail: str = "http://ss-pnea:8080/...: HTTP 200")
     return call
 
 
-def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None) -> dict:
+def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, server_up=None) -> dict:
     def save(rec: dict) -> None:
         if saves is not None:
             saves.append(json.loads(json.dumps(rec)))
@@ -141,7 +141,13 @@ def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None) ->
         save=save,
         run_hurl=hurl,
         r1_call=r1 or _fake_r1(),
+        # A hosted join has no actor: member step, so this is never called
+        # there; the own-server tests at the bottom of this file pass their
+        # own. Defaulting it to "up" rather than leaving job.py's real HTTP
+        # probe in place keeps every test in this module network-free.
+        server_up=server_up or (lambda dns: True),
         retry_interval=0,
+        blocked_poll_interval=0,
     )
 
 
@@ -665,3 +671,247 @@ def test_the_dockerfile_bundles_the_same_hurl_image_the_compose_overlay_pins():
     # image build would double it. It was run by hand when the Dockerfile was
     # written (task-4 report) and is covered continuously by --full, which
     # builds this image anyway.
+
+
+# -- own-server joins (join-c plan Task 3) ------------------------------------
+# The other half of spec S6: the joining member brings up its OWN Security
+# Server, so the sequence is cold deploy's build_ss_file() rather than
+# build_hosted_client()'s, the registry's per-step `actor` is read as declared
+# instead of overridden to "operator", and BLOCKED becomes reachable.
+
+OWN_SERVER_IDS = [
+    "cs.init",
+    "cs.members_member",
+    "cs.anchor",
+    "ss.bringup_init",
+    "ss.ca_name_capture",
+    "ss.auth_key_csr",
+    "ss.sign_key_csr",
+    "ss.bringup_register",
+    "ss.activate",
+    "ss.tsa_capture",
+    "ss.tsa_post",
+    "ss.client_add",
+    "ss.client_register",
+    "service.publish:awards-api",
+    "service.acl:awards-api:PROGRESSA/GOV/PNEA/EXAMS",
+    "join.r1_verify",
+]
+
+
+def _own_payload(**overrides) -> JoinPayload:
+    return _payload(
+        security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "own_server": True},
+        **overrides,
+    )
+
+
+class OwnServerHurl(FakeHurl):
+    """FakeHurl with a SYNTHESISED success element per step instead of a
+    recorded one, built from that step's DECLARED `provides` in
+    hurl/steps.py.
+
+    The recorded fixtures cannot be replayed here even for the steps a hosted
+    join shares: their capture NAMES carry the hosted run's prefix
+    (`ss_plr_xsrf_token`), and an own-server join captures under its own
+    (`ss_ptsb_xsrf_token`) -- replaying one would leave every later step
+    missing the variable it requires. And five of these steps
+    (ss.auth_key_csr, ss.bringup_register, ss.activate, ss.tsa_capture,
+    ss.tsa_post) have no recorded element at all, because no hosted join ever
+    ran them.
+
+    Writing five new files under fixtures/xroad/ was the alternative and was
+    rejected: every file there carries a `_source` naming the real deploy it
+    was sliced out of, and inventing some would make fabricated documents
+    indistinguishable from real ones. What these tests exercise is the step
+    ENGINE -- ordering, actor, requires/provides threading, BLOCKED -- and a
+    success element carrying each step's declared captures is the right
+    stand-in for that: it comes from the registry, not from this file's
+    imagination. Task 5 owns the live proof that the real responses match."""
+
+    def __call__(self, label: str, body: str, variables: dict) -> dict:
+        if label in self.overrides:
+            return super().__call__(label, body, variables)
+        self.calls.append(label)
+        self.variables.append(dict(variables))
+        assert body.strip(), f"{label} rendered an empty Hurl file"
+        if label.endswith("#probe"):
+            return {"success": False, "entries": []}  # "no" -- re-run the step
+        step = next(s for s in job.build_sequence(REAL_PACK_DIR, _own_payload()) if s.id == label)
+        return {
+            "success": True,
+            "entries": [{"captures": [{"name": name, "value": f"{name}-value"} for name in step.provides]}],
+        }
+
+
+def test_an_own_server_join_runs_cold_deploys_own_bring_up_sequence():
+    """hurl/generate.py's build_ss_file() order, verbatim, wrapped in the CS
+    prologue and the service epilogue -- not build_hosted_client()'s."""
+    steps = job.build_sequence(REAL_PACK_DIR, _own_payload())
+    assert [s.id for s in steps] == OWN_SERVER_IDS
+
+
+def test_an_own_server_join_has_real_member_steps_and_real_operator_steps():
+    """The point of the whole branch: BLOCKED is only meaningful if steps the
+    member's own infrastructure runs actually exist in the sequence. These
+    actors come from hurl/steps.py's REGISTRY, not from job.py."""
+    actors = {s.id: s.actor for s in job.build_sequence(REAL_PACK_DIR, _own_payload())}
+    assert actors["ss.bringup_init"] == "member"
+    assert actors["ss.auth_key_csr"] == "member"
+    assert actors["ss.sign_key_csr"] == "member"
+    assert actors["ss.activate"] == "member"
+    assert actors["ss.client_add"] == "member"
+    # ...and the Central-Server side stays the operator's.
+    assert actors["cs.init"] == "operator"
+    assert actors["cs.members_member"] == "operator"
+    assert actors["ss.bringup_register"] == "operator"
+    assert actors["ss.client_register"] == "operator"
+
+
+def test_an_own_server_join_names_its_own_server_everywhere_the_hosted_one_names_a_host():
+    steps = {s.id: s for s in job.build_sequence(REAL_PACK_DIR, _own_payload())}
+    assert steps["ss.sign_key_csr"].tokens["SS_CODE"] == "SS-PTSB"
+    assert steps["ss.sign_key_csr"].tokens["SESS_P"] == "ss_ptsb"
+    assert steps["ss.sign_key_csr"].tokens["CAP_P"] == "ss_ptsb"
+    assert steps["ss.bringup_init"].tokens["MEMBER_CODE"] == "PTSB"
+    constants = job.build_constants(REAL_PACK_DIR, _own_payload(), SECRETS)
+    assert constants["ss_ptsb_host"] == "ss-ptsb"
+    assert "ss_plr_host" not in constants
+
+
+def test_every_own_server_steps_requires_is_satisfied_by_an_earlier_provides():
+    """The real check on the sequence's ORDER: ca_name, tsa_name/tsa_url and
+    the AUTH cert hash are all re-established inside this job (nothing is in
+    Hurl scope between its steps), so a missing or misplaced capture step
+    shows up here rather than as a live failure."""
+    payload = _own_payload()
+    available = set(job.build_constants(REAL_PACK_DIR, payload, SECRETS))
+    for step in job.build_sequence(REAL_PACK_DIR, payload):
+        missing = [name for name in step.requires if name not in available]
+        assert not missing, f"{step.id} requires {missing}, which nothing before it provides"
+        available.update(step.provides)
+
+
+def test_an_own_server_join_runs_to_active_when_the_members_server_is_up():
+    hurl = OwnServerHurl()
+    record = _run(_record(payload=_own_payload().model_dump(mode="json")), hurl, server_up=lambda dns: True)
+    assert record["state"] == "ACTIVE"
+    assert hurl.calls == OWN_SERVER_IDS[:-1]
+
+
+# -- BLOCKED (join-c plan Task 3 Steps 1, 2 and 7) ----------------------------
+
+
+def test_a_job_whose_members_server_is_absent_goes_blocked_not_failed():
+    """Step 1: the first actor: member step is ss.bringup_init, and its target
+    is the member's own server. Absent means BLOCKED -- the honest state, not
+    an error."""
+    hurl = OwnServerHurl()
+    record = _run(
+        _record(payload=_own_payload().model_dump(mode="json")), hurl, server_up=lambda dns: False
+    )
+    assert record["state"] == "BLOCKED"
+    assert record["error"] is None
+    assert record["blocked"]["step"] == "ss.bringup_init"
+    assert record["blocked"]["server"] == "ss-ptsb"
+    assert "scripts/join-agent.sh ptsb" in record["blocked"]["message"]
+    # The operator-side prologue ran; nothing member-side was attempted.
+    assert hurl.calls == ["cs.init", "cs.members_member", "cs.anchor"]
+    assert record["last_completed_step"] == "cs.anchor"
+
+
+def test_a_blocked_job_resumes_to_active_once_the_server_appears():
+    """Step 7's first half, and Step 2's exit condition: the poll IS the
+    completion signal (spec S6.1) -- no callback, no work-order endpoint."""
+    record = _run(
+        _record(payload=_own_payload().model_dump(mode="json")), OwnServerHurl(), server_up=lambda dns: False
+    )
+    assert record["state"] == "BLOCKED"
+
+    resumed = OwnServerHurl()
+    record = _run(record, resumed, server_up=lambda dns: True)
+    assert record["state"] == "ACTIVE"
+    # cs.init re-runs (it provides a session token); cs.members_member does not.
+    assert "cs.members_member" not in resumed.calls
+    assert resumed.calls[0] == "cs.init"
+
+
+def test_a_blocked_job_stays_blocked_indefinitely_without_ever_failing():
+    """Step 7's second half. Five resumes with the server still absent: still
+    BLOCKED, never FAILED, and the retry budget is untouched -- waiting for a
+    human is not a retry."""
+    record = _record(payload=_own_payload().model_dump(mode="json"))
+    for _ in range(5):
+        record = _run(record, OwnServerHurl(), server_up=lambda dns: False)
+        assert record["state"] == "BLOCKED"
+        assert record["retry_budget_left"] == job.RETRY_BUDGET
+
+
+def test_a_hosted_join_can_never_reach_blocked():
+    """Spec S4's BLOCKED row: "own-server joins only". Nothing about a hosted
+    join asks the member for anything, so even a server_up that always says
+    "down" cannot block one."""
+    record = _run(_record(), FakeHurl(), server_up=lambda dns: False)
+    assert record["state"] == "ACTIVE"
+
+
+def test_the_health_poll_targets_the_joining_members_own_server():
+    seen: list[str] = []
+
+    def server_up(dns: str) -> bool:
+        seen.append(dns)
+        return True
+
+    _run(_record(payload=_own_payload().model_dump(mode="json")), OwnServerHurl(), server_up=server_up)
+    assert set(seen) == {"ss-ptsb"}
+
+
+def test_resume_across_an_own_server_join_probes_the_registration_and_skips_it():
+    """ss.bringup_register is the own-server step where 409-as-success is
+    genuinely unsafe (PROBE_SS_BRINGUP_REGISTER's own comment: the PUT can
+    land while the Central Server approval does not), and the only newly
+    reachable one whose skip costs nothing downstream."""
+    record = _run(
+        _record(payload=_own_payload().model_dump(mode="json")),
+        OwnServerHurl({"ss.bringup_register": _FAILED}),
+    )
+    assert record["state"] == "FAILED"
+    assert record["last_completed_step"] == "ss.sign_key_csr"
+
+    already_registered = {
+        "success": True,
+        "entries": [{"captures": [{"name": "ss_ptsb_auth_cert_status", "value": "REGISTERED"}]}],
+    }
+    resumed = OwnServerHurl({"ss.bringup_register#probe": already_registered})
+    record = _run(record, resumed)
+    assert record["state"] == "ACTIVE"
+    assert "ss.bringup_register#probe" in resumed.calls
+    assert "ss.bringup_register" not in resumed.calls
+
+
+def test_ss_auth_key_csr_deliberately_has_no_probe_interpreter():
+    """It is the clearest (c) in the registry -- a repeat silently makes a
+    second AUTH key -- and is still left to re-run, because _probe() returns a
+    verdict and discards the probe's own captures: skipping this step would
+    leave ss_ptsb_auth_key_cert_hash unset for ss.bringup_register and
+    ss.activate, and the resume would fail outright. Asserted so the choice is
+    a decision on record, not an oversight (job.py's comment above
+    PROBE_INTERPRETERS explains it)."""
+    assert "ss.auth_key_csr" not in job.PROBE_INTERPRETERS
+    step = next(s for s in job.build_sequence(REAL_PACK_DIR, _own_payload()) if s.id == "ss.auth_key_csr")
+    assert step.probe  # the registry does declare one; nothing here interprets it
+    later = job.build_sequence(REAL_PACK_DIR, _own_payload())
+    needs_hash = [s.id for s in later if "ss_ptsb_auth_key_cert_hash" in s.requires]
+    assert needs_hash == ["ss.bringup_register", "ss.activate"]
+
+
+def test_a_half_registered_auth_cert_is_not_read_as_done():
+    """PROBE_SS_BRINGUP_REGISTER's own comment: the PUT can land while the
+    Central Server approval does not, and 409-as-success would call that
+    done."""
+    step = next(
+        s for s in job.build_sequence(REAL_PACK_DIR, _own_payload()) if s.id == "ss.bringup_register"
+    )
+    assert job._probe_auth_cert_registered(step, {"ss_ptsb_auth_cert_status": "REGISTERED"}) is True
+    assert job._probe_auth_cert_registered(step, {"ss_ptsb_auth_cert_status": "REGISTRATION_IN_PROGRESS"}) is False
+    assert job._probe_auth_cert_registered(step, {}) is False
