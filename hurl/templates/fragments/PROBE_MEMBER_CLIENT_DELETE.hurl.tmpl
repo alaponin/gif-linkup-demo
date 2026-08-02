@@ -1,0 +1,17 @@
+
+# Probe for the ss.client_add reversal (join-c plan Task 2, Step 3): "has
+# this client already been deleted?" ss.client_add carries no forward
+# probe (Plan A Task 5 classified it (b), 409-safe) -- this one exists
+# purely for the reversal direction.
+#
+# CONFIRMED LIVE (apps/join-api/tests/fixtures/xroad/
+# unjoin.client_delete.probe.json, docs/xroad-770-notes.md #11): absence
+# IS a 404 client_not_found, with the deleted client's own id echoed back
+# in error.metadata[0].
+GET https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 404
+
+[Captures]
+@CAP_P@_client_delete_probe_code: jsonpath "$.error.code"

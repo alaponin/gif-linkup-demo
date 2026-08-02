@@ -285,12 +285,19 @@ REGISTRY: tuple[Step, ...] = (
     # reintroduces that bug; join-a plan Task 3 Step 2.
     # (b) POST /clients has a natural unique key (member_class+member_code+
     # subsystem_code) -- repeat conflicts.
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 4) -- fourth step in the reversal order (REVERSAL_ORDER
+    # below), after ss.client_register's unregister and before
+    # ss.sign_key_csr's key delete: the client goes before its key,
+    # backwards just as forwards (steps.py's own comment above).
     Step(
         id="ss.client_add",
         template="fragments/MEMBER_CLIENT_ADD.hurl.tmpl",
         actor="member",
         requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "member_class"),
         provides=("@CAP_P@_client_id",),
+        reverse="fragments/MEMBER_CLIENT_DELETE.hurl.tmpl",
+        probe="fragments/PROBE_MEMBER_CLIENT_DELETE.hurl.tmpl",
     ),
     # (c) Same partial-completion risk as ss.bringup_register (PUT
     # .../register then GET-pending-then-approve). Join-relevant -- every
