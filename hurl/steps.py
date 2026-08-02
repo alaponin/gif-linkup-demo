@@ -295,6 +295,16 @@ REGISTRY: tuple[Step, ...] = (
     # (c) Same partial-completion risk as ss.bringup_register (PUT
     # .../register then GET-pending-then-approve). Join-relevant -- every
     # member's own bring-up AND every hosted client runs this.
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 3) -- third step in the reversal order
+    # (REVERSAL_ORDER below), and the one whose ordering is NOT the mirror
+    # of the forward client_add -> sign_key_csr -> client_register sequence
+    # (see REVERSAL_ORDER's own comment). probe is UNCHANGED: table row 3's
+    # probe (GET /clients/{id}, reading .status) is the exact same request
+    # PROBE_SS_CLIENT_REGISTER.hurl.tmpl already makes for the forward
+    # direction -- reused as-is, not re-derived. The forward interpreter
+    # (job.py's _probe_client_registered) reads REGISTERED; a reversal
+    # interpreter reads DELETION_IN_PROGRESS from the identical capture.
     Step(
         id="ss.client_register",
         template="fragments/MEMBER_CLIENT_REGISTER.hurl.tmpl",
@@ -302,6 +312,7 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "cs_host", "cs_xsrf_token"),
         provides=("@CAP_P@_client_req_id",),
         probe="fragments/PROBE_SS_CLIENT_REGISTER.hurl.tmpl",
+        reverse="fragments/MEMBER_CLIENT_UNREGISTER.hurl.tmpl",
     ),
     # (b) POST .../service-descriptions has a natural unique key
     # (rest_service_code per client) -- repeat conflicts; the separate PUT
