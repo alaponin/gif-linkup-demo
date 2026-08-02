@@ -1,0 +1,29 @@
+{
+  "status": 200,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f33e495ae398d6734c41e390ba3e7",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:11:16 GMT"
+  },
+  "body": {
+    "clients": [],
+    "paging_metadata": {
+      "total_items": 0,
+      "items": 0,
+      "limit": 25,
+      "offset": 0
+    }
+  },
+  "captured": "2026-08-02T12:11:17Z",
+  "context": "PROBE for the cs.members_member reversal -- GET /clients?q=<member_code> on the Central Server after the member delete. An empty items list is the absence signal; there is no 404."
+}

@@ -1,0 +1,18 @@
+{
+  "status": 204,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f33caa8c75030e4e18befb46a3f9f",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "Date": "Sun, 02 Aug 2026 12:10:50 GMT"
+  },
+  "body": null,
+  "captured": "2026-08-02T12:10:50Z",
+  "context": "REVERSE of cs.members_member -- DELETE /members/{member_id} on the Central Server, called with the member's subsystem record still present. Returns 204 and CASCADES: the subsystem goes with the member, so the separate DELETE /subsystems/{subsystem_id} the earlier notes (xroad-770-notes.md 7) paired it with is redundant. X-Road 7.7.0, live."
+}

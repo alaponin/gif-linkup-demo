@@ -1,0 +1,33 @@
+{
+  "status": 200,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f332110aeb3a02deff9835987c1ff",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:08:01 GMT"
+  },
+  "body": {
+    "id": "PROGRESSA:GOV:PTSB:SCHOLARSHIP",
+    "instance_id": "PROGRESSA",
+    "member_name": "Progressa Tertiary Scholarship Board",
+    "member_class": "GOV",
+    "member_code": "PTSB",
+    "subsystem_code": "SCHOLARSHIP",
+    "owner": false,
+    "has_valid_local_sign_cert": true,
+    "is_management_services_provider": false,
+    "connection_type": "HTTP",
+    "status": "DELETION_IN_PROGRESS"
+  },
+  "captured": "2026-08-02T12:08:02Z",
+  "context": "PROBE for the ss.client_register reversal -- GET /clients/{id} immediately after the unregister. Status is the ClientStatus enum."
+}

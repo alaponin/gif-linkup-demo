@@ -1,0 +1,255 @@
+{
+  "status": 200,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f3339c7fb00cbada3e815236baa58",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:08:25 GMT"
+  },
+  "body": {
+    "items": [
+      {
+        "id": 10,
+        "type": "CLIENT_DELETION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "SCHOLARSHIP",
+          "member_class": "GOV",
+          "member_code": "PTSB",
+          "encoded_id": "PROGRESSA:GOV:PTSB:SCHOLARSHIP"
+        },
+        "client_owner_name": "Progressa Tertiary Scholarship Board",
+        "created_at": "2026-08-02T12:08:01.231635Z"
+      },
+      {
+        "id": 9,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "SCHOLARSHIP",
+          "member_class": "GOV",
+          "member_code": "PTSB",
+          "encoded_id": "PROGRESSA:GOV:PTSB:SCHOLARSHIP"
+        },
+        "client_owner_name": "Progressa Tertiary Scholarship Board",
+        "created_at": "2026-08-02T12:04:01.557475Z"
+      },
+      {
+        "id": 8,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa National Examination Authority",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PNEA",
+          "member_class": "GOV",
+          "member_code": "PNEA",
+          "encoded_id": "PROGRESSA:GOV:PNEA:SS-PNEA"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "EXAMS",
+          "member_class": "GOV",
+          "member_code": "PNEA",
+          "encoded_id": "PROGRESSA:GOV:PNEA:EXAMS"
+        },
+        "client_owner_name": "Progressa National Examination Authority",
+        "created_at": "2026-08-02T11:59:47.863226Z"
+      },
+      {
+        "id": 7,
+        "type": "AUTH_CERT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa National Examination Authority",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PNEA",
+          "member_class": "GOV",
+          "member_code": "PNEA",
+          "encoded_id": "PROGRESSA:GOV:PNEA:SS-PNEA"
+        },
+        "address": "ss-pnea",
+        "status": "APPROVED",
+        "created_at": "2026-08-02T11:58:04.527007Z"
+      },
+      {
+        "id": 6,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "PEMIS",
+          "member_class": "GOV",
+          "member_code": "MOEYS",
+          "encoded_id": "PROGRESSA:GOV:MOEYS:PEMIS"
+        },
+        "client_owner_name": "Progressa Ministry of Education, Youth and Sport",
+        "created_at": "2026-08-02T11:57:54.383258Z"
+      },
+      {
+        "id": 5,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "IDENTITY",
+          "member_class": "GOV",
+          "member_code": "PNIA",
+          "encoded_id": "PROGRESSA:GOV:PNIA:IDENTITY"
+        },
+        "client_owner_name": "Progressa National Identity Authority",
+        "created_at": "2026-08-02T11:57:53.210166Z"
+      },
+      {
+        "id": 4,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "ENROLMENT",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:ENROLMENT"
+        },
+        "client_owner_name": "Progressa Learner Registry",
+        "created_at": "2026-08-02T11:57:51.910145Z"
+      },
+      {
+        "id": 3,
+        "type": "AUTH_CERT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Learner Registry",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PLR",
+          "member_class": "GOV",
+          "member_code": "PLR",
+          "encoded_id": "PROGRESSA:GOV:PLR:SS-PLR"
+        },
+        "address": "ss-plr",
+        "status": "APPROVED",
+        "created_at": "2026-08-02T11:56:56.62102Z"
+      },
+      {
+        "id": 2,
+        "type": "CLIENT_REGISTRATION_REQUEST",
+        "origin": "CENTER",
+        "security_server_owner": "Progressa Digital Government Authority",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PDGA",
+          "member_class": "GOV",
+          "member_code": "PDGA",
+          "encoded_id": "PROGRESSA:GOV:PDGA:SS-PDGA"
+        },
+        "status": "APPROVED",
+        "client_id": {
+          "type": "SUBSYSTEM",
+          "instance_id": "PROGRESSA",
+          "subsystem_code": "MANAGEMENT",
+          "member_class": "GOV",
+          "member_code": "PDGA",
+          "encoded_id": "PROGRESSA:GOV:PDGA:MANAGEMENT"
+        },
+        "client_owner_name": "Progressa Digital Government Authority",
+        "created_at": "2026-08-02T11:56:43.92458Z"
+      },
+      {
+        "id": 1,
+        "type": "AUTH_CERT_REGISTRATION_REQUEST",
+        "origin": "SECURITY_SERVER",
+        "security_server_owner": "Progressa Digital Government Authority",
+        "security_server_id": {
+          "type": "SERVER",
+          "instance_id": "PROGRESSA",
+          "server_code": "SS-PDGA",
+          "member_class": "GOV",
+          "member_code": "PDGA",
+          "encoded_id": "PROGRESSA:GOV:PDGA:SS-PDGA"
+        },
+        "address": "ss-pdga",
+        "status": "APPROVED",
+        "created_at": "2026-08-02T11:56:43.258229Z"
+      }
+    ],
+    "paging_metadata": {
+      "total_items": 10,
+      "items": 10,
+      "limit": 25,
+      "offset": 0
+    }
+  },
+  "captured": "2026-08-02T12:08:25Z",
+  "context": "GET /management-requests?sort=id&desc=true on the Central Server immediately after PUT /clients/{id}/unregister on the hosting Security Server -- shows the CLIENT_DELETION_REQUEST this raises and, decisively, its status. X-Road 7.7.0, live."
+}

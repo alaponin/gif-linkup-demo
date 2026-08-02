@@ -1,0 +1,26 @@
+{
+  "status": 404,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f32e4bffea269758413e6a134414e",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:07:00 GMT"
+  },
+  "body": {
+    "status": 404,
+    "error": {
+      "code": "service_client_not_found"
+    }
+  },
+  "captured": "2026-08-02T12:07:00Z",
+  "context": "PROBE for the service.acl reversal -- GET /clients/{id}/service-clients/{subject}/access-rights after the revoke. Absence is a 404, not an empty list."
+}

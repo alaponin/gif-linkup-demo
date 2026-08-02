@@ -1,0 +1,18 @@
+{
+  "status": 204,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f32e3a370a834b2040d7210301ee2",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "Date": "Sun, 02 Aug 2026 12:06:59 GMT"
+  },
+  "body": null,
+  "captured": "2026-08-02T12:07:00Z",
+  "context": "REVERSE of service.acl -- POST /clients/{id}/service-clients/{subject}/access-rights/delete on the hosting Security Server, revoking the joined member's only granted subject. X-Road 7.7.0, live, hosted join (PTSB:SCHOLARSHIP on ss-plr)."
+}

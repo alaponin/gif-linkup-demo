@@ -1,0 +1,29 @@
+{
+  "status": 404,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f33720147cf2cd19c60e8f954f418",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:09:22 GMT"
+  },
+  "body": {
+    "status": 404,
+    "error": {
+      "code": "client_not_found",
+      "metadata": [
+        "PROGRESSA:GOV:PTSB:SCHOLARSHIP"
+      ]
+    }
+  },
+  "captured": "2026-08-02T12:09:22Z",
+  "context": "PROBE for the ss.client_add reversal -- GET /clients/{id} after DELETE /clients/{id} on the hosting Security Server."
+}

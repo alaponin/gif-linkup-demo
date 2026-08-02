@@ -1,0 +1,30 @@
+{
+  "status": 404,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f33b1d79718d032d9fa27916f9f74",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:10:25 GMT"
+  },
+  "body": {
+    "status": 404,
+    "error": {
+      "code": "certificate_not_found",
+      "metadata": [
+        "Certificate with hash 7869BE88751FD1CC8B880B130B8C788364CF711D8294301E08F4DE4BDD672B9E not found",
+        "tr.check_signer_logs"
+      ]
+    }
+  },
+  "captured": "2026-08-02T12:10:25Z",
+  "context": "PROBE for the ss.sign_key_csr reversal -- GET /token-certificates/{hash} for the deleted SIGN key's certificate."
+}

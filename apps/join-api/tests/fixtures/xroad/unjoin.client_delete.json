@@ -1,0 +1,18 @@
+{
+  "status": 204,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f335ea87717f31721cd594cb0f524",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "Date": "Sun, 02 Aug 2026 12:09:02 GMT"
+  },
+  "body": null,
+  "captured": "2026-08-02T12:09:03Z",
+  "context": "REVERSE of ss.client_add -- DELETE /clients/{id} on the HOSTING Security Server for a hosted joined member (PTSB:SCHOLARSHIP on ss-plr), issued while GET /clients/{id} still reports DELETION_IN_PROGRESS. Accepted immediately: measured on a second cycle at t+0s from the PUT .../unregister that raised the CLIENT_DELETION_REQUEST, with no propagation wait. This does NOT reproduce the '409 action_not_possible then wait' that docs/xroad-770-notes.md 7 recorded for an OWN-SERVER member. X-Road 7.7.0, live."
+}

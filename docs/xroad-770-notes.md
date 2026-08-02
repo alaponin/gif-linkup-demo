@@ -270,6 +270,144 @@ lag, is §6 above — a timing property, not a distinct response shape (the
 "denied" response it eventually produces is the exact same
 `exchange_access_denied.json` shape, just delayed).
 
+## 11. Un-joining a *hosted* member: the reverse sequence, measured
+
+§7 above established that a member can be retired from a running federation
+at all, using a member with its **own** Security Server. This section is the
+join-c plan's Task 1 spike, and its subject is the case Plan B's topology
+makes normal and §7 never covered: a **hosted** member, whose subsystem lives
+as one client among several on a Security Server somebody else owns and keeps
+running. Established live, twice, against `profile: lite` from cold — PTSB:
+SCHOLARSHIP joined onto `ss-plr` through the join API (`ACTIVE, verified:
+true`), then taken apart by hand with `curl`. Every exchange below is
+recorded in `apps/join-api/tests/fixtures/xroad/unjoin.*.json`.
+
+**The working sequence is six calls, and it never waits.** Four calls the
+join-c plan budgeted for turned out not to exist: a `PUT .../disable` before
+the service-description delete, a Central-Server approval round after the
+unregister, a separate certificate delete before the SIGN-key delete, and a
+separate `DELETE /subsystems/{id}` before the member delete. See below for
+each.
+
+| # | Reverses | Call | Status | Probe (the read that proves it is gone) | Probe answer |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `service.acl` | `POST /clients/{id}/service-clients/{subject}/access-rights/delete` on the **host** SS | **204** | `GET .../service-clients/{subject}/access-rights` | **404** `service_client_not_found` |
+| 2 | `service.publish` | `DELETE /service-descriptions/{id}` on the host SS | **204** | `GET /clients/{id}/service-descriptions` | **200** `[]` |
+| 3 | `ss.client_register` | `PUT /clients/{id}/unregister` on the host SS | **204** | `GET /clients/{id}` | **200** `status: DELETION_IN_PROGRESS` |
+| 4 | `ss.client_add` | `DELETE /clients/{id}` on the host SS | **204** | `GET /clients/{id}` | **404** `client_not_found` (with the id in `metadata`) |
+| 5 | `ss.sign_key_csr` | `DELETE /keys/{key_id}` on the host SS | **204** | `GET /token-certificates/{hash}` | **404** `certificate_not_found` |
+| 6 | `cs.members_member` | `DELETE /members/{member_id}` on the **Central Server** | **204** | `GET /clients?q=<member_code>` | **200** `{"clients": []}` |
+
+Repeating any of them is safe and distinguishable: 1 → `409
+accessright_not_found` (the shape `apps/console/tests/fixtures/xroad/
+revoke_409_not_found.json` already records), 2 → `404
+service_description_not_found`, 4 → `404 client_not_found`, 5 → `404`,
+6 → `404 member_not_found`.
+
+### Five things that came out different from what the plan assumed
+
+1. **Un-registration is NOT approved by the Central Server.** The plan's
+   design decision 3 assumed unregistering a subsystem raises a management
+   request the operator must approve, symmetrically with registration. It
+   does not. `PUT /clients/{id}/unregister` raises a `CLIENT_DELETION_REQUEST`
+   on the CS (id 10 in `unjoin.cs_management_requests.json`) which is
+   **auto-processed and has no `status` field at all** — every other request
+   in the same list carries `"status": "APPROVED"`; this one carries none.
+   `GET /management-requests?status=WAITING`, which is exactly what the
+   forward path polls, returns an **empty** list. And
+   `POST /management-requests/{id}/approval` against it returns **`403`**
+   with the bare body `{"status":403}` — no error code, no message.
+   This confirms §7's finding on the own-server case and extends it to the
+   hosted one. There is no approval gate to wait on, in either topology.
+2. **A service description does not have to be disabled before it is
+   deleted.** `DELETE /service-descriptions/{id}` returns 204 against a
+   description that is `"disabled": false` and actively serving. The
+   `PUT .../disable` half of the plan's "disable then delete" is not a
+   precondition and is not in the sequence.
+3. **`DELETE /clients/{id}` does not wait, for a hosted member.** §7 recorded
+   `409 action_not_possible` for an own-server member, requiring a
+   propagation wait of a few minutes. That does **not** reproduce here:
+   measured on a second full cycle, the delete was accepted **`204` at t+0s**
+   — the same second as the `unregister` that preceded it — with
+   `GET /clients/{id}` already answering `404` on the very next call, while
+   the *status* read a moment earlier still said `DELETION_IN_PROGRESS`.
+   The practical consequence: **`status == DELETION_IN_PROGRESS` is not a
+   usable gate.** It is not a signal that the delete will be refused, and it
+   is not a signal that it will be accepted. A reversal should attempt the
+   delete and treat `409 action_not_possible` as retryable, not poll the
+   status first. (The own-server case is *not* re-verified here — nothing in
+   this pack can stand up a member's own Security Server yet. §7's 409 stands
+   as the precedent for that topology, and whether the difference is
+   hosted-vs-own-server or simply that §7's attempt landed inside a shorter
+   window than it looked, this spike cannot say.)
+4. **Deleting a member on the Central Server cascades to its subsystems.**
+   §7 paired `DELETE /subsystems/{subsystem_id}` with `DELETE
+   /members/{member_id}`. The subsystem call is redundant: `DELETE
+   /members/{member_id}` returns 204 with the subsystem record still present,
+   and `GET /clients?q=PTSB` is empty immediately afterward — a subsequent
+   `DELETE /subsystems/{id}` returns `404 subsystem_not_found`. Note also
+   that there is **no** `GET /subsystems/{id}` on the CS at all (it returns
+   **`405`**, not 404), so the CS-side probe has to be
+   `GET /clients?q=<member_code>` and its absence signal is an **empty list,
+   not a 404**.
+5. **The reversal is not the forward order reversed.** Forward is
+   `ss.client_add` → `ss.sign_key_csr` → `ss.client_register` (that order is
+   load-bearing — `hurl/steps.py` records why). The order that works
+   backwards is `client_register` → `client_add` → `sign_key_csr`: delete the
+   client first, its SIGN key after. This is what was established live; the
+   strict mirror (key before client) was not tried, so a reversal walk cannot
+   be implemented as a blind `reversed(completed_steps)`.
+
+### What happens to a hosted member's SIGN key (the §7 gap)
+
+Nothing. That is the finding. When the hosted client is deleted, its SIGN key
+and certificate **survive completely intact** on the hosting server's token:
+`status: REGISTERED`, `active: true`, `ocsp_status: OCSP_RESPONSE_GOOD`,
+`saved_to_configuration: true` — recorded in
+`unjoin.token_after_client_delete.json`, taken *after* `GET /clients` had
+stopped listing PTSB at all. Deleting the client does not touch the key, and
+nothing in the admin API will ever collect it. On an own-server join this is
+invisible because the whole server is destroyed; on a hosted join the
+hosting server keeps running and accumulates one orphaned SIGNING key per
+member that ever left.
+
+So the SIGN-key delete is a **required, explicit step**, and it must
+correlate the key by `keys[].certificates[].owner_id` — `ss-plr` under
+`profile: lite` carries four keys all labelled `"Sign key"` (PNIA, PLR,
+MOEYS and the joined member), so a label match would delete a *different*
+agency's key. This is the same correlation
+`hurl/templates/fragments/PROBE_SS_SIGN_KEY.hurl.tmpl` already documents for
+the forward path; the reversal needs it for a much less forgiving reason.
+
+One call does it: `DELETE /keys/{key_id}` returns **204** and removes the key
+*and* its still-`REGISTERED` certificate together. The certificate does not
+have to be deleted, disabled or unregistered first. The host's other three
+SIGN keys and its AUTH key are untouched, and `scripts/acceptance.sh` is
+green afterward.
+
+### The round trip closes
+
+Both cycles ended with `scripts/member.sh remove ptsb`, and both left
+`hurl/topology.json` **byte-identical** to `tests/golden/lite/topology.json`,
+with the regenerated `hurl/scenarios/` tree identical too. A real call from
+an authorised consumer to the departed member's service fails cleanly and
+specifically — `Server.ClientProxy.UnknownMember`, `"Could not find addresses
+for service provider ..."` (`unjoin.r1_after_unjoin.json`), the same clean
+failure §7 recorded — not a hang and not a stale success.
+
+**No global-configuration residue was found, and no restart was needed.** The
+"if clean live de-registration turns out not to be achievable" branch of the
+join-c plan does not apply.
+
+Two carry-overs from §7 that this spike does **not** overturn:
+
+- The orphaned-container/volume trap is unchanged, and only bites a member
+  with its own Security Server. A hosted member has no container and no
+  volumes, so `member.sh remove` before teardown is harmless for it. Retire
+  an own-server member live *before* removing its config, or purge first.
+- A demonstration join can be undone on camera. For a hosted member it is now
+  genuinely quick — six calls, no propagation wait, seconds not minutes.
+
 ## Sources
 
 `nordic-institute/X-Road` at tag `7.7.0`: `development/hurl/scenarios/setup.hurl`,

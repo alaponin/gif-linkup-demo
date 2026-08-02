@@ -1,0 +1,292 @@
+{
+  "status": 200,
+  "headers": {
+    "x-road-ui-correlation-id": "6a6f3387137a1edd2e14105572404b85",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "0",
+    "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Strict-Transport-Security": "max-age=31536000 ; includeSubDomains",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'",
+    "vary": "accept-encoding",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Date": "Sun, 02 Aug 2026 12:09:43 GMT"
+  },
+  "body": {
+    "id": "0",
+    "name": "softToken-0",
+    "type": "SOFTWARE",
+    "keys": [
+      {
+        "id": "54D1C24C68C230F99B8329792AA5B24FEAD9B38E",
+        "name": "Sign key",
+        "label": "Sign key",
+        "certificates": [
+          {
+            "ocsp_status": "OCSP_RESPONSE_GOOD",
+            "owner_id": "PROGRESSA:GOV:PNIA",
+            "active": true,
+            "saved_to_configuration": true,
+            "renewed_cert_hash": "",
+            "renewal_error": "",
+            "ocsp_verify_before_activation_error": "",
+            "next_automatic_renewal_time": "2046-07-14T11:57:52Z",
+            "certificate_details": {
+              "issuer_distinguished_name": "CN=Test CA, O=Test",
+              "issuer_common_name": "Test CA",
+              "subject_distinguished_name": "SERIALNUMBER=PROGRESSA/SS-PLR/GOV, CN=PNIA, O=Progressa National Identity Authority, C=FI",
+              "subject_common_name": "PNIA",
+              "not_before": "2026-08-02T11:57:52Z",
+              "not_after": "2046-07-28T11:57:52Z",
+              "serial": "7",
+              "version": 3,
+              "signature_algorithm": "SHA256withRSA",
+              "public_key_algorithm": "RSA",
+              "rsa_public_key_exponent": 65537,
+              "hash": "31F76C2F620EE59BD1BB729149FA04F7E3FFA7B6E03906A1AB2329E834DE274D",
+              "key_usages": [
+                "NON_REPUDIATION"
+              ],
+              "_slimmed": "signature and rsa_public_key_modulus dropped: per-deploy random, never stable across a re-capture"
+            },
+            "status": "REGISTERED",
+            "possible_actions": [
+              "DELETE",
+              "DISABLE"
+            ]
+          }
+        ],
+        "certificate_signing_requests": [],
+        "usage": "SIGNING",
+        "available": true,
+        "saved_to_configuration": true,
+        "possible_actions": [
+          "DELETE",
+          "EDIT_FRIENDLY_NAME"
+        ],
+        "key_algorithm": "RSA"
+      },
+      {
+        "id": "8BD6A1D680C1B5A9AC02ABC5E0F0BE8F89EC1DCD",
+        "name": "Sign key",
+        "label": "Sign key",
+        "certificates": [
+          {
+            "ocsp_status": "OCSP_RESPONSE_GOOD",
+            "owner_id": "PROGRESSA:GOV:PLR",
+            "active": true,
+            "saved_to_configuration": true,
+            "renewed_cert_hash": "",
+            "renewal_error": "",
+            "ocsp_verify_before_activation_error": "",
+            "next_automatic_renewal_time": "2046-07-14T11:56:55Z",
+            "certificate_details": {
+              "issuer_distinguished_name": "CN=Test CA, O=Test",
+              "issuer_common_name": "Test CA",
+              "subject_distinguished_name": "SERIALNUMBER=PROGRESSA/SS-PLR/GOV, CN=PLR, O=Progressa Learner Registry, C=FI",
+              "subject_common_name": "PLR",
+              "not_before": "2026-08-02T11:56:55Z",
+              "not_after": "2046-07-28T11:56:55Z",
+              "serial": "6",
+              "version": 3,
+              "signature_algorithm": "SHA256withRSA",
+              "public_key_algorithm": "RSA",
+              "rsa_public_key_exponent": 65537,
+              "hash": "B4374CDF69DDFD7CFA28004F902E49C70BE491767BFC5A275CADEEE5DC1D597F",
+              "key_usages": [
+                "NON_REPUDIATION"
+              ],
+              "_slimmed": "signature and rsa_public_key_modulus dropped: per-deploy random, never stable across a re-capture"
+            },
+            "status": "REGISTERED",
+            "possible_actions": [
+              "DELETE",
+              "DISABLE"
+            ]
+          }
+        ],
+        "certificate_signing_requests": [],
+        "usage": "SIGNING",
+        "available": true,
+        "saved_to_configuration": true,
+        "possible_actions": [
+          "DELETE",
+          "EDIT_FRIENDLY_NAME"
+        ],
+        "key_algorithm": "RSA"
+      },
+      {
+        "id": "0A55E5C2A2E61B4DBF99BE4D620D208ABC49B90A",
+        "name": "Sign key",
+        "label": "Sign key",
+        "certificates": [
+          {
+            "ocsp_status": "OCSP_RESPONSE_GOOD",
+            "owner_id": "PROGRESSA:GOV:PTSB",
+            "active": true,
+            "saved_to_configuration": true,
+            "renewed_cert_hash": "",
+            "renewal_error": "",
+            "ocsp_verify_before_activation_error": "",
+            "next_automatic_renewal_time": "2046-07-14T12:04:00Z",
+            "certificate_details": {
+              "issuer_distinguished_name": "CN=Test CA, O=Test",
+              "issuer_common_name": "Test CA",
+              "subject_distinguished_name": "SERIALNUMBER=PROGRESSA/SS-PLR/GOV, CN=PTSB, O=Progressa Tertiary Scholarship Board, C=FI",
+              "subject_common_name": "PTSB",
+              "not_before": "2026-08-02T12:04:00Z",
+              "not_after": "2046-07-28T12:04:00Z",
+              "serial": "11",
+              "version": 3,
+              "signature_algorithm": "SHA256withRSA",
+              "public_key_algorithm": "RSA",
+              "rsa_public_key_exponent": 65537,
+              "hash": "7869BE88751FD1CC8B880B130B8C788364CF711D8294301E08F4DE4BDD672B9E",
+              "key_usages": [
+                "NON_REPUDIATION"
+              ],
+              "_slimmed": "signature and rsa_public_key_modulus dropped: per-deploy random, never stable across a re-capture"
+            },
+            "status": "REGISTERED",
+            "possible_actions": [
+              "DELETE",
+              "DISABLE"
+            ]
+          }
+        ],
+        "certificate_signing_requests": [],
+        "usage": "SIGNING",
+        "available": true,
+        "saved_to_configuration": true,
+        "possible_actions": [
+          "DELETE",
+          "EDIT_FRIENDLY_NAME"
+        ],
+        "key_algorithm": "RSA"
+      },
+      {
+        "id": "5A699AE7497B01A425F8288654D3F6FA83971EBD",
+        "name": "Auth key",
+        "label": "Auth key",
+        "certificates": [
+          {
+            "ocsp_status": "OCSP_RESPONSE_GOOD",
+            "active": true,
+            "saved_to_configuration": true,
+            "renewed_cert_hash": "",
+            "renewal_error": "",
+            "ocsp_verify_before_activation_error": "",
+            "next_automatic_renewal_time": "2046-07-14T11:56:53Z",
+            "certificate_details": {
+              "issuer_distinguished_name": "CN=Test CA, O=Test",
+              "issuer_common_name": "Test CA",
+              "subject_distinguished_name": "SERIALNUMBER=PROGRESSA/SS-PLR/GOV, CN=ss-plr, O=Progressa Learner Registry, C=FI",
+              "subject_common_name": "ss-plr",
+              "not_before": "2026-08-02T11:56:53Z",
+              "not_after": "2046-07-28T11:56:53Z",
+              "serial": "5",
+              "version": 3,
+              "signature_algorithm": "SHA256withRSA",
+              "public_key_algorithm": "RSA",
+              "rsa_public_key_exponent": 65537,
+              "hash": "FBF82B715E03769AC85630ED40692C9E3EE01B9B7E91FD8D602DC0B5E5D81D19",
+              "key_usages": [
+                "KEY_AGREEMENT",
+                "DATA_ENCIPHERMENT",
+                "DIGITAL_SIGNATURE",
+                "KEY_ENCIPHERMENT"
+              ],
+              "subject_alternative_names": "DNS:ss-plr",
+              "_slimmed": "signature and rsa_public_key_modulus dropped: per-deploy random, never stable across a re-capture"
+            },
+            "status": "REGISTERED",
+            "possible_actions": [
+              "DISABLE",
+              "UNREGISTER"
+            ]
+          }
+        ],
+        "certificate_signing_requests": [],
+        "usage": "AUTHENTICATION",
+        "available": true,
+        "saved_to_configuration": true,
+        "possible_actions": [
+          "DELETE",
+          "EDIT_FRIENDLY_NAME"
+        ],
+        "key_algorithm": "RSA"
+      },
+      {
+        "id": "12218ECBFEE85EE87B46B64824075C7CB99A5C05",
+        "name": "Sign key",
+        "label": "Sign key",
+        "certificates": [
+          {
+            "ocsp_status": "OCSP_RESPONSE_GOOD",
+            "owner_id": "PROGRESSA:GOV:MOEYS",
+            "active": true,
+            "saved_to_configuration": true,
+            "renewed_cert_hash": "",
+            "renewal_error": "",
+            "ocsp_verify_before_activation_error": "",
+            "next_automatic_renewal_time": "2046-07-14T11:57:53Z",
+            "certificate_details": {
+              "issuer_distinguished_name": "CN=Test CA, O=Test",
+              "issuer_common_name": "Test CA",
+              "subject_distinguished_name": "SERIALNUMBER=PROGRESSA/SS-PLR/GOV, CN=MOEYS, O=\"Progressa Ministry of Education, Youth and Sport\", C=FI",
+              "subject_common_name": "MOEYS",
+              "not_before": "2026-08-02T11:57:53Z",
+              "not_after": "2046-07-28T11:57:53Z",
+              "serial": "8",
+              "version": 3,
+              "signature_algorithm": "SHA256withRSA",
+              "public_key_algorithm": "RSA",
+              "rsa_public_key_exponent": 65537,
+              "hash": "6CD317D4F9B37256150544CE1D1C0770BD838F324B22955CC782BD683C07E615",
+              "key_usages": [
+                "NON_REPUDIATION"
+              ],
+              "_slimmed": "signature and rsa_public_key_modulus dropped: per-deploy random, never stable across a re-capture"
+            },
+            "status": "REGISTERED",
+            "possible_actions": [
+              "DELETE",
+              "DISABLE"
+            ]
+          }
+        ],
+        "certificate_signing_requests": [],
+        "usage": "SIGNING",
+        "available": true,
+        "saved_to_configuration": true,
+        "possible_actions": [
+          "DELETE",
+          "EDIT_FRIENDLY_NAME"
+        ],
+        "key_algorithm": "RSA"
+      }
+    ],
+    "status": "OK",
+    "logged_in": true,
+    "available": true,
+    "saved_to_configuration": true,
+    "read_only": false,
+    "token_infos": [
+      {
+        "key": "Type",
+        "value": "Software"
+      }
+    ],
+    "possible_actions": [
+      "TOKEN_CHANGE_PIN",
+      "LOGOUT",
+      "GENERATE_KEY",
+      "EDIT_FRIENDLY_NAME"
+    ]
+  },
+  "captured": "2026-08-02T12:09:43Z",
+  "context": "GET /tokens/0 on the HOSTING Security Server after the hosted member's client was deleted, while the host keeps serving its other members. Shows whether the departed member's SIGN key and certificate survive the client deletion. X-Road 7.7.0, live. Certificate signature/modulus blobs are dropped (see _slimmed) -- they are fresh per deploy and would make every re-capture read as drift."
+}

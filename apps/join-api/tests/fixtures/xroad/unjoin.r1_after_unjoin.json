@@ -1,0 +1,16 @@
+{
+  "status": 500,
+  "headers": {
+    "Date": "Sun, 02 Aug 2026 12:11:35 GMT",
+    "X-Road-Error": "Server.ClientProxy.UnknownMember",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked"
+  },
+  "body": {
+    "type": "Server.ClientProxy.UnknownMember",
+    "message": "Could not find addresses for service provider \"SERVICE:PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api\"",
+    "detail": "2f53cc02-d8b0-4459-af30-affa7fb8c4a8"
+  },
+  "captured": "2026-08-02T12:11:36Z",
+  "context": "A real r1 call from an authorized consumer (PNEA:EXAMS, via ss-pnea) to the un-joined member's service, after the full reverse sequence. This is what a caller that has not noticed the member left actually sees. X-Road 7.7.0, live."
+}
