@@ -109,7 +109,15 @@ def main(outdir):
             f"Deterministic (seed {SEED}); regenerate with scripts/gen_seed_data.py.\n\n"
             f"- persons.csv: {len(persons)} (PNIA)\n"
             f"- enrolments.csv: {len(enrolments)} (PLR)\n"
-            f"- school_records.csv: {len(school_records)} (PEMIS)\n\n"
+            f"- school_records.csv: {len(school_records)} (PEMIS)\n"
+            # awards.csv is NOT written by this script (join-b Task 6): PTSB
+            # is not a canonical member, so there is no generator entity for
+            # it, and this line would otherwise be silently lost every time
+            # seed.sh reruns this script and overwrites this file whole --
+            # found live when a hand-added note here vanished on the next
+            # seed.sh. Hardcoded here instead, once, so it survives.
+            "- awards.csv: 4 (PTSB) -- hand-written, not this script's output "
+            "(a live-proof fixture; NINs reused from persons.csv on purpose)\n\n"
             "NINs in PNIA but deliberately NOT in PLR (clean-404 negative check):\n"
             + "".join(f"- {n}\n" for n in sorted(missing_plr))
             + "\nNIN format is a placeholder 11-digit string [confirm: at P0].\n")

@@ -288,6 +288,38 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
 
 ## 9. Parked / open items
 
+- **Resolved 2026-08-02:** module 2.7, the join API (`apps/join-api/`,
+  design spec `docs/superpowers/specs/2026-08-01-member-join-api-design.md`,
+  join-b plan) — a hosted-only member join from a submitted payload through
+  validation, operator approval, real config generation, and the live
+  X-Road admin-API sequence to `ACTIVE`. The console gains a fourth tab
+  (pending queue + diff, approve/reject with a reason, live progress as a
+  step list coloured by actor, `FAILED` resume, the live-but-uncommitted
+  warning, `requested_access:` follow-ups) — a thin, server-side-token-
+  holding proxy onto join-api, wired to touch neither the ACL journal nor
+  its watchdog. Live-verified end to end (§12's live proof, PTSB per spec
+  §2.1, `profile: lite`): submit → approve → `ACTIVE, verified: true` in
+  **~93s** → `acceptance.sh` green → `member.sh list` → `member.sh remove` →
+  regenerate → `acceptance.sh` green again. Confirms Task 5's design call
+  (`--live` stays vacuous for 2.7, a real join is a separate manual
+  procedure) was right: 93s is comfortably under the ~2-minute threshold
+  that would have forced 2.7's live check behind its own flag. Two real bugs
+  found and fixed by the live proof, neither caught by `--fast`'s
+  fixture-driven tests: the `apps/join-api` container image had no `git`
+  binary, but `writer.apply_real()`'s dirty-checkout guard (spec S9) shells
+  out to it — fixed in the Dockerfile; and `job.py` ran each step as its own
+  Hurl process with no cookie jar, so any step after the one that logged in
+  401'd (X-Road's admin API validates the XSRF header against the session
+  cookie, not the header alone, which only matters once nothing carries a
+  cookie jar between separate process invocations — cold deploy's single
+  concatenated Hurl file never hits this) — fixed with one shared
+  `--cookie`/`--cookie-jar` file per job run. Also found and fixed:
+  `scripts/acceptance.sh`'s own 2.7 r1 check tried an unsubstituted
+  `{param}` path (no service in this pack, canonical or joined, publishes a
+  parameter-free endpoint) and could never return 2xx against a real
+  backend — changed to call the service root and check for the absence of
+  an X-Road fault, the same semantics `job.py`'s own `r1_verify` step
+  already used correctly.
 - **ITU cloud (Linkup)** — same compose + scenarios on the ITU VM; blocked on
   environment specifics (Inception action A4). Retargeting is now a change to the
   host values in `hurl/generate.py` and nothing else — the same move upstream made

@@ -22,15 +22,17 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   the *rendered* Compose config, profiles and `${VAR}` interpolation
   resolved, which is what makes it worth having, and that read needs
   neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
-  daemon itself stopped, see `tests/test_tiers.py`) **~23s** (measured
-  2026-08-02, 175 tests — was ~16s/66 tests on 2026-08-01 and ~8s/48 tests
-  on 2026-07-28; the growth is tests added across several same-day plans,
-  not a regression in any single one of them — the last step of it is the
-  join API's own suite, whose two `apply_real`/`dry_run_diff` endpoint tests
-  each run a real `hurl/generate.py` subprocess); `--live`
+  daemon itself stopped, see `tests/test_tiers.py`) **~29s** (measured
+  2026-08-02, 203 tests [202 passed, 1 skipped] — was 175 tests earlier the
+  same day, before join-b Task 6 added the console's join tab and
+  `apps/join-api`'s `GET /requests`/`POST /requests/{id}/reject` endpoints,
+  each with their own coverage; ~16s/66 tests on 2026-08-01 and ~8s/48
+  tests on 2026-07-28 before that — the growth is tests added across
+  several same-day plans, not a regression in any single one of them);
+  `--live`
   (`--fast`, then `acceptance.sh` against a running stack; refuses rather
   than deploying one if nothing is reachable)
-  **~23s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
+  **~29s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
   reproducibility proof) **~918s (~15 min) under `profile: full`, ~370s
   (~6.2 min) under `profile: lite`** (two independent cold runs each;
   see `docs/production-delta.md` "Lite profile's full cycle, measured").
@@ -46,6 +48,18 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   reproducibility proof, not a per-task ritual). A plan's own "Verified live
   (date)" notes should say which tier backed them, so a later reader can
   tell a `--fast`-only claim from a `--full` one.
+  **`--live` does not itself perform a real member join** (join-b Task 5's
+  own design: `acceptance/2.7.md`'s checks discover already-joined members
+  generically and pass vacuously when none exist — they never submit or
+  approve one). Task 6's own live proof measured a real hosted join
+  (`apps/join-api`, `POST /requests` → approve → `ACTIVE, verified: true`)
+  at **~93s** end to end under `profile: lite` — comfortably under the
+  ~2-minute threshold past which the brief that drove this decision says
+  `--live` "stops being the run-it-when-a-task-is-done tier it is
+  documented as." That confirms Task 5's call was right, not just
+  convenient: **`--live` stays vacuous-by-default**, and a real join is a
+  deliberate, separate, manual procedure (`runbook.md`'s "Join via the API
+  (automated)"), not something bolted onto the routine `--live` tier.
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
 profile, X-Road version pins, and (`cs_digest`/`ss_digest`/`testca_tag`) the
@@ -58,23 +72,40 @@ federation as config-as-code — Hurl scenarios driving the admin REST APIs,
 generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),
 `acceptance/` (given/when/then per module; 2.6 is the once-only exchange, the
 framework's acceptance; `member.md` is the generic per-member check every
-joined member gets automatically), `scripts/` (deploy / seed / acceptance /
-teardown / `member.sh list|remove` — reports on and retires joined members /
+joined member gets automatically; 2.7 is the join API's own transition +
+reachability check), `scripts/` (deploy / seed / acceptance /
+teardown / `member.sh list|remove|drift` — reports on, retires, and checks
+drift for joined members / `join.sh up|down|status` — the join API's own
+service lifecycle /
 `verify.sh` — the tiered entry point above), `tests/` (the golden corpus for
 `hurl/generate.py` — `test_golden.py`, no Docker), `apps/` (mock REST registries behind
 the Security Servers + OpenAPI contracts +
 Gambia-grounded, Progressa-named seed data; `apps/console/` is the optional
 one-page demonstration UI, `scripts/console.sh up` — a demo asset, not a
-module, never in the acceptance path), `docs/` (production delta per Module
-5.7; X-Road 8 note; what reading the 7.7.0 reference corrected).
+module, never in the acceptance path, whose **4 · Join a member** tab is a
+thin, server-side-token-holding proxy onto `apps/join-api/` — module 2.7's own
+service, which validates and drives a real member join from a submitted
+payload to `ACTIVE` over the live X-Road admin API), `docs/` (production delta
+per Module 5.7; X-Road 8 note; what reading the 7.7.0 reference corrected).
 
 The number and identity of members is a property of `configs/member-*/` plus
-`manifest.yaml`'s `identity.members`, not of this pack's source code. A new
-member joins by running `prompts/member.md` against an agency brief and
-committing what it produces — there is no `scripts/member.sh add`, because
-writing member config by hand is exactly what this pack is demonstrating you
-don't need to do. On a single-host demo deployment, default a joining member
-to `hosted_on` an existing Security Server rather than its own: it costs zero
+`manifest.yaml`'s `identity.members`, not of this pack's source code. There is
+still no `scripts/member.sh add`, and that stays true on purpose — writing
+member config by hand is exactly what this pack demonstrates you don't need
+to do — but as of module 2.7 there is now an API for it:
+`apps/join-api` (`scripts/join.sh up`, or the console's **4 · Join a member**
+tab) drives a real, hosted member from a submitted payload through validation,
+operator approval, config generation and the live X-Road admin-API sequence to
+`ACTIVE, verified: true`, live-verified end to end (join-b Task 6: submit →
+approve → `ACTIVE` → `acceptance.sh` green → `member.sh list` → `member.sh
+remove` → regenerate → `acceptance.sh` green again, ~93s for the join step
+itself). `prompts/member.md`'s manual flow — running the prompt against an
+agency brief and committing what it produces — is still there for anyone
+without a running stack to submit against, or for a member type Plan B's
+join API doesn't cover (an own Security Server; Plan C). On a single-host demo
+deployment, default a joining member to `hosted_on` an existing Security
+Server rather than its own (the join API does this by default —
+`configs/x-road-bus/2.7.yaml`'s `default_hosting: hosted_on`): it costs zero
 extra containers and RAM, and sidesteps every own-server finding in
 `docs/production-delta.md` (a real port-allocation bug, two real Compose gaps,
 and host-CPU-contention risk under several concurrent JVMs) — reserve a

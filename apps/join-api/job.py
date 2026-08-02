@@ -416,7 +416,9 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
 # -- execution ----------------------------------------------------------------
 
 
-def _default_run_hurl(label: str, body: str, variables: dict[str, str]) -> dict:
+def _default_run_hurl(
+    label: str, body: str, variables: dict[str, str], *, cookie_jar: pathlib.Path | None = None
+) -> dict:
     """Run one rendered step and return its Hurl JSON report element.
 
     --report-json APPENDS a new array element to <dir>/report.json on every
@@ -426,13 +428,30 @@ def _default_run_hurl(label: str, body: str, variables: dict[str, str]) -> dict:
     --insecure mirrors run-linkup.sh: the Test CA's certificates are
     self-signed. Hurl's own --retry is not used -- the retry budget is the
     run's, not the step's (spec S5.5), and lives in run() below.
-    """
+
+    cookie_jar (--cookie/--cookie-jar, same file for both): found live,
+    join-b Task 6's own live proof -- cs.members_member 401ed even though it
+    carried {{cs_xsrf_token}} in its X-XSRF-TOKEN header exactly as
+    hurl/steps.py declares. run-linkup.sh concatenates every step into ONE
+    hurl invocation, so Hurl's own cookie jar carries the login's JSESSIONID
+    to every later request in that file for free; job.py runs one PROCESS
+    per step, so nothing did. X-Road's admin API validates the XSRF header
+    against the SESSION the JSESSIONID cookie names, not the header alone
+    (confirmed live: the header without the cookie is a 401, not a 403 --
+    unauthenticated, not merely a CSRF mismatch). The *_xsrf_token capture
+    already threaded through context/variables was necessary but not
+    sufficient. Hurl's -b/-c read the same Netscape-format file curl uses;
+    passing one shared jar for the whole run works because cookies in that
+    format are domain-scoped, so the CS's and the host SS's sessions coexist
+    in it without colliding -- no template or registry change needed."""
     tmp = pathlib.Path(tempfile.mkdtemp(prefix=f"kp2-join-{label.replace('/', '_').replace(':', '_')}-"))
     try:
         step_file = tmp / "step.hurl"
         step_file.write_text(body)
         report_dir = tmp / "report"
         args = [HURL_BIN, "--insecure"]
+        if cookie_jar is not None:
+            args += ["--cookie", str(cookie_jar), "--cookie-jar", str(cookie_jar)]
         for name, value in variables.items():
             args += ["--variable", f"{name}={value}"]
         args += ["--report-json", str(report_dir), str(step_file)]
@@ -591,83 +610,107 @@ def run(
     # the steps that provide one run again.
     session: dict[str, str] = {}
 
-    last = record.get("last_completed_step")
-    ids = [step.id for step in sequence]
-    if last and last not in ids:
-        raise StepFailure(
-            "resume",
-            f"last_completed_step {last!r} is not a step of this request's sequence "
-            f"-- the payload or the registry changed under it; start a new request",
-        )
-    resuming = bool(last)
-    completed = set(ids[: ids.index(last) + 1]) if last else set()
+    # One shared cookie jar for the whole run (_default_run_hurl's own
+    # docstring explains why this exists at all: found live, join-b Task 6's
+    # first real approve, cs.members_member 401ed because the JSESSIONID
+    # cs.init's login set was never carried to the next step's separate Hurl
+    # process). Only wired in for the real default -- a caller that supplies
+    # its own run_hurl (every test in this module) is replaying fixtures or
+    # asserting on the step engine itself, never making a real HTTP call, so
+    # there is nothing for a cookie jar to do there. A fresh, empty jar every
+    # run/resume, never persisted to record or disk beyond this process's
+    # tempdir: spec S5.4's "session state is never persisted" applies to
+    # cookies exactly as it already does to *_xsrf_token.
+    cookie_jar_dir: str | None = None
+    if run_hurl is _default_run_hurl:
+        cookie_jar_dir = tempfile.mkdtemp(prefix="kp2-join-cookies-")
+        cookie_jar = pathlib.Path(cookie_jar_dir) / "jar.txt"
+        _bare_run_hurl = run_hurl
 
-    record["state"] = "RUNNING"
-    record["queued"] = False
-    record["started_at"] = _now()
-    record["error"] = None
-    # One budget per RUN (spec S5.5), so a resume starts with a full one --
-    # the operator resuming is a new run, and the previous run's exhausted
-    # budget is not evidence about this one.
-    record["retry_budget_left"] = RETRY_BUDGET
-    save(record)
+        def run_hurl(label: str, body: str, variables: dict, _jar=cookie_jar, _inner=_bare_run_hurl) -> dict:
+            return _inner(label, body, variables, cookie_jar=_jar)
 
-    for step in sequence:
-        already = step.id in completed
-        if already and not step.must_rerun:
-            continue
-        if resuming and step.unsafe_to_repeat:
-            # Empty class today (tests/test_steps.py asserts it stays empty);
-            # the refusal exists so that stops being silently load-bearing.
-            record["state"] = "FAILED"
-            record["error"] = {
-                "step": step.id,
-                "message": f"refusing to resume across {step.id}: it is flagged unsafe_to_repeat "
-                "in hurl/steps.py and no probe can establish whether it already ran",
-            }
-            save(record)
-            return record
+    try:
+        last = record.get("last_completed_step")
+        ids = [step.id for step in sequence]
+        if last and last not in ids:
+            raise StepFailure(
+                "resume",
+                f"last_completed_step {last!r} is not a step of this request's sequence "
+                f"-- the payload or the registry changed under it; start a new request",
+            )
+        resuming = bool(last)
+        completed = set(ids[: ids.index(last) + 1]) if last else set()
 
-        variables = {**constants, **context, **session}
-        try:
-            if resuming and step.probe and step.id.split(":")[0] in PROBE_INTERPRETERS:
-                if _probe(step, variables, pack_dir, run_hurl):
-                    record["last_completed_step"] = step.id
-                    save(record)
-                    continue
-            _execute(step, variables, context, session, pack_dir, run_hurl, r1_call, record, retry_interval)
-        except StepFailure as exc:
-            record["state"] = "FAILED"
-            record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
-            save(record)
-            return record
-        record["context"] = context
-        if not already:
-            # Forward only. A session step re-run on resume (`already` and
-            # must_rerun) has already been counted by the run that first
-            # completed it -- moving the marker back to it would, for the
-            # span of the next two invocations, describe less progress than
-            # was actually made, and a kill in that window would make the
-            # NEXT resume re-run steps this one deliberately skipped (found
-            # in review, 2026-08-02).
-            record["last_completed_step"] = step.id
+        record["state"] = "RUNNING"
+        record["queued"] = False
+        record["started_at"] = _now()
+        record["error"] = None
+        # One budget per RUN (spec S5.5), so a resume starts with a full one --
+        # the operator resuming is a new run, and the previous run's exhausted
+        # budget is not evidence about this one.
+        record["retry_budget_left"] = RETRY_BUDGET
         save(record)
 
-    record["state"] = "ACTIVE"
-    record["finished_at"] = _now()
-    if not payload.services:
-        # spec S4: a consume-only member's ACTIVE means registered and able
-        # to reach the global configuration -- there is nothing of its own to
-        # call, and it cannot call anyone until the providers it named in
-        # requested_access: grant it. Say so rather than report an
-        # unqualified success.
-        record["note"] = (
-            "consume-only join: registered and able to reach the global configuration. "
-            "It can call nothing until the providers named in requested_access: grant it "
-            "(that is their own config, not this API's)."
-        )
-    save(record)
-    return record
+        for step in sequence:
+            already = step.id in completed
+            if already and not step.must_rerun:
+                continue
+            if resuming and step.unsafe_to_repeat:
+                # Empty class today (tests/test_steps.py asserts it stays empty);
+                # the refusal exists so that stops being silently load-bearing.
+                record["state"] = "FAILED"
+                record["error"] = {
+                    "step": step.id,
+                    "message": f"refusing to resume across {step.id}: it is flagged unsafe_to_repeat "
+                    "in hurl/steps.py and no probe can establish whether it already ran",
+                }
+                save(record)
+                return record
+
+            variables = {**constants, **context, **session}
+            try:
+                if resuming and step.probe and step.id.split(":")[0] in PROBE_INTERPRETERS:
+                    if _probe(step, variables, pack_dir, run_hurl):
+                        record["last_completed_step"] = step.id
+                        save(record)
+                        continue
+                _execute(step, variables, context, session, pack_dir, run_hurl, r1_call, record, retry_interval)
+            except StepFailure as exc:
+                record["state"] = "FAILED"
+                record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
+                save(record)
+                return record
+            record["context"] = context
+            if not already:
+                # Forward only. A session step re-run on resume (`already` and
+                # must_rerun) has already been counted by the run that first
+                # completed it -- moving the marker back to it would, for the
+                # span of the next two invocations, describe less progress than
+                # was actually made, and a kill in that window would make the
+                # NEXT resume re-run steps this one deliberately skipped (found
+                # in review, 2026-08-02).
+                record["last_completed_step"] = step.id
+            save(record)
+
+        record["state"] = "ACTIVE"
+        record["finished_at"] = _now()
+        if not payload.services:
+            # spec S4: a consume-only member's ACTIVE means registered and able
+            # to reach the global configuration -- there is nothing of its own to
+            # call, and it cannot call anyone until the providers it named in
+            # requested_access: grant it. Say so rather than report an
+            # unqualified success.
+            record["note"] = (
+                "consume-only join: registered and able to reach the global configuration. "
+                "It can call nothing until the providers named in requested_access: grant it "
+                "(that is their own config, not this API's)."
+            )
+        save(record)
+        return record
+    finally:
+        if cookie_jar_dir is not None:
+            shutil.rmtree(cookie_jar_dir, ignore_errors=True)
 
 
 # The retry budget is a single mutable cell for the whole run rather than a

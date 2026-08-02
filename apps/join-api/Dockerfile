@@ -25,6 +25,21 @@ FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd
 COPY --from=hurl /usr/bin/hurl /usr/local/bin/hurl
 COPY --from=hurl /lib/ld-musl-*.so.1 /lib/
 COPY --from=hurl /usr/lib/ /opt/hurl-lib/
+# writer.py's apply_real() shells out to `git status --porcelain` (spec S9's
+# dirty-checkout guard) against the enclosing monorepo, bind-mounted whole at
+# /repo (docker-compose.yml's comment on this service's volumes). python:3.12
+# -slim carries no git binary -- found live, join-b Task 6's own live proof
+# (the first time this container actually ran POST /requests/{id}/approve
+# against a real checkout; apps/join-api/tests' git-dependent tests all run
+# `git` on the HOST via pytest, never inside this image, so nothing in
+# --fast could have caught it). `safe.directory = *` sidesteps git's
+# dubious-ownership refusal (CVE-2022-24765): the repo bind mount is owned by
+# the host user, this process runs as nobody, and every git call here is a
+# read (status only, never a write) -- see writer.py's own docstring on why
+# nothing here ever commits.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*'
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt

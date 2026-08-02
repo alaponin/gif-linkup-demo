@@ -313,18 +313,26 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # has published anything, this produces zero rows and the section passes
 # vacuously -- there is nothing wrong with a federation nobody has joined.
 #
-# The endpoint each row calls comes from out/join/<id>.json's
-# endpoint_baseline (join-b Task 5's fix to validate.validate() -- it used to
-# discard the OpenAPI document check 9 fetches, so nothing preserved its
-# endpoint set past submission). That is a deliberate choice, not an
-# oversight: hurl/topology.json's services carry only {code, access}, and a
-# joined member's spec_url is an internal linkup-network hostname
-# (app-<key>:8000) this host-side script cannot reach directly -- only
-# join-api's own container, on that network, ever fetched it, at submission
-# time. A member with no ACTIVE out/join record (joined by hand via
-# prompts/member.md rather than through the API) has no such baseline and is
-# skipped with a logged reason -- this section proves the JOIN API's own
-# effect, module 2.7, not every possible way a member can join.
+# The r1 call targets the SERVICE ROOT, not a specific operation path --
+# mirrors apps/join-api/job.py's own _r1_target/ss.r1_verify step exactly
+# (same file's ponytail comment explains why: "what this call has to prove
+# is the registry-perfect-but-dead case ... any non-X-Road response proves
+# that, including a backend 404"). This section originally preferred a
+# parameter-free path from out/join/<id>.json's endpoint_baseline, falling
+# back to an UNSUBSTITUTED "{param}" path segment otherwise -- found live,
+# join-b Task 6's own first real join (PTSB): every service this pack
+# publishes, canonical or joined, is GET-by-key shaped, so there is never a
+# parameter-free path to prefer, and the fallback path can never return 2xx
+# against any real backend. Fixed by asking the same question job.py already
+# answers correctly for exactly this call shape: not "does this specific
+# resource exist" (this script has no way to know a real record id), but
+# "did the call traverse X-Road and reach a backend at all" -- see
+# check_r1_ok below, which checks for an X-Road fault the same way
+# apps/join-api/job.py's _default_r1_call does, not a literal 2xx. A member
+# with no ACTIVE out/join record (joined by hand via prompts/member.md
+# rather than through the API) is skipped with a logged reason -- this
+# section proves the JOIN API's own effect, module 2.7, not every possible
+# way a member can join.
 mapfile -t _27_ROWS < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
 import json, pathlib, sys
 
@@ -362,16 +370,7 @@ for sub in subs:
         if not access:
             continue  # nobody to authorize; member.md already proves "no subjects"
         if baseline_rec is None:
-            print(f"no ACTIVE out/join record for {code} -- endpoint unknown from the host, skipping {svc['code']}", file=sys.stderr)
-            continue
-        paths = (baseline_rec.get("endpoint_baseline") or {}).get(svc["code"]) or []
-        # Prefer a path with no {param} -- a collection GET is far likelier
-        # to return 2xx unconditionally than one needing a real record id
-        # this script has no way to know.
-        plain = [p for p in paths if "{" not in p]
-        endpoint = (plain or paths or [None])[0]
-        if endpoint is None:
-            print(f"no endpoint in {code}'s join-time baseline for {svc['code']}, skipping", file=sys.stderr)
+            print(f"no ACTIVE out/join record for {code} -- skipping {svc['code']}", file=sys.stderr)
             continue
 
         good_str = access[0]  # "PROGRESSA/GOV/<CODE>/<SUBSYSTEM>"
@@ -389,7 +388,7 @@ for sub in subs:
         bad_str = f"{instance}/{mclass}/{bad['member_code']}/{bad['subsystem_code']}"
         bad_pair = f"{bad['member_code']}:{bad['subsystem_code']}"
 
-        r1_path = f"/r1/{instance}/{mclass}/{code}/{sub['subsystem_code']}/{svc['code']}{endpoint}"
+        r1_path = f"/r1/{instance}/{mclass}/{code}/{sub['subsystem_code']}/{svc['code']}/"
         print(f"{sub['hosted_on']}\t{code}\t{svc['code']}\t{good_str}\t{good_pair}\t{bad_str}\t{bad_pair}\t{r1_path}")
 PY
 )
@@ -445,13 +444,25 @@ if _selection_touches_27; then
     GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
     BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
 
+    # "2xx" per acceptance/2.7.md's prose meant, in practice, "the call
+    # traversed X-Road and reached the backend" -- true for job.py's own
+    # r1_verify (which passed) even though the service-root call above 404s
+    # against every mock in this pack (none exposes a collection route, only
+    # GET-by-key). Checked the same way apps/join-api/job.py's
+    # _default_r1_call already does for this exact call shape: not the HTTP
+    # status, but the ABSENCE of an X-Road fault body (a Server.*/Client.*
+    # `type`) -- a plain backend 404 has no such field and correctly reads
+    # as reachable; check_r1_denied below still requires the SPECIFIC
+    # Server.ServerProxy.AccessDenied fault, so the two checks stay
+    # unambiguously distinct regardless of this change.
     check_r1_ok() {
-      local http_code
-      http_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
-      [[ "$http_code" =~ ^2[0-9][0-9]$ ]]
+      local body is_fault
+      body=$(curl -sk -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
+      is_fault=$(printf '%s' "$body" | jq -r '(.type // "") | test("^(Server|Client)\\.")' 2>/dev/null)
+      [ "$is_fault" != "true" ]
     }
     check_r1_ok_retry() { retry 12 5 "${svc} r1 settled" check_r1_ok; }
-    check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} returns 2xx" check_r1_ok_retry
+    check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} reaches the backend (no X-Road fault)" check_r1_ok_retry
 
     check_r1_denied() {
       curl -sk -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
