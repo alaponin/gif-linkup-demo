@@ -1,0 +1,154 @@
+"""join-b Task 4: POST /requests/{id}/approve and /resume through FastAPI's
+TestClient. The pack is a temp copy inside a throwaway git repo, three levels
+down, because writer.apply_real() runs `git status --porcelain` against the
+enclosing checkout (spec S9) and app.py lets it default repo_root the way
+docker-compose.yml lays the real one out.
+
+The job itself is not run here -- app_module._start_job is replaced, so these
+tests are about the endpoints (state transitions, the operator-only asymmetry,
+the queued indicator). job.run() is tested directly, against recorded
+fixtures, in test_job.py.
+"""
+from __future__ import annotations
+
+import importlib.util
+import os
+import pathlib
+import subprocess
+import sys
+
+os.environ["PACK_DIR"] = "/tmp/join-api-test-pack-approve"
+os.environ["OUT_DIR"] = "/tmp/join-api-test-out-approve"
+os.environ["XROAD_ADMIN_USER"] = "xrd"
+os.environ["XROAD_ADMIN_PASSWORD"] = "secret"
+os.environ["XROAD_TOKEN_PIN"] = "1234"
+os.environ["KP2_JOIN_APPLICANT_TOKEN"] = "test-applicant-token"
+os.environ["KP2_JOIN_OPERATOR_TOKEN"] = "test-operator-token"
+
+_spec = importlib.util.spec_from_file_location(
+    "join_api_app_approve", pathlib.Path(__file__).resolve().parent.parent / "app.py"
+)
+app_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(app_module)
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import writer  # noqa: E402
+
+REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
+CONSOLE_HEADER = "X-KP2-Console"
+APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
+OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+
+
+def _git(*args: str, cwd: pathlib.Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "a" / "b" / "pack"  # apply_real defaults repo_root to parents[2]
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "user.email", "test@example.invalid", cwd=repo_root)
+    _git("config", "user.name", "test", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git("commit", "-q", "-m", "seed", cwd=repo_root)
+    monkeypatch.setattr(app_module, "PACK_DIR", pack)
+    monkeypatch.setattr(app_module, "OUT_DIR", tmp_path / "out")
+    monkeypatch.setattr(app_module, "_start_job", lambda request_id: started.append(request_id))
+    return TestClient(app_module.app)
+
+
+started: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def _clear_started():
+    started.clear()
+
+
+def _submit(client) -> dict:
+    payload = dict(
+        code="PTSB",
+        name="Progressa Tertiary Scholarship Board",
+        subsystem="SCHOLARSHIP",
+        subsystem_description="Scholarship award management",
+        security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
+        backend={"auth": "network_allowlist"},
+    )
+    resp = client.post("/requests", json=payload, headers=APPLICANT)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["state"] == "SUBMITTED"
+    return resp.json()
+
+
+def test_approve_writes_the_config_for_real_and_starts_the_job(client):
+    record = _submit(client)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["state"] == "APPROVED"
+    assert body["queued"] is False
+    assert started == [record["id"]]
+    # spec S9: config is written on APPROVED, before any live mutation.
+    assert (app_module.PACK_DIR / "configs" / "member-ptsb" / "ptsb.yaml").exists()
+    assert "ptsb" in (app_module.PACK_DIR / "manifest.yaml").read_text()
+
+
+def test_an_applicant_cannot_approve(client):
+    """Decision 10's teaching point: the asymmetry, not per-request scoping."""
+    record = _submit(client)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=APPLICANT)
+    assert resp.status_code == 403
+    assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
+
+
+def test_approving_twice_is_a_conflict_not_a_second_write(client):
+    record = _submit(client)
+    assert client.post(f"/requests/{record['id']}/approve", headers=OPERATOR).status_code == 202
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 409
+    assert "APPROVED" in resp.json()["detail"]
+
+
+def test_approve_reports_queued_when_another_job_holds_the_lock(client):
+    """Task 4 Step 5: one active job, others queue, and the API says so."""
+    record = _submit(client)
+    app_module._JOB_LOCK.acquire()
+    try:
+        body = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR).json()
+    finally:
+        app_module._JOB_LOCK.release()
+    assert body["queued"] is True
+
+
+def test_resume_is_only_possible_from_failed(client):
+    record = _submit(client)
+    resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
+    assert resp.status_code == 409
+
+    stored = app_module._load_request(record["id"])
+    stored["state"] = "FAILED"
+    stored["last_completed_step"] = "ss.client_add"
+    app_module._save_request(stored)
+    resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
+    assert resp.status_code == 202
+    assert started == [record["id"]]
+
+
+def test_a_dirty_checkout_refuses_the_approval(client):
+    """spec S9's mitigation: a join must never stack on uncommitted work of
+    unclear provenance."""
+    record = _submit(client)
+    (app_module.PACK_DIR / "manifest.yaml").write_text(
+        (app_module.PACK_DIR / "manifest.yaml").read_text() + "\n# local edit\n"
+    )
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 409
+    assert "uncommitted" in resp.json()["detail"]
+    assert started == []

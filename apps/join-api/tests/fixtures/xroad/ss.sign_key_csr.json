@@ -1,0 +1,136 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 78,79,80,81). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "ss.sign_key_csr.hurl",
+  "success": true,
+  "time": 571,
+  "entries": [
+    {
+      "index": 73,
+      "line": 948,
+      "captures": [
+        {
+          "name": "ss_ptsb_sign_key_id",
+          "value": "ACF67D7D91B9D5E14DCBF4DD68BC67B23FB3B222"
+        },
+        {
+          "name": "ss_ptsb_sign_key_csr_id",
+          "value": "55CF7E36A5C314CDC64EB8B4FCFAEBFADB74A9BC"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/api/v1/tokens/0/keys-with-csrs"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 968,
+          "success": true
+        },
+        {
+          "line": 968,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 74,
+      "line": 975,
+      "captures": [
+        {
+          "name": "ss_ptsb_sign_key_csr",
+          "value": "-----BEGIN CERTIFICATE REQUEST-----\nMIIC4TCCAckCAQAwazELMAkG...[truncated]"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://ss-plr:4000/api/v1/keys/ACF67D7D91B9D5E14DCBF4DD68BC67B23FB3B222/csrs/55CF7E36A5C314CDC64EB8B4FCFAEBFADB74A9BC?csr_format=PEM"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 978,
+          "success": true
+        },
+        {
+          "line": 978,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 75,
+      "line": 984,
+      "captures": [
+        {
+          "name": "ss_ptsb_sign_key_cert",
+          "value": "-----BEGIN CERTIFICATE-----\nMIIEZDCCAkygAwIBAgIBBzANBgkqhkiG...[truncated]"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "http://ca:8888/testca/sign"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 998,
+          "success": true
+        },
+        {
+          "line": 998,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 76,
+      "line": 1003,
+      "captures": [
+        {
+          "name": "ss_ptsb_sign_key_cert_hash",
+          "value": "7A8669A348221FD3A51CB4AA78F52E41E1A6967D1D328D537FEE7B3F82B64E9A"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/api/v1/token-certificates"
+          },
+          "response": {
+            "status": 201
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1010,
+          "success": true
+        },
+        {
+          "line": 1010,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

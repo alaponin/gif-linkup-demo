@@ -4,11 +4,31 @@
 # apps/console. Unlike the X-Road images, a pinned base stops receiving
 # security patches until someone re-pins it -- re-pin periodically, not
 # just when X-Road bumps.
+#
+# The Hurl binary comes from the same digest-pinned image hurl/compose.hurl.yml
+# runs as a compose service -- this container never gets a Docker socket
+# (design decision 8), so `docker compose run --rm hurl` is closed to it and
+# the executor (job.py) shells out to a LOCAL hurl instead. Copied out of the
+# pinned image rather than downloaded at build time: same bytes, same pin, no
+# network in the build.
+FROM ghcr.io/orange-opensource/hurl:latest@sha256:d7727dcc0166de8aea88916e73ea435ee09bfecb8ba0c281200206b6cf37cf64 AS hurl
+
 FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+# /usr/bin/hurl (verified with `command -v hurl` inside the image above) is an
+# Alpine build: dynamically linked against musl and ~15 Alpine libraries, so
+# the binary alone will not run here. Its libraries go to /opt/hurl-lib rather
+# than /usr/lib, where they would sit beside (and could shadow) this base
+# image's own glibc-built libssl/libcrypto/libz; job.py's HURL_ENV points
+# musl's loader at them for the Hurl child process only. The whole directory
+# is copied rather than a hand-listed set of .so files -- 18 MB, and a list
+# would silently rot the next time the image digest is re-pinned.
+COPY --from=hurl /usr/bin/hurl /usr/local/bin/hurl
+COPY --from=hurl /lib/ld-musl-*.so.1 /lib/
+COPY --from=hurl /usr/lib/ /opt/hurl-lib/
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
-COPY app.py schema.py validate.py writer.py .
+COPY app.py schema.py validate.py writer.py job.py .
 USER nobody
 EXPOSE 8000
 HEALTHCHECK --interval=5s --retries=12 \

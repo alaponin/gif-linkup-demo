@@ -1,0 +1,139 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 50,51,52,53,54). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "ss.bringup_init.hurl",
+  "success": true,
+  "time": 6114,
+  "entries": [
+    {
+      "index": 50,
+      "line": 665,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://ss-plr:4000/"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 667,
+          "success": true
+        },
+        {
+          "line": 667,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 51,
+      "line": 670,
+      "captures": [
+        {
+          "name": "ss_plr_xsrf_token",
+          "value": "redacted-session-token-not-recorded"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/login"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 675,
+          "success": true
+        },
+        {
+          "line": 675,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 52,
+      "line": 680,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/api/v1/system/anchor"
+          },
+          "response": {
+            "status": 201
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 687,
+          "success": true
+        },
+        {
+          "line": 687,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 53,
+      "line": 690,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/api/v1/initialization"
+          },
+          "response": {
+            "status": 201
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 701,
+          "success": true
+        },
+        {
+          "line": 701,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 54,
+      "line": 704,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://ss-plr:4000/api/v1/tokens/0/login"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 711,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

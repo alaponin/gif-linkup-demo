@@ -1,10 +1,13 @@
 """apps/join-api/app.py -- the KP2 member-join API. Task 1 (this file's
 first commit) is the skeleton: liveness, the credentials this service will
 drive the admin API with, and the same request-boundary guard
-apps/console/app.py uses. Task 3 (this commit) adds POST /requests and
-GET /requests/{id} -- validation (validate.py) and config-diff computation
-(writer.py's dry-run mode) run synchronously at submission; approval, the
-step engine and writer.apply_real() arrive in a later task. See
+apps/console/app.py uses. Task 3 added POST /requests and GET /requests/{id}
+-- validation (validate.py) and config-diff computation (writer.py's dry-run
+mode) run synchronously at submission. Task 4 (this commit) adds the operator
+side: POST /requests/{id}/approve writes the config for real
+(writer.apply_real) and starts the job (job.py) on a background thread, one
+at a time; POST /requests/{id}/resume re-runs a FAILED one from its
+last_completed_step. See
 docs/superpowers/specs/2026-08-01-member-join-api-design.md.
 
 Credentials come from the environment (.env via Docker Compose), read here
@@ -19,6 +22,7 @@ import pathlib
 import re
 import secrets
 import sys
+import threading
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -33,6 +37,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 # sys.path.insert). Inserting this file's own directory here makes the
 # import work either way, without requiring every test file to do it.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import job  # noqa: E402
+import schema  # noqa: E402
 import validate  # noqa: E402
 import writer  # noqa: E402
 
@@ -40,11 +46,10 @@ PACK_DIR = pathlib.Path(os.environ.get("PACK_DIR", "/pack"))
 OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 
 # Held server-side only, exactly like apps/console's ADMIN_USER/ADMIN_PASSWORD.
-# Not read by any endpoint in this task -- the step engine that drives the
-# admin API with these arrives in a later task -- but this is the one place
-# credentials enter the process, so they are read here now rather than adding
-# them to docker-compose.yml's environment block again later (that file is a
-# one-time touchpoint across this whole plan, see its join-api comment).
+# This is the one place credentials enter the process; job.py receives them as
+# an explicit argument (JOB_SECRETS below) rather than reading the environment
+# itself, so the module that shells out to Hurl has exactly the values it was
+# handed and nothing else.
 ADMIN_USER = os.environ.get("XROAD_ADMIN_USER", "xrd")
 ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 TOKEN_PIN = os.environ["XROAD_TOKEN_PIN"]
@@ -141,11 +146,11 @@ def health():
 
 # -- request persistence (spec S5.4) -----------------------------------------
 # out/join/<request-id>.json, the same OUT_DIR convention apps/console/
-# journal.py already uses for out/console-acl-journal.json. Task 3's record
-# carries only today's fields (id, state, submitted_at, payload, diff or
-# rejection) -- Task 4 extends this same file's schema with APPROVED/
-# RUNNING/ACTIVE/FAILED/BLOCKED and the job-execution fields; no state-
-# transition machinery is built here.
+# journal.py already uses for out/console-acl-journal.json. One file per
+# request, carrying every state it has been through (spec S4's seven, minus
+# BLOCKED, which no hosted join can reach) and, since Task 4, the job's own
+# record: last_completed_step, the non-secret captures (context), verified,
+# queued, retry_budget_left, and {step, message} on FAILED.
 
 _REQUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -264,7 +269,101 @@ def get_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
 ) -> dict:
+    """The whole record, which since Task 4 also carries last_completed_step,
+    the job context's captures, verified, and the failing step + last error
+    when FAILED (spec S7's row for this endpoint)."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
+    return record
+
+
+# -- approval and the job (spec S4, S5) --------------------------------------
+# One job at a time, others queue. threading.Lock, not a queue or a worker
+# pool, for the same reason apps/console/app.py's _MUTATE_LOCK is one: this is
+# one process, and two joins converging the same federation concurrently would
+# interleave management-request approvals on the Central Server. A request
+# whose thread is waiting on the lock reports queued: true.
+_JOB_LOCK = threading.Lock()
+
+JOB_SECRETS = {
+    "ss_admin_user": ADMIN_USER,
+    "ss_admin_password": ADMIN_PASSWORD,
+    "token_pin": TOKEN_PIN,
+}
+
+
+def _run_job(request_id: str) -> None:
+    with _JOB_LOCK:
+        record = _load_request(request_id)
+        if record is None:  # deleted while queued
+            return
+        try:
+            job.run(record, PACK_DIR, secrets=JOB_SECRETS, save=_save_request)
+        except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
+            record["state"] = "FAILED"
+            record["error"] = {
+                "step": record.get("last_completed_step"),
+                "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+            }
+            _save_request(record)
+
+
+def _start_job(request_id: str) -> None:
+    threading.Thread(target=_run_job, args=(request_id,), daemon=True).start()
+
+
+@app.post("/requests/{request_id}/approve", status_code=202)
+def approve_request(
+    request_id: str,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Operator approval: write the config for real (spec S9 -- on APPROVED,
+    before any live mutation), then start the job. 202, not 200: the job runs
+    past this response and the applicant polls GET /requests/{id}."""
+    record = _load_request(request_id)
+    if record is None:
+        raise HTTPException(404, f"no join request {request_id!r}")
+    if record["state"] != "SUBMITTED":
+        raise HTTPException(409, f"request {request_id} is {record['state']}, not SUBMITTED")
+
+    payload = schema.JoinPayload(**record["payload"])
+    try:
+        writer.apply_real(PACK_DIR, payload.code.lower(), payload)
+    except writer.DirtyCheckoutError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except writer.GenerateFailure as exc:
+        # The config was written but generate.py refused it -- the working
+        # tree now needs a human, so this is FAILED, not a rejection.
+        record["state"] = "FAILED"
+        record["error"] = {"step": "config.write", "message": exc.stderr}
+        _save_request(record)
+        raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{exc.stderr}") from exc
+
+    record["state"] = "APPROVED"
+    record["approved_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    record["queued"] = _JOB_LOCK.locked()
+    _save_request(record)
+    _start_job(request_id)
+    return record
+
+
+@app.post("/requests/{request_id}/resume", status_code=202)
+def resume_request(
+    request_id: str,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Re-run from last_completed_step. Only from FAILED (spec S7) -- resuming
+    a RUNNING job would put two runners on one federation, and resuming an
+    ACTIVE one has nothing left to do."""
+    record = _load_request(request_id)
+    if record is None:
+        raise HTTPException(404, f"no join request {request_id!r}")
+    if record["state"] != "FAILED":
+        raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED")
+    record["queued"] = _JOB_LOCK.locked()
+    _save_request(record)
+    _start_job(request_id)
     return record

@@ -20,9 +20,9 @@ _run_generate):
                      first (DirtyCheckoutError) if `git status --porcelain
                      configs/ manifest.yaml` is not clean (spec S9's
                      mitigation: a join must never stack on top of
-                     uncommitted work of unclear provenance). Not wired to
-                     any endpoint yet -- Task 4's approve flow calls this at
-                     the point a request moves APPROVED -> RUNNING.
+                     uncommitted work of unclear provenance). Called by
+                     app.py's POST /requests/{id}/approve, before the job
+                     (job.py) starts.
 
 Design spec S9 is explicit that config-writing happens "on APPROVED, before
 any live mutation" -- that governs apply_real only. dry_run_diff runs at
@@ -303,8 +303,8 @@ def apply_real(
     --porcelain configs/ manifest.yaml` is not clean (spec S9) -- a join
     must never stack on top of uncommitted work of unclear provenance.
 
-    Not wired to any endpoint in this task; Task 4's approve flow calls this
-    exact function at the point a request moves APPROVED -> RUNNING.
+    Called by app.py's POST /requests/{id}/approve, before the job starts --
+    the point a request moves SUBMITTED -> APPROVED -> RUNNING.
     """
     repo_root = repo_root or pack_dir.resolve().parents[2]
     dirty = _git_status_dirty(repo_root, pack_dir)

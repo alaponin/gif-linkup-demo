@@ -1,0 +1,65 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 125,126). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "service.publish.hurl",
+  "success": true,
+  "time": 182,
+  "entries": [
+    {
+      "index": 110,
+      "line": 1430,
+      "captures": [
+        {
+          "name": "ss_ptsb_awards_api_description_id",
+          "value": "11"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://ss-plr:4000/api/v1/clients/PROGRESSA:GOV:PTSB:SCHOLARSHIP/service-descriptions"
+          },
+          "response": {
+            "status": 201
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1438,
+          "success": true
+        },
+        {
+          "line": 1438,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 111,
+      "line": 1444,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://ss-plr:4000/api/v1/service-descriptions/11/enable"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1448,
+          "success": true
+        },
+        {
+          "line": 1448,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

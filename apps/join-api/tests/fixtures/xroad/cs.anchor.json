@@ -1,0 +1,39 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 21). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "cs.anchor.hurl",
+  "success": true,
+  "time": 23,
+  "entries": [
+    {
+      "index": 22,
+      "line": 298,
+      "captures": [
+        {
+          "name": "gconf_anchor",
+          "value": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<ns3:configurationAnchor/>\n"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://cs:4000/api/v1/configuration-sources/INTERNAL/anchor/download"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 301,
+          "success": true
+        },
+        {
+          "line": 301,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "_source": "Hand-authored, unlike its sibling files: PROBE_SS_CLIENT_REGISTER.hurl.tmpl was run live against a deployed Security Server during join-a plan Task 5 Step 4, but that run predates any --report-json capture, so there is no recorded report to slice. The shape below is the same slimmed report element the sliced fixtures use, and the response is the one that template's own comment records as CONFIRMED LIVE: GET /api/v1/clients/{id} returns {\"status\":\"REGISTERED\"} for a fully registered and approved client.",
+  "filename": "ss.client_register.probe.hurl",
+  "success": true,
+  "time": 21,
+  "entries": [
+    {
+      "index": 1,
+      "line": 12,
+      "captures": [
+        {
+          "name": "ss_ptsb_client_status",
+          "value": "REGISTERED"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://ss-plr:4000/api/v1/clients/PROGRESSA:GOV:PTSB:SCHOLARSHIP"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 15,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

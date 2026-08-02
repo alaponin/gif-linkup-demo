@@ -1,0 +1,91 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 82,83,84). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "ss.client_register.hurl",
+  "success": true,
+  "time": 533,
+  "entries": [
+    {
+      "index": 77,
+      "line": 1016,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://ss-plr:4000/api/v1/clients/PROGRESSA:GOV:PTSB:SCHOLARSHIP/register"
+          },
+          "response": {
+            "status": 204
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1019,
+          "success": true
+        },
+        {
+          "line": 1019,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 78,
+      "line": 1022,
+      "captures": [
+        {
+          "name": "ss_ptsb_client_req_id",
+          "value": 5
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://cs:4000/api/v1/management-requests?sort=id&desc=true&status=WAITING"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1025,
+          "success": true
+        },
+        {
+          "line": 1025,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 79,
+      "line": 1030,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://cs:4000/api/v1/management-requests/5/approval"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 1033,
+          "success": true
+        },
+        {
+          "line": 1033,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

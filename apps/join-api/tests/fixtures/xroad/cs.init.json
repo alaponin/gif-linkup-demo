@@ -1,0 +1,91 @@
+{
+  "_source": "Sliced from out/hurl-report/report.json (a real lite-profile deploy: entries 0,1,2). Only the fields apps/join-api/job.py parses are kept -- the recorded curl_cmd/headers/bodies carry the admin password and token PIN in cleartext and are deliberately NOT reproduced here. Session-token capture values are redacted and long values truncated; PNIA's identifiers are rewritten to the PTSB test member's, since PNIA-hosted-on-ss-plr is the same hosted_on shape a join runs.",
+  "filename": "cs.init.hurl",
+  "success": true,
+  "time": 2545,
+  "entries": [
+    {
+      "index": 1,
+      "line": 11,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://cs:4000/"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 13,
+          "success": true
+        },
+        {
+          "line": 13,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "line": 16,
+      "captures": [
+        {
+          "name": "cs_xsrf_token",
+          "value": "redacted-session-token-not-recorded"
+        }
+      ],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://cs:4000/login"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 21,
+          "success": true
+        },
+        {
+          "line": 21,
+          "success": true
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "line": 26,
+      "captures": [],
+      "calls": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://cs:4000/api/v1/initialization"
+          },
+          "response": {
+            "status": 200
+          }
+        }
+      ],
+      "asserts": [
+        {
+          "line": 36,
+          "success": true
+        },
+        {
+          "line": 36,
+          "success": true
+        }
+      ]
+    }
+  ]
+}
