@@ -141,12 +141,19 @@ REGISTRY: tuple[Step, ...] = (
     # Rendered once per member, in a loop, in generate.py -- the registry
     # holds this step once (design decision 4 of the templates plan; join-a
     # plan Task 2 Step 2 applies the same rule here).
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 6) -- sixth and LAST step in the reversal order
+    # (REVERSAL_ORDER below): the member's identity leaves the Central
+    # Server only after every SS-side call has undone the member's bus
+    # presence.
     Step(
         id="cs.members_member",
         template="02-cs-members-member.hurl.tmpl",
         actor="operator",
         requires=("cs_host", "cs_xsrf_token", "member_class"),
         provides=(),
+        reverse="fragments/CS_MEMBER_DELETE.hurl.tmpl",
+        probe="fragments/PROBE_CS_MEMBER_DELETE.hurl.tmpl",
     ),
     # (a) read-only: downloads the current anchor, nothing to conflict on.
     Step(
