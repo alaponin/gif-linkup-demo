@@ -705,10 +705,21 @@ function renderJoinRequest(record) {
     html += record.verified
       ? `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`
       : `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
-    if (record.uncommitted) {
+    // uncommitted is bool | null (apps/join-api/app.py's _live_uncommitted):
+    // null means the git check itself failed -- fails toward SHOWING a
+    // warning, not hiding one (review finding, 2026-08-02: `if
+    // (record.uncommitted)` alone treats null the same as false and would
+    // silently drop this exact box on a git failure, the one case it most
+    // needs to be seen). === true and === null both render a box; only
+    // === false renders nothing.
+    if (record.uncommitted === true) {
       html += `<div class="join-uncommitted-warning">Live but uncommitted &mdash; `
         + `configs/member-${esc((payload.code || "").toLowerCase())}/ and manifest.yaml are `
         + `active on this federation but not yet committed to git.</div>`;
+    } else if (record.uncommitted === null) {
+      html += `<div class="join-uncommitted-warning">Could not check whether `
+        + `configs/member-${esc((payload.code || "").toLowerCase())}/ and manifest.yaml are `
+        + `committed &mdash; the git check itself failed. Treat as uncommitted until confirmed otherwise.</div>`;
     }
   }
 

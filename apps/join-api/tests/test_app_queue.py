@@ -154,6 +154,59 @@ def test_active_record_carries_the_uncommitted_flag(client):
     assert entry_after["uncommitted"] is False
 
 
+def test_uncommitted_check_failure_reads_as_unknown_not_committed(client, monkeypatch):
+    """Review finding, 2026-08-02: _live_uncommitted used to return False --
+    "not dirty" -- on ANY git failure (missing binary, permission error,
+    unexpected layout), which is exactly the value that suppresses the
+    console's warning box. That would have silently swallowed the precise
+    failure this check exists to catch (git missing from the image -- the
+    real bug this same task's live proof found and fixed in the
+    Dockerfile). None means "could not tell" and must never collapse to
+    False. Faked as a subprocess raising, not a real missing git, so this
+    test needs no image build and runs in --fast."""
+    record = _submit(client)
+    approve = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert approve.status_code == 202
+
+    stored = app_module._load_request(record["id"])
+    stored["state"] = "ACTIVE"
+    app_module._save_request(stored)
+
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(app_module.subprocess, "run", boom)
+
+    body = client.get("/requests", headers=OPERATOR).json()["requests"]
+    entry = next(r for r in body if r["id"] == record["id"])
+    assert entry["uncommitted"] is None  # not False -- the check failed, it did not pass
+
+
+def test_uncommitted_check_nonzero_git_exit_also_reads_as_unknown(client, monkeypatch):
+    """A second, distinct failure mode: git runs but exits non-zero (e.g.
+    "not a git repository") -- without check=True this would have returned
+    an empty stdout, read as bool(False)="clean", the exact same
+    wrong-direction bug via a different door."""
+    record = _submit(client)
+    approve = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert approve.status_code == 202
+
+    stored = app_module._load_request(record["id"])
+    stored["state"] = "ACTIVE"
+    app_module._save_request(stored)
+
+    import subprocess as real_subprocess
+
+    def fails(args, **kwargs):
+        raise real_subprocess.CalledProcessError(128, args, output="", stderr="fatal: not a git repository")
+
+    monkeypatch.setattr(app_module.subprocess, "run", fails)
+
+    body = client.get("/requests", headers=OPERATOR).json()["requests"]
+    entry = next(r for r in body if r["id"] == record["id"])
+    assert entry["uncommitted"] is None
+
+
 def test_rejected_record_carries_no_steps(client):
     resp = client.post(
         "/requests",

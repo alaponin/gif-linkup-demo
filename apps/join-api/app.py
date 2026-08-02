@@ -322,7 +322,7 @@ def _step_summary(pack_dir: pathlib.Path, payload: schema.JoinPayload) -> list[d
         return None
 
 
-def _live_uncommitted(key: str) -> bool:
+def _live_uncommitted(key: str) -> bool | None:
     """Spec S9's known gap, made visible: an ACTIVE member's config can be
     live on the running federation before anyone has committed
     configs/member-<key>/ and manifest.yaml to git. join-api is the only
@@ -330,20 +330,30 @@ def _live_uncommitted(key: str) -> bool:
     comment on this service's volumes) -- apps/console's own mount is
     curated read-only and has no .git at all, so this fact has to be
     computed here, not there. Same git-status shape as writer._git_status_dirty,
-    scoped to this one member rather than the whole configs/ tree. Best-effort:
-    a git failure reads as "not able to tell", not "definitely committed" --
-    but it must never break the queue view over it, so it returns False."""
+    scoped to this one member rather than the whole configs/ tree.
+
+    Best-effort, but fails toward SHOWING the warning, not hiding it (review
+    finding, 2026-08-02): the previous version returned False -- "not
+    dirty" -- on any exception, which is exactly the value that suppresses
+    the console's "Live but uncommitted" box. That silently swallowed the
+    precise failure this function exists to catch: if `git` were ever
+    missing from this image again (the real bug this same task already
+    found and fixed in the Dockerfile), the one warning that should tell an
+    operator the safety check itself is broken would instead just not
+    render. None means "could not check" and is truthy-adjacent in the
+    console (renders its own, honestly-worded box) -- never coerced to
+    False."""
     try:
         repo_root = PACK_DIR.resolve().parents[2]
         rel = PACK_DIR.resolve().relative_to(repo_root)
         proc = subprocess.run(
             ["git", "-C", str(repo_root), "status", "--porcelain",
              str(rel / "configs" / f"member-{key}"), str(rel / "manifest.yaml")],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, check=True,
         )
         return bool(proc.stdout.strip())
-    except Exception:  # noqa: BLE001
-        return False
+    except Exception:  # noqa: BLE001 -- "could not tell", not "definitely clean"
+        return None
 
 
 def _record_view(record: dict) -> dict:

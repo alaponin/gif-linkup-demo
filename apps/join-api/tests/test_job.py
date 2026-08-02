@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -466,6 +467,115 @@ def test_a_failure_message_is_scrubbed_of_every_credential(tmp_path):
     )
     assert record["state"] == "FAILED"
     assert SECRETS["token_pin"] not in path.read_text()
+
+
+# -- the shared cookie jar (Task 6 review finding, 2026-08-02) ----------------
+# The live proof's own second real bug: job.py runs one Hurl PROCESS per
+# step, so nothing carried cs.init's JSESSIONID cookie to the next step's
+# authenticated call -- confirmed live with plain curl (a bare X-XSRF-TOKEN
+# header without the matching session cookie is a 401, not a 403). Fixed
+# with a shared --cookie/--cookie-jar file for the whole run. Shipped with
+# no coverage of its own: every other test in this file injects a FakeHurl,
+# which never touches _default_run_hurl or run()'s cookie-jar gating at
+# all. These tests fake subprocess.run only, so the real code paths run.
+
+
+def test_default_run_hurl_adds_cookie_flags_when_a_jar_is_given(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(job.subprocess, "run", fake_run)
+    jar = tmp_path / "jar.txt"
+
+    job._default_run_hurl("step", "GET http://x\n\nHTTP 200\n", {}, cookie_jar=jar)
+
+    args = captured["args"]
+    assert args[args.index("--cookie") + 1] == str(jar)
+    assert args[args.index("--cookie-jar") + 1] == str(jar)
+
+
+def test_default_run_hurl_omits_cookie_flags_when_no_jar_is_given(monkeypatch):
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(job.subprocess, "run", fake_run)
+
+    job._default_run_hurl("step", "GET http://x\n\nHTTP 200\n", {})
+
+    assert "--cookie" not in captured["args"]
+    assert "--cookie-jar" not in captured["args"]
+
+
+def test_run_wires_a_shared_cookie_jar_only_for_the_real_default_run_hurl(monkeypatch):
+    """run()'s own gating (`if run_hurl is _default_run_hurl`): the wiring
+    must apply when the caller leaves run_hurl at its default -- the shape
+    every real caller (apps/join-api/app.py's _run_job) actually uses --
+    and every invocation within one run must share the SAME jar file, which
+    is the entire point of the fix (one session per host, not one per
+    process). run_hurl is deliberately NOT overridden here, unlike every
+    other test in this file: that is what proves the real default is what
+    gets exercised, not a second copy of the assertion."""
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(job.subprocess, "run", fake_run)
+
+    record = job.run(
+        _record(),
+        REAL_PACK_DIR,
+        secrets=SECRETS,
+        save=lambda rec: None,
+        retry_interval=0,
+        # run_hurl left at its default (_default_run_hurl) on purpose.
+    )
+
+    # The fake subprocess writes no --report-json output, so every attempt
+    # "fails" and the run exhausts its retry budget -- expected; the point
+    # here is what argv the real _default_run_hurl constructed, not the
+    # outcome (test_job.py's other tests already cover outcomes, via
+    # FakeHurl, which never reaches this code at all).
+    assert record["state"] == "FAILED"
+    assert calls, "the real _default_run_hurl was never invoked"
+
+    first = calls[0]
+    assert "--cookie" in first and "--cookie-jar" in first
+    jar_path = pathlib.Path(first[first.index("--cookie") + 1])
+
+    for args in calls:
+        assert args[args.index("--cookie") + 1] == str(jar_path), "every step must share one jar"
+        assert args[args.index("--cookie-jar") + 1] == str(jar_path)
+
+    # run()'s finally block cleans up its temp jar dir -- never left behind.
+    assert not jar_path.parent.exists()
+
+
+def test_run_does_not_wire_a_cookie_jar_for_an_injected_run_hurl(monkeypatch):
+    """The inverse of the test above: every OTHER test in this file passes
+    its own run_hurl (FakeHurl) and must keep working exactly as before --
+    no cookie_jar kwarg reaches a fake that never asked for one. Guards
+    against the gating check (`run_hurl is _default_run_hurl`) becoming
+    something looser that would break every fixture-driven test."""
+    fake = FakeHurl()
+    record = job.run(
+        _record(),
+        REAL_PACK_DIR,
+        secrets=SECRETS,
+        save=lambda rec: None,
+        run_hurl=fake,
+        r1_call=_fake_r1(),
+        retry_interval=0,
+    )
+    assert record["state"] == "ACTIVE"
+    assert fake.calls  # FakeHurl.__call__'s 3-arg signature was never asked for a 4th
 
 
 # -- the bundled Hurl binary ---------------------------------------------------
