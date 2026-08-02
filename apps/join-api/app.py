@@ -628,6 +628,16 @@ def _run_unjoin(request_id: str) -> None:
             return
         if record.get("state") != "RETIRED":
             return  # the walk stopped; record["error"] says where. DELETE again to resume.
+        if record.get("config_removed"):
+            # Already done by an earlier run of this walk. scripts/member.sh
+            # remove is NOT idempotent -- it exits non-zero on a member whose
+            # directory is already gone -- so re-running it here would rewrite
+            # a completed retirement back to RETIRING with a config.remove
+            # error (review finding, 2026-08-02). Reachable whenever a second
+            # DELETE is issued, which runbook.md explicitly invites: two
+            # queue on _JOB_LOCK, and the second one's walk is a clean no-op
+            # over probes that all report absence.
+            return
 
         # Step 5: the config-and-manifest half, delegated rather than
         # reimplemented -- member.sh remove already deletes the directory,

@@ -276,6 +276,34 @@ def test_the_global_constraint_holds_after_the_round_trip(client, monkeypatch):
     assert topology.read_bytes() == before
 
 
+def test_a_second_delete_does_not_re_run_member_sh_on_a_completed_retirement(client, monkeypatch):
+    """scripts/member.sh remove is NOT idempotent -- it exits non-zero on a
+    member whose directory is already gone (member.sh's own "nothing to
+    remove"). Two DELETEs queue on _JOB_LOCK, and the second one's walk is a
+    clean no-op over probes that all report absence -- so without a guard the
+    second run would rewrite a finished retirement back to RETIRING with a
+    config.remove error, and the console would show a fully un-joined member
+    as stuck. runbook.md explicitly invites the re-issue (review finding,
+    2026-08-02)."""
+    record = _joined(client)
+    _stub_walk(monkeypatch)
+    client.request("DELETE", "/members/ptsb", headers=OPERATOR)
+    app_module._run_unjoin(record["id"])
+    assert app_module._load_request(record["id"])["config_removed"] is True
+
+    calls: list[list[str]] = []
+    real_run = app_module.subprocess.run
+    monkeypatch.setattr(
+        app_module.subprocess, "run", lambda args, **kw: calls.append(args) or real_run(args, **kw)
+    )
+    app_module._run_unjoin(record["id"])  # the queued second DELETE
+
+    assert calls == [], "member.sh was re-run on an already-removed member"
+    stored = app_module._load_request(record["id"])
+    assert stored["state"] == "RETIRED"
+    assert stored["error"] is None
+
+
 def test_a_member_sh_failure_leaves_the_record_retiring_and_says_so(client, monkeypatch):
     """The federation no longer holds the member but the working tree still
     does -- RETIRED would be a lie, and the error names the step."""

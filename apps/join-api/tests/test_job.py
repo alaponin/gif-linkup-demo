@@ -1161,6 +1161,26 @@ def test_an_unanswerable_probe_reads_as_still_present_never_as_absent():
         assert interpreter(steps[base], dead, {}) is False, base
 
 
+def test_a_probe_that_answered_with_the_wrong_shape_is_not_read_as_absence_either():
+    """Review finding (2026-08-02): the rule above has to hold for a probe that
+    SUCCEEDED and returned something unexpected, not only for one that failed.
+    A body of the wrong type is unreadable, not empty -- and reading it as
+    empty is reading it as "already gone", which silently skips the reversal.
+    Every capture-reading interpreter, against every shape a JSON body can
+    take that is not the documented one."""
+    steps = {s.id.split(":")[0]: s for s in job.build_sequence(REAL_PACK_DIR, _payload())}
+    variables = {"ss_ptsb_awards_api_description_id": DESCRIPTION_ID}
+    wrong = ['{"unexpected": "object"}', '"a string"', "123", "null", "[1, 2, 3]", "not json", ""]
+    for capture, base in (
+        ("ss_ptsb_service_descriptions", "service.publish"),
+        ("ss_ptsb_token", "ss.sign_key_csr"),
+        ("cs_member_delete_probe_clients", "cs.members_member"),
+    ):
+        for body in wrong:
+            element = _element(True, {capture: body}, [200])
+            assert job.REVERSAL_ABSENT[base](steps[base], element, variables) is False, (base, body)
+
+
 # -- Step 3: attempt-and-retry for the client-delete window --------------------
 
 
@@ -1222,15 +1242,26 @@ def test_a_hosted_members_sign_key_is_gone_afterwards_and_every_other_members_is
     """Step 4b's assertion, made against the token the walk would read next:
     no key whose certificates[].owner_id is the departed member, and every
     other member's still there. The orphan #11 found is the whole reason this
-    step exists."""
-    _unjoin(_active(), ReverseHurl())
-    owners = [
-        cert.get("owner_id")
-        for key in TOKEN_WITHOUT_PTSB["keys"]
-        for cert in key.get("certificates", [])
-    ]
+    step exists.
+
+    Asserted over the token the WALK leaves behind, derived from the key the
+    walk actually asked X-Road to delete -- not over a hand-built constant,
+    which asserts nothing about the walk at all (review finding, 2026-08-02)."""
+    hurl = ReverseHurl()
+    _unjoin(_active(), hurl)
+    deleted = hurl.variables[hurl.calls.index("ss.sign_key_csr#reverse")]["ss_ptsb_sign_key_id"]
+    # One DELETE /keys/{key_id} removes the key AND its certificate together
+    # (#11), so what GET /tokens/0 reads next is the live token minus exactly
+    # the key the walk named.
+    remaining = [key for key in TOKEN_WITH_PTSB["keys"] if key["id"] != deleted]
+    owners = [cert.get("owner_id") for key in remaining for cert in key.get("certificates", [])]
     assert "PROGRESSA:GOV:PTSB" not in owners
     assert {"PROGRESSA:GOV:PNIA", "PROGRESSA:GOV:PLR", "PROGRESSA:GOV:MOEYS"} <= set(owners)
+    # ...and that token is what the next probe reads as absence, so a re-issued
+    # DELETE skips this step rather than deleting a second key.
+    step = next(s for s in job.build_sequence(REAL_PACK_DIR, _payload()) if s.id == "ss.sign_key_csr")
+    after = _element(True, {"ss_ptsb_token": json.dumps(dict(TOKEN_WITH_PTSB, keys=remaining))}, [200])
+    assert job._absent_sign_key(step, after, {}) is True
 
 
 def test_the_walk_refuses_to_delete_a_key_it_cannot_correlate():

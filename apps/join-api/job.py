@@ -739,7 +739,10 @@ def _token_keys(step: JobStep, captures: dict) -> list | None:
         token = json.loads(raw)
     except ValueError:
         return None
-    return token.get("keys", []) if isinstance(token, dict) else None
+    # A token body with no keys[] at all is unreadable, not a token with no
+    # keys: only a real list is evidence about what is on it.
+    keys = token.get("keys") if isinstance(token, dict) else None
+    return keys if isinstance(keys, list) else None
 
 
 def _sign_key_id(step: JobStep, captures: dict) -> str | None:
@@ -1134,11 +1137,19 @@ def _absent_service_description(step: JobStep, element: dict, variables: dict) -
         descriptions = json.loads(_captures(element).get(f"{step.tokens['CAP_P']}_service_descriptions", ""))
     except ValueError:
         return False
+    if not isinstance(descriptions, list) or not all(isinstance(d, dict) for d in descriptions):
+        # A body that is not the list-of-descriptions this endpoint documents
+        # is unreadable, not empty -- and "unreadable" must never be absence
+        # (review finding, 2026-08-02). Without this, a JSON object or string
+        # iterates to elements that match nothing, any() is False, and this
+        # returns "already gone": the service description survives its own
+        # member's departure.
+        return False
     if wanted is None:
         # Nothing to correlate against -- the reversal template needs this
         # same variable, so let it fail loudly there rather than guess here.
         return False
-    return not any(str(d.get("id")) == str(wanted) for d in descriptions if isinstance(d, dict))
+    return not any(str(d.get("id")) == str(wanted) for d in descriptions)
 
 
 def _absent_client_registration(step: JobStep, element: dict, variables: dict) -> bool:
@@ -1184,7 +1195,10 @@ def _absent_cs_member(step: JobStep, element: dict, variables: dict) -> bool:
         body = json.loads(_captures(element).get("cs_member_delete_probe_clients", ""))
     except ValueError:
         return False
-    return not (body.get("clients") if isinstance(body, dict) else True)
+    clients = body.get("clients") if isinstance(body, dict) else None
+    # No clients[] at all is unreadable, not empty -- same rule as
+    # _absent_service_description's (review finding, 2026-08-02).
+    return isinstance(clients, list) and not clients
 
 
 REVERSAL_ABSENT: dict[str, Callable[[JobStep, dict, dict], bool]] = {
