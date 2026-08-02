@@ -1,0 +1,26 @@
+
+# Delete @MEMBER_CODE@'s SIGN key -- reversal of MEMBER_SIGN_KEY.hurl.tmpl
+# (join-c plan Task 2). CONFIRMED LIVE (apps/join-api/tests/fixtures/xroad/
+# unjoin.sign_key_delete.json, docs/xroad-770-notes.md #11 "What happens to
+# a hosted member's SIGN key"): a hosted member's client-delete does NOT
+# touch its SIGN key or certificate -- both survive completely intact on
+# the host's token, status REGISTERED, active, OCSP good
+# (unjoin.token_after_client_delete.json, taken AFTER the client stopped
+# listing). This is therefore a REQUIRED, explicit step, not cleanup of an
+# already-gone resource. One DELETE /keys/{key_id} returns 204 and removes
+# the key AND its still-REGISTERED certificate together -- no separate
+# certificate delete, disable or unregister first.
+#
+# {{@CAP_P@_sign_key_id}}: forward-provided by MEMBER_SIGN_KEY.hurl.tmpl,
+# but the id used here should be RE-DERIVED by correlating
+# keys[].certificates[].owner_id (PROBE_SS_SIGN_KEY.hurl.tmpl's own
+# correlation, reused rather than re-built -- see hurl/steps.py's comment
+# on ss.sign_key_csr), never trusted blind from a resumed job's context: a
+# hosting server carries one identically-labelled "Sign key" per hosted
+# member (four, live, under profile: lite -- PROBE_SS_SIGN_KEY.hurl.tmpl's
+# own comment), so a label match, or a captured id that predates a
+# re-issued key, deletes a DIFFERENT agency's key.
+DELETE https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@CAP_P@_sign_key_id}}
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 204

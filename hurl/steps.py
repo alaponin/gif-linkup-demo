@@ -214,6 +214,23 @@ REGISTRY: tuple[Step, ...] = (
         probe="fragments/PROBE_SS_AUTH_KEY.hurl.tmpl",
     ),
     # (c) Same reasoning as ss.auth_key_csr, for the SIGN key. Join-relevant.
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 5; "What happens to a hosted member's SIGN key") --
+    # fifth step in the reversal order (REVERSAL_ORDER below), last of the
+    # SS-side calls: the client goes before its key even backwards, so this
+    # runs after ss.client_add's delete, not before it.
+    #
+    # probe is UNCHANGED, not the table's own literal GET
+    # /token-certificates/{hash} (that endpoint IS confirmed live --
+    # apps/join-api/tests/fixtures/xroad/unjoin.sign_key_delete.probe.json
+    # -- but needs @CAP_P@_sign_key_cert_hash, itself only knowable from the
+    # very key this step is trying to determine the fate of). Reusing
+    # PROBE_SS_SIGN_KEY.hurl.tmpl's GET /tokens/0 answers both questions a
+    # reversal executor actually has from the SAME one read: which key_id
+    # to delete (correlate by keys[].certificates[].owner_id, never by the
+    # shared "Sign key" label -- SS_SIGN_KEY_DELETE.hurl.tmpl's own
+    # comment) and whether that key is already gone (absence: no SIGNING
+    # key whose certificate's owner_id ends with this member).
     Step(
         id="ss.sign_key_csr",
         template="fragments/MEMBER_SIGN_KEY.hurl.tmpl",
@@ -221,6 +238,7 @@ REGISTRY: tuple[Step, ...] = (
         requires=("@HOSTVAR@", "@SESS_P@_xsrf_token", "ca_name", "xroad_instance", "member_class", "csr_country", "ca_host"),
         provides=("@CAP_P@_sign_key_id", "@CAP_P@_sign_key_csr_id", "@CAP_P@_sign_key_csr", "@CAP_P@_sign_key_cert", "@CAP_P@_sign_key_cert_hash"),
         probe="fragments/PROBE_SS_SIGN_KEY.hurl.tmpl",
+        reverse="fragments/SS_SIGN_KEY_DELETE.hurl.tmpl",
     ),
     # (c) bundles PUT .../register with a GET-pending-then-approve pair whose
     # completion can diverge on a process death in between. Join-relevant.
