@@ -307,12 +307,18 @@ REGISTRY: tuple[Step, ...] = (
     # (rest_service_code per client) -- repeat conflicts; the separate PUT
     # .../enable on an already-enabled description is a state-transition
     # X-Road is expected to 409 on repeat, per Section 5.3's default.
+    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # #11, table row 2) -- second step in the reversal order (REVERSAL_ORDER
+    # below), after service.acl's revoke and before ss.client_register's
+    # unregister.
     Step(
         id="service.publish",
         template="fragments/SERVICE_PUBLISH.hurl.tmpl",
         actor="member",
         requires=("@HOSTVAR@", "@CAP_P@_client_id", "@SESS_P@_xsrf_token", "@SPECVAR@"),
         provides=("@CAP_P@_@SC@_description_id",),
+        reverse="fragments/SERVICE_DELETE.hurl.tmpl",
+        probe="fragments/PROBE_SERVICE_DELETE.hurl.tmpl",
     ),
     # (b) proven live: 409 on an already-granted access right is treated as
     # success (PLAN.md Section 11, apps/console/xroad.py's 409 handling) --

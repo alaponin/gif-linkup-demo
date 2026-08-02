@@ -1,0 +1,20 @@
+
+# Probe for the service.publish reversal (join-c plan Task 2, Step 3): "has
+# this service description already been deleted?" service.publish carries
+# no forward probe (Plan A Task 5 classified it (b), 409-safe) -- this one
+# exists purely for the reversal direction.
+#
+# CONFIRMED LIVE (apps/join-api/tests/fixtures/xroad/
+# unjoin.service_delete.probe.json, docs/xroad-770-notes.md #11): GET
+# /clients/{id}/service-descriptions always 200s -- absence of the deleted
+# description is an EMPTY LIST, not a 404 (one of the two probes in this
+# task that does NOT signal absence with a 404 -- do not assume it does).
+# The (future) executor decides from the raw body whether
+# @CAP_P@_@SC@_description_id is still present.
+GET https://{{@HOSTVAR@}}:4000/api/v1/clients/{{@CAP_P@_client_id}}/service-descriptions
+X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
+
+HTTP 200
+
+[Captures]
+@CAP_P@_service_descriptions: body
