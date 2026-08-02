@@ -282,7 +282,11 @@ SCHOLARSHIP joined onto `ss-plr` through the join API (`ACTIVE, verified:
 true`), then taken apart by hand with `curl`. Every exchange below is
 recorded in `apps/join-api/tests/fixtures/xroad/unjoin.*.json`.
 
-**The working sequence is six calls, and it never waits.** Four calls the
+**The working sequence is six calls, and nothing in it had to be retried or
+waited on.** No call in either cycle returned anything but its `204` on the
+first attempt — in particular there is no approval round to poll and no `409`
+window was encountered (but see finding 3 for what that does and does not
+establish about `DELETE /clients/{id}`). Four calls the
 join-c plan budgeted for turned out not to exist: a `PUT .../disable` before
 the service-description delete, a Central-Server approval round after the
 unregister, a separate certificate delete before the SIGN-key delete, and a
@@ -313,10 +317,13 @@ service_description_not_found`, 4 → `404 client_not_found`, 5 → `404`,
    on the CS (id 10 in `unjoin.cs_management_requests.json`) which is
    **auto-processed and has no `status` field at all** — every other request
    in the same list carries `"status": "APPROVED"`; this one carries none.
-   `GET /management-requests?status=WAITING`, which is exactly what the
-   forward path polls, returns an **empty** list. And
-   `POST /management-requests/{id}/approval` against it returns **`403`**
-   with the bare body `{"status":403}` — no error code, no message.
+   It follows — by filtering that same capture, not from a separate live
+   query — that `GET /management-requests?status=WAITING`, which is exactly
+   what the forward path polls, cannot return it: no item in the response
+   carries `WAITING`, and the deletion request carries no `status` to match
+   on at all. And `POST /management-requests/{id}/approval` against it
+   returns **`403`** (`unjoin.cs_deletion_approval_refused.json`) with the
+   bare body `{"status":403}` — no error code, no message.
    This confirms §7's finding on the own-server case and extends it to the
    hosted one. There is no approval gate to wait on, in either topology.
 2. **A service description does not have to be disabled before it is
@@ -324,22 +331,35 @@ service_description_not_found`, 4 → `404 client_not_found`, 5 → `404`,
    description that is `"disabled": false` and actively serving. The
    `PUT .../disable` half of the plan's "disable then delete" is not a
    precondition and is not in the sequence.
-3. **`DELETE /clients/{id}` does not wait, for a hosted member.** §7 recorded
-   `409 action_not_possible` for an own-server member, requiring a
-   propagation wait of a few minutes. That does **not** reproduce here:
-   measured on a second full cycle, the delete was accepted **`204` at t+0s**
-   — the same second as the `unregister` that preceded it — with
-   `GET /clients/{id}` already answering `404` on the very next call, while
-   the *status* read a moment earlier still said `DELETION_IN_PROGRESS`.
-   The practical consequence: **`status == DELETION_IN_PROGRESS` is not a
-   usable gate.** It is not a signal that the delete will be refused, and it
-   is not a signal that it will be accepted. A reversal should attempt the
-   delete and treat `409 action_not_possible` as retryable, not poll the
-   status first. (The own-server case is *not* re-verified here — nothing in
-   this pack can stand up a member's own Security Server yet. §7's 409 stands
-   as the precedent for that topology, and whether the difference is
-   hosted-vs-own-server or simply that §7's attempt landed inside a shorter
-   window than it looked, this spike cannot say.)
+3. **`DELETE /clients/{id}` is not blocked by `DELETION_IN_PROGRESS`, and no
+   `409` window was ever observed.** §7 recorded `409 action_not_possible`
+   for an own-server member, requiring a propagation wait of a few minutes.
+   That does **not** reproduce here. What the committed fixtures show: the
+   delete was issued **once**, was accepted **`204`**
+   (`unjoin.client_delete.json`), and `GET /clients/{id}` answered `404` on
+   the next call (`unjoin.client_delete.probe.json`) — while the status read
+   taken right after the unregister still said `DELETION_IN_PROGRESS`
+   (`unjoin.client_unregister.probe.json`). Nothing was retried and no `409`
+   was seen at any point in either cycle.
+
+   **How large the acceptance window is, this spike does not establish.** The
+   two committed captures are 62s apart (`12:08:01Z` → `12:09:03Z`), but that
+   is simply the elapsed time between two hand-driven calls with several
+   Central-Server reads in between — it is an upper bound on when the delete
+   became acceptable, not a measurement of it. Do not read it as "you must
+   wait 62s"; do not read it as "there is no window" either.
+
+   The practical consequence is the same under either reading, and is the
+   part worth acting on: **`status == DELETION_IN_PROGRESS` is not a usable
+   gate.** It is not a signal that the delete will be refused, and it is not
+   a signal that it will be accepted. A reversal should attempt the delete
+   and treat `409 action_not_possible` as retryable, rather than poll the
+   status first — which is the right design precisely *because* the window is
+   unknown. (The own-server case is *not* re-verified here — nothing in this
+   pack can stand up a member's own Security Server yet. §7's 409 stands as
+   the precedent for that topology, and whether the difference is
+   hosted-vs-own-server or simply that §7's attempt landed inside a window
+   this one stepped over, this spike cannot say.)
 4. **Deleting a member on the Central Server cascades to its subsystems.**
    §7 paired `DELETE /subsystems/{subsystem_id}` with `DELETE
    /members/{member_id}`. The subsystem call is redundant: `DELETE
@@ -406,7 +426,11 @@ Two carry-overs from §7 that this spike does **not** overturn:
   volumes, so `member.sh remove` before teardown is harmless for it. Retire
   an own-server member live *before* removing its config, or purge first.
 - A demonstration join can be undone on camera. For a hosted member it is now
-  genuinely quick — six calls, no propagation wait, seconds not minutes.
+  genuinely quick — six calls, none of them retried, no approval round to wait
+  through. Both hand-driven cycles ran end to end in about four minutes
+  including the reads in between; a scripted one has no known reason to be
+  slower than its six round trips, subject to finding 3's open question about
+  the `DELETE /clients/{id}` window.
 
 ## Sources
 

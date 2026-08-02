@@ -68,7 +68,8 @@ never touches Docker.
    **REFUTED by Task 1's spike (2026-08-02).** It does not. `PUT
    /clients/{id}/unregister` raises a `CLIENT_DELETION_REQUEST` that the
    Central Server **auto-processes**: it never appears in
-   `?status=WAITING`, it carries no `status` field at all, and
+   `?status=WAITING` (it carries no `status` field at all, so that filter
+   cannot match it), and
    `POST /management-requests/{id}/approval` against it returns `403`.
    There is no approval gate and nothing to wait for. The pleasing symmetry
    was wrong; the un-join is synchronous and considerably cheaper than this
@@ -154,9 +155,13 @@ achievable, so the plan's stop branch did not fire.
 One context: the registry. Plan A left two fields out on purpose; this task
 adds them, informed by Task 1 rather than guessed.
 
-**Task 1's answer, in one place.** Six calls, five registry steps, no waits,
-no approval round. Full evidence in `docs/xroad-770-notes.md` §11; the
-recorded exchanges are `apps/join-api/tests/fixtures/xroad/unjoin.*.json`.
+**Task 1's answer, in one place.** Six calls, five registry steps, no approval
+round, nothing retried — every call returned its `204` first attempt. Full
+evidence in `docs/xroad-770-notes.md` §11; the recorded exchanges are
+`apps/join-api/tests/fixtures/xroad/unjoin.*.json`. One open question rides on
+call 4 (`DELETE /clients/{id}`): §11 finding 3 records that no `409` window was
+observed but that its size is **not** established — Step 3 of Task 4 is written
+to be correct either way.
 
 | `reverse` on | Call | Status | `probe` reads | Absence looks like |
 | --- | --- | --- | --- | --- |
@@ -294,23 +299,26 @@ join-b review finding, so relaxing it needs its own argument.
       `RETIRING` → `RETIRED`. Note two of the six probes signal absence with
       a `200` and an empty collection rather than a 404 (Task 2 Step 3), so a
       guard written as "probe 404s ⇒ already gone" is wrong for half the walk.
-- [ ] **Step 3:** ~~handle the CS approval gate~~ **there is no approval gate
-      and, for a hosted member, no wait either** (Task 1; `docs/
-      xroad-770-notes.md` §11 findings 1 and 3). Do not build an approval
-      round, do not poll `?status=WAITING` — it is empty, and approving the
-      deletion request returns `403`. What this step becomes instead: make
-      `DELETE /clients/{id}` **attempt-and-retry** rather than
-      poll-then-attempt. Measured live, it was accepted `204` at t+0s from the
-      unregister, while `GET /clients/{id}` still read `DELETION_IN_PROGRESS`
-      — so that status is not a gate in either direction. §7 of the same notes
-      recorded a `409 action_not_possible` window for an **own-server**
-      member, which this spike could not re-verify (nothing can stand up a
-      member's own server until Task 3 lands). So: try the delete, treat `409
-      action_not_possible` as retryable within the same one-run retry budget
-      the forward path uses, and re-check this against a real own-server
-      un-join once Task 3 exists. The whole un-join for a hosted member is
-      seconds, not minutes — the "most likely to be mistaken for a hang" worry
-      does not apply to it.
+- [ ] **Step 3:** ~~handle the CS approval gate~~ **there is no approval gate**
+      (Task 1; `docs/xroad-770-notes.md` §11 findings 1 and 3). Do not build an
+      approval round and do not poll `?status=WAITING` — the deletion request
+      carries no `status` at all, so that filter cannot match it, and approving
+      it returns `403`. What this step becomes instead: make `DELETE
+      /clients/{id}` **attempt-and-retry** rather than poll-then-attempt.
+      Live, the delete was issued once and accepted `204` while
+      `GET /clients/{id}` still read `DELETION_IN_PROGRESS`, with no `409` seen
+      in either cycle — so that status is not a gate in either direction and
+      must not be polled as one. But note what §11 finding 3 is careful to say:
+      the **size of the acceptance window is not established**. The two
+      committed captures are 62s apart and that is elapsed hand-driving time,
+      not a measurement. Treat the window as unknown — which is exactly why
+      attempt-and-retry is right and poll-then-attempt is not. So: try the
+      delete, treat `409 action_not_possible` as retryable within the same
+      one-run retry budget the forward path uses, and re-check against a real
+      own-server un-join once Task 3 exists (§7 recorded a multi-minute `409`
+      window there, which this spike could not re-verify). For a hosted member
+      the un-join is six round trips with nothing to wait through, so the
+      "most likely to be mistaken for a hang" worry does not apply to it.
 - [ ] **Step 4:** if the member owned a Security Server, emit the instruction
       for the operator to stop the container and remove its three named volumes
       (`kp2-<key>-db`, `kp2-<key>-conf`, `kp2-<key>-archive`, per
@@ -350,8 +358,9 @@ join-b review finding, so relaxing it needs its own argument.
       say which, because a card that silently vanishes reads as a bug during a
       live demonstration. One input from Task 1 that cuts *against* (a) and
       should be weighed rather than ignored: a hosted un-join turned out to be
-      six synchronous calls with no propagation wait — seconds, not the
-      minutes `docs/xroad-770-notes.md` §7 budgeted. `RETIRING` may barely be
+      six calls with no approval round and nothing retried — not the
+      minutes-of-dead-air `docs/xroad-770-notes.md` §7 budgeted. `RETIRING`
+      may barely be
       observable, which makes a console button cheap to demonstrate and makes
       "narrate through the dead air" a non-argument. It does not change the
       *audience* argument, which is still the deciding one.
@@ -383,9 +392,9 @@ join-b review finding, so relaxing it needs its own argument.
 
 - [ ] **Step 1:** extend `acceptance/2.7.md` with the own-server case and the
       un-join case. The own-server case is `--full`-tier so `--live` does not
-      inherit its cost; the **hosted un-join** is not — Task 1 measured it at
-      six synchronous calls with no propagation wait, so it costs `--live`
-      almost nothing and belongs there alongside the hosted join 2.7 already
+      inherit its cost; the **hosted un-join** is not — Task 1 established it
+      as six calls with no approval round and nothing retried, so it costs
+      `--live` little and belongs there alongside the hosted join 2.7 already
       asserts. Assert the whole of `docs/xroad-770-notes.md` §11's closing
       claims, since they are what "un-joined" actually means: the member is
       absent from the CS (`GET /clients?q=` empty), absent from the hosting
@@ -535,7 +544,7 @@ three tasks deep with half an implementation written against a wrong guess.
 ~~**If Task 1 reveals that clean live de-registration is not achievable on
 7.7.0**~~ — **it is achievable, and this branch does not apply** (Task 1,
 2026-08-02; `docs/xroad-770-notes.md` §11). Six admin-API calls across two
-servers, all synchronous, all `204`, no approval round, no propagation wait,
+servers, all `204` on the first attempt, no approval round, nothing retried,
 no global-configuration residue, no restart. `acceptance.sh` green afterward
 and `hurl/topology.json` byte-identical, twice. Plan C is not reduced to Task
 3, and Task 6's gate is not closed by this branch — it still turns on Task 5
