@@ -4,7 +4,10 @@
 # (docs/reviews/2026-07-28-branch-review.md finding S2); this is the only
 # thing that should ever write a working .env.
 #
-#   scripts/gen-secrets.sh          # refuses if .env already exists
+#   scripts/gen-secrets.sh          # refuses if .env already exists, UNLESS
+#                                    # it is only missing keys this script
+#                                    # added after it was written (below), in
+#                                    # which case it appends just those
 #   scripts/gen-secrets.sh --force  # overwrites -- see the PIN-rotation
 #                                    # warning this prints first
 #
@@ -36,10 +39,35 @@ random_value() {
   printf '%s' "$value"
 }
 
+# KP2_JOIN_APPLICANT_TOKEN/KP2_JOIN_OPERATOR_TOKEN were added to this
+# script's own output after some .env files were already generated
+# (join-b). docker-compose.yml now requires both unconditionally at
+# interpolation time (${VAR:?...}), even for services in the demo profile
+# that nobody is bringing up -- so an .env that predates them breaks the
+# WHOLE pack, not just the join-related parts, until it has them (review
+# finding, 2026-08-02). Below: if that is the ONLY thing wrong with an
+# existing .env, append just those two keys rather than refusing outright --
+# no PIN/password rotation, so none of the --force path's teardown/purge
+# warning applies.
+JOIN_TOKEN_KEYS="KP2_JOIN_APPLICANT_TOKEN KP2_JOIN_OPERATOR_TOKEN"
+
 if [ -f "$ENV_FILE" ] && [ "${1:-}" != "--force" ]; then
-  echo "gen-secrets.sh: $ENV_FILE already exists -- refusing to overwrite it." >&2
-  echo "Pass --force to regenerate it (prints a warning first -- read it)." >&2
-  exit 1
+  missing=""
+  for key in $JOIN_TOKEN_KEYS; do
+    grep -q "^${key}=" "$ENV_FILE" || missing="$missing $key"
+  done
+  if [ -z "$missing" ]; then
+    echo "gen-secrets.sh: $ENV_FILE already exists -- refusing to overwrite it." >&2
+    echo "Pass --force to regenerate it (prints a warning first -- read it)." >&2
+    exit 1
+  fi
+  echo "gen-secrets.sh: $ENV_FILE exists and already has everything except:$missing" >&2
+  echo "-- appending only those (no PIN/password rotation, nothing else touched)." >&2
+  for key in $missing; do
+    printf '%s=%s\n' "$key" "$(random_value)" >> "$ENV_FILE"
+  done
+  echo "gen-secrets.sh: appended$missing to $ENV_FILE." >&2
+  exit 0
 fi
 
 if [ -f "$ENV_FILE" ]; then

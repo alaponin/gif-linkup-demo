@@ -149,13 +149,23 @@ def _is_secret(name: str) -> bool:
     return name.endswith("_xsrf_token")
 
 
+# ss_admin_user ("xrd") is not a secret -- it's a short, well-known, documented
+# test/dev admin username (present in this pack's own docs) -- so scrub() leaves
+# it out. It stays in every `secrets` dict this module passes around (build_constants
+# still needs the real value), just never treated as something to hide from output:
+# redacting it bought nothing, and "xrd" is short enough to appear as a substring
+# inside unrelated words, which could strip legitimate diagnostic text (review
+# finding, 2026-08-02).
+_NOT_SECRET = {"ss_admin_user"}
+
+
 def scrub(text: str, secrets: dict[str, str]) -> str:
     """Belt and braces for spec S5.4: no credential in a persisted error
     message. Hurl's own error output quotes the template source (`{{token_pin}}`,
     unexpanded -- verified), so this should never have anything to do; it
     costs one pass over a short string and removes the need to trust that."""
-    for value in secrets.values():
-        if value:
+    for name, value in secrets.items():
+        if value and name not in _NOT_SECRET:
             text = text.replace(value, "***")
     return text
 
@@ -385,7 +395,19 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
     subject_id = subject.replace("/", ":")
     entry = next((s for s in topology["subsystems"] if s["id"] == subject_id), None)
     if entry is None:
-        return None
+        # Not the consume-only case above: check 7 (ACL sanity) already
+        # proved this exact subject exists in manifest.yaml before the
+        # request was ever approved, so its absence here means manifest.yaml
+        # and hurl/topology.json have diverged since -- "registry-perfect but
+        # dead" (design spec S12), the one case join.r1_verify exists to
+        # catch. Silently omitting the step (the previous behaviour) would
+        # reach ACTIVE with `verified` never set at all, which is a worse
+        # silence than the one S12 calls out.
+        raise StepFailure(
+            "plan",
+            f"ACL subject {subject_id!r} passed check 7 against manifest.yaml but is missing from "
+            "hurl/topology.json -- manifest and topology have diverged; cannot plan join.r1_verify",
+        )
     host = next((s for s in topology["security_servers"] if s["host"] == entry["hosted_on"]), None)
     proxy_port = (host or {}).get("proxy_port", 8080)
     # ponytail: the service ROOT path, not an operation from the joining

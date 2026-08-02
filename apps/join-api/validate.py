@@ -1,8 +1,12 @@
-"""apps/join-api/validate.py -- the twelve checks spec S8 requires before a
-join request can be approved (join-b Task 2). Pure functions over a payload,
-the manifest, the join policy and a fetched OpenAPI document -- no X-Road,
-no containers, no job. Checks run in the exact order spec S8 lists them
-(1 schema .. 12 identifier characters); the first failure raises
+"""apps/join-api/validate.py -- eleven of the twelve checks spec S8 requires
+before a join request can be approved (join-b Task 2). Check 5 (member
+class) moved to hurl/generate.py's check_join_policy() -- a generate-time
+structural check, not a per-request one -- see the comment above where
+_check_member_class used to be; this module runs the other eleven. Pure
+functions over a payload, the manifest, the join policy and a fetched
+OpenAPI document -- no X-Road, no containers, no job. Checks run in the
+exact order spec S8 lists them (1 schema .. 12 identifier characters, minus
+5); the first failure raises
 RejectionError(check, message) naming the check, which is what a REJECTED
 request carries (spec S4).
 
@@ -422,7 +426,8 @@ def validate(
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
 ) -> tuple[JoinPayload, ValidationContext]:
-    """Runs all twelve checks (spec S8) in order. Returns
+    """Runs all eleven per-request checks (spec S8, minus check 5 -- see
+    _CHECKS' own comment) in order. Returns
     (validated JoinPayload, the ValidationContext checks ran against) on
     success -- the context is returned too because check 9 populates
     ctx.fetched_specs with every service's parsed OpenAPI document, and

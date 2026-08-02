@@ -159,6 +159,41 @@ def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(clien
     assert app_module._load_request(record["id"])["state"] == "FAILED"
 
 
+def test_a_git_check_failure_is_a_409_not_a_500(client, monkeypatch):
+    """Review finding (2026-08-02): writer._git_status_dirty used to let a
+    structural git failure escape as a raw, unhandled exception -- a 500.
+    apply_real now raises writer.GitCheckFailure for that case, and
+    approve_request maps it to the same clear 409 shape as a genuinely
+    dirty checkout."""
+    record = _submit(client)
+
+    def boom(*args, **kwargs):
+        raise writer.GitCheckFailure("could not check whether the pack is a clean checkout: boom")
+
+    monkeypatch.setattr(app_module.writer, "apply_real", boom)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 409
+    assert "could not check" in resp.json()["detail"]
+    assert started == []
+
+
+def test_a_member_directory_collision_is_a_409_not_a_500(client, monkeypatch):
+    """Review finding (2026-08-02): _write_member's FileExistsError (the
+    validated-key-collides-anyway race) used to escape apply_real as a raw,
+    unhandled exception -- a 500. approve_request now maps
+    writer.MemberCollisionError to a clear 409."""
+    record = _submit(client)
+
+    def boom(*args, **kwargs):
+        raise writer.MemberCollisionError("configs/member-ptsb/ already exists")
+
+    monkeypatch.setattr(app_module.writer, "apply_real", boom)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 409
+    assert "already exists" in resp.json()["detail"]
+    assert started == []
+
+
 def test_a_dirty_checkout_refuses_the_approval(client):
     """spec S9's mitigation: a join must never stack on uncommitted work of
     unclear provenance."""

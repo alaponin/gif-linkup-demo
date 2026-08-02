@@ -184,6 +184,41 @@ def _load_request(request_id: str) -> dict | None:
     return json.loads(path.read_text())
 
 
+def _recover_interrupted_jobs() -> None:
+    """A job's record can be stuck at RUNNING forever if the process running
+    it stops mid-job -- scripts/join.sh down, a rebuild, or even
+    acceptance.sh's own 2.7 section (which brings join-api up and back down
+    around its checks). job.run() itself already resumes correctly from any
+    record carrying last_completed_step (see its own docstring), but
+    resume_request only accepts FAILED -- never RUNNING, so two runners can
+    never land on one live job -- so a record left at RUNNING is otherwise
+    unrecoverable through this API except by hand-editing out/join/<id>.json.
+
+    Run once, at import time (review finding, 2026-08-02): this process is,
+    by construction, not the one that was running that job -- if it were
+    still running, this module would not be re-executing from the top. Every
+    record still marked RUNNING therefore belongs to a run that died with
+    this process (or an earlier one) and never got to report itself FAILED;
+    rewriting it to FAILED here makes the existing FAILED-only resume path
+    able to pick it back up."""
+    for path in sorted(_requests_dir().glob("*.json")):
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if record.get("state") != "RUNNING":
+            continue
+        record["state"] = "FAILED"
+        record["error"] = {
+            "step": record.get("last_completed_step"),
+            "message": "interrupted by a join-api restart",
+        }
+        _save_request(record)
+
+
+_recover_interrupted_jobs()
+
+
 def _load_manifest() -> dict:
     return yaml.safe_load((PACK_DIR / "manifest.yaml").read_text())
 
@@ -201,7 +236,9 @@ def submit_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
 ) -> dict:
-    """Validate synchronously (spec S8's twelve checks), then either persist
+    """Validate synchronously (spec S8's eleven per-request checks --
+    validate.py's own module docstring: check 5 moved to generate-time),
+    then either persist
     a REJECTED record or -- on success -- write the candidate config to a
     throwaway copy of the pack, run its generate.py, and persist a SUBMITTED
     record carrying the resulting diff. Either way: 201 (spec S7 -- the
@@ -235,7 +272,7 @@ def submit_request(
     try:
         diff = writer.dry_run_diff(PACK_DIR, key, payload)
     except writer.GenerateFailure as exc:
-        # Every twelve S8 checks passed, but generate.py itself still
+        # Every one of the eleven per-request S8 checks passed, but generate.py itself still
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
         # record, never a bare 500, per spec S7's "submission always
@@ -445,6 +482,17 @@ def approve_request(
     try:
         writer.apply_real(PACK_DIR, payload.code.lower(), payload)
     except writer.DirtyCheckoutError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except writer.GitCheckFailure as exc:
+        # Could not tell whether the checkout is clean -- refuse the same as
+        # if it were dirty (writer.GitCheckFailure's own docstring), a clear
+        # 409 rather than the raw 500 this used to surface as (review
+        # finding, 2026-08-02).
+        raise HTTPException(409, str(exc)) from exc
+    except writer.MemberCollisionError as exc:
+        # A member directory for this key appeared between validation and
+        # approval (a race, however unlikely) -- also a clear 409, not a
+        # raw 500 (review finding, 2026-08-02).
         raise HTTPException(409, str(exc)) from exc
     except writer.GenerateFailure as exc:
         # The config was written but generate.py refused it -- the working

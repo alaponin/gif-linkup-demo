@@ -35,6 +35,7 @@ os.environ.setdefault("KP2_JOIN_OPERATOR_TOKEN", "test-operator-token")
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import job  # noqa: E402
+import writer  # noqa: E402
 from schema import JoinPayload  # noqa: E402
 
 # apps/join-api/tests/test_job.py -> tests -> join-api -> apps -> pack root
@@ -225,6 +226,31 @@ def test_r1_target_is_the_consumers_own_security_server():
     target = job._r1_target(REAL_PACK_DIR, _payload())
     assert target["client_header"] == "PROGRESSA/GOV/PNEA/EXAMS"
     assert target["url"].startswith("http://ss-pnea:8080/r1/PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api")
+
+
+def test_r1_target_raises_loud_not_silent_when_topology_has_drifted_from_manifest(tmp_path):
+    """Review finding (2026-08-02): an ACL subject that check 7 (ACL sanity,
+    validate.py) already proved exists in manifest.yaml but is missing from
+    hurl/topology.json at job-run time -- the two files disagreeing is
+    exactly what job.py's own module docstring (S12) calls "registry-perfect
+    but dead": the case join.r1_verify exists to catch. The previous
+    behaviour was to return None and silently drop the step, reaching ACTIVE
+    with `verified` never set. This should never happen if check 7 did its
+    job -- reproduced here by copying the real pack (writer._copy_pack, the
+    same fixture pattern test_writer.py uses) and deleting the one topology
+    entry the default payload's access[] names, which is exactly the kind of
+    manifest/topology divergence check 7 cannot see (it only reads
+    manifest.yaml, never topology.json)."""
+    writer._copy_pack(REAL_PACK_DIR, tmp_path)
+    topology_path = tmp_path / "hurl" / "topology.json"
+    topology = json.loads(topology_path.read_text())
+    topology["subsystems"] = [s for s in topology["subsystems"] if s["id"] != "PROGRESSA:GOV:PNEA:EXAMS"]
+    topology_path.write_text(json.dumps(topology))
+
+    with pytest.raises(job.StepFailure) as exc_info:
+        job._r1_target(tmp_path, _payload())
+    assert "PROGRESSA:GOV:PNEA:EXAMS" in exc_info.value.message
+    assert "topology.json" in exc_info.value.message
 
 
 # -- executing (Task 4 Step 2) -------------------------------------------------
@@ -448,6 +474,16 @@ def test_the_serialised_job_context_of_a_completed_job_carries_no_credential(tmp
     ):
         value = os.environ[name]
         assert value not in serialised, f"{name}'s value reached out/join/<id>.json"
+
+
+def test_scrub_redacts_credentials_but_leaves_the_non_secret_admin_username():
+    """Review finding (2026-08-02): ss_admin_user ("xrd") is a short, publicly
+    documented test/dev username, not a secret -- redacting it bought
+    nothing and, being short, risked stripping legitimate diagnostic text
+    that happened to contain "xrd" as a substring."""
+    text = "user xrd failed with pin 1234 and password hunter2"
+    scrubbed = job.scrub(text, {"ss_admin_user": "xrd", "token_pin": "1234", "ss_admin_password": "hunter2"})
+    assert scrubbed == "user xrd failed with pin *** and password ***"
 
 
 def test_a_failure_message_is_scrubbed_of_every_credential(tmp_path):

@@ -671,9 +671,9 @@ function renderJoinRequest(record) {
   html += `<div class="join-request-meta">submitted ${esc(record.submitted_at || "?")}`
     + `${record.queued ? " &middot; queued behind another job" : ""}</div>`;
 
-  if (record.requested_access && record.requested_access.length) {
+  if (payload.requested_access && payload.requested_access.length) {
     html += `<div class="join-followup">also requests access to: `
-      + `${record.requested_access.map(esc).join(", ")} `
+      + `${payload.requested_access.map(esc).join(", ")} `
       + `&mdash; the named provider must grant this; this API never does.</div>`;
   }
 
@@ -697,14 +697,33 @@ function renderJoinRequest(record) {
     html += `<div class="join-error">failed at <code>${esc(e.step || "?")}</code>: `
       + `<span class="join-error-message">${esc(e.message || "")}</span></div>`;
     html += renderJoinSteps(record);
-    html += `<div class="join-actions">`
-      + `<button class="action join-resume-btn" data-id="${esc(record.id)}">Resume</button>`
-      + `</div>`;
+    if (e.step === "config.write") {
+      // apps/join-api/app.py's approve_request: the config was WRITTEN but
+      // hurl/generate.py then rejected it -- resuming would re-run the
+      // X-Road admin-API sequence against a config generate.py already
+      // rejected once, using a stale topology.json. Resume cannot help here
+      // (review finding, 2026-08-02); the working tree needs a human.
+      html += `<div class="join-note">generate.py rejected this config after it was written -- `
+        + `Resume cannot fix this. Check the working tree (configs/ and manifest.yaml) directly.</div>`;
+    } else {
+      html += `<div class="join-actions">`
+        + `<button class="action join-resume-btn" data-id="${esc(record.id)}">Resume</button>`
+        + `</div>`;
+    }
   } else if (state === "ACTIVE") {
     html += renderJoinSteps(record);
-    html += record.verified
-      ? `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`
-      : `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
+    // A consume-only join never runs join.r1_verify (job.py's own
+    // build_sequence), so `verified` stays unset -- job.py writes an
+    // explanatory `note` instead (~job.py line 704), and the generic
+    // "reachability check has not passed yet" line would be actively
+    // misleading there (nothing is pending; there is nothing to verify).
+    if (record.note) {
+      html += `<div class="join-note">${esc(record.note)}</div>`;
+    } else {
+      html += record.verified
+        ? `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`
+        : `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
+    }
     // uncommitted is bool | null (apps/join-api/app.py's _live_uncommitted):
     // null means the git check itself failed -- fails toward SHOWING a
     // warning, not hiding one (review finding, 2026-08-02: `if

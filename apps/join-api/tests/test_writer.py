@@ -194,6 +194,48 @@ def test_apply_real_refuses_when_the_checkout_is_dirty(tmp_path):
     assert not (pack / "configs" / "member-ptsb").exists()
 
 
+def test_apply_real_refuses_cleanly_when_the_git_check_itself_cannot_run(tmp_path):
+    """Review finding (2026-08-02): repo_root not actually being a git repo
+    (a structural problem: the pack copy ended up outside the monorepo, or
+    parents[2] resolved somewhere wrong) used to raise a raw, unhandled
+    subprocess.CalledProcessError out of _git_status_dirty -- a 500, not a
+    clear refusal. Contrast with test_apply_real_refuses_when_the_checkout_is_dirty
+    above: that repo_root IS a real (uninitialised-content) git repo; this
+    one is not a git repo at all."""
+    repo_root = tmp_path / "not-a-repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    # No `git init` -- repo_root has no .git at all.
+
+    with pytest.raises(writer.GitCheckFailure):
+        writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+    assert not (pack / "configs" / "member-ptsb").exists()
+
+
+def test_apply_real_refuses_cleanly_on_a_member_directory_collision(tmp_path):
+    """Review finding (2026-08-02): validate.py's own collision check (S8
+    check 3) already refuses a request whose key collides with an existing
+    configs/member-<key>/ at submission time -- this reproduces the
+    unlikely race where a directory for the same key appears between that
+    check and approval, which used to raise a raw, unhandled
+    FileExistsError out of _write_member's mkdir -- a 500, not a clear
+    refusal."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+    (pack / "configs" / "member-ptsb").mkdir()  # the race: already there
+
+    with pytest.raises(writer.MemberCollisionError):
+        writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+
 def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     repo_root = tmp_path / "repo"
     pack = repo_root / "pack"

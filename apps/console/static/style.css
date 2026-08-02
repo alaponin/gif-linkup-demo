@@ -391,6 +391,11 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 .join-verified.ok { color: var(--ok); }
 .join-verified.pending { color: var(--muted); }
 
+/* A consume-only join's explanatory note (job.py's `note` field) -- neutral,
+   not the muted "pending" tone: nothing is pending here, so it should not
+   read as a lesser state of the same fact. */
+.join-note { font-size: 14px; margin-top: 8px; color: var(--text); }
+
 .join-uncommitted-warning {
   margin-top: 10px;
   background: color-mix(in srgb, var(--danger) 18%, var(--bg));

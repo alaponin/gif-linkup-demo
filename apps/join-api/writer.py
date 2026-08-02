@@ -72,6 +72,31 @@ class DirtyCheckoutError(Exception):
     unattributable work."""
 
 
+class GitCheckFailure(Exception):
+    """The dirty-checkout check itself could not run -- a structural problem
+    (the pack copy ended up outside the monorepo, `repo_root` does not
+    resolve to a real git repo, `git` itself is missing) rather than the
+    checkout genuinely being dirty. Distinct from DirtyCheckoutError: this is
+    "could not tell", not "and the answer is yes". Refusing here is the safe
+    default either way -- apps/join-api/app.py's `_live_uncommitted` already
+    treats this same class of git failure as "assume the worst", not
+    "assume clean" (review finding, 2026-08-02: this function used to let
+    subprocess.CalledProcessError escape uncaught, surfacing as a raw 500
+    instead of a clear refusal)."""
+
+
+class MemberCollisionError(Exception):
+    """A member directory with this key was created between validation and
+    approval -- the race _write_member's own comment names as the only way
+    its `mkdir(parents=True)` (not exist_ok) can raise FileExistsError.
+    validate.py's collision check (S8 check 3) already refused any request
+    whose key collided with an existing configs/member-<key>/ at submission
+    time; this catches the (unlikely) case where a second request for the
+    same key was approved in between (review finding, 2026-08-02: this
+    escaped apply_real uncaught, surfacing as a raw 500 instead of a clear
+    refusal)."""
+
+
 def _copy_pack(pack_dir: pathlib.Path, dest: pathlib.Path) -> None:
     """Read pack_dir exactly once here; every write from here on lands in
     dest. "configs" copies first: shutil.copytree creates dest's missing
@@ -207,7 +232,9 @@ def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> N
     member_dir.mkdir(parents=True)  # not exist_ok: validate.py's collision
     # check (S8 check 3) already refuses a request whose key collides with
     # an existing configs/member-<key>/ -- a FileExistsError here means that
-    # guarantee was violated somewhere upstream, and should be loud.
+    # guarantee was violated somewhere upstream, and should be loud. apply_real
+    # (the only caller where this race is reachable -- dry_run_diff's target
+    # is always a fresh temp copy) turns it into MemberCollisionError.
     (member_dir / f"{key}.yaml").write_text(render_member_config(key, payload))
 
     manifest_path = target_dir / "manifest.yaml"
@@ -275,13 +302,21 @@ def dry_run_diff(pack_dir: pathlib.Path, key: str, payload: JoinPayload) -> str:
 
 
 def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
-    rel = pack_dir.relative_to(repo_root)
-    proc = subprocess.run(
-        ["git", "-C", str(repo_root), "status", "--porcelain", str(rel / "configs"), str(rel / "manifest.yaml")],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    try:
+        rel = pack_dir.relative_to(repo_root)
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "status", "--porcelain", str(rel / "configs"), str(rel / "manifest.yaml")],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+        # ValueError: pack_dir is not under repo_root. CalledProcessError:
+        # repo_root is not a git repo (or some other structural git failure).
+        # OSError: git itself is missing. None of these mean "clean" --
+        # apply_real must refuse exactly as it would for a genuinely dirty
+        # checkout, not silently proceed (found in review, 2026-08-02).
+        raise GitCheckFailure(f"could not check whether {pack_dir} is a clean checkout: {exc}") from exc
     return proc.stdout
 
 
@@ -314,7 +349,13 @@ def apply_real(
             f"has uncommitted changes (spec S9) -- commit or discard them "
             f"first:\n{dirty}"
         )
-    _write_member(pack_dir, key, payload)
+    try:
+        _write_member(pack_dir, key, payload)
+    except FileExistsError as exc:
+        raise MemberCollisionError(
+            f"configs/member-{key}/ already exists -- another request for the same key was "
+            "approved between this request's validation and its approval"
+        ) from exc
     proc = _run_generate(pack_dir / "hurl" / "generate.py")
     if proc.returncode != 0:
         raise GenerateFailure(proc.stderr, proc.returncode)

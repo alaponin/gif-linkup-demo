@@ -9,7 +9,13 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Stand it up:** see `runbook.md` — start with `scripts/preflight.sh`
   (checks the host has what the pack needs; installs nothing), then
   `scripts/gen-secrets.sh` (writes a real `.env`; `.env.example` is a
-  placeholder template and cannot work by itself)
+  placeholder template and cannot work by itself). An `.env` from before
+  join-b (missing `KP2_JOIN_APPLICANT_TOKEN`/`KP2_JOIN_OPERATOR_TOKEN`)
+  breaks every `docker compose` invocation, not just the join-related ones
+  (Compose interpolates `${VAR:?...}` for the whole file before profile
+  filtering) -- re-run `scripts/gen-secrets.sh` with no flags to append just
+  the two missing keys (no `--force`, no PIN/password rotation, safe against
+  a running federation)
 - **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
   Progressa identifiers that are the KP3/KP4 join keys)
