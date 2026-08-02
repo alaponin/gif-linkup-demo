@@ -115,7 +115,8 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   `configs/member-<key>/` and the `manifest.yaml` entry, regenerates.
   Refuses on a canonical member (the five never renumber or leave). Does
   **not** touch a running federation: the member stays registered there
-  until `scripts/teardown.sh --purge`.
+  until `scripts/teardown.sh --purge` — or until you un-join it properly
+  (below), which calls this script for you at the end.
 - **Drift:** `scripts/member.sh drift <key>` — re-fetches a joined member's
   *current* OpenAPI spec and diffs its endpoint set against the baseline
   captured at join time (design spec §2.4). No auth, no HTTP to the join
@@ -222,6 +223,47 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     expected — X-Road's own `servers.url` from the joining member's OpenAPI
     document supplies the forwarding target, path prefix included; nothing
     about a long URL here indicates a misconfiguration.
+- **Un-join via the API (automated):** `DELETE /members/<key>`, operator
+  token, same `X-KP2-Console: 1` header as everything else:
+
+  ```
+  curl -X DELETE -H "X-KP2-Console: 1" \
+       -H "Authorization: Bearer $KP2_JOIN_OPERATOR_TOKEN" \
+       http://localhost:8091/members/ptsb
+  ```
+
+  It walks that member's completed steps **backwards** — revoke the ACL,
+  delete the service description, unregister the client, delete the client,
+  delete its SIGN key, delete the member on the Central Server (six calls,
+  the order established live: `docs/xroad-770-notes.md` §11) — then runs
+  `scripts/member.sh remove <key>` for you. States go `ACTIVE` → `RETIRING`
+  → `RETIRED`; poll `GET /requests/{id}` or watch the console's join tab,
+  which renders both.
+  - **There is no un-join button in the console, deliberately.** The join tab
+    shows an agency arriving; a destructive control is a different act for a
+    different audience, and the console has none today. It renders `RETIRING`
+    and `RETIRED` like any other state (a `RETIRED` card stays in the list —
+    a card that vanished mid-demonstration would read as a bug) and leaves
+    the DELETE to this command, which is also where the Docker cleanup below
+    has to be run anyway.
+  - **Canonical members are refused** before anything happens, naming the
+    reason: `manifest.yaml`'s `identifiers:` block is the frozen KP3/KP4
+    cross-pack contract and a demonstration un-join must never change it.
+  - **A member with its OWN Security Server leaves two Docker commands
+    behind.** The API never touches Docker (design decision 8, same split as
+    `scripts/join-agent.sh`), so the record carries the instruction and you
+    run it: `docker rm -f <dns>` then `docker volume rm kp2-<key>-db
+    kp2-<key>-conf kp2-<key>-archive`. Skip it and the next member to reuse
+    that key inherits the old database and `/etc/xroad`.
+  - **A hosted member leaves a SIGN key behind** on somebody else's Security
+    Server — `REGISTERED`, active, good OCSP, and nothing in X-Road's admin
+    API ever collects it (`docs/xroad-770-notes.md` §11). Deleting it is part
+    of the walk, not optional cleanup: without it a host accumulates one
+    orphaned signing key per member that ever left.
+  - **Interrupted halfway?** Re-issue the same `DELETE`. Every reversal is
+    guarded by a read that proves whether it is already gone, so the walk
+    re-runs from the top and skips what is done. `POST /requests/{id}/resume`
+    is *not* the way back — that one re-enters the forward path.
 
 ## Reaching the stack from another machine
 

@@ -42,6 +42,11 @@ Two shapes of join (spec S6, join-c plan Task 3):
     anchor-upload/CSR/activation steps really are the member's -- so
     `actor: member` steps genuinely exist in the sequence, and BLOCKED (the
     state that waits for them) becomes reachable.
+
+And one shape of un-join (join-c plan Task 4): unjoin() walks a completed
+job's steps BACKWARDS, running each hurl/steps.py `reverse` template guarded
+by its `probe`. It is a second engine beside run(), not a mode of it -- see
+the section comment above unjoin() for the three reasons.
 """
 from __future__ import annotations
 
@@ -49,6 +54,7 @@ import dataclasses
 import datetime
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -719,26 +725,54 @@ def _probe_client_registered(step: JobStep, captures: dict) -> bool:
     return captures.get(f"{step.tokens['CAP_P']}_client_status") == "REGISTERED"
 
 
-def _probe_sign_key_exists(step: JobStep, captures: dict) -> bool:
-    """PROBE_SS_SIGN_KEY captures the whole token body: a shared host's token
-    carries one identically-labelled "Sign key" per hosted member, so this
-    correlates by the certificate's owner_id, never by label (confirmed live
-    on ss-plr, join-a plan Task 5 Step 4)."""
+def _token_keys(step: JobStep, captures: dict) -> list | None:
+    """PROBE_SS_SIGN_KEY's captured token body as its keys[] list, or None if
+    there is no readable body at all. The distinction matters in the reversal
+    direction: "this token carries no key for this member" is proof of
+    absence, "I could not read this token" is not, and collapsing the two
+    would skip the SIGN-key delete and leave exactly the orphan
+    docs/xroad-770-notes.md #11 found."""
     raw = captures.get(f"{step.tokens['CAP_P']}_token")
     if not raw:
-        return False
+        return None
     try:
         token = json.loads(raw)
     except ValueError:
-        return False
+        return None
+    return token.get("keys", []) if isinstance(token, dict) else None
+
+
+def _sign_key_id(step: JobStep, captures: dict) -> str | None:
+    """This member's SIGN key id on the token PROBE_SS_SIGN_KEY just read, or
+    None if it has none. Correlated by keys[].certificates[].owner_id, NEVER
+    by label: a shared host's token carries one identically-labelled "Sign
+    key" per hosted member (four, live, on ss-plr under profile: lite --
+    PROBE_SS_SIGN_KEY.hurl.tmpl's own comment, confirmed join-a plan Task 5
+    Step 4).
+
+    Forwards this answers "does it already exist?" (the probe interpreter
+    below). Backwards it answers "which key do I delete?" -- the same read,
+    the same correlation, which is exactly why hurl/steps.py's ss.sign_key_csr
+    reuses this probe for its `reverse` rather than the literal
+    GET /token-certificates/{hash} the live spike used (that needs the very
+    hash whose fate is in question). SS_SIGN_KEY_DELETE.hurl.tmpl's own
+    comment: a label match, or a captured id that predates a re-issued key,
+    deletes a DIFFERENT agency's key."""
+    keys = _token_keys(step, captures)
+    if keys is None:
+        return None
     suffix = f":{step.tokens['MEMBER_CODE']}"
-    for key in token.get("keys", []):
+    for key in keys:
         if key.get("usage") != "SIGNING":
             continue
         for cert in key.get("certificates", []):
             if str(cert.get("owner_id", "")).endswith(suffix):
-                return True
-    return False
+                return str(key.get("id")) if key.get("id") is not None else None
+    return None
+
+
+def _probe_sign_key_exists(step: JobStep, captures: dict) -> bool:
+    return _sign_key_id(step, captures) is not None
 
 
 def _probe_auth_cert_registered(step: JobStep, captures: dict) -> bool:
@@ -758,6 +792,27 @@ PROBE_INTERPRETERS: dict[str, Callable[[JobStep, dict], bool]] = {
 
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _shared_cookie_jar(run_hurl):
+    """One Netscape cookie jar for a whole run/walk, or the caller's own
+    run_hurl untouched. Extracted from run() when unjoin() needed the same
+    thing for the same reason (see _default_run_hurl's docstring: one Hurl
+    PROCESS per step means nothing carries cs.init's JSESSIONID forward, and
+    the admin API validates X-XSRF-TOKEN against the session that cookie
+    names). Returns (run_hurl, tempdir-to-remove-or-None).
+
+    Only wired in for the real default: a caller that supplies its own
+    run_hurl is replaying fixtures and has nothing for a cookie jar to do."""
+    if run_hurl is not _default_run_hurl:
+        return run_hurl, None
+    jar_dir = tempfile.mkdtemp(prefix="kp2-join-cookies-")
+    jar = pathlib.Path(jar_dir) / "jar.txt"
+
+    def wrapped(label: str, body: str, variables: dict, _jar=jar, _inner=run_hurl) -> dict:
+        return _inner(label, body, variables, cookie_jar=_jar)
+
+    return wrapped, jar_dir
 
 
 def run(
@@ -812,14 +867,7 @@ def run(
     # run/resume, never persisted to record or disk beyond this process's
     # tempdir: spec S5.4's "session state is never persisted" applies to
     # cookies exactly as it already does to *_xsrf_token.
-    cookie_jar_dir: str | None = None
-    if run_hurl is _default_run_hurl:
-        cookie_jar_dir = tempfile.mkdtemp(prefix="kp2-join-cookies-")
-        cookie_jar = pathlib.Path(cookie_jar_dir) / "jar.txt"
-        _bare_run_hurl = run_hurl
-
-        def run_hurl(label: str, body: str, variables: dict, _jar=cookie_jar, _inner=_bare_run_hurl) -> dict:
-            return _inner(label, body, variables, cookie_jar=_jar)
+    run_hurl, cookie_jar_dir = _shared_cookie_jar(run_hurl)
 
     try:
         last = record.get("last_completed_step")
@@ -1004,3 +1052,354 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
     if not element.get("success"):
         return False
     return PROBE_INTERPRETERS[step.id.split(":")[0]](step, _captures(element))
+
+
+# -- the reversal walk (join-c plan Task 4) -----------------------------------
+# Un-joining is not run() with the sequence reversed. Three things make it its
+# own engine:
+#
+#   1. **The order is not `reversed(completed_steps)`.** hurl/steps.py's
+#      REVERSAL_ORDER is what was established LIVE (docs/xroad-770-notes.md
+#      #11 finding 5): ss.client_register -> ss.client_add -> ss.sign_key_csr,
+#      i.e. the client goes before its key backwards just as forwards. The
+#      strict mirror (key before client) was never tried live.
+#   2. **The guard is a probe with a per-step reading, not a status code.**
+#      Two of the six signal absence with `200` and an EMPTY COLLECTION rather
+#      than a 404 (service.publish's descriptions list, cs.members_member's
+#      /clients?q= result), and a third (ss.client_register) signals it with a
+#      transitional `DELETION_IN_PROGRESS` before the client is gone at all.
+#      "probe 404s => already gone" is wrong for half the walk; each probe
+#      template's own comment says what its absence signal is, and
+#      REVERSAL_ABSENT below encodes exactly those six readings.
+#   3. **Nothing is captured.** A reversal call returns 204 with no body. The
+#      one value a reversal has to LEARN -- the SIGN key's id -- comes from
+#      its own probe, not from the job context, deliberately
+#      (SS_SIGN_KEY_DELETE.hurl.tmpl).
+#
+# What it DOES share with run(): the same rendered-template-through-Hurl step
+# shape, the same shared cookie jar, the same ONE-BUDGET-PER-RUN retry
+# semantics (RETRY_BUDGET / RETRY_INTERVAL_SECONDS, record["retry_budget_left"]),
+# and the same "session captures are never persisted" rule -- which is why the
+# walk re-runs the job's session steps first (JobStep.must_rerun), exactly as a
+# resume does.
+#
+# Resumability (Task 4 Step 9): there is no reversal marker to trust. The walk
+# is re-entrant because every entry is probed first -- a DELETE re-issued after
+# a kill re-walks from the top and skips whatever the probes now report absent.
+# record["last_reversed_step"] is written for the operator's benefit, never
+# read back as a skip.
+
+_HURL_VAR_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
+
+# The reversal analogue of _succeeded()'s 409-as-success (spec S5.3). Repeating
+# any of the six is safe and distinguishable (docs/xroad-770-notes.md #11):
+# 1 -> 409 accessright_not_found, 2 -> 404 service_description_not_found,
+# 4 -> 404 client_not_found, 5 -> 404, 6 -> 404 member_not_found. So a 404 or
+# 409 on a reversal means "already gone" -- which is what makes a probe that
+# under-reports absence harmless: the call is attempted and succeeds anyway.
+#
+# The ONE exception is the reason this is not a bare status check: `DELETE
+# /clients/{id}` following the unregister can answer `409 action_not_possible`
+# while the deletion propagates (#7 recorded a multi-minute window for an
+# own-server member; the hosted spike saw none, and #11 finding 3 is explicit
+# that the window's SIZE is not established). That 409 is retryable, not
+# success -- distinguished by its error code, because its STATUS is
+# indistinguishable from service.acl's already-revoked 409.
+REVERSAL_RETRYABLE_CODE = "action_not_possible"
+
+
+def _reversal_succeeded(element: dict) -> bool:
+    if element.get("success"):
+        return True
+    if REVERSAL_RETRYABLE_CODE in _failure_text(element):
+        return False
+    return bool({404, 409} & set(_statuses(element)))
+
+
+def _absent_by_probe_404(step: JobStep, element: dict, variables: dict) -> bool:
+    """service.acl and ss.client_add. Their probe templates ASSERT `HTTP 404`,
+    so Hurl's own success IS the absence signal -- a live grant / a live client
+    fails the assert with its 200."""
+    return bool(element.get("success"))
+
+
+def _absent_service_description(step: JobStep, element: dict, variables: dict) -> bool:
+    """service.publish. PROBE_SERVICE_DELETE's own comment: GET
+    /clients/{id}/service-descriptions ALWAYS 200s, and absence is an empty
+    list, not a 404 -- one of the two probes here that does not 404."""
+    if not element.get("success"):
+        return False
+    wanted = variables.get(f"{step.tokens['CAP_P']}_{step.tokens['SC']}_description_id")
+    try:
+        descriptions = json.loads(_captures(element).get(f"{step.tokens['CAP_P']}_service_descriptions", ""))
+    except ValueError:
+        return False
+    if wanted is None:
+        # Nothing to correlate against -- the reversal template needs this
+        # same variable, so let it fail loudly there rather than guess here.
+        return False
+    return not any(str(d.get("id")) == str(wanted) for d in descriptions if isinstance(d, dict))
+
+
+def _absent_client_registration(step: JobStep, element: dict, variables: dict) -> bool:
+    """ss.client_register. Two absence signals, in sequence: while the client
+    still exists the probe 200s with `status: DELETION_IN_PROGRESS` (the
+    unregister landed), and once the LATER ss.client_add reversal has removed
+    the client entirely the same read 404s. Both mean "the unregister does not
+    need re-issuing"; only a live REGISTERED client does."""
+    if element.get("success"):
+        return _captures(element).get(f"{step.tokens['CAP_P']}_client_status") == "DELETION_IN_PROGRESS"
+    return 404 in _statuses(element)
+
+
+def _absent_sign_key(step: JobStep, element: dict, variables: dict) -> bool:
+    """ss.sign_key_csr. Absent BY CORRELATION, not by status code: the probe
+    reads the whole token and 200s whether or not this member's key is on it
+    (hurl/steps.py's ss.sign_key_csr comment on why this probe, not the
+    literal GET /token-certificates/{hash}, is the reversal's guard).
+
+    An UNREADABLE token is not absence (_token_keys' own docstring): it falls
+    through to the reversal, which then refuses to guess an id."""
+    if not element.get("success"):
+        return False
+    captures = _captures(element)
+    return _token_keys(step, captures) is not None and _sign_key_id(step, captures) is None
+
+
+def _absent_cs_member(step: JobStep, element: dict, variables: dict) -> bool:
+    """cs.members_member. PROBE_CS_MEMBER_DELETE's own comment: GET
+    /clients?q=<code> on the Central Server always 200s and absence is an
+    empty clients list -- the second of the two non-404 probes. There is no
+    GET /subsystems/{id} on the CS at all (405), so this is the only viable
+    read.
+
+    Deliberately not filtered down to this member's own entry: `q=` is a
+    SUBSTRING search, so another member whose code contains this one would
+    keep the list non-empty and this would answer "not gone". That is the
+    harmless direction -- the delete is attempted and 404 member_not_found
+    reads as success (_reversal_succeeded)."""
+    if not element.get("success"):
+        return False
+    try:
+        body = json.loads(_captures(element).get("cs_member_delete_probe_clients", ""))
+    except ValueError:
+        return False
+    return not (body.get("clients") if isinstance(body, dict) else True)
+
+
+REVERSAL_ABSENT: dict[str, Callable[[JobStep, dict, dict], bool]] = {
+    "service.acl": _absent_by_probe_404,
+    "service.publish": _absent_service_description,
+    "ss.client_register": _absent_client_registration,
+    "ss.client_add": _absent_by_probe_404,
+    "ss.sign_key_csr": _absent_sign_key,
+    "cs.members_member": _absent_cs_member,
+}
+
+
+def retire_instruction(payload: JoinPayload) -> dict | None:
+    """Task 4 Step 4: what the operator must do by hand for an own-server
+    member, because this API never gets a Docker socket (design decision 8,
+    the same split scripts/join-agent.sh makes for the bring-up direction).
+    None for a hosted member -- it owns no container and no volumes, and its
+    residue is the SIGN key the walk deletes instead (Step 4b).
+
+    The three volume names are hurl/generate.py's own, written into
+    hurl/compose.members.yml's generated `volumes:` block."""
+    if not _own_server(payload):
+        return None
+    key = payload.code.lower()
+    dns = payload.security_server.dns_name
+    volumes = [f"kp2-{key}-db", f"kp2-{key}-conf", f"kp2-{key}-archive"]
+    return {
+        "container": dns,
+        "volumes": volumes,
+        "message": (
+            f"{payload.code} owned its own Security Server. This API does not touch Docker -- "
+            f"run this on the Docker host to finish the un-join:\n"
+            f"  docker rm -f {dns}\n"
+            f"  docker volume rm {' '.join(volumes)}\n"
+            f"Left in place, {dns}'s database, /etc/xroad and archive volumes survive "
+            f"teardown and a later member reusing this key inherits them."
+        ),
+    }
+
+
+def unjoin(
+    record: dict,
+    pack_dir: pathlib.Path,
+    *,
+    secrets: dict[str, str],
+    save: Callable[[dict], None],
+    run_hurl: Callable[[str, str, dict], dict] = _default_run_hurl,
+    retry_interval: float = RETRY_INTERVAL_SECONDS,
+) -> dict:
+    """Walk `record`'s completed steps backwards, undoing each. Mutates and
+    returns the record, persisting after every entry via `save`.
+
+    RETIRING on entry (set by the caller), RETIRED when the walk completes.
+    A failure leaves the record in RETIRING with `error` set -- NOT FAILED,
+    which on this record would send POST /requests/{id}/resume back down the
+    forward path. Re-issuing the DELETE resumes the walk; the probes make that
+    re-entrant.
+
+    No BLOCKED here, deliberately: un-joining an own-server member runs
+    against a Security Server that must still be UP (its container is stopped
+    afterwards, retire_instruction()), so a server that is not answering is a
+    real failure with a real message, not a state to wait in. The forward
+    path's BLOCKED exists because the member had not stood its server up yet;
+    backwards there is no such "not yet".
+    """
+    payload = JoinPayload(**record["payload"])
+    _, steps = _hurl_modules(pack_dir)
+    sequence = build_sequence(pack_dir, payload)
+    constants = build_constants(pack_dir, payload, secrets)
+    context = dict(record.get("context") or {})
+    session: dict[str, str] = {}
+
+    ids = [step.id for step in sequence]
+    last = record.get("last_completed_step")
+    # An ACTIVE record's marker names the last step of the sequence. A record
+    # missing it (or naming a step this payload no longer has) is walked in
+    # full: the probes decide what actually needs undoing, which is a safer
+    # default than assuming nothing ran.
+    completed = set(ids[: ids.index(last) + 1]) if last in ids else set(ids)
+
+    own = _own_server(payload)
+    walk: list[JobStep] = []
+    for base in steps.REVERSAL_ORDER:
+        if own and base == "ss.sign_key_csr":
+            # Step 4b is the HOSTED counterpart of Step 4. An own-server
+            # member's SIGN key lives on its own token, in its own container,
+            # on volumes retire_instruction() tells the operator to remove --
+            # it does not outlive the un-join. Only a hosted member leaves a
+            # key behind on somebody else's still-running Security Server,
+            # which is the orphan docs/xroad-770-notes.md #11 found.
+            continue
+        if not steps.BY_ID[base].reverse:
+            continue
+        # Reversed within a base id too: the last grant made is the first
+        # revoked. Irrelevant to X-Road (the grants are independent), but it
+        # keeps "backwards" meaning one thing throughout the walk.
+        walk += [s for s in reversed(sequence) if s.id.split(":")[0] == base and s.id in completed]
+
+    run_hurl, cookie_jar_dir = _shared_cookie_jar(run_hurl)
+    try:
+        record["retire_started_at"] = _now()
+        record["error"] = None
+        record["retry_budget_left"] = RETRY_BUDGET
+        record["reversal"] = []
+        save(record)
+
+        try:
+            # The sessions this walk authenticates with are exactly the ones
+            # the forward path never persisted (spec S5.4), re-established the
+            # same way a resume does: by re-running the steps that provide
+            # them. cs.init for the Central Server, ss.bringup_init for the
+            # Security Server the member's client lives on.
+            for step in sequence:
+                if step.must_rerun:
+                    _execute(
+                        step, {**constants, **context, **session}, context, session,
+                        pack_dir, run_hurl, None, record, retry_interval,
+                    )
+
+            for step in walk:
+                variables = {**constants, **context, **session}
+                base = step.id.split(":")[0]
+                element = _reversal_probe(step, variables, pack_dir, run_hurl)
+                if REVERSAL_ABSENT[base](step, element, variables):
+                    record["reversal"].append({"step": step.id, "outcome": "already absent"})
+                else:
+                    if base == "ss.sign_key_csr":
+                        # Never the id the forward run captured: it may predate
+                        # a re-issued key, and on a shared host the wrong id is
+                        # another agency's signing key
+                        # (SS_SIGN_KEY_DELETE.hurl.tmpl). Re-derived from the
+                        # probe that just ran, or the walk stops here.
+                        key_id = _sign_key_id(step, _captures(element))
+                        if key_id is None:
+                            raise StepFailure(
+                                step.id,
+                                "cannot identify this member's SIGN key on the hosting server's token "
+                                "(the probe did not answer). Refusing to delete a key by an id from the "
+                                "job context: on a shared host that is another agency's signing key.",
+                            )
+                        variables[f"{step.tokens['CAP_P']}_sign_key_id"] = key_id
+                    _execute_reverse(
+                        step, steps.BY_ID[base].reverse, variables, pack_dir, run_hurl, record, retry_interval
+                    )
+                    record["reversal"].append({"step": step.id, "outcome": "reversed"})
+                record["last_reversed_step"] = step.id
+                save(record)
+        except StepFailure as exc:
+            record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
+            save(record)
+            return record
+
+        record["state"] = "RETIRED"
+        record["retired_at"] = _now()
+        record["retire_instruction"] = retire_instruction(payload)
+        save(record)
+        return record
+    finally:
+        if cookie_jar_dir is not None:
+            shutil.rmtree(cookie_jar_dir, ignore_errors=True)
+
+
+def _reversal_probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> dict:
+    """The raw report element for this step's probe. Unlike _probe(), no
+    verdict: REVERSAL_ABSENT's per-step interpreters need the element itself
+    (three of the six read a captured body, and one reads the STATUS of a
+    probe that deliberately failed its 200 assert). A probe that cannot run
+    at all yields an element that every interpreter reads as "not gone" --
+    attempting a reversal that was already done is safe
+    (_reversal_succeeded), skipping one that was not is not."""
+    generate, _ = _hurl_modules(pack_dir)
+    try:
+        return run_hurl(f"{step.id}#reverse-probe", generate.render(step.probe, **step.tokens), variables)
+    except Exception:  # noqa: BLE001
+        return {"success": False, "entries": []}
+
+
+def _execute_reverse(
+    step: JobStep,
+    template: str,
+    variables: dict,
+    pack_dir: pathlib.Path,
+    run_hurl,
+    record: dict,
+    retry_interval: float,
+) -> None:
+    """One reversal call, on the same one-budget-per-run terms _execute uses.
+    Kept separate rather than folded into _execute: the success predicate is
+    different (404/409-as-already-gone, minus the one retryable 409), there
+    are no captures to thread, and a reversal's `requires` are not declared in
+    the registry -- hurl/steps.py's `reverse` field is a template filename and
+    says so, so the check below reads the rendered file instead."""
+    generate, _ = _hurl_modules(pack_dir)
+    body = generate.render(template, **step.tokens)
+    missing = sorted({name for name in _HURL_VAR_RE.findall(body) if name not in variables})
+    if missing:
+        raise StepFailure(step.id, f"job context is missing Hurl variable(s) this reversal needs: {missing}")
+
+    budget = record.get("retry_budget_left", RETRY_BUDGET)
+    while True:
+        try:
+            element = run_hurl(f"{step.id}#reverse", body, variables)
+        except Exception as exc:  # noqa: BLE001 -- same reasoning as _execute's
+            raise StepFailure(step.id, f"could not run this reversal: {type(exc).__name__}: {exc}") from exc
+        if _reversal_succeeded(element):
+            record["retry_budget_left"] = budget
+            return
+        failure = _failure_text(element)
+        if budget <= 0:
+            record["retry_budget_left"] = 0
+            raise StepFailure(
+                step.id,
+                f"reversal exhausted the run's retry budget ({RETRY_BUDGET} attempts, "
+                f"{RETRY_INTERVAL_SECONDS:.0f}s apart). Last observed:\n{failure}",
+            )
+        budget -= 1
+        record["retry_budget_left"] = budget
+        time.sleep(retry_interval)

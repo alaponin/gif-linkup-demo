@@ -915,3 +915,432 @@ def test_a_half_registered_auth_cert_is_not_read_as_done():
     assert job._probe_auth_cert_registered(step, {"ss_ptsb_auth_cert_status": "REGISTERED"}) is True
     assert job._probe_auth_cert_registered(step, {"ss_ptsb_auth_cert_status": "REGISTRATION_IN_PROGRESS"}) is False
     assert job._probe_auth_cert_registered(step, {}) is False
+
+
+# -- the reversal walk (join-c plan Task 4) -----------------------------------
+# job.unjoin() drives the six live-verified reversal calls
+# (docs/xroad-770-notes.md #11) in hurl/steps.py's REVERSAL_ORDER, each guarded
+# by its own probe. The fake below replays the REAL recorded un-join exchanges
+# in fixtures/xroad/unjoin.*.json -- unlike the forward fixtures those are raw
+# HTTP captures rather than Hurl report elements, so they are shaped into
+# elements here (status -> Hurl's own success verdict against the template's
+# asserted status, body -> the [Captures] value the probe template declares).
+# The shaping is mechanical and named; the bodies are the live ones.
+
+UNJOIN_IDS = [
+    "service.acl:awards-api:PROGRESSA/GOV/PNEA/EXAMS",
+    "service.publish:awards-api",
+    "ss.client_register",
+    "ss.client_add",
+    "ss.sign_key_csr",
+    "cs.members_member",
+]
+
+
+def _raw(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def _element(success: bool, captures: dict | None = None, statuses=(), bodies: str = "") -> dict:
+    return {
+        "success": success,
+        "entries": [
+            {
+                "captures": [{"name": k, "value": v} for k, v in (captures or {}).items()],
+                "calls": [{"response": {"status": s}} for s in statuses],
+            }
+        ],
+        "_stderr": "",
+        "_bodies": bodies,
+    }
+
+
+# The live token from unjoin.token_after_client_delete.json: FOUR SIGNING keys
+# all labelled "Sign key", one per member on the shared host (PNIA, PLR, PTSB,
+# MOEYS) plus the AUTH key -- exactly the shape that makes a label match delete
+# a different agency's key.
+TOKEN_WITH_PTSB = _raw("unjoin.token_after_client_delete")["body"]
+PTSB_SIGN_KEY_ID = "0A55E5C2A2E61B4DBF99BE4D620D208ABC49B90A"
+TOKEN_WITHOUT_PTSB = dict(
+    TOKEN_WITH_PTSB,
+    keys=[k for k in TOKEN_WITH_PTSB["keys"] if k["id"] != PTSB_SIGN_KEY_ID],
+)
+# The description id the forward run captured, read out of the recorded
+# service.publish element rather than invented.
+DESCRIPTION_ID = job._captures(json.loads((FIXTURES / "service.publish.json").read_text()))[
+    "ss_ptsb_awards_api_description_id"
+]
+
+# "Already gone", straight off the recorded probes. Note that only two of the
+# six are a 404 that Hurl reads as success against its template's `HTTP 404`
+# assert: the rest prove absence with a 200 and a body.
+PROBE_ABSENT = {
+    "service.acl": _element(True, {"ss_ptsb_acl_revoke_probe_code": "service_client_not_found"}, [404]),
+    "service.publish": _element(
+        True, {"ss_ptsb_service_descriptions": json.dumps(_raw("unjoin.service_delete.probe")["body"])}, [200]
+    ),
+    # The client is fully gone by the time the walk could re-ask: the probe's
+    # own `HTTP 200` assert fails on the 404.
+    "ss.client_register": _element(False, statuses=[404]),
+    "ss.client_add": _element(True, {"ss_ptsb_client_delete_probe_code": "client_not_found"}, [404]),
+    "ss.sign_key_csr": _element(True, {"ss_ptsb_token": json.dumps(TOKEN_WITHOUT_PTSB)}, [200]),
+    "cs.members_member": _element(
+        True,
+        {"cs_member_delete_probe_clients": json.dumps(_raw("unjoin.cs_member_delete.probe")["body"])},
+        [200],
+    ),
+}
+
+# "Still there" -- what each probe reads before its reversal has run.
+PROBE_PRESENT = {
+    # A live grant 200s, failing the probe template's `HTTP 404` assert.
+    "service.acl": _element(False, statuses=[200]),
+    "service.publish": _element(
+        True, {"ss_ptsb_service_descriptions": json.dumps([{"id": DESCRIPTION_ID}])}, [200]
+    ),
+    "ss.client_register": _element(True, {"ss_ptsb_client_status": "REGISTERED"}, [200]),
+    "ss.client_add": _element(False, statuses=[200]),
+    "ss.sign_key_csr": _element(True, {"ss_ptsb_token": json.dumps(TOKEN_WITH_PTSB)}, [200]),
+    # No live CS /clients capture exists in the fixtures (the spike only
+    # recorded the empty one). Only emptiness is read, so a one-entry list is
+    # a faithful stand-in for "not empty".
+    "cs.members_member": _element(
+        True, {"cs_member_delete_probe_clients": json.dumps({"clients": [{"id": "PROGRESSA:GOV:PTSB"}]})}, [200]
+    ),
+}
+
+REVERSED_OK = _element(True, statuses=[204])
+
+
+def _base(label: str) -> str:
+    return label.split("#")[0].split(":")[0]
+
+
+class ReverseHurl(FakeHurl):
+    """Replays the un-join fixtures, tracking which reversals have happened so
+    a probe re-asked after its own reversal answers "gone" -- which is what
+    makes the resume test meaningful rather than a fixture arrangement.
+
+    The walk's own prologue (the session steps, JobStep.must_rerun) gets a
+    synthesised element carrying that step's DECLARED provides, the same
+    stand-in and the same reasoning as OwnServerHurl: replaying the recorded
+    cs.init/ss.bringup_init would bind a session token to the HOSTED run's
+    prefix, and an own-server un-join captures under its own. What these tests
+    exercise is the reversal engine; the forward tests above already drive the
+    real recorded session elements."""
+
+    def __init__(self, gone=(), overrides: dict | None = None, payload=None):
+        super().__init__(overrides)
+        self.gone = set(gone)
+        self.steps = {s.id: s for s in job.build_sequence(REAL_PACK_DIR, payload or _payload())}
+
+    def __call__(self, label: str, body: str, variables: dict) -> dict:
+        if label in self.overrides:
+            return super().__call__(label, body, variables)
+        self.calls.append(label)
+        self.variables.append(dict(variables))
+        assert body.strip(), f"{label} rendered an empty Hurl file"
+        base = _base(label)
+        if label.endswith("#reverse-probe"):
+            return PROBE_ABSENT[base] if base in self.gone else PROBE_PRESENT[base]
+        if label.endswith("#reverse"):
+            self.gone.add(base)
+            return REVERSED_OK
+        step = self.steps[label]
+        return _element(True, {name: f"{name}-value" for name in step.provides})
+
+
+def _active(**overrides) -> dict:
+    """An ACTIVE record with the job context a real hosted join leaves behind
+    -- produced by actually running one, not hand-written, so the un-join walks
+    the same captures a live one would."""
+    record = _run(_record(), FakeHurl())
+    assert record["state"] == "ACTIVE"
+    record.update(state="RETIRING", **overrides)
+    return record
+
+
+def _unjoin(record: dict, hurl: ReverseHurl, saves: list | None = None) -> dict:
+    def save(rec: dict) -> None:
+        if saves is not None:
+            saves.append(json.loads(json.dumps(rec)))
+
+    return job.unjoin(record, REAL_PACK_DIR, secrets=SECRETS, save=save, run_hurl=hurl, retry_interval=0)
+
+
+def _reversed_ids(hurl: ReverseHurl) -> list[str]:
+    """The reversals attempted, in order, de-duplicated: a retried one (the
+    client-delete window) is still one entry in the walk."""
+    out: list[str] = []
+    for call in hurl.calls:
+        if call.endswith("#reverse"):
+            step_id = call[: -len("#reverse")]
+            if step_id not in out:
+                out.append(step_id)
+    return out
+
+
+# -- Step 2: the order, and the states -----------------------------------------
+
+
+def test_the_walk_runs_the_live_verified_reversal_order_not_the_sequence_reversed():
+    """hurl/steps.py's REVERSAL_ORDER, established live (#11 finding 5):
+    ss.client_register -> ss.client_add -> ss.sign_key_csr, i.e. the client
+    goes before its key backwards just as forwards. `reversed(sequence)` would
+    put ss.sign_key_csr before ss.client_add and cs.members_member first."""
+    hurl = ReverseHurl()
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRED"
+    assert _reversed_ids(hurl) == UNJOIN_IDS
+
+
+def test_the_walk_re_establishes_the_sessions_it_needs_before_touching_anything():
+    """Session captures are never persisted (spec S5.4), so the walk re-runs
+    the steps that provide them -- the same thing a resume does, for the same
+    reason. Nothing is reversed before both sessions exist."""
+    hurl = ReverseHurl()
+    _unjoin(_active(), hurl)
+    assert hurl.calls[:2] == ["cs.init", "ss.bringup_init"]
+    at_cs_delete = hurl.variables[hurl.calls.index("cs.members_member#reverse")]
+    assert at_cs_delete["cs_xsrf_token"]
+    assert at_cs_delete["ss_plr_xsrf_token"]
+
+
+def test_a_completed_walk_leaves_no_credential_in_the_serialised_record(tmp_path):
+    path = tmp_path / "retired.json"
+    record = _active()
+    job.unjoin(
+        record, REAL_PACK_DIR, secrets=SECRETS,
+        save=lambda rec: path.write_text(json.dumps(rec, indent=2)),
+        run_hurl=ReverseHurl(), retry_interval=0,
+    )
+    assert record["state"] == "RETIRED"
+    for value in SECRETS.values():
+        if value != SECRETS["ss_admin_user"]:
+            assert value not in path.read_text()
+
+
+# -- Step 2: the two probes that do NOT signal absence with a 404 -------------
+
+
+def test_the_two_empty_collection_probes_are_read_as_absence_not_as_a_404():
+    """service.publish's descriptions list and cs.members_member's
+    /clients?q= result both 200 forever; absence is an empty collection
+    (PROBE_SERVICE_DELETE / PROBE_CS_MEMBER_DELETE's own comments). A guard
+    written as "probe 404s => already gone" skips neither and re-issues both."""
+    hurl = ReverseHurl(gone={"service.publish", "cs.members_member"})
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRED"
+    assert "service.publish:awards-api" not in _reversed_ids(hurl)
+    assert "cs.members_member" not in _reversed_ids(hurl)
+    # ...and the four that DO 404 (or correlate) were still walked.
+    assert len(_reversed_ids(hurl)) == 4
+
+
+def test_a_transitional_deletion_in_progress_counts_as_already_unregistered():
+    """PROBE_SS_CLIENT_REGISTER 200s with DELETION_IN_PROGRESS between the
+    unregister and the client delete (unjoin.client_unregister.probe.json).
+    Re-issuing the unregister there is pointless; the forward interpreter's
+    REGISTERED is the only reading that means "still needs undoing"."""
+    step = next(s for s in job.build_sequence(REAL_PACK_DIR, _payload()) if s.id == "ss.client_register")
+    live = _raw("unjoin.client_unregister.probe")["body"]["status"]
+    assert live == "DELETION_IN_PROGRESS"
+    mid = _element(True, {"ss_ptsb_client_status": live}, [200])
+    assert job._absent_client_registration(step, mid, {}) is True
+    assert job._absent_client_registration(step, PROBE_PRESENT["ss.client_register"], {}) is False
+    assert job._absent_client_registration(step, PROBE_ABSENT["ss.client_register"], {}) is True
+
+
+def test_an_unanswerable_probe_reads_as_still_present_never_as_absent():
+    """A probe that cannot run must never skip a reversal: attempting one that
+    already happened is safe (404/409-as-already-gone), skipping one that did
+    not is a member left half-retired."""
+    dead = _element(False, statuses=[500])
+    steps = {s.id.split(":")[0]: s for s in job.build_sequence(REAL_PACK_DIR, _payload())}
+    for base, interpreter in job.REVERSAL_ABSENT.items():
+        assert interpreter(steps[base], dead, {}) is False, base
+
+
+# -- Step 3: attempt-and-retry for the client-delete window --------------------
+
+
+def test_a_409_action_not_possible_on_the_client_delete_is_retried_not_failed():
+    """#11 finding 3: DELETE /clients/{id} may be refused while the deletion
+    propagates, and the window's size is NOT established -- so this attempts
+    and retries rather than polling DELETION_IN_PROGRESS as a gate. The retry
+    comes out of the SAME one-run budget the forward path uses."""
+    busy = _element(False, statuses=[409], bodies='{"error":{"code":"action_not_possible"}}')
+    hurl = ReverseHurl(overrides={"ss.client_add#reverse": [busy, busy, REVERSED_OK]})
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRED"
+    assert hurl.calls.count("ss.client_add#reverse") == 3
+    assert record["retry_budget_left"] == job.RETRY_BUDGET - 2
+
+
+def test_a_409_that_is_not_action_not_possible_is_already_gone_not_a_retry():
+    """service.acl's repeat is `409 accessright_not_found` (#11's repeat
+    table). Same status as the retryable one, opposite meaning -- which is why
+    _reversal_succeeded reads the error code, not the status."""
+    revoked = _element(False, statuses=[409], bodies='{"error":{"code":"accessright_not_found"}}')
+    hurl = ReverseHurl(overrides={"service.acl:awards-api:PROGRESSA/GOV/PNEA/EXAMS#reverse": revoked})
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRED"
+    assert hurl.calls.count("service.acl:awards-api:PROGRESSA/GOV/PNEA/EXAMS#reverse") == 1
+
+
+def test_a_reversal_that_never_succeeds_stops_the_walk_in_retiring_not_failed():
+    """FAILED on this record would offer POST /requests/{id}/resume, which
+    re-enters the FORWARD path. RETIRING with an error is the honest state:
+    re-issue the DELETE."""
+    busy = _element(False, statuses=[409], bodies='{"error":{"code":"action_not_possible"}}')
+    hurl = ReverseHurl(overrides={"ss.client_add#reverse": busy})
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRING"
+    assert record["error"]["step"] == "ss.client_add"
+    assert "retry budget" in record["error"]["message"]
+    # The two reversals before it still happened and are recorded as such.
+    assert [e["step"] for e in record["reversal"]] == UNJOIN_IDS[:3]
+
+
+# -- Step 4b: the SIGN-key orphan ---------------------------------------------
+
+
+def test_the_sign_key_delete_names_the_id_correlated_by_owner_not_by_label():
+    """The live token carries four keys all labelled "Sign key", one per member
+    on the shared host. The id used must come from
+    keys[].certificates[].owner_id (SS_SIGN_KEY_DELETE.hurl.tmpl), never from
+    the label and never blind from the job context."""
+    hurl = ReverseHurl()
+    _unjoin(_active(), hurl)
+    at_delete = hurl.variables[hurl.calls.index("ss.sign_key_csr#reverse")]
+    assert at_delete["ss_ptsb_sign_key_id"] == PTSB_SIGN_KEY_ID
+    others = {k["id"] for k in TOKEN_WITH_PTSB["keys"]} - {PTSB_SIGN_KEY_ID}
+    assert others and at_delete["ss_ptsb_sign_key_id"] not in others
+
+
+def test_a_hosted_members_sign_key_is_gone_afterwards_and_every_other_members_is_not():
+    """Step 4b's assertion, made against the token the walk would read next:
+    no key whose certificates[].owner_id is the departed member, and every
+    other member's still there. The orphan #11 found is the whole reason this
+    step exists."""
+    _unjoin(_active(), ReverseHurl())
+    owners = [
+        cert.get("owner_id")
+        for key in TOKEN_WITHOUT_PTSB["keys"]
+        for cert in key.get("certificates", [])
+    ]
+    assert "PROGRESSA:GOV:PTSB" not in owners
+    assert {"PROGRESSA:GOV:PNIA", "PROGRESSA:GOV:PLR", "PROGRESSA:GOV:MOEYS"} <= set(owners)
+
+
+def test_the_walk_refuses_to_delete_a_key_it_cannot_correlate():
+    """Rather than fall back to the forward run's captured id: on a shared host
+    a stale id is another agency's signing key."""
+    blind = _element(True, {"ss_ptsb_token": json.dumps({"keys": []})}, [200])
+    # An empty token reads as "already gone", so this uses one that answers
+    # NEITHER -- a body the probe could not parse at all.
+    unparseable = _element(True, {"ss_ptsb_token": "not json"}, [200])
+    assert job._absent_sign_key(
+        next(s for s in job.build_sequence(REAL_PACK_DIR, _payload()) if s.id == "ss.sign_key_csr"),
+        blind, {},
+    ) is True
+    hurl = ReverseHurl(overrides={"ss.sign_key_csr#reverse-probe": unparseable})
+    record = _unjoin(_active(), hurl)
+    assert record["state"] == "RETIRING"
+    assert record["error"]["step"] == "ss.sign_key_csr"
+    assert "another agency's signing key" in record["error"]["message"]
+    assert "ss.sign_key_csr#reverse" not in hurl.calls
+
+
+# -- Step 4: the own-server member's Docker residue ----------------------------
+
+
+def test_an_own_server_un_join_skips_the_sign_key_and_names_the_three_volumes():
+    """An own-server member's key dies with its container and volumes, so Step
+    4b does not apply to it -- what it leaves instead is Docker state this API
+    deliberately cannot touch (design decision 8)."""
+    record = _run(
+        _record(payload=_own_payload().model_dump(mode="json")), OwnServerHurl(), server_up=lambda dns: True
+    )
+    assert record["state"] == "ACTIVE"
+    record["state"] = "RETIRING"
+    hurl = ReverseHurl(payload=_own_payload())
+    record = _unjoin(record, hurl)
+    assert record["state"] == "RETIRED"
+    assert "ss.sign_key_csr" not in _reversed_ids(hurl)
+    instruction = record["retire_instruction"]
+    assert instruction["container"] == "ss-ptsb"
+    assert instruction["volumes"] == ["kp2-ptsb-db", "kp2-ptsb-conf", "kp2-ptsb-archive"]
+    assert "docker volume rm" in instruction["message"]
+
+
+def test_the_volume_names_are_the_ones_generate_py_actually_writes():
+    """One naming rule, two consumers: if hurl/generate.py's compose.members.yml
+    volume block is renamed, this instruction becomes wrong silently."""
+    source = (REAL_PACK_DIR / "hurl" / "generate.py").read_text()
+    for suffix in ("db", "conf", "archive"):
+        assert f"{{key}}-{suffix}: {{{{name: kp2-{{key}}-{suffix}}}}}" in source
+
+
+def test_a_hosted_member_gets_no_docker_instruction():
+    """It owns no container and no volumes -- a hand-cleanup note here would be
+    an instruction to do nothing."""
+    assert job.retire_instruction(_payload()) is None
+
+
+# -- Step 9: resumability ------------------------------------------------------
+
+
+def test_a_walk_killed_halfway_resumes_without_re_attempting_what_the_probes_report_gone():
+    """Task 4 Step 9's headline test. The kill is simulated the way a real one
+    lands: the walk stops mid-way, and the SAME federation state (three
+    reversals done) is what the resume's probes read."""
+    stalled = _element(False, statuses=[500])
+    first = ReverseHurl(overrides={"ss.client_add#reverse": stalled})
+    record = _unjoin(_active(), first)
+    assert record["state"] == "RETIRING"
+    assert [e["step"] for e in record["reversal"]] == UNJOIN_IDS[:3]
+    assert _reversed_ids(first) == UNJOIN_IDS[:4]  # the fourth was attempted and never took
+
+    # The federation now has the first three undone -- which is exactly what
+    # `gone` carries into the resume, and what its probes therefore report.
+    resumed = ReverseHurl(gone={_base(i) for i in UNJOIN_IDS[:3]})
+    record = _unjoin(record, resumed)
+    assert record["state"] == "RETIRED"
+    assert _reversed_ids(resumed) == UNJOIN_IDS[3:]
+    # Every entry is still PROBED on the resume -- that is how it knows.
+    assert len([c for c in resumed.calls if c.endswith("#reverse-probe")]) == len(UNJOIN_IDS)
+    assert [e["outcome"] for e in record["reversal"]] == ["already absent"] * 3 + ["reversed"] * 3
+
+
+def test_a_second_delete_on_a_fully_retired_member_is_a_no_op_walk():
+    """Idempotent by construction: every probe reports absence, nothing is
+    re-issued, and the record ends RETIRED again."""
+    record = _unjoin(_active(), ReverseHurl())
+    again = ReverseHurl(gone={_base(i) for i in UNJOIN_IDS})
+    record = _unjoin(record, again)
+    assert record["state"] == "RETIRED"
+    assert _reversed_ids(again) == []
+
+
+def test_a_record_with_no_progress_marker_is_walked_in_full_not_skipped():
+    """last_completed_step is the forward path's marker; a record missing it
+    must not be read as "nothing to undo". The probes are what decide."""
+    record = _active()
+    record.pop("last_completed_step")
+    hurl = ReverseHurl()
+    record = _unjoin(record, hurl)
+    assert _reversed_ids(hurl) == UNJOIN_IDS
+
+
+def test_a_step_the_forward_run_never_reached_is_not_reversed():
+    """The mirror of the test above: a join that FAILED at ss.client_register
+    never published a service or granted an ACL, and the walk must not try to
+    undo either."""
+    record = _run(_record(), FakeHurl({"ss.client_register": _FAILED}))
+    assert record["last_completed_step"] == "ss.sign_key_csr"
+    record["state"] = "RETIRING"
+    hurl = ReverseHurl()
+    record = _unjoin(record, hurl)
+    assert record["state"] == "RETIRED"
+    assert _reversed_ids(hurl) == ["ss.client_add", "ss.sign_key_csr", "cs.members_member"]

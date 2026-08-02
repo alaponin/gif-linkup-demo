@@ -7,7 +7,9 @@ mode) run synchronously at submission. Task 4 (this commit) adds the operator
 side: POST /requests/{id}/approve writes the config for real
 (writer.apply_real) and starts the job (job.py) on a background thread, one
 at a time; POST /requests/{id}/resume re-runs a FAILED one from its
-last_completed_step. See
+last_completed_step. join-c plan Task 4 added the other direction: DELETE
+/members/{key} walks a completed job backwards (job.unjoin) and then
+delegates the config half to scripts/member.sh remove. See
 docs/superpowers/specs/2026-08-01-member-join-api-design.md.
 
 Credentials come from the environment (.env via Docker Compose), read here
@@ -566,4 +568,150 @@ def reject_request(
     record["rejection"] = {"check": "operator", "message": reason}
     record["rejected_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     _save_request(record)
+    return record
+
+
+# -- un-joining (spec S10, join-c plan Task 4) --------------------------------
+# The reverse of everything above: DELETE /members/{key} walks the member's
+# completed steps backwards (job.unjoin), then delegates the config-and-manifest
+# half to scripts/member.sh remove.
+#
+# Keyed by member KEY, not by request id -- "retire PTSB" is the operator's
+# question, and the request id that joined it is an implementation detail
+# nobody kept. The record it walks is found the same way scripts/member.sh
+# drift already finds a member's join-time baseline (_member_record below).
+
+# The key becomes a manifest lookup AND an argv element for member.sh, which
+# does `rm -r "$PACK_DIR/configs/member-$key"`. subprocess is called with a
+# list (no shell), so this is not about quoting -- it is about a `..` or a `/`
+# turning that rm into one outside configs/. Same charset validate.py's
+# key_derivation check already constrains a joining member's key to.
+_MEMBER_KEY_RE = re.compile(r"[a-z0-9]+")
+
+
+def _member_record(key: str) -> dict | None:
+    """The job record to walk backwards for `key`: the newest ACTIVE or
+    RETIRING one whose payload code matches. Same discovery scripts/member.sh
+    drift does for the same reason -- nothing indexes out/join/ by member, and
+    nothing enforces one record per member, so pick the newest rather than
+    assume. RETIRING is included so that re-issuing the DELETE resumes an
+    interrupted walk instead of 404ing on a member whose record has already
+    left ACTIVE."""
+    best = None
+    for path in sorted(_requests_dir().glob("*.json")):
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if record.get("state") not in ("ACTIVE", "RETIRING"):
+            continue
+        if (record.get("payload") or {}).get("code", "").lower() != key:
+            continue
+        if best is None or record.get("submitted_at", "") > best.get("submitted_at", ""):
+            best = record
+    return best
+
+
+def _run_unjoin(request_id: str) -> None:
+    with _JOB_LOCK:
+        record = _load_request(request_id)
+        if record is None:
+            return
+        try:
+            job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS, save=_save_request)
+        except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
+            record["error"] = {
+                "step": record.get("last_reversed_step"),
+                "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+            }
+            _save_request(record)
+            return
+        if record.get("state") != "RETIRED":
+            return  # the walk stopped; record["error"] says where. DELETE again to resume.
+
+        # Step 5: the config-and-manifest half, delegated rather than
+        # reimplemented -- member.sh remove already deletes the directory,
+        # strips identity.members.<key>, refuses a canonical member and
+        # regenerates. Last, after the federation no longer holds the member:
+        # regenerating first would rewrite hurl/topology.json out from under
+        # a walk that has not finished.
+        key = record["payload"]["code"].lower()
+        proc = subprocess.run(
+            [str(PACK_DIR / "scripts" / "member.sh"), "remove", key],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.returncode != 0:
+            record["state"] = "RETIRING"
+            record["error"] = {
+                "step": "config.remove",
+                "message": f"the federation no longer holds {key}, but scripts/member.sh remove "
+                f"{key} failed (exit {proc.returncode}):\n{job.scrub(proc.stderr or proc.stdout, JOB_SECRETS)}",
+            }
+        else:
+            record["config_removed"] = True
+        _save_request(record)
+
+
+def _start_unjoin(request_id: str) -> None:
+    threading.Thread(target=_run_unjoin, args=(request_id,), daemon=True).start()
+
+
+@app.delete("/members/{key}", status_code=202)
+def retire_member(
+    key: str,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Un-join a member: reverse its live federation presence, then remove its
+    config. 202 and the record, like approve -- the walk runs past this
+    response and the operator polls GET /requests/{id} (or the console's
+    queue). States ACTIVE -> RETIRING -> RETIRED.
+
+    Re-issuing this on a RETIRING record RESUMES the walk. That is the whole
+    resume story for un-joining: every reversal is guarded by a probe, so a
+    walk killed halfway re-runs from the top and skips what is already gone
+    (job.unjoin's own docstring). There is deliberately no
+    DELETE-specific resume endpoint, and POST /requests/{id}/resume is not it
+    -- that one re-enters the FORWARD path."""
+    if not _MEMBER_KEY_RE.fullmatch(key):
+        raise HTTPException(400, f"{key!r} is not a member key")
+
+    # Step 1: refuse a canonical member BEFORE anything else -- before the
+    # record lookup, before a single call to the federation. scripts/member.sh
+    # remove makes the same refusal for the config half; this is the same
+    # check against the same field, made early enough that a canonical member
+    # is never half-retired from the live bus and then blocked at the config
+    # step.
+    members = (_load_manifest().get("identity") or {}).get("members") or {}
+    entry = members.get(key)
+    if entry is None:
+        raise HTTPException(404, f"no member {key!r} in manifest.yaml")
+    if entry.get("origin", "canonical") != "joined":
+        raise HTTPException(
+            403,
+            f"'{key}' is a canonical member and cannot be un-joined. The canonical five are the "
+            "frozen KP3/KP4 cross-pack contract (manifest.yaml's identifiers: block) -- other packs "
+            "build against those exact identifiers, so a demonstration un-join must never change "
+            "them. Only a member with origin: joined can leave.",
+        )
+
+    record = _member_record(key)
+    if record is None:
+        raise HTTPException(
+            404,
+            f"no ACTIVE or RETIRING join record for '{key}' -- it was never joined through this API "
+            "(e.g. added by hand via prompts/member.md), so there is no step sequence to walk "
+            "backwards. Remove its config with scripts/member.sh remove and, if it is live, retire "
+            "it by hand or purge the federation.",
+        )
+
+    record["state"] = "RETIRING"
+    record["error"] = None
+    # Emitted on the way IN, not only on completion (Step 8): an own-server
+    # un-join is not finished by this API, and the operator has to be told
+    # what is left for them whether or not they come back for the final record.
+    record["retire_instruction"] = job.retire_instruction(schema.JoinPayload(**record["payload"]))
+    record["queued"] = _JOB_LOCK.locked()
+    _save_request(record)
+    _start_unjoin(record["id"])
     return record

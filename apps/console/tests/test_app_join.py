@@ -222,3 +222,76 @@ def test_the_blocked_state_has_its_own_style_like_every_other_state():
     css = (pathlib.Path(__file__).resolve().parent.parent / "static" / "style.css").read_text()
     assert ".join-state-blocked" in css
     assert ".join-blocked-command" in css
+
+
+# -- un-joining (join-c plan Task 4 Steps 6-8) --------------------------------
+# Step 6 chose option (a): the states render, there is no delete control. Two
+# reasons, in the order they decided it. First, the audience -- the join tab
+# shows an agency arriving, and a destructive control is a different act for a
+# different operator; this console has none today, and the brief's own
+# counter-argument (a hosted un-join is fast, so RETIRING is barely observable
+# and a button would be cheap) argues about COST, which was never what was in
+# doubt. Second, Step 8: an own-server un-join ENDS in two Docker commands the
+# console cannot run, so a button's honest outcome is "now go do this by hand"
+# in a browser tab -- worse than no button. The DELETE is a curl/runbook
+# operation, issued where the Docker cleanup also has to happen.
+#
+# Under (a) the brief asks for the decision to be ENFORCED, not merely
+# documented -- hence the first two tests here.
+
+
+def test_the_console_exposes_no_member_delete_route(monkeypatch):
+    """Step 6 option (a), enforced. If a delete affordance is ever wanted, this
+    test is the deliberate thing to change -- not a route that quietly
+    appeared."""
+    paths = {route.path for route in app.app.routes}
+    assert not [p for p in paths if "members" in p], paths
+
+
+def test_a_member_delete_request_reaches_no_join_api_call(monkeypatch):
+    calls = _patch_join_api(monkeypatch)
+    resp = _client().request("DELETE", "/api/join/members/ptsb", headers={HEADER: "1"})
+    # 405 (the static mount answers GET-shaped paths) or 404 -- either way,
+    # nothing was proxied.
+    assert resp.status_code in (404, 405)
+    assert calls == []
+
+
+def test_the_retiring_and_retired_states_have_their_own_styles():
+    """Whichever Step 6 option is chosen, the states must RENDER. The template
+    lowercases the state into a class name, so an unstyled one is not broken --
+    just invisible as a state, which during a live un-join is the one thing
+    being demonstrated."""
+    css = (pathlib.Path(__file__).resolve().parent.parent / "static" / "style.css").read_text()
+    assert ".join-state-retiring" in css
+    assert ".join-state-retired" in css
+
+
+def test_a_retired_record_stays_in_the_list_rather_than_vanishing():
+    """Step 6's explicit ask: say which, because a card that silently
+    disappears mid-demonstration reads as a bug. Nothing filters the queue by
+    state -- every record join-api returns is rendered."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert "data.requests.forEach(record => list.appendChild(renderJoinRequest(record)))" in src
+    assert 'state === "RETIRING" || state === "RETIRED"' in src
+
+
+def test_the_docker_instruction_reaches_the_operator_through_the_console_too():
+    """Step 8: an own-server un-join leaves a container and three named volumes
+    for a human, and an API that returns "now go do this by hand" to a browser
+    that discards it is worse than not having said it."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert "record.retire_instruction" in src
+    assert "esc(instruction.message" in src
+    assert "${instruction.message}" not in src
+
+
+def test_the_un_join_render_path_escapes_every_record_derived_field():
+    """Same rule as the join render paths above: a join payload is
+    attacker-supplied by construction, and an un-join renders the same
+    payload's fields plus the walk's own step ids."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    for unescaped in ("${r.step}", "${r.outcome}", "${instruction.message}"):
+        assert unescaped not in src, f"{unescaped!r} is interpolated into app.js without esc()"
+    for expected in ("esc(r.step", "esc(r.outcome"):
+        assert expected in src, f"expected {expected!r} in app.js's un-join render path"

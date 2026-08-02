@@ -760,6 +760,45 @@ function renderJoinRequest(record) {
         + `configs/member-${esc((payload.code || "").toLowerCase())}/ and manifest.yaml are `
         + `committed &mdash; the git check itself failed. Treat as uncommitted until confirmed otherwise.</div>`;
     }
+  } else if (state === "RETIRING" || state === "RETIRED") {
+    // join-c plan Task 4 Step 6, option (a): the states render, there is no
+    // button. Un-joining is a `curl` / scripts/member.sh operation the runbook
+    // documents -- this console is read-mostly-plus-approve, and a delete
+    // control is a different act for a different audience than "watch an
+    // agency arrive". Task 4 Step 8 is the other half of that argument: an
+    // own-server un-join ENDS in two Docker commands this console cannot run,
+    // and a button whose outcome is "now go do this by hand" in a browser tab
+    // is worse than no button. So the instruction renders here, where the
+    // record carries it, and the operator issues the DELETE where they can
+    // also run the Docker commands.
+    const rev = record.reversal || [];
+    if (rev.length) {
+      html += `<ol class="join-step-list">`
+        + rev.map(r => `<li class="join-step ${r.outcome === "reversed" ? "done" : "pending"}">`
+          + `<span class="join-step-actor">undo</span>`
+          + `<span class="join-step-id">${esc(r.step)}</span>`
+          + `<span class="join-step-note">${esc(r.outcome)}</span>`
+          + `</li>`).join("")
+        + `</ol>`;
+    }
+    const e = record.error || {};
+    if (e.step) {
+      html += `<div class="join-error">un-join stopped at <code>${esc(e.step)}</code>: `
+        + `<span class="join-error-message">${esc(e.message || "")}</span></div>`
+      + `<div class="join-note">Re-issue the DELETE to resume &mdash; every reversal is probed `
+        + `first, so what is already gone is skipped.</div>`;
+    }
+    const instruction = record.retire_instruction;
+    if (instruction) {
+      html += `<div class="join-retire">This member owned its own Security Server. `
+        + `The join API never touches Docker &mdash; run this on the Docker host to finish:`
+        + `<pre class="join-retire-command">${esc(instruction.message || "")}</pre></div>`;
+    }
+    if (state === "RETIRED" && !record.config_removed) {
+      html += `<div class="join-note">The federation no longer holds this member, but `
+        + `configs/member-${esc((payload.code || "").toLowerCase())}/ was not removed &mdash; `
+        + `run <code>scripts/member.sh remove ${esc((payload.code || "").toLowerCase())}</code>.</div>`;
+    }
   }
 
   el.innerHTML = html;

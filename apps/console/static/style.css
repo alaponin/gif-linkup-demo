@@ -324,6 +324,32 @@ button.action:disabled { opacity: 0.5; cursor: default; }
    states an operator most needs to tell apart at a glance: one wants a
    decision, the other wants a command run. */
 .join-state-blocked { background: #a05a1e; color: #fff; }
+/* Un-joining (join-c plan Task 4). RETIRING borrows RUNNING's blue because it
+   IS a run -- six calls against the live federation -- and RETIRED is a muted
+   slate rather than a green or a red: a member that has left is neither a
+   success to celebrate nor a failure. A RETIRED card STAYS in the queue,
+   deliberately: a card that silently vanished mid-demonstration reads as a
+   bug, and "this agency joined, then left, and here is the whole trace" is
+   the thing worth showing. */
+.join-state-retiring { background: #1c5f8a; color: #fff; }
+.join-state-retired  { background: #3a4550; color: #cfd6de; }
+
+.join-retire {
+  font-size: 14px;
+  background: color-mix(in srgb, #3a4550 18%, var(--bg));
+  border: 1px solid #55606b;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.join-retire-command {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
 
 .join-blocked {
   font-size: 14px;
@@ -411,6 +437,10 @@ button.action:disabled { opacity: 0.5; cursor: default; }
   color: var(--muted);
   min-width: 60px;
 }
+/* The reversal walk's per-entry outcome ("reversed" / "already absent") --
+   the second is the interesting one to see during an un-join demonstration:
+   it is a step being SKIPPED because a read proved it already gone. */
+.join-step-note { font-size: 11px; color: var(--muted); margin-left: auto; }
 
 .join-verified { font-size: 14px; margin-top: 8px; }
 .join-verified.ok { color: var(--ok); }
