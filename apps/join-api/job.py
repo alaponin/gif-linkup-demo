@@ -74,10 +74,18 @@ OCSP_HINT = (
 # The Hurl binary the Dockerfile copies out of the pinned Hurl image is an
 # Alpine/musl build; its shared libraries land here rather than in /usr/lib,
 # where they would sit alongside (and could shadow) the Debian base image's
-# own. Passed as the subprocess's ENTIRE environment -- deliberately not
+# own. HURL_ENV is the subprocess's ENTIRE environment -- deliberately not
 # os.environ, so no credential this process holds can reach the Hurl child
 # other than through the --variable values we choose (same reasoning as
 # writer._run_generate's "no env=").
+#
+# HURL_BIN is absolute for exactly that reason: with no PATH in env=,
+# subprocess resolves a bare name against os.defpath (/bin:/usr/bin), which
+# does not include /usr/local/bin, and every step died with FileNotFoundError
+# (found in review, in the built image, 2026-08-02). An absolute path is one
+# fewer thing to get right than a PATH entry that has to agree with the
+# Dockerfile's COPY target.
+HURL_BIN = "/usr/local/bin/hurl"
 HURL_ENV = {"LD_LIBRARY_PATH": "/opt/hurl-lib"}
 
 
@@ -199,14 +207,24 @@ def build_constants(pack_dir: pathlib.Path, payload: JoinPayload, secrets: dict[
         "token_pin": secrets["token_pin"],
         "csr_country": generate.CSR_COUNTRY,
     }
-    # One <key>_spec_url per member, not per service -- generate.py's own
-    # vars.env loop has the same shape (and the same last-one-wins behaviour
-    # for a member publishing two services). Kept identical rather than
-    # fixed here: SPECVAR is build_service_file()'s naming, and the two must
-    # agree.
+    # One spec-url variable per SERVICE, not per member. generate.py's
+    # vars.env writes <key>_spec_url once per member and gets away with it
+    # because every canonical member publishes exactly one service; nothing
+    # in schema.py or validate.py caps services[], so a two-service join
+    # through this API would publish both against whichever spec_url won the
+    # shared name (found in review, 2026-08-02). SPECVAR is a token chosen in
+    # this file, so it is disambiguated here rather than inheriting a
+    # collision cold deploy never has.
     for svc in payload.services:
-        constants[f"{payload.code.lower()}_spec_url"] = svc.spec_url
+        constants[_spec_var(payload.code, svc.code)] = svc.spec_url
     return constants
+
+
+def _spec_var(member_code: str, service_code: str) -> str:
+    """The Hurl variable name a service's spec_url is injected under. One
+    definition, read by build_constants (which sets it) and build_sequence
+    (which names it in service.publish's @SPECVAR@) -- the two cannot drift."""
+    return f"{member_code.lower()}_{service_code.replace('-', '_')}_spec_url"
 
 
 def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep]:
@@ -310,7 +328,7 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
                 HOSTVAR=host_var,
                 SESS_P=sess_p,
                 CAP_P=cap_p,
-                SPECVAR=f"{code.lower()}_spec_url",
+                SPECVAR=_spec_var(code, svc.code),
             ),
             suffix=f":{svc.code}",
         )
@@ -414,7 +432,7 @@ def _default_run_hurl(label: str, body: str, variables: dict[str, str]) -> dict:
         step_file = tmp / "step.hurl"
         step_file.write_text(body)
         report_dir = tmp / "report"
-        args = ["hurl", "--insecure"]
+        args = [HURL_BIN, "--insecure"]
         for name, value in variables.items():
             args += ["--variable", f"{name}={value}"]
         args += ["--report-json", str(report_dir), str(step_file)]
@@ -624,7 +642,15 @@ def run(
             save(record)
             return record
         record["context"] = context
-        record["last_completed_step"] = step.id
+        if not already:
+            # Forward only. A session step re-run on resume (`already` and
+            # must_rerun) has already been counted by the run that first
+            # completed it -- moving the marker back to it would, for the
+            # span of the next two invocations, describe less progress than
+            # was actually made, and a kill in that window would make the
+            # NEXT resume re-run steps this one deliberately skipped (found
+            # in review, 2026-08-02).
+            record["last_completed_step"] = step.id
         save(record)
 
     record["state"] = "ACTIVE"
@@ -672,7 +698,15 @@ def _execute(
             missing = [name for name in step.requires if name not in variables]
             if missing:
                 raise StepFailure(step.id, f"job context is missing required Hurl variable(s): {sorted(missing)}")
-            element = run_hurl(step.id, generate.render(step.template, **step.tokens), variables)
+            try:
+                element = run_hurl(step.id, generate.render(step.template, **step.tokens), variables)
+            except Exception as exc:  # noqa: BLE001
+                # The runner itself broke (a missing binary, an unreadable
+                # template) -- not something a retry fixes, and not something
+                # that should escape past the FAILED-with-a-step-id contract
+                # into app.py's blanket handler. Found in review: a
+                # FileNotFoundError for the Hurl binary did exactly that.
+                raise StepFailure(step.id, f"could not run this step: {type(exc).__name__}: {exc}") from exc
             if _succeeded(element):
                 for name, value in _captures(element).items():
                     (session if _is_secret(name) else context)[name] = value

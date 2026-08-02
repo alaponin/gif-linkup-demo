@@ -246,7 +246,12 @@ def submit_request(
             "payload": raw,
             "rejection": {
                 "check": "generate_dry_run",
-                "message": f"hurl/generate.py rejected this join (exit {exc.returncode}):\n{exc.stderr}",
+                # Scrubbed for the same reason the approve endpoint scrubs its
+                # copy: dry_run_diff's pack copy includes .env, which
+                # generate.py reads, so a traceback out of that subprocess
+                # could carry a credential into a persisted record.
+                "message": f"hurl/generate.py rejected this join (exit {exc.returncode}):\n"
+                + job.scrub(exc.stderr, JOB_SECRETS),
             },
         }
         _save_request(record)
@@ -336,10 +341,15 @@ def approve_request(
     except writer.GenerateFailure as exc:
         # The config was written but generate.py refused it -- the working
         # tree now needs a human, so this is FAILED, not a rejection.
+        # Scrubbed, like every other error path here: apply_real's generate.py
+        # subprocess reads .env, so a traceback out of it could carry the
+        # admin password or the token PIN, and this string is both persisted
+        # and returned (found in review, 2026-08-02).
+        stderr = job.scrub(exc.stderr, JOB_SECRETS)
         record["state"] = "FAILED"
-        record["error"] = {"step": "config.write", "message": exc.stderr}
+        record["error"] = {"step": "config.write", "message": stderr}
         _save_request(record)
-        raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{exc.stderr}") from exc
+        raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
     record["approved_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()

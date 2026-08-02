@@ -188,6 +188,30 @@ def test_every_steps_requires_is_satisfied_by_an_earlier_provides_or_a_constant(
         available.update(step.provides)
 
 
+def test_each_service_is_published_against_its_own_spec_url():
+    """Nothing caps services[], and one shared <member>_spec_url variable
+    would publish both services against whichever URL won the name (found in
+    review, 2026-08-02)."""
+    payload = _payload(
+        services=[
+            {"code": "awards-api", "spec_url": "http://app-ptsb:8000/awards.yaml", "access": []},
+            {"code": "grants-api", "spec_url": "http://app-ptsb:8000/grants.yaml", "access": []},
+        ],
+        semantic=None,
+    )
+    constants = job.build_constants(REAL_PACK_DIR, payload, SECRETS)
+    steps = {s.id: s for s in job.build_sequence(REAL_PACK_DIR, payload)}
+    urls = {
+        step_id: constants[step.tokens["SPECVAR"]]
+        for step_id, step in steps.items()
+        if step_id.startswith("service.publish")
+    }
+    assert urls == {
+        "service.publish:awards-api": "http://app-ptsb:8000/awards.yaml",
+        "service.publish:grants-api": "http://app-ptsb:8000/grants.yaml",
+    }
+
+
 def test_consume_only_join_has_no_reachability_step():
     """Nothing published, nothing to be reachable: spec S4 says a consume-only
     member's ACTIVE means registered and able to reach the global
@@ -322,6 +346,25 @@ def test_a_job_killed_mid_run_resumes_to_completion_without_rerunning_completed_
     assert resumed.calls[:4] == ["cs.init", "ss.bringup_init", "ss.sign_key_csr#probe", "ss.sign_key_csr"]
 
 
+def test_last_completed_step_never_regresses_while_a_resume_re_runs_session_steps():
+    """The marker is persisted after every step, so it is not enough for the
+    FINAL value to be right: a session step re-run on resume must not move it
+    backwards, or a second kill in that window would make the next resume
+    re-run steps this one skipped (found in review, 2026-08-02)."""
+    record = _run(_record(), FakeHurl({"ss.sign_key_csr": _FAILED}))
+    assert record["last_completed_step"] == "ss.client_add"
+
+    saves: list[dict] = []
+    _run(record, FakeHurl(), saves=saves)
+    markers = [s.get("last_completed_step") for s in saves]
+    order = EXPECTED_IDS.index
+    assert all(
+        order(later) >= order(earlier)
+        for earlier, later in zip(markers, markers[1:])
+    ), markers
+    assert "cs.init" not in markers  # the run started past it
+
+
 def test_resume_reinjects_the_captures_the_first_run_persisted():
     record = _run(_record(), FakeHurl({"ss.sign_key_csr": _FAILED}))
     resumed = FakeHurl()
@@ -428,12 +471,25 @@ def test_a_failure_message_is_scrubbed_of_every_credential(tmp_path):
 # -- the bundled Hurl binary ---------------------------------------------------
 
 
-@pytest.mark.skipif(shutil.which("hurl") is None, reason="hurl is bundled into the join-api image, not the host")
+@pytest.mark.skipif(
+    not pathlib.Path(job.HURL_BIN).exists(),
+    reason=f"{job.HURL_BIN} is bundled into the join-api image, not onto the host",
+)
 def test_the_bundled_hurl_binary_actually_runs_and_writes_a_parseable_report():
     """Proves the Dockerfile's multi-stage copy produced a working binary and
-    that _default_run_hurl can drive it -- not just that the report parsing is
-    right. No live server: the request is to a closed port, so the run fails
-    and the assertion is on the report, which Hurl still writes."""
+    that _default_run_hurl can drive it THROUGH ITS OWN subprocess call -- the
+    env= it passes carries no PATH, so this is what catches a binary that a
+    shell with a normal PATH would find and this code would not (it did:
+    review, 2026-08-02). No live server: the request is to a closed port, so
+    the run fails and the assertion is on the report, which Hurl still writes.
+
+    Skipped on a dev host, where nothing bundles Hurl. RUN IT IN THE IMAGE
+    when either the Dockerfile's hurl stanza or _default_run_hurl changes:
+        docker build -t kp2-join-api apps/join-api
+        docker run --rm -v "$PWD/../../..":/repo kp2-join-api sh -c \\
+          'pip install -q pytest && cd /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack \\
+           && python -m pytest apps/join-api/tests/test_job.py -q'
+    """
     element = job._default_run_hurl(
         "selftest", "GET http://127.0.0.1:1/{{who}}\n\nHTTP 200\n", {"who": "x"}
     )

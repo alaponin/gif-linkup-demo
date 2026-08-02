@@ -141,6 +141,24 @@ def test_resume_is_only_possible_from_failed(client):
     assert started == [record["id"]]
 
 
+def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(client, monkeypatch):
+    """apply_real's generate.py subprocess reads .env, so its stderr can
+    carry a credential -- and this one string goes into both the response and
+    out/join/<id>.json (found in review, 2026-08-02)."""
+    record = _submit(client)
+    pin = app_module.TOKEN_PIN
+
+    def boom(*args, **kwargs):
+        raise writer.GenerateFailure(f"Traceback ... XROAD_TOKEN_PIN={pin}\n", 1)
+
+    monkeypatch.setattr(app_module.writer, "apply_real", boom)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 409
+    assert pin not in resp.text
+    assert pin not in (app_module._requests_dir() / f"{record['id']}.json").read_text()
+    assert app_module._load_request(record["id"])["state"] == "FAILED"
+
+
 def test_a_dirty_checkout_refuses_the_approval(client):
     """spec S9's mitigation: a join must never stack on uncommitted work of
     unclear provenance."""
