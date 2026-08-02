@@ -32,6 +32,7 @@
     <button class="tab-btn active" data-tab="counter">1 &middot; Ask once</button>
     <button class="tab-btn" data-tab="inspector">2 &middot; How it worked</button>
     <button class="tab-btn" data-tab="permissions">3 &middot; Who's allowed</button>
+    <button class="tab-btn" data-tab="join">4 &middot; Join a member</button>
   </nav>
 
   <main>
@@ -101,6 +102,16 @@
         <p style="color: var(--muted)">Always available, not only when a change is pending &mdash; returns every ACL this demo can touch to its configured state.</p>
         <button class="secondary-action" id="permissions-reset-btn">Reset now</button>
         <p class="break-proof-caption" id="permissions-reset-caption"></p>
+      </div>
+    </section>
+
+    <!-- ================= JOIN ================= -->
+    <section class="tab-panel" id="tab-join">
+      <div class="card">
+        <h2>Membership requests</h2>
+        <p style="color: var(--muted)">The queue behind <code>apps/join-api</code> (<code>scripts/join.sh up</code>) &mdash; a new agency's payload, its computed config diff, and the live progress of an approved join. Not drift; see <code>scripts/member.sh drift</code> for that.</p>
+        <div id="join-empty">Loading&hellip;</div>
+        <div id="join-list"></div>
       </div>
     </section>
   </main>

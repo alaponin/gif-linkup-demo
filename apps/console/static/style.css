@@ -290,6 +290,116 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 .result-box.allowed { border: 1px solid var(--ok); }
 .result-box .fault { font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin-top: 8px; }
 
+/* -- join tab -- */
+
+.join-request {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.join-request-header { font-size: 16px; margin-bottom: 4px; }
+.join-request-meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+
+.join-state {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: var(--panel-border);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.join-state-submitted { background: #7a5c14; color: #fff; }
+.join-state-approved, .join-state-running { background: #1c5f8a; color: #fff; }
+.join-state-active { background: #1f6b45; color: #fff; }
+.join-state-failed { background: #8a2e2e; color: #fff; }
+.join-state-rejected { background: #4a4a4a; color: #fff; }
+
+.join-followup {
+  font-size: 14px;
+  background: color-mix(in srgb, var(--pnia) 12%, var(--bg));
+  border: 1px solid var(--pnia);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+.join-diff {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 8px 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.join-actions { display: flex; gap: 10px; margin-top: 10px; }
+
+.join-reject-box { margin-top: 10px; display: flex; gap: 10px; align-items: flex-start; }
+.join-reject-reason {
+  flex: 1;
+  min-height: 44px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.join-rejection, .join-error { color: var(--danger); font-size: 14px; margin: 8px 0; }
+.join-error-message { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+.join-step-list { list-style: none; margin: 10px 0; padding: 0; }
+.join-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--panel-border);
+  font-size: 13px;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.join-step.done { color: var(--muted); }
+.join-step.current { color: var(--text); font-weight: 600; }
+.join-step.failed { color: var(--danger); }
+.join-step.pending { color: var(--muted); opacity: 0.6; }
+
+/* Coloured by actor (job.py's own field), not hardcoded to "operator" --
+   a mixed-actor own-server join (Plan C) gets a second colour for free. */
+.join-step.actor-operator { border-left-color: var(--pnia); }
+.join-step.actor-member { border-left-color: var(--plr); }
+.join-step-actor {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  min-width: 60px;
+}
+
+.join-verified { font-size: 14px; margin-top: 8px; }
+.join-verified.ok { color: var(--ok); }
+.join-verified.pending { color: var(--muted); }
+
+.join-uncommitted-warning {
+  margin-top: 10px;
+  background: color-mix(in srgb, var(--danger) 18%, var(--bg));
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
 /* -- journal banner -- */
 
 #journal-banner {

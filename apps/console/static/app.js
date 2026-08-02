@@ -45,6 +45,9 @@ async function api(path, opts) {
 function switchToTab(name) {
   $all(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   $all(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${name}`));
+  // Join tab only polls while it's the one on screen (below) -- no reason
+  // to hit join-api every few seconds from every other tab.
+  if (name === "join") startJoinPolling(); else stopJoinPolling();
 }
 
 function initTabs() {
@@ -612,6 +615,164 @@ function initPermissions() {
   refreshPermissionsToggle();
 }
 
+// -------------------------------------------------------------------- join ----
+// Fourth tab: the join-api pending queue -- config diff, approve/reject,
+// live progress as a step list coloured by actor, failed jobs with resume,
+// the live-but-uncommitted warning, and any requested_access: follow-ups a
+// join left open (UX plan: design spec S2.7). Every field below traces back
+// to a join payload, which is attacker-supplied by construction (spec's own
+// framing) -- esc() at every call site, same discipline as the counter tab's
+// federated field values.
+const JOIN_POLL_INTERVAL_MS = 3_000;
+let joinPollTimer = null;
+
+function startJoinPolling() {
+  if (joinPollTimer) return;
+  refreshJoinQueue();
+  joinPollTimer = setInterval(refreshJoinQueue, JOIN_POLL_INTERVAL_MS);
+}
+
+function stopJoinPolling() {
+  if (joinPollTimer) clearInterval(joinPollTimer);
+  joinPollTimer = null;
+}
+
+// Steps come from join-api's own job.py sequence (id + actor + kind), never
+// hand-listed here -- a hosted join is uniformly "operator" today (job.py's
+// own docstring), but this reads the field so Plan C's own-server joins
+// (mixed actors) render correctly without a console change.
+function renderJoinSteps(record) {
+  const steps = record.steps;
+  if (!steps || !steps.length) return "";
+  const lastIdx = steps.findIndex(s => s.id === record.last_completed_step);
+  const failedStep = record.error && record.error.step;
+  const rows = steps.map((step, i) => {
+    let status = i <= lastIdx ? "done" : "pending";
+    if (record.state === "RUNNING" && i === lastIdx + 1) status = "current";
+    if (failedStep && step.id === failedStep) status = "failed";
+    return `<li class="join-step ${status} actor-${esc(step.actor)}">`
+      + `<span class="join-step-actor">${esc(step.actor)}</span>`
+      + `<span class="join-step-id">${esc(step.id)}</span>`
+      + `</li>`;
+  });
+  return `<ol class="join-step-list">${rows.join("")}</ol>`;
+}
+
+function renderJoinRequest(record) {
+  const payload = record.payload || {};
+  const state = record.state || "?";
+  const el = document.createElement("div");
+  el.className = "join-request";
+
+  let html = `<div class="join-request-header">`
+    + `<strong>${esc(payload.code || "?")}</strong> ${esc(payload.name || "")} `
+    + `<span class="join-state join-state-${esc(state.toLowerCase())}">${esc(state)}</span>`
+    + `</div>`;
+  html += `<div class="join-request-meta">submitted ${esc(record.submitted_at || "?")}`
+    + `${record.queued ? " &middot; queued behind another job" : ""}</div>`;
+
+  if (record.requested_access && record.requested_access.length) {
+    html += `<div class="join-followup">also requests access to: `
+      + `${record.requested_access.map(esc).join(", ")} `
+      + `&mdash; the named provider must grant this; this API never does.</div>`;
+  }
+
+  if (state === "SUBMITTED") {
+    html += `<pre class="join-diff">${esc(record.diff || "")}</pre>`;
+    html += `<div class="join-actions">`
+      + `<button class="action join-approve-btn" data-id="${esc(record.id)}">Approve</button>`
+      + `<button class="secondary-action join-reject-toggle-btn" data-id="${esc(record.id)}">Reject&hellip;</button>`
+      + `</div>`
+      + `<div class="join-reject-box" id="join-reject-${esc(record.id)}" style="display:none">`
+      + `<textarea class="join-reject-reason" placeholder="Reason (shown to the applicant)"></textarea>`
+      + `<button class="action revoke join-reject-confirm-btn" data-id="${esc(record.id)}">Confirm reject</button>`
+      + `</div>`;
+  } else if (state === "REJECTED") {
+    const r = record.rejection || {};
+    html += `<div class="join-rejection">rejected (${esc(r.check || "?")}): ${esc(r.message || "")}</div>`;
+  } else if (state === "APPROVED" || state === "RUNNING") {
+    html += renderJoinSteps(record);
+  } else if (state === "FAILED") {
+    const e = record.error || {};
+    html += `<div class="join-error">failed at <code>${esc(e.step || "?")}</code>: `
+      + `<span class="join-error-message">${esc(e.message || "")}</span></div>`;
+    html += renderJoinSteps(record);
+    html += `<div class="join-actions">`
+      + `<button class="action join-resume-btn" data-id="${esc(record.id)}">Resume</button>`
+      + `</div>`;
+  } else if (state === "ACTIVE") {
+    html += renderJoinSteps(record);
+    html += record.verified
+      ? `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`
+      : `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
+    if (record.uncommitted) {
+      html += `<div class="join-uncommitted-warning">Live but uncommitted &mdash; `
+        + `configs/member-${esc((payload.code || "").toLowerCase())}/ and manifest.yaml are `
+        + `active on this federation but not yet committed to git.</div>`;
+    }
+  }
+
+  el.innerHTML = html;
+  return el;
+}
+
+async function refreshJoinQueue() {
+  const data = await api("/api/join/requests");
+  const empty = $("#join-empty");
+  const list = $("#join-list");
+  if (!data || !Array.isArray(data.requests)) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    empty.textContent = data && data.error
+      ? `No join API reachable: ${data.error}`
+      : "No join API reachable.";
+    return;
+  }
+  if (data.requests.length === 0) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    empty.textContent = "No join requests yet.";
+    return;
+  }
+  empty.style.display = "none";
+  list.innerHTML = "";
+  data.requests.forEach(record => list.appendChild(renderJoinRequest(record)));
+}
+
+async function onJoinListClick(e) {
+  const approveBtn = e.target.closest(".join-approve-btn");
+  const resumeBtn = e.target.closest(".join-resume-btn");
+  const rejectToggleBtn = e.target.closest(".join-reject-toggle-btn");
+  const rejectConfirmBtn = e.target.closest(".join-reject-confirm-btn");
+
+  if (approveBtn) {
+    approveBtn.disabled = true;
+    await api(`/api/join/requests/${encodeURIComponent(approveBtn.dataset.id)}/approve`, { method: "POST" });
+    await refreshJoinQueue();
+  } else if (resumeBtn) {
+    resumeBtn.disabled = true;
+    await api(`/api/join/requests/${encodeURIComponent(resumeBtn.dataset.id)}/resume`, { method: "POST" });
+    await refreshJoinQueue();
+  } else if (rejectToggleBtn) {
+    const box = $(`#join-reject-${CSS.escape(rejectToggleBtn.dataset.id)}`);
+    box.style.display = box.style.display === "none" ? "block" : "none";
+  } else if (rejectConfirmBtn) {
+    rejectConfirmBtn.disabled = true;
+    const box = $(`#join-reject-${CSS.escape(rejectConfirmBtn.dataset.id)}`);
+    const reason = box.querySelector(".join-reject-reason").value;
+    await api(`/api/join/requests/${encodeURIComponent(rejectConfirmBtn.dataset.id)}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    await refreshJoinQueue();
+  }
+}
+
+function initJoinTab() {
+  $("#join-list").addEventListener("click", onJoinListClick);
+}
+
 // ------------------------------------------------------------ guided run ----
 // Walks all three beats with deterministic pauses -- the mode used for
 // filming, and for anyone handed the URL cold with nobody to explain the
@@ -658,6 +819,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initReceiptsToggle();
   initBreakProof();
   initPermissions();
+  initJoinTab();
   initGuidedDemo();
   startHeartbeat();
   loadTopologyBadge();

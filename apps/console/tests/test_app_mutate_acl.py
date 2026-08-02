@@ -19,6 +19,7 @@ os.environ["PACK_DIR"] = str(pathlib.Path(__file__).resolve().parent / "fixtures
 os.environ["OUT_DIR"] = "/tmp"
 os.environ["XROAD_ADMIN_USER"] = "xrd"
 os.environ["XROAD_ADMIN_PASSWORD"] = "secret"
+os.environ["KP2_JOIN_OPERATOR_TOKEN"] = "test-operator-token"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import app  # noqa: E402

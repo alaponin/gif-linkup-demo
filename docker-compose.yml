@@ -148,6 +148,24 @@ services:
       - ./apps/data:/data:ro
       - ./apps/specs:/specs:ro
 
+  app-ptsb:
+    # Mock scholarship-awards registry behind PTSB -- the join-b Task 6
+    # live-proof fixture (design spec §2.1: "PTSB wants to ... publish
+    # awards-api so PNEA can verify that a candidate holds a scholarship
+    # award"). Not one of the canonical five -- exists only so the live join
+    # has a real, reachable backend to pass check 9 (backend reachability)
+    # against, same generic mock pattern as app-pnia/app-plr/app-pemis.
+    <<: *mock
+    container_name: app-ptsb
+    environment:
+      ENTITY: awards
+      CSV_FILE: /data/awards.csv
+      SPEC_FILE: /specs/ptsb-awards.openapi.yaml
+      KEY_FIELD: nin
+    volumes:
+      - ./apps/data:/data:ro
+      - ./apps/specs:/specs:ro
+
   console:
     # KP2 demonstration console -- demo only, never production (see
     # docs/production-delta.md). profiles: ["demo"] keeps it off by default
@@ -166,6 +184,11 @@ services:
       OUT_DIR: /out
       XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
       XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
+      # Task 6 (join tab): the join API's operator token, held server-side
+      # here exactly like XROAD_ADMIN_PASSWORD above -- the browser never
+      # sees it. join-api itself is reached at its Compose service name on
+      # the linkup network (JOIN_API_URL's default, apps/console/app.py).
+      KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:?set in .env}
     volumes:
       - ./deployment.yaml:/pack/deployment.yaml:ro
       - ./manifest.yaml:/pack/manifest.yaml:ro

@@ -30,6 +30,15 @@ OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 ADMIN_USER = os.environ["XROAD_ADMIN_USER"]
 ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 
+# Task 6 (join tab): the join API's operator token stays server-side here,
+# exactly like ADMIN_PASSWORD above -- read once at import, only ever used
+# inside _join_api()'s Authorization header, never serialized into a
+# response. join-api is on the same linkup network as every other
+# console-adjacent service (docker-compose.yml), so this is a plain
+# server-to-server call, same shape as xroad.AdminSession.
+JOIN_API_URL = os.environ.get("JOIN_API_URL", "http://join-api:8000")
+JOIN_OPERATOR_TOKEN = os.environ["KP2_JOIN_OPERATOR_TOKEN"]
+
 # Design decision 4: only one ACL is mutable in this demo -- identity-api's
 # grant to PNEA:EXAMS. enrolment-api stays untouched so a broken reset is
 # always visible as an asymmetry between the two tabs, not hidden by symmetry.
@@ -421,6 +430,93 @@ def post_heartbeat():
     global _last_heartbeat
     _last_heartbeat = time.time()
     return {"ok": True}
+
+
+# -- join tab (Task 6) --------------------------------------------------------
+# A thin, read-mostly proxy onto the REAL apps/join-api/app.py -- never the
+# journal, never _MUTATE_LOCK: a join is not an ACL mutation this console
+# tracks (Task 6 Step 4), so nothing below touches JOURNAL or _reset_locked,
+# and scripts/acceptance.sh's dirty-journal refusal keeps meaning exactly
+# what it already means. The operator token stays server-side (Step 2,
+# JOIN_OPERATOR_TOKEN above); the browser only ever sees join-api's own
+# response bodies, which never carry it.
+#
+# Route paths verified directly against apps/join-api/app.py, not spec §7's
+# stated-but-inaccurate "/api/join" base path (a discrepancy Tasks 1/3/4/5
+# already found and left alone) -- join-api's real routes have no prefix:
+# POST/GET /requests, POST /requests/{id}/{approve,resume,reject}.
+_JOIN_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+
+
+def _validated_join_request_id(request_id: str) -> str:
+    # Mirrors join-api's own _REQUEST_ID_RE (a defence THAT side already
+    # has) -- checked here too because this value is about to become part
+    # of an outbound URL this process builds, not just an inbound one.
+    if not _JOIN_REQUEST_ID_RE.match(request_id):
+        raise HTTPException(400, "request id contains characters no join-api id can ever have")
+    return request_id
+
+
+def _join_api(method: str, path: str, **kwargs) -> httpx.Response:
+    """Server-to-server call to the real join-api (Task 6 Step 2) -- same
+    shape as _admin_session()'s calls to X-Road's admin API. join-api is on
+    the same linkup network as every other console-adjacent service
+    (docker-compose.yml), reachable at JOIN_API_URL without leaving the
+    Docker network. Sends the same request-boundary header join-api itself
+    requires (apps/join-api/app.py's _require_console_origin) -- this call
+    never carries an Origin header, so that half of the guard is a no-op
+    here, which is correct: this IS the trusted server-to-server leg."""
+    headers = {"Authorization": f"Bearer {JOIN_OPERATOR_TOKEN}", CONSOLE_HEADER: "1"}
+    headers.update(kwargs.pop("headers", None) or {})
+    return httpx.request(method, f"{JOIN_API_URL}{path}", headers=headers, timeout=10.0, **kwargs)
+
+
+def _proxy_join(method: str, path: str, **kwargs) -> dict:
+    """join-api's JSON body verbatim on success. join-api is profile "demo",
+    like the console itself, and not always running (scripts/join.sh
+    up/down) -- that is a fact for the tab to render (Step 1's queue view
+    treats a body with no "requests" key as "no join API reachable"), not a
+    500 the console throws at its own caller."""
+    try:
+        resp = _join_api(method, path, **kwargs)
+    except httpx.HTTPError as exc:
+        return {"error": f"join-api unreachable: {exc}"}
+    try:
+        body = resp.json()
+    except ValueError:
+        return {"error": f"join-api returned a non-JSON response (HTTP {resp.status_code})"}
+    if resp.status_code >= 400:
+        return {"error": body.get("detail", body) if isinstance(body, dict) else body}
+    return body
+
+
+@app.get("/api/join/requests", dependencies=[Depends(_require_console_origin)])
+def get_join_requests():
+    """The pending queue (Task 6 Step 1): every request, each already
+    carrying its config diff, its step sequence coloured by actor, and (for
+    an ACTIVE record) the live-but-uncommitted flag -- all computed by
+    join-api's own GET /requests (apps/join-api/app.py's _record_view)."""
+    return _proxy_join("GET", "/requests")
+
+
+@app.post("/api/join/requests/{request_id}/approve", dependencies=[Depends(_require_console_origin)])
+def post_join_approve(request_id: str):
+    request_id = _validated_join_request_id(request_id)
+    return _proxy_join("POST", f"/requests/{request_id}/approve")
+
+
+@app.post("/api/join/requests/{request_id}/resume", dependencies=[Depends(_require_console_origin)])
+def post_join_resume(request_id: str):
+    """Recovers a FAILED job from its last_completed_step (job.py's own
+    resume logic) -- the console's Resume button, not a new mechanism."""
+    request_id = _validated_join_request_id(request_id)
+    return _proxy_join("POST", f"/requests/{request_id}/resume")
+
+
+@app.post("/api/join/requests/{request_id}/reject", dependencies=[Depends(_require_console_origin)])
+def post_join_reject(request_id: str, body: dict | None = None):
+    request_id = _validated_join_request_id(request_id)
+    return _proxy_join("POST", f"/requests/{request_id}/reject", json=body or {})
 
 
 # Mounted last so it never shadows an /api/* route -- StaticFiles(html=True)

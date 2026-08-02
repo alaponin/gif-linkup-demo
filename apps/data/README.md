@@ -5,6 +5,10 @@ Deterministic (seed 2026); regenerate with scripts/gen_seed_data.py.
 - persons.csv: 50 (PNIA)
 - enrolments.csv: 46 (PLR)
 - school_records.csv: 44 (PEMIS)
+- awards.csv: 4 (PTSB) -- hand-written, not scripts/gen_seed_data.py output
+  (join-b Task 6's live-proof fixture: PTSB is not a canonical member, so
+  there is no generator entity for it). NINs reused from persons.csv on
+  purpose, so a real join-time exchange could plausibly resolve them.
 
 NINs in PNIA but deliberately NOT in PLR (clean-404 negative check):
 - 46001304118

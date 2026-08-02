@@ -21,6 +21,7 @@ import os
 import pathlib
 import re
 import secrets
+import subprocess
 import sys
 import threading
 
@@ -286,11 +287,98 @@ def get_request(
 ) -> dict:
     """The whole record, which since Task 4 also carries last_completed_step,
     the job context's captures, verified, and the failing step + last error
-    when FAILED (spec S7's row for this endpoint)."""
+    when FAILED (spec S7's row for this endpoint). Deliberately the RAW
+    record, unchanged since Task 3/4 (test_app_requests.py asserts GET
+    round-trips POST's response byte-for-byte) -- the derived, operator-only
+    view (_record_view below) lives on GET /requests instead, not here."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     return record
+
+
+# -- the operator queue (spec S7: "GET /requests -- the queue, filterable by
+# state. Each entry carries the config diff ... computed at submission.")
+# Task 3/4 built submit/read/approve/resume but never this listing endpoint
+# or reject below -- both are genuinely needed by Task 6's console tab (the
+# pending queue, and reject-with-a-reason) and are pure additions to the
+# API surface spec S7 already specifies, not a change to any existing route.
+
+
+def _step_summary(pack_dir: pathlib.Path, payload: schema.JoinPayload) -> list[dict] | None:
+    """The ordered step sequence (id + actor + kind) for this payload's join
+    -- job.py builds this from the payload at RUN time and never persists it
+    (there is nothing on disk to read), so the console's progress list
+    (Task 6 Step 1: "coloured by its actor") recomputes it here instead.
+    Cheap: yaml reads and string rendering, no network, no subprocess. None
+    on failure (e.g. a REJECTED request's payload didn't survive schema
+    validation) -- the console renders no step list rather than erroring."""
+    try:
+        return [
+            {"id": s.id, "actor": s.actor, "kind": s.kind}
+            for s in job.build_sequence(pack_dir, payload)
+        ]
+    except Exception:  # noqa: BLE001 -- best-effort enrichment, never fatal to the queue view
+        return None
+
+
+def _live_uncommitted(key: str) -> bool:
+    """Spec S9's known gap, made visible: an ACTIVE member's config can be
+    live on the running federation before anyone has committed
+    configs/member-<key>/ and manifest.yaml to git. join-api is the only
+    service in this pack with the enclosing .git mounted (docker-compose.yml's
+    comment on this service's volumes) -- apps/console's own mount is
+    curated read-only and has no .git at all, so this fact has to be
+    computed here, not there. Same git-status shape as writer._git_status_dirty,
+    scoped to this one member rather than the whole configs/ tree. Best-effort:
+    a git failure reads as "not able to tell", not "definitely committed" --
+    but it must never break the queue view over it, so it returns False."""
+    try:
+        repo_root = PACK_DIR.resolve().parents[2]
+        rel = PACK_DIR.resolve().relative_to(repo_root)
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "status", "--porcelain",
+             str(rel / "configs" / f"member-{key}"), str(rel / "manifest.yaml")],
+            capture_output=True, text=True, timeout=5,
+        )
+        return bool(proc.stdout.strip())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _record_view(record: dict) -> dict:
+    """Augments a persisted record with the two facts the console's queue
+    needs that nothing on disk stores: the step sequence (for the progress
+    list) and, for an ACTIVE record, the live-but-uncommitted flag."""
+    view = dict(record)
+    if record.get("state") != "REJECTED":
+        try:
+            payload = schema.JoinPayload(**record["payload"])
+            view["steps"] = _step_summary(PACK_DIR, payload)
+        except Exception:  # noqa: BLE001
+            view["steps"] = None
+    if record.get("state") == "ACTIVE":
+        view["uncommitted"] = _live_uncommitted(record["payload"]["code"].lower())
+    return view
+
+
+@app.get("/requests")
+def list_requests(
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """The operator queue (spec S7): every persisted request, newest first,
+    each enriched via _record_view. Operator-only, unlike GET /requests/{id}
+    -- an applicant reads its own outcome by id (spec §7's "own request
+    only" was dropped, but the queue-wide view is still an operator tool)."""
+    records = []
+    for path in sorted(_requests_dir().glob("*.json")):
+        try:
+            records.append(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    records.sort(key=lambda r: r.get("submitted_at", ""), reverse=True)
+    return {"requests": [_record_view(r) for r in records]}
 
 
 # -- approval and the job (spec S4, S5) --------------------------------------
@@ -386,4 +474,29 @@ def resume_request(
     record["queued"] = _JOB_LOCK.locked()
     _save_request(record)
     _start_job(request_id)
+    return record
+
+
+@app.post("/requests/{request_id}/reject")
+def reject_request(
+    request_id: str,
+    body: dict | None = None,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Operator rejection with a reason (spec S7, Task 6's console tab).
+    Only from SUBMITTED -- once a request is APPROVED the config is already
+    written and a job may be running or done; rejecting at that point isn't
+    "this join should not happen", it's un-joining, which is DELETE
+    /members/{key} (spec S10, Plan C, not this endpoint)."""
+    record = _load_request(request_id)
+    if record is None:
+        raise HTTPException(404, f"no join request {request_id!r}")
+    if record["state"] != "SUBMITTED":
+        raise HTTPException(409, f"request {request_id} is {record['state']}, not SUBMITTED")
+    reason = (body or {}).get("reason") or "(no reason given)"
+    record["state"] = "REJECTED"
+    record["rejection"] = {"check": "operator", "message": reason}
+    record["rejected_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    _save_request(record)
     return record

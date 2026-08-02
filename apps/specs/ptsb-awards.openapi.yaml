@@ -1,0 +1,39 @@
+# PTSB awards API — the OpenAPI3 service description X-Road parses for the
+# live-proof join (join-b Task 6, design spec §2.1). GET-only, mirroring
+# apps/specs/pnia-identity.openapi.yaml's shape exactly -- Plan B's join
+# policy (configs/x-road-bus/2.7.yaml's allowed_methods: [GET]) rejects
+# anything else.
+openapi: 3.0.3
+info:
+  title: Progressa Tertiary Scholarship Board — awards API
+  version: "1.0"
+  description: >
+    Whether a candidate holds a scholarship award, for PNEA to verify before
+    issuing a certificate (design spec §2.1 point 2).
+servers:
+  - url: http://app-ptsb:8000/v1
+paths:
+  /awards/{nin}:
+    get:
+      operationId: getAward
+      summary: Fetch a candidate's scholarship award by NIN
+      parameters:
+        - name: nin
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9]{11}$'}
+      responses:
+        "200":
+          description: The award record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nin, award_id, program, year]
+                properties:
+                  nin: {type: string}
+                  award_id: {type: string}
+                  program: {type: string}
+                  year: {type: string}
+        "404":
+          description: No award for this NIN
