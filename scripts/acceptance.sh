@@ -479,7 +479,11 @@ for code, rec in sorted(newest.items()):
     # The owner_id a SIGN certificate carries is MEMBER-level, not subsystem-
     # level ("PROGRESSA:GOV:PLR") -- hurl/templates/fragments/
     # PROBE_SS_SIGN_KEY.hurl.tmpl's own live-confirmed note.
-    print(f"{code}\t{host}\t{subject}\t{pair}\t{r1_path}\t{instance}:{mclass}:{code}")
+    # "-" for the own-server case, never an EMPTY field: TAB is an IFS
+    # WHITESPACE character, so bash's `read` collapses two consecutive tabs
+    # into one and every later field lands in the wrong variable (found the
+    # first time this ran against a real own-server retirement).
+    print(f"{code}\t{host or '-'}\t{subject}\t{pair}\t{r1_path}\t{instance}:{mclass}:{code}")
 PY
 )
 for _row in "${_27_RETIRED[@]}"; do
@@ -579,7 +583,7 @@ if _selection_touches_27; then
     # signing key (docs/xroad-770-notes.md #11, "What happens to a hosted
     # member's SIGN key").
     check_unjoin_host() {
-      [ -n "$host_dns" ] || return 0
+      [ "$host_dns" != "-" ] || return 0   # own-server: its server is gone with it
       local ui=${SS_UI[$host_dns]:-} key token want
       [ -n "$ui" ] || return 1
       key=$(api_key "localhost:${ui}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}") || return 1
@@ -611,7 +615,8 @@ PY
       check_unjoin_host || { log "  2.7.unjoin(${code}): residue on ${host_dns} (client list or token)"; return 1; }
       retry 12 5 "${code} r1 unreachable" check_unjoin_r1
     }
-    check "2.7.unjoin(${code})" "${code} is gone from the CS, from ${host_dns:-its own (destroyed) server} and from the bus" check_unjoin
+    _where=$([ "$host_dns" = "-" ] && echo "its own (destroyed) server" || echo "$host_dns")
+    check "2.7.unjoin(${code})" "${code} is gone from the CS, from ${_where} and from the bus" check_unjoin
   done
 
   if [ ${#_27_RETIRED[@]} -gt 0 ]; then
