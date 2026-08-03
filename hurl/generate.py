@@ -1023,7 +1023,18 @@ declare -A HOST_SS=(
                 f"  {dns}:\n"
                 f"    <<: *sidecar\n"
                 f"    container_name: {dns}\n"
-                f'    ports: ["{ui}:4000", "{rest}:8080"]\n'
+                # ${XROAD_BIND:-127.0.0.1} is NOT decoration -- every `ports:`
+                # line in docker-compose.yml carries it, and without it here a
+                # joined member's own Security Server published its admin UI
+                # AND its unauthenticated X-Road proxy port on 0.0.0.0,
+                # ignoring deployment.yaml's network.bind entirely. Found live
+                # (join-c plan Task 5, first own-server join): the very next
+                # scripts/acceptance.sh run hard-failed in check-exposure.sh
+                # with "ss-pvtb: 0.0.0.0:7100 -> 4000/tcp". A Compose file
+                # generated for a joined member has to obey the same bind
+                # policy as the hand-written one, or the policy has a hole
+                # exactly where a demonstration puts a new agency.
+                f'    ports: ["${{XROAD_BIND:-127.0.0.1}}:{ui}:4000", "${{XROAD_BIND:-127.0.0.1}}:{rest}:8080"]\n'
                 f"    volumes:\n"
                 f"      - {key}-db:/var/lib/postgresql/16/main\n"
                 f"      - {key}-conf:/etc/xroad\n"
