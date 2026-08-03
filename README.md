@@ -29,7 +29,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   resolved, which is what makes it worth having, and that read needs
   neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
   daemon itself stopped, see `tests/test_tiers.py`) **~49s** (measured
-  2026-08-03, 286 tests [285 passed, 1 skipped] — was ~29s/203 tests on
+  2026-08-03, 291 tests [290 passed, 1 skipped] — was ~29s/203 tests on
   2026-08-02, ~16s/66 tests on 2026-08-01 and ~8s/48 tests on 2026-07-28
   before that; the growth is tests added across several plans, not a
   regression in any single one of them, but note it compounds: `--full`
