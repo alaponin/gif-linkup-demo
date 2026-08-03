@@ -445,16 +445,51 @@ done
 # Deliberately reads out/join rather than anything in hurl/: a retired member
 # is GONE from hurl/topology.json (that is clause 5), so topology cannot be
 # the discovery source the way it is for a live joined member.
-mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
-import json, pathlib, sys
+#
+# ...and out/join/ outlives the federation it describes: scripts/teardown.sh
+# --purge tears down containers and volumes, never out/. A RETIRED record
+# from a PREVIOUS federation would otherwise produce a row whose every clause
+# passes trivially (CS list empty, host token has no such key, r1 returns
+# UnknownMember) -- four green checks asserting nothing about the federation
+# now running, the same vacuous-PASS shape the sibling topology check above
+# was just fixed for. So a record only counts if it was retired AFTER this
+# federation was deployed: hurl/run-linkup.sh writes deploy_start (epoch) to
+# out/deploy-timings.txt on every deploy, and job.py stamps retired_at when
+# the walk completes. No anchor, or a record older than it -> SKIP with a
+# reason, never a PASS.
+#
+# Purging out/join/ in teardown.sh instead was the alternative considered and
+# rejected: those same files are the ACTIVE join records `scripts/member.sh
+# drift` needs for its join-time endpoint baseline, and that the 2.7.r1 rows
+# above need to exist at all -- deleting them on --purge would trade one
+# vacuous PASS for silently skipping every r1 row after a purge-and-redeploy,
+# which is the pack's own P5 reproducibility flow.
+#
+# ponytail: a plain `teardown.sh` (no --purge) followed by deploy.sh keeps the
+# volumes but rewrites deploy_start, so a legitimate un-join from before that
+# restart reads as stale and its row SKIPs. That is the safe direction (a
+# logged SKIP, not a false PASS); anchor on the CS volume's CreatedAt instead
+# if the restart-and-reassert flow ever matters.
+mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" "$OUT_DIR/deploy-timings.txt" <<'PY'
+import datetime, json, pathlib, sys
 
 topo = json.load(open(sys.argv[1]))
 join_dir = pathlib.Path(sys.argv[2])
+timings = pathlib.Path(sys.argv[3])
 instance, mclass = topo["instance"], topo["member_class"]
 live = {s["member_code"].upper() for s in topo["subsystems"]}
 
+deployed_at = None
+if timings.is_file():
+    for line in timings.read_text().splitlines():
+        if line.startswith("deploy_start="):
+            deployed_at = datetime.datetime.fromtimestamp(int(line.split("=", 1)[1]), datetime.timezone.utc)
+if deployed_at is None:
+    print(f"{timings} has no deploy_start -- cannot tell which federation a RETIRED record "
+          f"describes; skipping every 2.7.unjoin row", file=sys.stderr)
+
 newest: dict[str, dict] = {}
-if join_dir.is_dir():
+if join_dir.is_dir() and deployed_at is not None:
     for f in sorted(join_dir.glob("*.json")):
         try:
             rec = json.loads(f.read_text())
@@ -464,6 +499,16 @@ if join_dir.is_dir():
             continue
         code = ((rec.get("payload") or {}).get("code") or "").upper()
         if not code:
+            continue
+        try:
+            retired_at = datetime.datetime.fromisoformat(rec["retired_at"])
+            stale = retired_at < deployed_at
+        except (KeyError, TypeError, ValueError):
+            retired_at, stale = None, True
+        if stale:
+            print(f"{code} was retired {retired_at or 'at an unreadable time'}, before this federation "
+                  f"was deployed ({deployed_at.isoformat()}) -- it never joined the federation now "
+                  f"running, so its clauses would assert nothing; skipping", file=sys.stderr)
             continue
         prev = newest.get(code)
         if prev is None or rec.get("submitted_at", "") > prev.get("submitted_at", ""):
