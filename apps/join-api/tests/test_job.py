@@ -1083,6 +1083,18 @@ def _reversed_ids(hurl: ReverseHurl) -> list[str]:
 # -- Step 2: the order, and the states -----------------------------------------
 
 
+def test_every_step_the_walk_visits_has_an_absence_interpreter():
+    """unjoin() walks hurl/steps.py's REVERSAL_ORDER and indexes
+    REVERSAL_ABSENT by the same base id -- two hand-maintained lists of the
+    same set. A REVERSAL_ORDER entry with no interpreter is a KeyError mid-walk
+    (with part of the member already reversed); an interpreter for a step the
+    order never names is dead code that reads as coverage (final review
+    finding 1). tests/test_steps.py holds the third list, the registry's own
+    `reverse=` fields, to the same set."""
+    _, steps = job._hurl_modules(REAL_PACK_DIR)
+    assert set(steps.REVERSAL_ORDER) == set(job.REVERSAL_ABSENT)
+
+
 def test_the_walk_runs_the_live_verified_reversal_order_not_the_sequence_reversed():
     """hurl/steps.py's REVERSAL_ORDER, established live (#11 finding 5):
     ss.client_register -> ss.client_add -> ss.sign_key_csr, i.e. the client

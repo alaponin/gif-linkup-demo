@@ -209,6 +209,15 @@ def test_every_reversal_has_a_probe():
     assert not missing, f"step(s) with a reversal but no probe: {missing}"
 
 
+def test_reversal_order_names_exactly_the_steps_that_declare_a_reverse():
+    """REVERSAL_ORDER and the `reverse=` fields are two hand-maintained lists
+    of the same set, and apps/join-api/job.py's unjoin() walks the FIRST one.
+    A step that gains a `reverse` but no REVERSAL_ORDER entry is silently
+    never walked -- the un-join reports fewer reversals and still reports
+    RETIRED (final review finding 1)."""
+    assert {s.id for s in steps_module.REGISTRY if s.reverse} == set(steps_module.REVERSAL_ORDER)
+
+
 def test_reversal_templates_exist():
     """Same reasoning as test_ambiguous_steps_have_a_probe -- a declared
     `reverse` path that does not exist on disk is worse than none."""
