@@ -222,6 +222,13 @@ EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
 fetch_retry() {
   local url=$1 i out
   for ((i=1; i<=12; i++)); do
+    # `jq -e .` also exits non-zero on a body that is valid JSON `null` or
+    # `false`. Deliberate and harmless here: every URL this is called with is
+    # a record fetch that returns an object, so `null` is a not-ready
+    # response, not a legitimate value to pass through -- and a stuck one
+    # ends in fail() with the URL rather than in a confusing parse error
+    # downstream. Worth knowing before reusing this helper for an endpoint
+    # where `null` or `false` IS the answer.
     if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null) &&
        printf '%s' "$out" | jq -e . >/dev/null 2>&1; then printf '%s' "$out"; return 0; fi
     # >&2 IS LOAD-BEARING, and this is the one function in the file where it
@@ -634,14 +641,16 @@ PY
     # generated from the canonical member set alone (tests/test_golden.py),
     # so with every joined member gone the two must be the same bytes.
     GOLDEN_TOPO="$PACK_DIR/tests/golden/$([ "${LITE:-0}" = 1 ] && echo lite || echo full)/topology.json"
-    check_unjoin_topology() {
-      if python3 -c 'import json,sys; sys.exit(0 if any(s.get("origin")=="joined" for s in json.load(open(sys.argv[1]))["subsystems"]) else 1)' "$PACK_DIR/hurl/topology.json"; then
-        log "  a member is still joined -- byte-identical to the canonical golden is the wrong expectation, not a failure"
-        return 0
-      fi
-      cmp -s "$PACK_DIR/hurl/topology.json" "$GOLDEN_TOPO"
-    }
-    check 2.7.unjoin.topology "hurl/topology.json is byte-identical to $(basename "$(dirname "$GOLDEN_TOPO")")/topology.json after the un-join" check_unjoin_topology
+    check_unjoin_topology() { cmp -s "$PACK_DIR/hurl/topology.json" "$GOLDEN_TOPO"; }
+    # SKIP, not a vacuous PASS. With a member still joined, the golden
+    # canonical topology is the wrong thing to compare against -- but
+    # reporting PASS for a check that asserted nothing is how a green summary
+    # comes to mean less than it looks like it does (review finding).
+    if python3 -c 'import json,sys; sys.exit(0 if any(s.get("origin")=="joined" for s in json.load(open(sys.argv[1]))["subsystems"]) else 1)' "$PACK_DIR/hurl/topology.json"; then
+      log "SKIP 2.7.unjoin.topology -- a member is still joined, so byte-identical to the canonical golden is the wrong expectation (not a failure)"
+    else
+      check 2.7.unjoin.topology "hurl/topology.json is byte-identical to $(basename "$(dirname "$GOLDEN_TOPO")")/topology.json after the un-join" check_unjoin_topology
+    fi
   fi
 
   "$(dirname "$0")/join.sh" down
