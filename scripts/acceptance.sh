@@ -224,7 +224,15 @@ fetch_retry() {
   for ((i=1; i<=12; i++)); do
     if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null) &&
        printf '%s' "$out" | jq -e . >/dev/null 2>&1; then printf '%s' "$out"; return 0; fi
-    log "waiting: $url ($i/12)"; sleep 5
+    # >&2 IS LOAD-BEARING, and this is the one function in the file where it
+    # is: lib-core.sh's log() writes to STDOUT, and this function's stdout is
+    # the value itself (`id_json=$(fetch_retry ...)`). Without the redirect a
+    # single retry prepends "\033[1;34m[kp2]\033[0m waiting: ..." to the
+    # captured body, and the next check dies on `json.loads` at char 0 --
+    # which reads as the federation returning garbage rather than as this
+    # line. Latent since fetch_retry was written (no retry ever fired before
+    # the JSON condition above made one possible); found the moment it did.
+    log "waiting: $url ($i/12)" >&2; sleep 5
   done
   fail "timed out: $url"
 }
