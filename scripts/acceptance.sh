@@ -209,10 +209,21 @@ EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
 # first exchange call can hit a transient failure moments before it settles.
 # retry() itself only reports success/failure and discards stdout, so capture
 # the body with a small inline retry instead.
+#
+# The success criterion is "the body parses as JSON", NOT curl's exit code
+# (join-c plan Task 5). curl -sf exits 0 on an X-Road REST response that is
+# 200 with an empty or not-yet-valid body, which a fresh deploy really does
+# return for a few seconds -- docs/production-delta.md's "Lite profile's full
+# cycle, measured" recorded it happening on 2 of 3 fresh deploys and left it
+# as a follow-up. It surfaces one check LATER, as a JSONDecodeError traceback
+# out of scripts/assert_record.py under 2.6.2, which reads as a data bug in a
+# federation that is merely still settling -- and it fails `--full`, the
+# unattended reproducibility proof, for a reason that retrying here fixes.
 fetch_retry() {
   local url=$1 i out
   for ((i=1; i<=12; i++)); do
-    if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null); then printf '%s' "$out"; return 0; fi
+    if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null) &&
+       printf '%s' "$out" | jq -e . >/dev/null 2>&1; then printf '%s' "$out"; return 0; fi
     log "waiting: $url ($i/12)"; sleep 5
   done
   fail "timed out: $url"
