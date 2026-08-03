@@ -360,15 +360,31 @@ and confirms two.
 
 | | Cycle | Join | Un-join |
 | --- | --- | --- | --- |
-| PVTB (own server, `ss-pvtb`) | driven by `curl` | approve → `BLOCKED` 31s; `scripts/join-agent.sh pvtb` 100s to healthy; resume → `ACTIVE` 163s | `DELETE /members/pvtb` → `RETIRED` in **4s**, 5 reversals, nothing retried |
-| PVTB (own server) again | driven through the console's join tab | approve → `BLOCKED` ~25s; agent 76s; resume → `ACTIVE` 141s | `RETIRED` in **3s**, 5 reversals, nothing retried |
-| PHTB (hosted on `ss-plr`) | driven by `curl` | approve → `ACTIVE, verified: true` in **64s** | `RETIRED` in **2s**, 6 reversals, nothing retried |
+| PVTB (own server, `ss-pvtb`) | driven by `curl` | approve → `BLOCKED` 31s; `scripts/join-agent.sh pvtb` 100s to healthy; resume → `ACTIVE` 163s | `DELETE /members/pvtb` → `RETIRED` in **2.32s**, 5 reversals, nothing retried |
+| PVTB (own server) again | driven through the console's join-tab endpoints (see caveat) | approve → `BLOCKED` ~25s; agent 76s; resume → `ACTIVE` 141s | `RETIRED` in **1.33s**, 5 reversals, nothing retried |
+| PHTB (hosted on `ss-plr`) | driven by `curl` | approve → `ACTIVE, verified: true` in **64s** | `RETIRED` in **1.44s**, 6 reversals, nothing retried |
 
 Both own-server cycles ended with `hurl/topology.json` **byte-identical** to
 `tests/golden/lite/topology.json`, every regenerated scenario file identical,
 `git status` clean, and `scripts/acceptance.sh` green — the join-c plan's
 Global Constraint, now proven on the own-server half rather than only the
 hosted one.
+
+**Caveat on the second cycle, so nobody reads more into it than it proves.**
+It was driven through the console's own `/api/join/*` proxy endpoints — the
+exact server-side path the join tab's Approve and Resume buttons call, with
+the operator token never leaving the container — and **not through a
+browser**: no Chrome instance was available in the environment that ran
+this. What was verified is therefore the data the tab renders from (the
+`BLOCKED` record carrying `blocked.server` and the `scripts/join-agent.sh
+pvtb` command, the 16-step sequence with its run of `actor: member` steps,
+the `uncommitted: true` flag appearing at `ACTIVE`, the `RETIRING`/`RETIRED`
+cards with their reversal list and Docker instruction) plus the rendering
+code that consumes it (`apps/console/static/app.js`'s `renderJoinRequest` /
+`renderJoinSteps`, and its 3s `setInterval` poll, which is what picks the job
+up after the agent runs with no manual refresh). **Rendered pixels were not
+checked.** Somebody should open the tab once and look at it before
+demonstrating this to an audience; nothing here substitutes for that.
 
 ### `DELETE /clients/{id}` did NOT need the `409 action_not_possible` retry
 
@@ -459,12 +475,19 @@ work, not this one's** (Task 5's files are docs/tests/scripts, not
 `join.r1_verify` a budget of its own rather than the run's leftovers, or
 make re-verifying an `ACTIVE` record its own idempotent endpoint.
 
-### Sizing: the ~13 GB prediction was pessimistic (Step 4)
+### Sizing: spec §12's numbers hold; its closing sentence does not (Step 4)
 
-Design spec §12 predicted ~13 GB for `profile: lite` plus a joined member's
-own Security Server, and concluded that this and a real third-party backend
-cannot both fit on a 16 GB host. Measured instead of trusted, with exactly
-that topology up (`docker stats --no-stream`, colima VM with 15.62 GiB):
+Design spec §12 was checked by measuring rather than trusting it. **Its
+table is right — measurably so — and only its prose conclusion overstates
+what the table says.** Read the row carefully before comparing anything to
+it: §12's `~13 GB` line is **`lite + backend + own Security Server`**, and
+that budget *includes* a third-party backend (§12 budgets a Joget DX
+instance plus its database at 1.5–2.5 GB). It is not a prediction for
+`lite + own Security Server` alone, which is the topology measured here.
+
+Measured with exactly that topology up — lite plus one own-server member,
+**no** third-party backend (`docker stats --no-stream`, colima VM with
+15.62 GiB):
 
 | | |
 | --- | --- |
@@ -476,16 +499,31 @@ that topology up (`docker stats --no-stream`, colima VM with 15.62 GiB):
 | `join-api` | 41 MiB |
 | **Total** | **11.13 GiB** |
 
-**~11.1 GiB, not ~13 GB** — about 4.5 GiB of headroom on this host. The
-prediction was pessimistic by roughly 1.5–2 GB, and the conclusion drawn
-from it is **too strong as stated**: a single modest third-party backend
-(a Joget DX container plus its database, order 1.5–2 GiB) would fit in the
-measured headroom. What does not fit is the *combination the spec was really
-warning about* — a second own-server member (another 2.2 GiB) alongside a
-real backend, or any of this on `profile: full`, where the two extra
-Security Servers alone take the base past 15 GiB before a joined member is
-added at all. Treat §12's claim as right about `full` and about multiple
-own-server members, and wrong about lite plus one.
+**11.13 GiB, and §12's own components predict 11.1 GB for this exact
+topology** — lite at ~8.9 GB plus one Security Server at ~2.0–2.3 GB. The
+spec's per-component figures are confirmed to within noise, including the
+~2.0–2.3 GB per Security Server it took from the member-parameterisation
+measurements above: a joined member's own server really is the same resource
+class as a canonical one (2.222 GiB against 2.239–2.269 GiB for the three
+canonical servers in the same reading).
+
+Add §12's own backend budget (1.5–2.5 GB for a Joget DX instance plus its
+database) and the total lands at **~12.6–13.6 GiB — which is §12's `~13 GB`
+row, arrived at from a live measurement instead of an estimate.** On this
+15.62 GiB host that leaves roughly 2–3.5 GiB spare, which is exactly what
+that row already says: **"fits, tight"**.
+
+**What is wrong is §12's closing sentence, not its arithmetic.** The prose
+after the table says own-server joins and a real backend "cannot both be
+shown on a 16 GB host" — which contradicts the table's own `fits, tight`
+verdict two lines above it. The measurement settles it in the table's
+favour: `lite + backend + own Security Server` fits, tightly, and the
+sentence should read as a *recommendation* against it (the same
+`hosted_on`-by-default recommendation §6.2 and this document already make on
+three other grounds) rather than as a statement of impossibility. The rows
+that genuinely do not fit are unchanged and unchallenged: `full + backend`
+(~15 GB) and `full + backend + own Security Server` (~17 GB), plus any
+second own-server member (another ~2.2 GiB) on top of the lite combination.
 
 ### Two real bugs this proof found
 
