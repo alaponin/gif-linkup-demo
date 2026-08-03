@@ -9,8 +9,9 @@
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
 # Ids today are 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>),
-# 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>) and 2.7.deny(<member>.
-# <service>) (member-parameterisation Task 7 generalised what used to be
+# 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.
+# <service>), 2.7.unjoin(<member>) and 2.7.unjoin.topology
+# (member-parameterisation Task 7 generalised what used to be
 # discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
 # literal "2.4" id to select; --only/--from match against what actually
 # runs today, not the pre-generalisation module numbers).
@@ -408,6 +409,74 @@ for _row in "${_27_ROWS[@]}"; do
   _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})")
 done
 
+# ---- 2.7.unjoin -- the un-join transition (join-c plan Task 5) ---------------
+# acceptance/2.7.md's un-join clause: five assertions, which are exactly
+# docs/xroad-770-notes.md #11's closing claims. Discovered the same generic,
+# vacuous-by-default way the r1 rows above are: the newest RETIRED
+# out/join/*.json record per member code. A federation nobody has un-joined
+# produces zero rows and this section does not run at all.
+#
+# Deliberately reads out/join rather than anything in hurl/: a retired member
+# is GONE from hurl/topology.json (that is clause 5), so topology cannot be
+# the discovery source the way it is for a live joined member.
+mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
+import json, pathlib, sys
+
+topo = json.load(open(sys.argv[1]))
+join_dir = pathlib.Path(sys.argv[2])
+instance, mclass = topo["instance"], topo["member_class"]
+live = {s["member_code"].upper() for s in topo["subsystems"]}
+
+newest: dict[str, dict] = {}
+if join_dir.is_dir():
+    for f in sorted(join_dir.glob("*.json")):
+        try:
+            rec = json.loads(f.read_text())
+        except Exception:
+            continue
+        if rec.get("state") != "RETIRED":
+            continue
+        code = ((rec.get("payload") or {}).get("code") or "").upper()
+        if not code:
+            continue
+        prev = newest.get(code)
+        if prev is None or rec.get("submitted_at", "") > prev.get("submitted_at", ""):
+            newest[code] = rec
+
+for code, rec in sorted(newest.items()):
+    pay = rec["payload"]
+    if code in live:
+        # Retired once, joined again since. The record is history, not a
+        # claim about now -- asserting absence would be wrong, not lenient.
+        print(f"{code} has a RETIRED record but is live in hurl/topology.json again -- skipping", file=sys.stderr)
+        continue
+    svc = next((s for s in (pay.get("services") or []) if s.get("access")), None)
+    if svc is None:
+        # No authorised consumer -> no r1 clause. The registry clauses alone
+        # would not prove the bus forgot the member, which is the one thing
+        # this section exists for.
+        print(f"{code} published no service with an access: list -- nothing for the r1 clause, skipping", file=sys.stderr)
+        continue
+    host = (pay.get("security_server") or {}).get("hosted_on") or ""
+    if not host:
+        print(f"{code} owned its own Security Server, destroyed with it -- clauses 2 and 3 "
+              f"(host client list, host token) have nothing to read; 1, 4 and 5 still run",
+              file=sys.stderr)
+    subject = svc["access"][0]                       # PROGRESSA/GOV/<CODE>/<SUBSYSTEM>
+    pair = ":".join(subject.split("/")[-2:])
+    r1_path = f"/r1/{instance}/{mclass}/{code}/{pay['subsystem']}/{svc['code']}/"
+    # The owner_id a SIGN certificate carries is MEMBER-level, not subsystem-
+    # level ("PROGRESSA:GOV:PLR") -- hurl/templates/fragments/
+    # PROBE_SS_SIGN_KEY.hurl.tmpl's own live-confirmed note.
+    print(f"{code}\t{host}\t{subject}\t{pair}\t{r1_path}\t{instance}:{mclass}:{code}")
+PY
+)
+for _row in "${_27_RETIRED[@]}"; do
+  IFS=$'\t' read -r _code _ _ _ _ _ <<<"$_row"
+  _27_IDS+=("2.7.unjoin(${_code})")
+done
+if [ ${#_27_RETIRED[@]} -gt 0 ]; then _27_IDS+=(2.7.unjoin.topology); fi
+
 _selection_touches_27() {
   [ "$SELECT_MODE" = all ] && return 0
   local id
@@ -471,15 +540,95 @@ if _selection_touches_27; then
     check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
   done
 
+  # -- the un-join transition (acceptance/2.7.md's un-join clause) ------------
+  # Clauses 1-4 per retired member; clause 5 (byte-identical topology) is a
+  # property of the working tree, not of a member, so it is asserted once.
+  for _row in "${_27_RETIRED[@]}"; do
+    IFS=$'\t' read -r code host_dns client_header good_pair r1_path gone_owner <<<"$_row"
+    GOOD_SS=${HOST_SS[$good_pair]:-}
+    if [ -z "$GOOD_SS" ]; then
+      log "SKIP 2.7.unjoin(${code}) -- ${good_pair}, its authorised consumer before it left, is not in this deployment's HOST_SS"
+      continue
+    fi
+    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
+
+    # Clause 1. Absence on the CS is an EMPTY LIST, not a 404 -- there is no
+    # GET /subsystems/{id} on the Central Server at all (405), so this read
+    # is the only viable one (docs/xroad-770-notes.md #11 finding 4).
+    check_unjoin_cs() {
+      api GET localhost:4000 "$CS_KEY" "/clients?q=${code}" | jq -e '.clients == []' >/dev/null
+    }
+    # Clauses 2 and 3, both on the hosting Security Server -- skipped for an
+    # own-server member, whose server went with it (retire_instruction()'s
+    # docker rm -f / docker volume rm). Clause 3's second half is the one
+    # that matters most: a shared host under profile: lite carries several
+    # keys ALL labelled "Sign key", so "this member's key is gone" is only
+    # half the assertion -- every other hosted member's must still be there,
+    # or a reversal that matched on the label deleted the wrong agency's
+    # signing key (docs/xroad-770-notes.md #11, "What happens to a hosted
+    # member's SIGN key").
+    check_unjoin_host() {
+      [ -n "$host_dns" ] || return 0
+      local ui=${SS_UI[$host_dns]:-} key token want
+      [ -n "$ui" ] || return 1
+      key=$(api_key "localhost:${ui}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}") || return 1
+      api GET "localhost:${ui}" "$key" /clients \
+        | jq -e --arg c "$code" 'map(select(.member_code == $c)) | length == 0' >/dev/null || return 1
+      token=$(api GET "localhost:${ui}" "$key" /tokens/0) || return 1
+      want=$(python3 - "$PACK_DIR/hurl/topology.json" "$host_dns" <<'PY'
+import json, sys
+topo = json.load(open(sys.argv[1]))
+codes = sorted({s["member_code"] for s in topo["subsystems"] if s["hosted_on"] == sys.argv[2]})
+print(json.dumps([f"{topo['instance']}:{topo['member_class']}:{c}" for c in codes]))
+PY
+)
+      printf '%s' "$token" | jq -e \
+        --arg gone "$gone_owner" --argjson want "$want" '
+          ([.keys[].certificates[]?.owner_id] | unique) as $have
+          | ($have | index($gone) | not) and (($want - $have) == [])' >/dev/null
+    }
+    # Clause 4. The bus itself, not a registry: the departed member's service
+    # is unreachable through a consumer that WAS authorised. Retried on the
+    # same terms as every other propagation wait in this file -- the proxy's
+    # own authorisation cache lags a live change by seconds (#6).
+    check_unjoin_r1() {
+      curl -sk -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path" \
+        | jq -e '.type == "Server.ClientProxy.UnknownMember"' >/dev/null
+    }
+    check_unjoin() {
+      check_unjoin_cs || { log "  2.7.unjoin(${code}): still present on the Central Server"; return 1; }
+      check_unjoin_host || { log "  2.7.unjoin(${code}): residue on ${host_dns} (client list or token)"; return 1; }
+      retry 12 5 "${code} r1 unreachable" check_unjoin_r1
+    }
+    check "2.7.unjoin(${code})" "${code} is gone from the CS, from ${host_dns:-its own (destroyed) server} and from the bus" check_unjoin
+  done
+
+  if [ ${#_27_RETIRED[@]} -gt 0 ]; then
+    # Clause 5. The Global Constraint of the join-c plan: a join-then-unjoin
+    # cycle leaves hurl/topology.json byte-identical. The golden file for
+    # this deployment's profile IS the "before the join" state -- it is
+    # generated from the canonical member set alone (tests/test_golden.py),
+    # so with every joined member gone the two must be the same bytes.
+    GOLDEN_TOPO="$PACK_DIR/tests/golden/$([ "${LITE:-0}" = 1 ] && echo lite || echo full)/topology.json"
+    check_unjoin_topology() {
+      if python3 -c 'import json,sys; sys.exit(0 if any(s.get("origin")=="joined" for s in json.load(open(sys.argv[1]))["subsystems"]) else 1)' "$PACK_DIR/hurl/topology.json"; then
+        log "  a member is still joined -- byte-identical to the canonical golden is the wrong expectation, not a failure"
+        return 0
+      fi
+      cmp -s "$PACK_DIR/hurl/topology.json" "$GOLDEN_TOPO"
+    }
+    check 2.7.unjoin.topology "hurl/topology.json is byte-identical to $(basename "$(dirname "$GOLDEN_TOPO")")/topology.json after the un-join" check_unjoin_topology
+  fi
+
   "$(dirname "$0")/join.sh" down
   trap - EXIT
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>)."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>)."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
 fi
 
 if [ "$SELECT_MODE" = all ]; then
