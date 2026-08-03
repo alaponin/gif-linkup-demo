@@ -15,7 +15,7 @@ network:
   bind: 127.0.0.1
   # acknowledge_public_exposure: true
 
-profile: lite           # full = 5 Security Servers. lite = 3 (PNIA + MoEYS
+profile: full           # full = 5 Security Servers. lite = 3 (PNIA + MoEYS
                         # hosted as extra clients on ss-plr — see PLAN.md §2)
 
 xroad:

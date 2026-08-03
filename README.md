@@ -28,24 +28,36 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   the *rendered* Compose config, profiles and `${VAR}` interpolation
   resolved, which is what makes it worth having, and that read needs
   neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
-  daemon itself stopped, see `tests/test_tiers.py`) **~29s** (measured
-  2026-08-02, 203 tests [202 passed, 1 skipped] — was 175 tests earlier the
-  same day, before join-b Task 6 added the console's join tab and
-  `apps/join-api`'s `GET /requests`/`POST /requests/{id}/reject` endpoints,
-  each with their own coverage; ~16s/66 tests on 2026-08-01 and ~8s/48
-  tests on 2026-07-28 before that — the growth is tests added across
-  several same-day plans, not a regression in any single one of them);
+  daemon itself stopped, see `tests/test_tiers.py`) **~49s** (measured
+  2026-08-03, 286 tests [285 passed, 1 skipped] — was ~29s/203 tests on
+  2026-08-02, ~16s/66 tests on 2026-08-01 and ~8s/48 tests on 2026-07-28
+  before that; the growth is tests added across several plans, not a
+  regression in any single one of them, but note it compounds: `--full`
+  runs this tier inside `hurl/run-linkup.sh`, so every test added here is
+  also added to the reproducibility proof);
   `--live`
   (`--fast`, then `acceptance.sh` against a running stack; refuses rather
   than deploying one if nothing is reachable)
-  **~29s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
-  reproducibility proof) **~918s (~15 min) under `profile: full`, ~370s
-  (~6.2 min) under `profile: lite`** (two independent cold runs each;
-  see `docs/production-delta.md` "Lite profile's full cycle, measured").
+  **~78s** (measured 2026-08-03, two consecutive runs, both 78s — the
+  earlier "~29s" figure predated both `--fast`'s growth and 2.7's own
+  checks); `--full` (purge, deploy, seed, acceptance, console smoke — the
+  reproducibility proof) **~872s (~14.5 min) under `profile: full` (825s,
+  918s), ~466s (~7.8 min) under `profile: lite` (443s, 488s)** — measured
+  2026-08-03, two independent cold runs each, join-c Task 5, all four
+  green. Full is unchanged within noise from the earlier ~918s; **lite is
+  ~100s slower than its earlier ~370s and that is not a regression in the
+  deploy** — lite's deploy phases are the same (95–102s containers,
+  161–230s Hurl) and the difference is almost entirely `--fast` growing
+  from ~8–16s to ~49s plus 2.7's new un-join checks in `acceptance.sh`. See
+  `docs/production-delta.md` "Lite profile's full cycle, measured" and
+  "An own-server join and its un-join, live end to end".
   Lite proves everything except PNIA's and MoEYS's own certificate
   sequences (hosted as clients on `ss-plr` instead) — develop against
   lite for the cheap full cycle, run one `--full` under full profile
-  before closing out a plan. See
+  before closing out a plan. An own-server *join* on a lite base now
+  exercises that same certificate sequence live (join-c Task 5), but does
+  **not** replace the full-profile run: see `docs/production-delta.md`'s
+  "The Task 6 gate" for exactly what it does and does not cover. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
   tier replaced. **When to run which, inside a plan:** `--fast` after each
   step (it's the one that's always cheap enough to run every time), `--live`
@@ -57,9 +69,15 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   **`--live` does not itself perform a real member join** (join-b Task 5's
   own design: `acceptance/2.7.md`'s checks discover already-joined members
   generically and pass vacuously when none exist — they never submit or
-  approve one). Task 6's own live proof measured a real hosted join
+  approve one; join-c Task 5 added `2.7.unjoin(<member>)` on the same
+  terms, discovered from `out/join/*.json`'s `RETIRED` records). Task 6's
+  own live proof measured a real hosted join
   (`apps/join-api`, `POST /requests` → approve → `ACTIVE, verified: true`)
-  at **~93s** end to end under `profile: lite` — comfortably under the
+  at **~93s** end to end under `profile: lite` — re-measured at **64s** by
+  join-c Task 5 on the same profile, and an own-server join at **~163s
+  after the member's server is up** (plus 76–100s to stand it up, plus
+  whatever `BLOCKED` really costs, which in production is days) —
+  comfortably under the
   ~2-minute threshold past which the brief that drove this decision says
   `--live` "stops being the run-it-when-a-task-is-done tier it is
   documented as." That confirms Task 5's call was right, not just
