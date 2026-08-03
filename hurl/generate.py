@@ -627,6 +627,50 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
+    """One joined member's own Security Server, as a compose.members.yml
+    service block. A module-level function purely so tests/test_allocation.py
+    can assert on it without a manifest carrying a joined member: nothing but
+    main() calls it (join-c plan Task 5).
+
+    `${XROAD_BIND:-127.0.0.1}` on both mappings is NOT decoration -- every
+    `ports:` line in the hand-written docker-compose.yml carries it, and
+    without it here a joined member's own Security Server published its admin
+    UI AND its unauthenticated X-Road proxy port on 0.0.0.0, ignoring
+    deployment.yaml's network.bind entirely. Found live (join-c plan Task 5,
+    the first own-server join this pack ever ran): the very next
+    scripts/acceptance.sh hard-failed in check-exposure.sh with
+    "ss-pvtb: 0.0.0.0:7100 -> 4000/tcp". A Compose file generated for a
+    joined member has to obey the same bind policy as the hand-written one,
+    or the policy has a hole exactly where a demonstration puts a new agency.
+
+    hurl/compose.hurl.yml (hand-written) adds the same healthcheck to each
+    canonical Security Server BY NAME, so run-linkup.sh's runner waits for it
+    to answer on :4000 before driving admin APIs at it. That file stays
+    hand-written and scoped to the canonical five (design decision 5); a
+    joined member's own server gets it here instead, so it is never a
+    container nothing waits for. Found live (member-parameterisation Task 9):
+    without it, Compose waits only for the process to start, not for its
+    Tomcat/TLS listener, and a caller can hang indefinitely on a handshake
+    that never completes.
+    """
+    return (
+        f"  {dns}:\n"
+        f"    <<: *sidecar\n"
+        f"    container_name: {dns}\n"
+        f'    ports: ["${{XROAD_BIND:-127.0.0.1}}:{ui}:4000", "${{XROAD_BIND:-127.0.0.1}}:{rest}:8080"]\n'
+        f"    volumes:\n"
+        f"      - {key}-db:/var/lib/postgresql/16/main\n"
+        f"      - {key}-conf:/etc/xroad\n"
+        f"      - {key}-archive:/var/lib/xroad\n"
+        f"      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini\n"
+        f"    healthcheck:\n"
+        f'      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]\n'
+        f"      interval: 5s\n"
+        f"      retries: 120\n"
+    )
+
+
 def main() -> None:
     global HURL_DIR, OUT, ENV_PATH
     args = parse_args()
@@ -1019,42 +1063,7 @@ declare -A HOST_SS=(
         for key in joined_owner_keys:
             ui, rest = ports_by_key[key]
             dns = members[key]["security_server"]["dns_name"]
-            service_blocks.append(
-                f"  {dns}:\n"
-                f"    <<: *sidecar\n"
-                f"    container_name: {dns}\n"
-                # ${XROAD_BIND:-127.0.0.1} is NOT decoration -- every `ports:`
-                # line in docker-compose.yml carries it, and without it here a
-                # joined member's own Security Server published its admin UI
-                # AND its unauthenticated X-Road proxy port on 0.0.0.0,
-                # ignoring deployment.yaml's network.bind entirely. Found live
-                # (join-c plan Task 5, first own-server join): the very next
-                # scripts/acceptance.sh run hard-failed in check-exposure.sh
-                # with "ss-pvtb: 0.0.0.0:7100 -> 4000/tcp". A Compose file
-                # generated for a joined member has to obey the same bind
-                # policy as the hand-written one, or the policy has a hole
-                # exactly where a demonstration puts a new agency.
-                f'    ports: ["${{XROAD_BIND:-127.0.0.1}}:{ui}:4000", "${{XROAD_BIND:-127.0.0.1}}:{rest}:8080"]\n'
-                f"    volumes:\n"
-                f"      - {key}-db:/var/lib/postgresql/16/main\n"
-                f"      - {key}-conf:/etc/xroad\n"
-                f"      - {key}-archive:/var/lib/xroad\n"
-                f"      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini\n"
-                # hurl/compose.hurl.yml (hand-written) adds this same healthcheck
-                # to each canonical Security Server BY NAME, so run-linkup.sh's
-                # runner waits for it to answer on :4000 before driving admin
-                # APIs against it. That file stays hand-written and scoped to
-                # the canonical five (design decision 5); a joined member's own
-                # server gets it here instead, so it is never a container
-                # nothing waits for. Found live (Task 9): without this, Compose
-                # only waits for the process to start, not for its Tomcat/TLS
-                # listener to actually come up, and a caller can hang
-                # indefinitely on a TLS handshake that never completes.
-                f"    healthcheck:\n"
-                f'      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]\n'
-                f"      interval: 5s\n"
-                f"      retries: 120\n"
-            )
+            service_blocks.append(member_service_block(key, dns, ui, rest))
             volume_blocks.append(
                 f"  {key}-db: {{name: kp2-{key}-db}}\n"
                 f"  {key}-conf: {{name: kp2-{key}-conf}}\n"

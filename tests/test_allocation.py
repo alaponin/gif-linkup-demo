@@ -23,6 +23,7 @@ from generate import (  # noqa: E402
     PINNED_SERVICE_SCENARIO_NO,
     _allocate_numbers,
     allocate_ports,
+    member_service_block,
 )
 
 CANONICAL = ["pdga", "pnea", "plr", "pnia", "moeys"]
@@ -118,3 +119,34 @@ def test_allocate_numbers_is_deterministic():
         _allocate_numbers(list(keys), PINNED_SCENARIO_NO, FRESH_SS_SCENARIO_START)
         == _allocate_numbers(list(keys), PINNED_SCENARIO_NO, FRESH_SS_SCENARIO_START)
     )
+
+
+# -- the bind guard on a joined member's own Security Server (join-c Task 5) --
+# The only own-server compose block the golden corpus contains is the empty
+# `services: {}` variant (no canonical member owns a joined server), so
+# tests/test_golden.py never renders this branch at all -- which is exactly
+# how it shipped for a whole plan publishing an unauthenticated X-Road proxy
+# port on 0.0.0.0, caught only by scripts/check-exposure.sh during a
+# hand-driven --full own-server cycle. This is the --fast-tier guard that
+# would have caught it on the commit instead.
+def test_member_service_block_binds_both_ports_to_the_configured_interface():
+    block = member_service_block("pvtb", "ss-pvtb", 7100, 7180)
+    ports = next(line for line in block.splitlines() if line.strip().startswith("ports:"))
+    # The literal, not a reference to some constant in generate.py: a test
+    # that checked the module's own value would still pass if that value were
+    # changed to a bare mapping -- same reasoning as _AIRPLAY_5000_RANGE above.
+    assert ports.strip() == (
+        'ports: ["${XROAD_BIND:-127.0.0.1}:7100:4000", '
+        '"${XROAD_BIND:-127.0.0.1}:7180:8080"]'
+    ), f"a joined member's own Security Server must honour deployment.yaml's network.bind, got: {ports.strip()}"
+
+
+def test_member_service_block_matches_the_hand_written_compose_convention():
+    """The generated block's ports: line must use the same
+    ${XROAD_BIND:-127.0.0.1} form docker-compose.yml already uses for every
+    canonical server -- one convention, not two that can drift apart."""
+    compose = (pathlib.Path(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
+    hand_written = [l.strip() for l in compose.splitlines() if l.strip().startswith("ports:")]
+    assert hand_written, "docker-compose.yml declares no ports: lines -- this test is checking nothing"
+    assert all("${XROAD_BIND:-127.0.0.1}:" in l for l in hand_written), hand_written
+    assert "${XROAD_BIND:-127.0.0.1}:" in member_service_block("x", "ss-x", 1, 2)
