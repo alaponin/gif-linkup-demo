@@ -76,6 +76,21 @@ from schema import JoinPayload
 RETRY_BUDGET = 12
 RETRY_INTERVAL_SECONDS = 10.0
 
+# ...with ONE exception: the r1 reachability step (join.r1_verify) gets its
+# own budget rather than whatever the run has left. Found live on the first
+# own-server join: ss.client_register's wait for the new client to propagate
+# from the Central Server consumed 95-107s of the 120s run budget before the
+# sequence even reached the r1 step, leaving it 13-25s -- against a
+# reachability window measured live at 45s to 8min after ACTIVE. The record
+# could never say verified: true, and there was no way back (resume refuses a
+# non-FAILED/BLOCKED record). The propagation the member is waiting out does
+# not care how many retries the earlier steps burned, so it gets its own full
+# window every time the run reaches it. 54 x 10s = 9 minutes, past the slower
+# of the two observed cycles. This budget is spent by, and reported for, the
+# r1 step alone -- it never touches record["retry_budget_left"], which stays
+# the shared run budget for every other step kind.
+R1_RETRY_BUDGET = 54
+
 # BLOCKED (spec S4, S6.1). Before an `actor: member` step -- one this API has
 # no business performing on its own, against a Security Server it does not
 # own -- the run polls that server's :4000. The poll IS the completion signal:
@@ -990,14 +1005,19 @@ def _execute(
     record: dict,
     retry_interval: float,
 ) -> None:
-    budget = record.get("retry_budget_left", RETRY_BUDGET)
+    # The r1 step's own budget, never the run's -- see R1_RETRY_BUDGET. Its
+    # counter is local for the same reason: record["retry_budget_left"]
+    # describes what the OTHER step kinds have left, and r1's spending is not
+    # theirs to inherit (it is also the last step of every sequence
+    # build_sequence() puts it in, so nothing reads that field after it).
+    r1 = step.kind == "r1"
+    budget = R1_RETRY_BUDGET if r1 else record.get("retry_budget_left", RETRY_BUDGET)
     while True:
-        if step.kind == "r1":
+        if r1:
             ok, detail = r1_call(step.r1["url"], step.r1["client_header"])
             if ok:
                 record["verified"] = True
                 record["verified_by"] = detail
-                record["retry_budget_left"] = budget
                 return
             failure = f"{OCSP_MARKER} -- {OCSP_HINT}\n\n{detail}" if OCSP_MARKER in detail else detail
         else:
@@ -1023,22 +1043,26 @@ def _execute(
             failure = _failure_text(element)
 
         if budget <= 0:
-            record["retry_budget_left"] = 0
-            if step.kind == "r1":
+            if r1:
                 # Not a job failure: spec S4 says a member that registered and
                 # published but whose reachability call has not passed is
                 # ACTIVE with verified: false, one fact about the member
                 # rather than a place in the lifecycle.
                 record["verified"] = False
-                record["verified_by"] = failure
+                record["verified_by"] = (
+                    f"unreachable for {R1_RETRY_BUDGET} attempts "
+                    f"({RETRY_INTERVAL_SECONDS:.0f}s apart). Last observed: {failure}"
+                )
                 return
+            record["retry_budget_left"] = 0
             raise StepFailure(
                 step.id,
                 f"exhausted the run's retry budget ({RETRY_BUDGET} attempts, "
                 f"{RETRY_INTERVAL_SECONDS:.0f}s apart). Last observed:\n{failure}",
             )
         budget -= 1
-        record["retry_budget_left"] = budget
+        if not r1:
+            record["retry_budget_left"] = budget
         time.sleep(retry_interval)
 
 

@@ -328,6 +328,33 @@ def test_the_retry_budget_is_one_for_the_run_not_one_per_step():
     assert hurl.calls.count("ss.client_add") == job.RETRY_BUDGET - 3 + 1
 
 
+def test_the_r1_check_gets_its_own_budget_however_little_the_run_has_left():
+    """The own-server defect the final review found: ss.client_register's
+    CS-propagation wait ate 95-107s of the 120s run budget before the sequence
+    reached join.r1_verify, so the r1 step got 13-25s against a reachability
+    window measured live at 45s-8min -- verified: true was unreachable and
+    resume had no way back to it.
+
+    Eleven retries burnt early leave the run one. The r1 step still gets
+    R1_RETRY_BUDGET of its own (it succeeds here on the 5th call, which the
+    old shared-budget code could never have reached), and spends none of the
+    run's: retry_budget_left is still the 1 the earlier step left behind."""
+    flaky = [_FAILED] * (job.RETRY_BUDGET - 1) + [json.loads((FIXTURES / "cs.init.json").read_text())]
+    attempts = []
+
+    def r1(url: str, client_header: str) -> tuple[bool, str]:
+        attempts.append(url)
+        return len(attempts) >= 5, "http://ss-pnea:8080/...: HTTP 200"
+
+    hurl = FakeHurl({"cs.init": flaky})
+    record = _run(_record(), hurl, r1=r1)
+    assert hurl.calls.count("cs.init") == job.RETRY_BUDGET
+    assert record["retry_budget_left"] == 1
+    assert len(attempts) == 5
+    assert record["state"] == "ACTIVE"
+    assert record["verified"] is True
+
+
 def test_ocsp_staleness_is_named_rather_than_surfaced_as_a_tls_error():
     """The single most likely way a live demo of this module breaks (spec
     S5.5, PLAN.md S8): a federation idle overnight must not fail with what
