@@ -114,12 +114,36 @@ _last_heartbeat = time.time()
 # member code -> that member's own config file, derived from manifest.yaml's
 # module map (never hardcoded) -- so the inspector's semantic pane can show
 # each provider's own semantic.fields list (UX plan Task 6, Step 2).
+#
+# A module's building_blocks: and member_configs: (falling back to config:
+# for a module with exactly one member building block and no
+# member_configs: key -- every module but the collapsed one below, today)
+# are parallel lists (Wave 3 Task 2 collapsed three one-member modules into
+# one three-member module; config: itself stays a single path there because
+# the sibling ITU-Giga-KP-Plugin ship gate's check_pack.py does a plain
+# os.path.exists(pack/config) per module and has no notion of a
+# comma-joined list -- see manifest.yaml's comment on that module). For the
+# member- prefixed entries in building_blocks, the Nth one's config is the
+# Nth comma-separated path in member_configs:. A module with a single
+# config for multiple members would silently point every one of them at the
+# same file; a length mismatch is a manifest.yaml bug, not something to
+# guess through.
 _MANIFEST = yaml.safe_load((PACK_DIR / "manifest.yaml").read_text())
 _CONFIG_BY_MEMBER: dict[str, str] = {}
 for _module in _MANIFEST["modules"]:
-    for _bb in _module.get("building_blocks", []):
-        if _bb.startswith("member-"):
-            _CONFIG_BY_MEMBER[_bb.removeprefix("member-").upper()] = _module["config"]
+    _member_bbs = [b for b in _module.get("building_blocks", []) if b.startswith("member-")]
+    if not _member_bbs:
+        continue
+    _raw_configs = _module.get("member_configs", _module["config"])
+    _configs = [c.strip() for c in _raw_configs.split(",")]
+    if len(_configs) != len(_member_bbs):
+        raise RuntimeError(
+            f"manifest.yaml module {_module['id']!r}: {len(_member_bbs)} member "
+            f"building_blocks but {len(_configs)} config path(s) -- must be 1:1 "
+            "(add/fix member_configs:)"
+        )
+    for _bb, _cfg in zip(_member_bbs, _configs):
+        _CONFIG_BY_MEMBER[_bb.removeprefix("member-").upper()] = _cfg
 
 
 def _semantic_fields_for(member_code: str) -> list[str]:
