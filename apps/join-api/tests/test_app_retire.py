@@ -122,7 +122,7 @@ def test_the_canonical_refusal_comes_before_the_record_lookup(client):
     """"Refuse before doing anything" is the point: a canonical member has no
     join record either, and a 404 "never joined through this API" would be a
     true statement that hides the real reason and invites a retry."""
-    resp = client.request("DELETE", "/members/moeys", headers=OPERATOR)
+    resp = client.request("DELETE", "/members/pnea", headers=OPERATOR)
     assert resp.status_code == 403
     assert "canonical" in resp.json()["detail"]
 

@@ -10,10 +10,10 @@ log "regenerating seed CSVs (deterministic)"
 python3 "$PACK_DIR/scripts/gen_seed_data.py" "$PACK_DIR/apps/data"
 
 log "restarting mock providers (the restart IS the reload: apps read the host-mounted CSVs at startup)"
-"${COMPOSE[@]}" restart app-pnia app-plr app-pemis 2>/dev/null || \
-  "${COMPOSE[@]}" up -d app-pnia app-plr app-pemis
+"${COMPOSE[@]}" restart app-pnia app-plr 2>/dev/null || \
+  "${COMPOSE[@]}" up -d app-pnia app-plr
 
-for app in app-pnia app-plr app-pemis; do
+for app in app-pnia app-plr; do
   retry 12 5 "$app healthy" docker exec "$app" curl -sf http://localhost:8000/v1/health
   docker exec "$app" curl -sf http://localhost:8000/v1/health | jq .
 done

@@ -48,8 +48,6 @@ services:
     healthcheck: *ss-health
   ss-pnia:
     healthcheck: *ss-health
-  ss-moeys:
-    healthcheck: *ss-health
 
   hurl:
     # Pinned inline, not via a deployment.yaml key (C13): hurl is a build/test

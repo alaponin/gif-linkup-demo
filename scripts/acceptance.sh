@@ -120,8 +120,10 @@ done
 # P0 2026-07-25 -- GET /clients/{id}/service-clients lists every subject
 # granted ANY access on that client; GET .../service-clients/{subject}/
 # access-rights lists which service codes that subject holds. Exactness needs
-# both, for EVERY service -- including a service with an EMPTY access: list
-# (pemis-api today), which must have NO subjects at all. That case was
+# both, for EVERY service -- including a service with an EMPTY access: list,
+# which must have NO subjects at all (pemis-api was this pack's example of
+# one, until MoEYS was retired in Wave 3 Task 1; no canonical service is
+# empty today, but a future joined member's could be). That case was
 # previously unchecked entirely; this loop covers it as a natural consequence
 # of being generic rather than as a bespoke third check.
 #

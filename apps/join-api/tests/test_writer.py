@@ -129,7 +129,6 @@ def test_manifest_insert_leaves_the_frozen_identifiers_block_untouched():
 
     doc = yaml.safe_load(updated)
     assert doc["identifiers"]["members"] == [
-        "PROGRESSA/GOV/MOEYS:PEMIS",
         "PROGRESSA/GOV/PNEA:EXAMS",
         "PROGRESSA/GOV/PLR:ENROLMENT",
         "PROGRESSA/GOV/PNIA:IDENTITY",

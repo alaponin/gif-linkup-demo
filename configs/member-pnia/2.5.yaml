@@ -13,7 +13,7 @@ services:
   # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
   - code: identity-api
     spec_url: http://app-pnia:8000/spec.yaml
-    access:                    # deliberate: PNEA only — MOEYS:PEMIS excluded (negative check 2.6)
+    access:                    # deliberate: PNEA only — PLR:ENROLMENT excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
 semantic:                      # from configs/semantic/semantic-map.yaml — 'person identity' means:
   entity: person

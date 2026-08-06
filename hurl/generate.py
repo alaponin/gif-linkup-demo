@@ -62,7 +62,14 @@ CSR_COUNTRY = "FI"
 # pack's lite topology ever changes (only one lite arrangement exists today,
 # so this is a fixed fact of docker-compose.yml, not a general N-way mapping
 # -- see docs/superpowers/specs/2026-07-26-deployment-spec-and-lite-profile-design.md).
-LITE_HOSTED_ON = {"pnia": "plr", "moeys": "plr"}
+# "moeys" dropped (Wave 3 Task 1): unlike PINNED_PORTS, an entry here for a
+# member discover_members() never returns is not harmless -- main()'s
+# `for hosted_key, host_key in hosted_on_map.items(): ... members[hosted_key]`
+# indexes `members` with every key this dict contributes, so a stale entry
+# for a retired member is a live KeyError under --profile lite, not dead
+# weight (found running tests/test_golden.py's lite case after Task 1's
+# manifest.yaml edit).
+LITE_HOSTED_ON = {"pnia": "plr"}
 
 # Host-mapped ports from docker-compose.yml's `ports:` lines -- mirrors
 # hurl/topology.sh's generated SS_UI/SS_REST bash maps; the two must move
@@ -80,7 +87,15 @@ LITE_HOSTED_ON = {"pnia": "plr", "moeys": "plr"}
 # 2026-07-25 -- this is the one reason FORBIDDEN_PORT_RANGE below exists.
 PINNED_PORTS = {
     "pdga": (1000, 1080), "pnea": (2000, 2080), "plr": (3000, 3080),
-    "pnia": (5100, 5180), "moeys": (6000, 6080),
+    "pnia": (5100, 5180),
+    # "moeys" stays RESERVED here even though MoEYS is retired (Wave 3 Task 1,
+    # docs/production-delta.md) and discover_members() will never produce a
+    # "moeys" key again: this table only matters when a key IS present, and
+    # keeping the entry costs nothing while documenting that 6000/6080 must
+    # never be handed to a different member -- allocate_ports() determinism
+    # and the un-join byte-identity clause both depend on nothing below
+    # FRESH_PORT_START moving for any other pinned or fresh member.
+    "moeys": (6000, 6080),
 }
 
 # Service-publication scenario numbers -- the canonical three providers'
@@ -543,15 +558,21 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
                 SESS_P=sess_p,
                 CAP_P=cap_p,
                 ACL_SUBJECT=subject.replace("/", ":"),
-                NEGATIVE="PROGRESSA:GOV:MOEYS:PEMIS",
+                # The 2.6 negative check's unauthorised caller (Wave 3 Task 1:
+                # moved off the now-retired MoEYS/PEMIS, onto PLR:ENROLMENT --
+                # configs/x-road-bus/2.6.yaml's negative_check.unauthorised_client
+                # is the source of truth; this is the same value restated for
+                # the generated comment below.
+                NEGATIVE="PROGRESSA:GOV:PLR:ENROLMENT",
             )
     return out
 
 
 def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     """Register a member's subsystem as an extra client on an already-
-    bootstrapped Security Server (the lite profile's PNIA/MoEYS-on-ss-plr
-    pattern): a fresh SIGN key/cert for this member specifically, then the
+    bootstrapped Security Server (the lite profile's PNIA-on-ss-plr pattern --
+    MoEYS was the other lite-hosted member; it is retired, not hosted, as of
+    Wave 3 Task 1): a fresh SIGN key/cert for this member specifically, then the
     client-registration flow -- both authenticated with the HOST's session
     (sess_p), captured under this member's OWN namespace (cap_p).
 
@@ -797,7 +818,11 @@ def main() -> None:
         MGMT_SUBSYSTEM=owner["management_subsystem"],
     )
     members_member_step = steps_module.BY_ID["cs.members_member"]
-    for key in ("pnia", "plr", "moeys", "pnea"):
+    # "moeys" dropped from this historical-order tuple (Wave 3 Task 1): it is
+    # retired and discover_members() never returns it, so `members["moeys"]`
+    # would KeyError. Order for the rest is unchanged -- this literal tuple
+    # is not `members.keys()`'s own order.
+    for key in ("pnia", "plr", "pnea"):
         m = members[key]["member"]
         s = members[key]["subsystem"]
         body += render(

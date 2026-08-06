@@ -17,8 +17,9 @@ def test_full_profile_resolves():
     assert {s["host"] for s in truth.topology["security_servers"]} == {
         "ss-pdga", "ss-pnea", "ss-plr", "ss-pnia", "ss-moeys",
     }
-    # full profile: PNIA/MoEYS host themselves
-    assert truth.negative_check_entrypoint == "http://ss-moeys:8080"
+    # full profile: PNIA hosts itself; PLR (the negative check's caller
+    # since Wave 3 Task 1) is self-hosted in every profile.
+    assert truth.negative_check_entrypoint == "http://ss-plr:8080"
     assert truth.consumer_entrypoint == "http://ss-pnea:8080"
 
 

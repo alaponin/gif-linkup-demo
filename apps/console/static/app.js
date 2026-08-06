@@ -522,12 +522,12 @@ async function renderInspector(data) {
 
 // ------------------------------------------------------------ permissions ----
 // Two callers, one service, opposite outcomes -- that is the entire lesson
-// (UX plan Task 7). enrolment-api and pemis-api are deliberately absent
-// from this tab: they would just be two more inert rows, and the reset
-// path's own verification (journal.py) already checks the mutable/
-// untouched-service asymmetry without an audience needing to see it.
-// Design decision 4 (why only identity-api is writable here) lives in
-// app.py's comment, not on this page.
+// (UX plan Task 7). enrolment-api is deliberately absent from this tab: it
+// would just be one more inert row, and the reset path's own verification
+// (journal.py) already checks the mutable/untouched-service asymmetry
+// without an audience needing to see it. Design decision 4 (why only
+// identity-api is writable here) lives in app.py's comment, not on this
+// page. (pemis-api no longer exists -- MoEYS was retired in Wave 3 Task 1.)
 
 function renderPermResult(resultEl, call) {
   if (call.denied) {
@@ -559,10 +559,10 @@ async function askAsPnea() {
   statusEl.classList.toggle("denied-label", !allowed);
 }
 
-async function askAsMoeys() {
+async function askAsPlr() {
   const nin = lastNin || defaultNin;
   if (!nin) return;
-  const resultEl = $("#moeys-result");
+  const resultEl = $("#plr-result");
   resultEl.className = "result-box";
   resultEl.textContent = "Asking…";
   const data = await api(`/api/exchange/${nin}/negative`);
@@ -608,7 +608,7 @@ async function resetPermissions() {
 
 function initPermissions() {
   $("#ask-as-pnea-btn").addEventListener("click", askAsPnea);
-  $("#ask-as-moeys-btn").addEventListener("click", askAsMoeys);
+  $("#ask-as-plr-btn").addEventListener("click", askAsPlr);
   $("#permissions-revoke-btn").addEventListener("click", e => togglePneaAccess("revoke", e.target));
   $("#permissions-restore-btn").addEventListener("click", e => togglePneaAccess("grant", e.target));
   $("#permissions-reset-btn").addEventListener("click", resetPermissions);
@@ -904,7 +904,7 @@ async function runGuidedDemonstration() {
   switchToTab("permissions");
   await askAsPnea();
   await sleep(STAGGER_MS * 2);
-  await askAsMoeys();
+  await askAsPlr();
 
   btn.disabled = false;
   btn.textContent = original;

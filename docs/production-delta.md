@@ -665,3 +665,53 @@ That is more than lite had, and it is not a simulation of it.
 Points 1 and 2 are the load-bearing ones: both are properties of the
 cold-deploy path and of the host, and no join can reach either. Points 3–5
 are fixable; points 1 and 2 are not, by this mechanism.
+
+## The frozen `identifiers:` contract was amended (Wave 3 Task 1, D1)
+
+**What:** `manifest.yaml`'s `identifiers:` block — labelled "Frozen
+identifiers — cross-pack join keys for KP3/KP4" — dropped
+`PROGRESSA/GOV/MOEYS:PEMIS` from `identifiers.members` and
+`PROGRESSA/GOV/MOEYS/PEMIS/pemis-api` from `identifiers.services`. MoEYS is
+retired from the pack entirely: `identity.members.moeys`,
+`configs/member-moeys/`, `ss-moeys`/`app-pemis` (`docker-compose.yml`),
+`apps/specs/pemis.openapi.yaml`, and the PEMIS seed data
+(`apps/data/school_records.csv`) are all removed. The federation goes from
+four canonical members to three (PNEA, PLR, PNIA) plus the owner (PDGA). The
+2.6 negative check's unauthorised caller moves from `MOEYS:PEMIS` to
+`PLR:ENROLMENT` — already a bus member, already a provider, already holding
+no grant on PNIA's `identity-api` — proving the same "on the bus ≠ granted
+this service" point without inventing a new member for it.
+
+**When:** 2026-08-06.
+
+**Why it is safe to amend a contract labelled frozen:** the block exists so
+KP3/KP4 have stable join keys to build against, not so it can never change.
+`grep -rn "MOEYS\|PEMIS" 10-Knowledge-Products/KP3-DPI/` returns no hits, and
+KP3's own config skeleton (`identity-pnia` / `registry-plr` / `registration`
+/ `payment-paypro`) already builds on PNIA and PLR, not MoEYS. Re-run at the
+start of this task (2026-08-06) to reconfirm KP3 had not gained content
+since the original design analysis (`docs/onboarding-alignment-design.md`
+§1.2): still no hits.
+
+**Sign-off:** obtained from the repo owner, 2026-08-06, recorded here per
+this task's brief — this is the one change in Wave 3 another pack (KP3,
+KP4) could have been building against, so it gets a record even though it
+was a local decision in practice (KP3 was not yet building against it).
+
+**MoEYS's reserved capacity, kept, not reused:** `hurl/generate.py`'s
+`PINNED_PORTS["moeys"] = (6000, 6080)` stays in the table (commented, not
+deleted) so `allocate_ports()`'s determinism and the un-join byte-identity
+clause both keep holding for every *other* pinned or freshly-allocated
+member — freeing 6000/6080 would change what a fresh member gets allocated
+today. `PINNED_SCENARIO_NO`/`PINNED_SERVICE_SCENARIO_NO`'s `"moeys"` entries
+(scenario numbers 22/32) are left similarly reserved-but-unused; nothing
+currently walks into them since `discover_members()` never returns a
+`"moeys"` key.
+
+**Known follow-up, not done here:** `tests/golden/{full,lite}/` still
+describe the four-member topology and are now stale by construction — Task 1
+of the wave-3 plan explicitly defers regeneration to Task 6, after Tasks 2–5
+land, so there is exactly one re-baselining event instead of one per task.
+`hurl/README.md`'s lite/full scenario-numbering table and prose were not
+touched for the same reason: Task 4 (profile-machinery removal) rewrites
+that material wholesale, and touching it twice would be wasted motion.

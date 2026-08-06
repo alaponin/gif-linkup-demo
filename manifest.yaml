@@ -5,26 +5,28 @@ home: 10-Knowledge-Products/KP2-GIF
 depends_on: []
 building_blocks:
   - x-road-bus
-  - member-moeys
   - member-pnea
   - member-plr
   - member-pnia
 # Frozen identifiers — cross-pack join keys for KP3/KP4. Confirmed against the
 # live registry at P5 (2026-07-25): all four members + subsystems and the
-# owner present exactly as below; see acceptance.sh's 2.x checks.
+# owner present exactly as below (at the time); see acceptance.sh's 2.x checks.
+# AMENDED 2026-08-06 (Wave 3 Task 1, D1): PROGRESSA/GOV/MOEYS:PEMIS and its
+# pemis-api service removed. MoEYS is retired from the pack -- confirmed safe
+# via `grep -rn "MOEYS\|PEMIS" 10-Knowledge-Products/KP3-DPI/` (no hits; KP3's
+# config skeleton builds on PNIA/PLR, not MoEYS) -- sign-off obtained from the
+# repo owner. See docs/production-delta.md for the full record.
 identifiers:
   instance: PROGRESSA
   member_class: GOV
   owner: PROGRESSA/GOV/PDGA
   members:
-    - PROGRESSA/GOV/MOEYS:PEMIS
     - PROGRESSA/GOV/PNEA:EXAMS
     - PROGRESSA/GOV/PLR:ENROLMENT
     - PROGRESSA/GOV/PNIA:IDENTITY
   services:
     - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
     - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
-    - PROGRESSA/GOV/MOEYS/PEMIS/pemis-api
 # Rich identity — names, subsystem descriptions — that configs/*.yaml used to
 # duplicate by hand. identifiers: above stays the flat cross-pack contract,
 # untouched; this is what hurl/generate.py actually reads. The two must agree
@@ -44,12 +46,6 @@ identity:
   # KP3/KP4 cross-pack contract, and a joined member entering it silently
   # would mean a demonstration join changing what other packs build against.
   members:
-    moeys:
-      code: MOEYS
-      name: "Progressa Ministry of Education, Youth and Sport"
-      subsystem: PEMIS
-      subsystem_description: School information system (education management)
-      origin: canonical
     pnea:
       code: PNEA
       name: Progressa National Examination Authority
@@ -77,14 +73,6 @@ modules:
     scenarios: hurl/scenarios/00-cs-init.hurl, hurl/scenarios/01-cs-trust-services.hurl, hurl/scenarios/03-cs-anchor.hurl, hurl/scenarios/10-ss-pdga.hurl
     prompt: prompts/2.1.md
     acceptance: acceptance/2.1.md
-  - id: "2.2"
-    video_ref: "5.4"   # Topic 5 subtopic this module realises
-    title: "Register MoEYS/PEMIS on the bus"
-    building_blocks: [member-moeys]
-    config: configs/member-moeys/2.2.yaml
-    scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/22-ss-moeys.hurl, hurl/scenarios/32-services-moeys.hurl
-    prompt: prompts/2.2.md
-    acceptance: acceptance/2.2.md
   - id: "2.3"
     video_ref: "5.4"   # Topic 5 subtopic this module realises
     title: "Register PNEA — the consumer"

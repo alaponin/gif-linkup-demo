@@ -14,10 +14,15 @@ here:
     semantic) -- neither call carries all four, so layers() aggregates
     across both;
   - configs/x-road-bus/2.6.yaml's negative_check.entrypoint is a static
-    "http://ss-moeys:8080" that is only correct under profile: full -- under
-    lite, MoEYS is hosted on ss-plr and ss-moeys does not exist as a
-    container. Entrypoints are resolved from topology.json's hosted_on
-    instead of ever trusting 2.6.yaml's literal entrypoint fields.
+    string (today "http://ss-plr:8080") that this module never trusts
+    directly -- entrypoints are always resolved from topology.json's
+    hosted_on instead, the same mechanism the consumer entrypoint above
+    uses. This still matters even though PLR:ENROLMENT (the negative check's
+    unauthorised caller since Wave 3 Task 1) happens to be self-hosted in
+    every profile: the earlier caller, MoEYS, was not -- under profile:
+    lite it was hosted on ss-plr, and a literal "http://ss-moeys:8080"
+    would have been wrong there. Resolving from topology.json rather than
+    special-casing per member is what keeps that class of bug out.
 """
 from __future__ import annotations
 

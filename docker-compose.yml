@@ -2,8 +2,9 @@
 # Basis: NIIS KB "How to Set Up a Local Test Environment Using Docker Compose?"
 # Full profile: CS + Test CA + 5 Security Servers + 3 mock providers (~16 GB RAM).
 # Lite profile: LITE=1 in .env — scripts then omit "--profile full", so ss-pnia
-# and ss-moeys (profile "full") do not run and their subsystems are hosted on
-# ss-plr (see scripts/lib-stack.sh HOST_SS).
+# (profile "full") does not run and its subsystem is hosted on ss-plr (see
+# scripts/lib-stack.sh HOST_SS). MoEYS was the other lite-hosted member; it is
+# retired (Wave 3 Task 1, docs/production-delta.md) rather than hosted.
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
 x-sidecar: &sidecar
@@ -97,18 +98,6 @@ services:
       - ss-pnia-archive:/var/lib/xroad
       - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
 
-  ss-moeys:
-    # MoEYS — provider (PROGRESSA/GOV/MOEYS:PEMIS). Full profile only.
-    <<: *sidecar
-    container_name: ss-moeys
-    profiles: ["full"]
-    ports: ["${XROAD_BIND:-127.0.0.1}:6000:4000", "${XROAD_BIND:-127.0.0.1}:6080:8080"]
-    volumes:
-      - ss-moeys-db:/var/lib/postgresql/16/main
-      - ss-moeys-conf:/etc/xroad
-      - ss-moeys-archive:/var/lib/xroad
-      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
-
   app-pnia:
     # Mock identity registry behind ss-pnia.
     <<: *mock
@@ -135,26 +124,13 @@ services:
       - ./apps/data:/data:ro
       - ./apps/specs:/specs:ro
 
-  app-pemis:
-    # Mock school-information system behind ss-moeys.
-    <<: *mock
-    container_name: app-pemis
-    environment:
-      ENTITY: school-records
-      CSV_FILE: /data/school_records.csv
-      SPEC_FILE: /specs/pemis.openapi.yaml
-      KEY_FIELD: nin
-    volumes:
-      - ./apps/data:/data:ro
-      - ./apps/specs:/specs:ro
-
   app-ptsb:
     # Mock scholarship-awards registry behind PTSB -- the join-b Task 6
     # live-proof fixture (design spec §2.1: "PTSB wants to ... publish
     # awards-api so PNEA can verify that a candidate holds a scholarship
     # award"). Not one of the canonical five -- exists only so the live join
     # has a real, reachable backend to pass check 9 (backend reachability)
-    # against, same generic mock pattern as app-pnia/app-plr/app-pemis.
+    # against, same generic mock pattern as app-pnia/app-plr.
     <<: *mock
     container_name: app-ptsb
     environment:
@@ -263,9 +239,10 @@ volumes:
   ss-pnia-db: {name: kp2-ss-pnia-db}
   ss-pnia-conf: {name: kp2-ss-pnia-conf}
   ss-pnia-archive: {name: kp2-ss-pnia-archive}
-  ss-moeys-db: {name: kp2-ss-moeys-db}
-  ss-moeys-conf: {name: kp2-ss-moeys-conf}
-  ss-moeys-archive: {name: kp2-ss-moeys-archive}
+  # ss-moeys-{db,conf,archive} volumes retired with the ss-moeys service
+  # above (Wave 3 Task 1) -- not kept as reserved, unlike PINNED_PORTS in
+  # hurl/generate.py, since a volume with no service using it is dead weight,
+  # not a collision risk.
 
 networks:
   linkup:

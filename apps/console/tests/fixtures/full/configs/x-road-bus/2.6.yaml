@@ -31,9 +31,11 @@ exchange:
   headers:
     X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS
   negative_check:
-    unauthorised_client: PROGRESSA/GOV/MOEYS/PEMIS
-    # Routed through the SS that hosts MOEYS:PEMIS (its own server), so the
+    # Wave 3 Task 1: moved off the retired MOEYS/PEMIS onto PLR:ENROLMENT --
+    # see the real pack's configs/x-road-bus/2.6.yaml for the full rationale.
+    unauthorised_client: PROGRESSA/GOV/PLR/ENROLMENT
+    # Routed through the SS that hosts PLR:ENROLMENT (its own server), so the
     # denial genuinely comes from the provider-side ACL — not from ss-pnea
     # rejecting a client it does not host.
-    entrypoint: http://ss-moeys:8080     # lite profile: the shared provider SS
-    expect: X-Road access-denied error on both services (ACL grants PNEA:EXAMS only)
+    entrypoint: http://ss-plr:8080
+    expect: X-Road access-denied error on PNIA's identity-api (ACL grants PNEA:EXAMS only)

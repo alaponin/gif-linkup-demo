@@ -10,7 +10,11 @@ Outputs (to the directory given as argv[1]):
   persons.csv         50 persons at PNIA (the identity authority)
   enrolments.csv      46 enrolments at PLR — 4 NINs deliberately missing
                       (the mismatch rows for the negative checks)
-  school_records.csv  48 records at MoEYS/PEMIS (school census view)
+
+school_records.csv (MoEYS/PEMIS) was generated here too until MoEYS was
+retired (Wave 3 Task 1, docs/production-delta.md); removing it did not
+change persons.csv/enrolments.csv -- the rng draws that fed it happened
+strictly after both were already fully built.
 """
 import csv
 import random
@@ -38,7 +42,6 @@ SCHOOLS = {
 }
 N_PERSONS = 50
 N_MISSING_FROM_PLR = 4   # in PNIA, not PLR -> clean-404 negative check
-N_MISSING_FROM_PEMIS = 2
 
 
 def nin(rng):
@@ -87,17 +90,7 @@ def main(outdir):
         "status": rng.choice(["active"] * 9 + ["transferred"]),
     } for p in persons if p["nin"] not in missing_plr]
 
-    eligible = [p for p in persons if p["nin"] not in missing_plr]
-    missing_pemis = {p["nin"] for p in rng.sample(eligible, N_MISSING_FROM_PEMIS)}
-    school_records = [{
-        "nin": e["nin"],
-        "school": e["school"],
-        "grade": f"Grade {rng.randint(10, 12)}",
-        "census_year": "2025",
-    } for e in enrolments if e["nin"] not in missing_pemis]
-
-    for name, rows in [("persons.csv", persons), ("enrolments.csv", enrolments),
-                       ("school_records.csv", school_records)]:
+    for name, rows in [("persons.csv", persons), ("enrolments.csv", enrolments)]:
         with open(out / name, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
             w.writeheader()
@@ -109,7 +102,6 @@ def main(outdir):
             f"Deterministic (seed {SEED}); regenerate with scripts/gen_seed_data.py.\n\n"
             f"- persons.csv: {len(persons)} (PNIA)\n"
             f"- enrolments.csv: {len(enrolments)} (PLR)\n"
-            f"- school_records.csv: {len(school_records)} (PEMIS)\n"
             # awards.csv is NOT written by this script (join-b Task 6): PTSB
             # is not a canonical member, so there is no generator entity for
             # it, and this line would otherwise be silently lost every time
@@ -121,8 +113,7 @@ def main(outdir):
             "NINs in PNIA but deliberately NOT in PLR (clean-404 negative check):\n"
             + "".join(f"- {n}\n" for n in sorted(missing_plr))
             + "\nNIN format is a placeholder 11-digit string [confirm: at P0].\n")
-    print(f"wrote {len(persons)} persons, {len(enrolments)} enrolments, "
-          f"{len(school_records)} school records -> {out}")
+    print(f"wrote {len(persons)} persons, {len(enrolments)} enrolments -> {out}")
 
 
 if __name__ == "__main__":

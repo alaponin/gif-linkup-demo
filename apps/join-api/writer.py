@@ -169,7 +169,7 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
 
 def render_manifest_entry(key: str, payload: JoinPayload) -> str:
     """The identity.members.<key> block, 4-space-indented to match the
-    existing entries' style (manifest.yaml's identity.members.moeys etc.):
+    existing entries' style (manifest.yaml's identity.members.pnea etc.):
     code, name, subsystem, subsystem_description, origin. origin: joined is
     forced here, always -- schema.JoinPayload has no such field, so there is
     nothing a hand-crafted payload could set to make a join look canonical."""

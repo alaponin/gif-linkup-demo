@@ -19,7 +19,11 @@ PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE_DIR="$PACK_DIR/apps/console/tests/fixtures/xroad"
 CLIENT_ID="PROGRESSA:GOV:PNIA:IDENTITY"
 SUBJECT_ID="PROGRESSA:GOV:PNEA:EXAMS"
-UNGRANTED_SUBJECT="PROGRESSA:GOV:MOEYS:PEMIS"
+# Wave 3 Task 1: MOEYS:PEMIS retired; PLR:ENROLMENT is the negative check's
+# unauthorised caller now (configs/x-road-bus/2.6.yaml's negative_check) --
+# same reasoning here, this only needs a real bus member not granted this
+# service.
+UNGRANTED_SUBJECT="PROGRESSA:GOV:PLR:ENROLMENT"
 SVC=identity-api
 
 if [ "${1:-}" = "--check" ]; then
@@ -34,7 +38,7 @@ mkdir -p "$OUT_DIR"
 # (the same lite/full trap scripts/acceptance.sh already documents and
 # avoids for the same reason).
 PNIA_SS=${HOST_SS[PNIA:IDENTITY]}
-MOEYS_SS=${HOST_SS[MOEYS:PEMIS]}
+PLR_SS=${HOST_SS[PLR:ENROLMENT]}
 
 jar=$(api_key "localhost:${SS_UI[$PNIA_SS]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
 token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
@@ -74,9 +78,9 @@ curl -ksf -b "$jar" -X POST "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients
 
 log "capturing exchange_access_denied"
 _capture exchange_access_denied \
-  "GET /r1/.../identity-api/persons/{nin} from a caller (MOEYS:PEMIS) not granted access -- provider-side ACL denial" \
-  -H "X-Road-Client: PROGRESSA/GOV/MOEYS/PEMIS" \
-  "http://localhost:${SS_REST[$MOEYS_SS]}/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/02831663233"
+  "GET /r1/.../identity-api/persons/{nin} from a caller (PLR:ENROLMENT) not granted access -- provider-side ACL denial" \
+  -H "X-Road-Client: PROGRESSA/GOV/PLR/ENROLMENT" \
+  "http://localhost:${SS_REST[$PLR_SS]}/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/02831663233"
 
 rm -rf "$RAW_TMP"
 
