@@ -108,3 +108,21 @@ def test_hosted_on_defaults_to_none():
     raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb"}
     payload = JoinPayload(**raw)
     assert payload.security_server.hosted_on is None
+
+
+def test_lawful_basis_defaults_to_none():
+    """Optional (Wave 2 Task 3, K-02) -- no config file and no resolution
+    check, so a service that omits it must still parse (docs/conventions.md
+    does not gate the join payload; this field is recorded, not enforced)."""
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml"}],
+    ))
+    assert payload.services[0].lawful_basis is None
+
+
+def test_lawful_basis_accepts_free_text():
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "lawful_basis": "[confirm: cite the decree article]"}],
+    ))
+    assert payload.services[0].lawful_basis == "[confirm: cite the decree article]"

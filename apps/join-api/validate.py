@@ -401,6 +401,10 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
 # published set replaces the denylist rather than patching it further.
 # Empty and whitespace-only values need no separate check: they match
 # nothing in this pattern and fall out of fullmatch() on their own.
+# Published as the pack's stated convention in docs/conventions.md -- this
+# constant is that page's cited source, not a copy of a value that lives
+# somewhere else. One rule, one place, no indirection (wave 2 design
+# decision 1).
 def _bad_identifier(value: str) -> bool:
     return not re.fullmatch(r"[a-zA-Z0-9'()+,\-.=?]+", value)
 

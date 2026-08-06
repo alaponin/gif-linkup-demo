@@ -65,6 +65,13 @@ class Service(_Strict):
     # Consumer subsystems this service's ACL grants, PROGRESSA/GOV/<CODE>/
     # <SUBSYSTEM> form -- configs/member-pnia/2.5.yaml's own access: shape.
     access: list[str] = Field(default_factory=list)
+    # Wave 2 Task 3 (K-02): the decree article this exchange relies on, or
+    # "consent" -- free text, "[confirm: cite the decree article]" where a
+    # demo has no real one to cite. Recorded and surfaced, never resolved
+    # against anything: Module 2's decree is not in this pack, so there is
+    # nothing to check it against, and a resolution check against a file we
+    # also wrote would prove nothing (wave 2 plan, "what was cut and why").
+    lawful_basis: str | None = None
 
 
 class ExchangePattern(str, Enum):

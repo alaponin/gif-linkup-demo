@@ -139,6 +139,11 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
                 "code": svc.code,
                 "spec_url": svc.spec_url,
                 **({"access": list(svc.access)} if svc.access else {}),
+                # Wave 2 Task 3 (K-02): recorded and surfaced only, same
+                # treatment as access above and semantic.pattern below --
+                # never resolved against anything; there is no lawful-basis
+                # registry in this pack to check it against.
+                **({"lawful_basis": svc.lawful_basis} if svc.lawful_basis else {}),
             }
             for svc in payload.services
         ]

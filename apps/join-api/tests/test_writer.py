@@ -87,6 +87,31 @@ def test_render_member_config_includes_pattern_when_classified():
     assert doc["semantic"]["pattern"] == "digital_registries_lookup"
 
 
+def test_render_member_config_includes_lawful_basis_when_set():
+    """Wave 2 Task 3 (K-02): lawful_basis is optional on Service, but when a
+    joining payload does set it, the rendered config must carry it -- the
+    same "don't silently drop a field the schema now accepts" rule
+    test_render_member_config_includes_pattern_when_classified enforces for
+    Semantic.pattern."""
+    payload = _payload(
+        services=[{
+            "code": "awards-api",
+            "spec_url": "http://app-ptsb:8000/spec.yaml",
+            "lawful_basis": "[confirm: cite the decree article]",
+        }],
+    )
+    doc = yaml.safe_load(writer.render_member_config("ptsb", payload))
+    assert doc["services"][0]["lawful_basis"] == "[confirm: cite the decree article]"
+
+
+def test_render_member_config_omits_lawful_basis_when_unset():
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml"}],
+    )
+    doc = yaml.safe_load(writer.render_member_config("ptsb", payload))
+    assert "lawful_basis" not in doc["services"][0]
+
+
 def test_render_member_config_omits_empty_optional_blocks():
     doc = yaml.safe_load(writer.render_member_config("ptsb", _payload()))
     assert "services" not in doc
