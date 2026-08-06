@@ -380,12 +380,21 @@ def test_identifier_characters_accepts_a_dotted_service_code():
 _ACCEPTED_IDENTIFIERS = [
     "PTSB",
     "SS-PTSB",
+    # Plain "dot in an identifier" cases. Distinct from the dotted
+    # *service-code* case covered on its own above
+    # (test_identifier_characters_accepts_a_dotted_service_code), which
+    # needs a service code, not a subsystem, to isolate check 12 -- these two
+    # are not that case, just the same character exercised on `subsystem`.
     "PT.SB",
-    # The dotted-service-code case is covered on its own above
-    # (test_identifier_characters_accepts_a_dotted_service_code) since it
-    # needs a service code, not a subsystem, to isolate check 12 -- listed
-    # here too because it is also a plain "dot in an identifier" case.
     "PTSB.X",
+    # Remaining allowlist punctuation (a-zA-Z0-9'()+,-.=?) not yet covered
+    # above: ' ( ) + , = ?
+    "PT'B",
+    "PT(B)",
+    "PT+B",
+    "PT,B",
+    "PT=B",
+    "PT?B",
 ]
 
 _REJECTED_IDENTIFIERS = [

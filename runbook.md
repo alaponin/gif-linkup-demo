@@ -270,8 +270,8 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     kp2-<key>-conf kp2-<key>-archive`. Skip it and the next member to reuse
     that key inherits the old database and `/etc/xroad`.
     **On retention:** deleting `kp2-<key>-archive` is correct for this demo,
-    since a later member reusing the key should not inherit a stale
-    database — but in production the message log is subject to a statutory
+    where nothing needs the message log after teardown — but in production
+    the message log is subject to a statutory
     retention period, and doing the same deletion before that period elapses
     converts a retirement into an evidence gap (onboarding path §2 GX). This
     pack implements no archival step; it only names the gap.
