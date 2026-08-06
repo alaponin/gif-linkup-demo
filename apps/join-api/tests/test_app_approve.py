@@ -42,6 +42,11 @@ CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
 
+# Wave 2 Task 2: every approve call now needs a decision_reference -- the
+# minute identifier and date the demo cannot supply a real one for, in the
+# pack's own [confirm: ...] register.
+DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
+
 
 def _git(*args: str, cwd: pathlib.Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
@@ -89,29 +94,61 @@ def _submit(client) -> dict:
 
 def test_approve_writes_the_config_for_real_and_starts_the_job(client):
     record = _submit(client)
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 202
     body = resp.json()
     assert body["state"] == "APPROVED"
     assert body["queued"] is False
+    assert body["decision_reference"] == DECISION["decision_reference"]
     assert started == [record["id"]]
     # spec S9: config is written on APPROVED, before any live mutation.
     assert (app_module.PACK_DIR / "configs" / "member-ptsb" / "ptsb.yaml").exists()
     assert "ptsb" in (app_module.PACK_DIR / "manifest.yaml").read_text()
 
+    # Step 2: persisted, and surfaced verbatim on a follow-up GET (raw-dict
+    # return, apps/join-api/app.py:325-340) -- no separate wiring needed.
+    follow_up = client.get(f"/requests/{record['id']}", headers=OPERATOR)
+    assert follow_up.status_code == 200
+    assert follow_up.json()["decision_reference"] == DECISION["decision_reference"]
+
+
+def test_approve_without_a_decision_reference_is_rejected(client):
+    """Wave 2 Task 2, Step 1/3: the admission gate is the field, not a second
+    login. Missing entirely -- no body at all."""
+    record = _submit(client)
+    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "decision_reference" in detail
+    assert "Steering Committee" in detail
+    assert "5.3" in detail
+    # No write happened -- the check runs before the config is touched.
+    assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
+    assert app_module._load_request(record["id"])["state"] == "SUBMITTED"
+
+
+def test_approve_with_a_blank_decision_reference_is_rejected(client):
+    """Whitespace-only is not a reference either."""
+    record = _submit(client)
+    resp = client.post(
+        f"/requests/{record['id']}/approve", json={"decision_reference": "   "}, headers=OPERATOR
+    )
+    assert resp.status_code == 400
+    assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
+
 
 def test_an_applicant_cannot_approve(client):
     """Decision 10's teaching point: the asymmetry, not per-request scoping."""
     record = _submit(client)
-    resp = client.post(f"/requests/{record['id']}/approve", headers=APPLICANT)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=APPLICANT)
     assert resp.status_code == 403
     assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
 
 
 def test_approving_twice_is_a_conflict_not_a_second_write(client):
     record = _submit(client)
-    assert client.post(f"/requests/{record['id']}/approve", headers=OPERATOR).status_code == 202
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    assert client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR).status_code == 202
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert "APPROVED" in resp.json()["detail"]
 
@@ -121,7 +158,7 @@ def test_approve_reports_queued_when_another_job_holds_the_lock(client):
     record = _submit(client)
     app_module._JOB_LOCK.acquire()
     try:
-        body = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR).json()
+        body = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR).json()
     finally:
         app_module._JOB_LOCK.release()
     assert body["queued"] is True
@@ -167,7 +204,7 @@ def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(clien
         raise writer.GenerateFailure(f"Traceback ... XROAD_TOKEN_PIN={pin}\n", 1)
 
     monkeypatch.setattr(app_module.writer, "apply_real", boom)
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert pin not in resp.text
     assert pin not in (app_module._requests_dir() / f"{record['id']}.json").read_text()
@@ -186,7 +223,7 @@ def test_a_git_check_failure_is_a_409_not_a_500(client, monkeypatch):
         raise writer.GitCheckFailure("could not check whether the pack is a clean checkout: boom")
 
     monkeypatch.setattr(app_module.writer, "apply_real", boom)
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert "could not check" in resp.json()["detail"]
     assert started == []
@@ -203,7 +240,7 @@ def test_a_member_directory_collision_is_a_409_not_a_500(client, monkeypatch):
         raise writer.MemberCollisionError("configs/member-ptsb/ already exists")
 
     monkeypatch.setattr(app_module.writer, "apply_real", boom)
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert "already exists" in resp.json()["detail"]
     assert started == []
@@ -216,7 +253,7 @@ def test_a_dirty_checkout_refuses_the_approval(client):
     (app_module.PACK_DIR / "manifest.yaml").write_text(
         (app_module.PACK_DIR / "manifest.yaml").read_text() + "\n# local edit\n"
     )
-    resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert "uncommitted" in resp.json()["detail"]
     assert started == []

@@ -500,9 +500,12 @@ def get_join_requests():
 
 
 @app.post("/api/join/requests/{request_id}/approve", dependencies=[Depends(_require_console_origin)])
-def post_join_approve(request_id: str):
+def post_join_approve(request_id: str, body: dict | None = None):
+    """Wave 2 Task 2: forwards decision_reference the same way post_join_reject
+    already forwards reason -- join-api is where the required-field check
+    lives, this is just a pass-through."""
     request_id = _validated_join_request_id(request_id)
-    return _proxy_join("POST", f"/requests/{request_id}/approve")
+    return _proxy_join("POST", f"/requests/{request_id}/approve", json=body or {})
 
 
 @app.post("/api/join/requests/{request_id}/resume", dependencies=[Depends(_require_console_origin)])

@@ -683,6 +683,8 @@ function renderJoinRequest(record) {
   if (state === "SUBMITTED") {
     html += `<pre class="join-diff">${esc(record.diff || "")}</pre>`;
     html += `<div class="join-actions">`
+      + `<input type="text" class="join-decision-reference" data-id="${esc(record.id)}" `
+      + `placeholder="Decision reference (minute ID + date) [confirm: cite the Steering Committee minute reference and date]">`
       + `<button class="action join-approve-btn" data-id="${esc(record.id)}">Approve</button>`
       + `<button class="secondary-action join-reject-toggle-btn" data-id="${esc(record.id)}">Reject&hellip;</button>`
       + `</div>`
@@ -835,8 +837,21 @@ async function onJoinListClick(e) {
   const rejectConfirmBtn = e.target.closest(".join-reject-confirm-btn");
 
   if (approveBtn) {
+    const refInput = approveBtn.parentElement.querySelector(".join-decision-reference");
+    const decisionReference = (refInput.value || "").trim();
+    if (!decisionReference) {
+      // Wave 2 Task 2: the gate is the field itself, not just the API's 400
+      // -- a required field with no input must not silently round-trip.
+      alert("Decision reference is required: admission is a Steering Committee decision (Ref Model §5.3); this approves and records which one.");
+      refInput.focus();
+      return;
+    }
     approveBtn.disabled = true;
-    await api(`/api/join/requests/${encodeURIComponent(approveBtn.dataset.id)}/approve`, { method: "POST" });
+    await api(`/api/join/requests/${encodeURIComponent(approveBtn.dataset.id)}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision_reference: decisionReference }),
+    });
     await refreshJoinQueue();
   } else if (resumeBtn) {
     resumeBtn.disabled = true;

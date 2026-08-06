@@ -41,6 +41,8 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+# Wave 2 Task 2: approve now requires a decision_reference (test_app_approve.py).
+DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
 started: list[str] = []
 
@@ -96,7 +98,7 @@ def _joined(client, **payload_overrides) -> dict:
     payload = dict(PAYLOAD, **payload_overrides)
     record = client.post("/requests", json=payload, headers=APPLICANT).json()
     assert record["state"] == "SUBMITTED", record
-    assert client.post(f"/requests/{record['id']}/approve", headers=OPERATOR).status_code == 202
+    assert client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR).status_code == 202
     stored = app_module._load_request(record["id"])
     stored["state"] = "ACTIVE"
     stored["last_completed_step"] = "join.r1_verify"

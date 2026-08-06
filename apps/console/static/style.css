@@ -394,6 +394,16 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 }
 
 .join-actions { display: flex; gap: 10px; margin-top: 10px; }
+.join-decision-reference {
+  flex: 1;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 14px;
+}
 
 .join-reject-box { margin-top: 10px; display: flex; gap: 10px; align-items: flex-start; }
 .join-reject-reason {

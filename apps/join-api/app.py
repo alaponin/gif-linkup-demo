@@ -472,17 +472,37 @@ def _start_job(request_id: str) -> None:
 @app.post("/requests/{request_id}/approve", status_code=202)
 def approve_request(
     request_id: str,
+    body: dict | None = None,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
     """Operator approval: write the config for real (spec S9 -- on APPROVED,
     before any live mutation), then start the job. 202, not 200: the job runs
-    past this response and the applicant polls GET /requests/{id}."""
+    past this response and the applicant polls GET /requests/{id}.
+
+    Wave 2 Task 2 (K-02, G-02): `configs/x-road-bus/2.7.yaml`'s
+    `approval: explicit` puts one operator's bearer token where Ref Model
+    §5.3 puts the Steering Committee -- a RACI mismatch the onboarding
+    path's own gap analysis names. The fix is not a second login (a
+    committee doesn't hold an API token); it's requiring the call to name
+    the decision it is actuating. `decision_reference` is untyped like
+    reject_request's `body`, not a schema.py model -- this is evidence, not
+    another auth layer, so a required non-empty string is the whole check."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     if record["state"] != "SUBMITTED":
         raise HTTPException(409, f"request {request_id} is {record['state']}, not SUBMITTED")
+    decision_reference = (body or {}).get("decision_reference")
+    if not isinstance(decision_reference, str) or not decision_reference.strip():
+        raise HTTPException(
+            400,
+            "decision_reference is required: admission is accountable to the "
+            "Steering Committee, not the operator (Ref Model §5.3) -- this "
+            "endpoint actuates that decision, it does not make it, so it "
+            "must be told the minute identifier and date it is acting on.",
+        )
+    decision_reference = decision_reference.strip()
 
     payload = schema.JoinPayload(**record["payload"])
     try:
@@ -510,11 +530,13 @@ def approve_request(
         stderr = job.scrub(exc.stderr, JOB_SECRETS)
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": stderr}
+        record["decision_reference"] = decision_reference
         _save_request(record)
         raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
     record["approved_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    record["decision_reference"] = decision_reference
     record["queued"] = _JOB_LOCK.locked()
     _save_request(record)
     _start_job(request_id)

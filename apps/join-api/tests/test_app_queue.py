@@ -36,6 +36,8 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+# Wave 2 Task 2: approve now requires a decision_reference (test_app_approve.py).
+DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
 
 def _git(*args: str, cwd: pathlib.Path) -> None:
@@ -135,7 +137,7 @@ def test_active_record_carries_the_uncommitted_flag(client):
     committed. apply_real() itself writes the files without committing --
     a fresh queue read right after approval must say so."""
     record = _submit(client)
-    approve = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
     stored = app_module._load_request(record["id"])
@@ -165,7 +167,7 @@ def test_uncommitted_check_failure_reads_as_unknown_not_committed(client, monkey
     False. Faked as a subprocess raising, not a real missing git, so this
     test needs no image build and runs in --fast."""
     record = _submit(client)
-    approve = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
     stored = app_module._load_request(record["id"])
@@ -188,7 +190,7 @@ def test_uncommitted_check_nonzero_git_exit_also_reads_as_unknown(client, monkey
     an empty stdout, read as bool(False)="clean", the exact same
     wrong-direction bug via a different door."""
     record = _submit(client)
-    approve = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
     stored = app_module._load_request(record["id"])
@@ -253,7 +255,7 @@ def test_reject_without_a_reason_still_succeeds(client):
 
 def test_reject_only_from_submitted(client):
     record = _submit(client)
-    client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
+    client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     resp = client.post(f"/requests/{record['id']}/reject", json={"reason": "too late"}, headers=OPERATOR)
     assert resp.status_code == 409
 
