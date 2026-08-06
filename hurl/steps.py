@@ -397,6 +397,20 @@ BY_ID: dict[str, Step] = {step.id: step for step in REGISTRY}
 # client) was never tried live. Task 4 Step 2 walks this order; this task
 # only records it -- nothing in hurl/generate.py or Plan A's cold-deploy
 # rendering reads this constant.
+#
+# What this walk does NOT revoke (withdrawn G-03b, wave1-corrections Task 3
+# Step 4): `service.acl` above revokes ACL entries on the departing member's
+# OWN service(s) -- it does not revoke any grant naming the departing member
+# AS A SUBJECT on some *other* member's service. That gap is unreachable
+# today: schema.py's `requested_access` field is recorded on the join
+# request and surfaced to the operator (job.py composes a human-facing
+# message telling the operator the target provider must grant access via
+# their own config) but nothing in this codebase ever writes an ACL grant on
+# another member's behalf from it -- so no reversal walk has ever had such a
+# grant to revoke. It becomes reachable the moment a future KP (KP3/KP4)
+# adds a joined member that actually consumes another member's service, at
+# which point a real "member X as subject on member Y's service" ACL entry
+# would exist and this walk would leave it behind on X's un-join.
 REVERSAL_ORDER: tuple[str, ...] = (
     "service.acl",
     "service.publish",
