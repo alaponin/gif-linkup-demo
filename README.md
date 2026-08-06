@@ -134,10 +134,12 @@ extra containers and RAM, and sidesteps every own-server finding in
 `docs/production-delta.md` (a real port-allocation bug, two real Compose gaps,
 and host-CPU-contention risk under several concurrent JVMs) — reserve a
 joined member's own server for when the demonstration specifically needs one.
-A submitted payload's `code`, `subsystem`, and `security_server.dns_name`
-must satisfy the identifier, member-code, and host-naming conventions
-`docs/conventions.md` publishes — the onboarding path's §0.5/§1a prerequisite
-this pack now states rather than leaving implicit in `validate.py`.
+A submitted payload's `code` and `subsystem` must satisfy the identifier and
+member-code conventions `docs/conventions.md` publishes — the onboarding
+path's §0.5/§1a prerequisite this pack now states rather than leaving
+implicit in `validate.py`. `security_server.dns_name` follows the same doc's
+`ss-<key>` host-naming convention, which the pack applies consistently but
+does not check at request time.
 
 What this pack is an instance of: X-Road as the message bus, join-api as the
 onboarding gate, and `configs/semantic/semantic-map.yaml` (Module 4, checked

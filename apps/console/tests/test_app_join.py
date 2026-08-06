@@ -127,6 +127,17 @@ def test_join_reject_forwards_the_reason_body(monkeypatch):
     assert calls[0]["json"] == {"reason": "wrong subsystem"}
 
 
+def test_join_approve_forwards_the_decision_reference_body(monkeypatch):
+    calls = _patch_join_api(monkeypatch, body={"id": "r1", "state": "APPROVED"})
+    resp = _client().post(
+        "/api/join/requests/r1/approve",
+        headers={HEADER: "1"},
+        json={"decision_reference": "TICKET-42"},
+    )
+    assert resp.status_code == 200
+    assert calls[0]["json"] == {"decision_reference": "TICKET-42"}
+
+
 def test_operator_token_never_appears_in_any_join_response(monkeypatch):
     _patch_join_api(monkeypatch, body={"requests": [], "leaked": app.JOIN_OPERATOR_TOKEN})
     resp = _client().get("/api/join/requests", headers={HEADER: "1"})
