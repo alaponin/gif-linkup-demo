@@ -438,25 +438,24 @@ auto-processed `CLIENT_DELETION_REQUEST` (`status: null`, confirming §11
 finding 1 for the own-server topology too). That is an audit log, the same
 one every canonical member's registrations sit in — not residue.
 
-### An own-server join cannot reach `verified: true` today
+### An own-server join could not reach `verified: true` — fixed, not yet re-verified live
 
-**Reproduced on both own-server cycles, and not a federation fault.** The
-join reaches `ACTIVE` with `verified: false` and
-`Server.ClientProxy.UnknownMember`, and stays there — while the *hosted*
+**Reproduced on both own-server cycles measured 2026-08-03, and not a
+federation fault.** The join reached `ACTIVE` with `verified: false` and
+`Server.ClientProxy.UnknownMember`, and stayed there — while the *hosted*
 join on the same stack, minutes apart, reached `ACTIVE, verified: true` with
 6 of its 12 retries unspent.
 
-The cause is `apps/join-api/job.py`'s one-budget-per-run rule (design spec
+The cause was `apps/join-api/job.py`'s one-budget-per-run rule (design spec
 S5.5): `RETRY_BUDGET = 12` at `RETRY_INTERVAL_SECONDS = 10.0` is **120s for
 the whole run**, and in an own-server join `ss.client_register`'s own
-global-configuration propagation wait eats 95–107s of it before
-`join.r1_verify` is reached at all. The reachability call then gets the ~20s
-that are left. Measured directly afterwards: the same call became fault-free
-**46s** after `ACTIVE` in one cycle and only after **~8 minutes** in the
-other — either way, more than the budget had left.
+global-configuration propagation wait ate 95–107s of it before
+`join.r1_verify` was reached at all. The reachability call then got the ~20s
+that were left. Measured directly afterwards: the same call became
+fault-free **46s** after `ACTIVE` in one cycle and only after **~8 minutes**
+in the other — either way, more than the budget had left.
 
-**There is no way back to `verified: true` from there**, and that is the part
-worth fixing rather than the timing:
+**There was no way back to `verified: true` from there** either:
 
 - `POST /requests/{id}/resume` refuses with `409` — `apps/join-api/app.py`
   only resumes `FAILED` or `BLOCKED`, and this record is `ACTIVE`;
@@ -464,16 +463,32 @@ worth fixing rather than the timing:
   already `last_completed_step`, and it neither provides a session token
   (`JobStep.must_rerun`) nor has a probe, so a resume walks past it.
 
-Nothing is actually wrong with the member — `scripts/acceptance.sh` ran
+Nothing was actually wrong with the member — `scripts/acceptance.sh` ran
 green against it, `2.7.r1(PVTB.awards-api)` and `2.7.deny(PVTB.awards-api)`
 included, which is the same fact `verified` was meant to record. But a
 demonstration that ends on a red "verified: false — the reachability check
 has not passed yet" badge in the console's join tab reads as a failed join,
-and the operator has no button that fixes it. **Unresolved; a future task's
-work, not this one's** (Task 5's files are docs/tests/scripts, not
-`job.py`). The two candidate shapes, neither chosen here: give
-`join.r1_verify` a budget of its own rather than the run's leftovers, or
-make re-verifying an `ACTIVE` record its own idempotent endpoint.
+and the operator had no button that fixed it.
+
+**Fixed since:** `apps/join-api/job.py:92` now gives `join.r1_verify` its
+own budget, `R1_RETRY_BUDGET = 54`, separate from the run's shared
+`RETRY_BUDGET` — the first of the two candidate shapes below, not the
+second. The step no longer draws on whatever the run's other steps left
+behind; it gets its own 54 retries at 10s each regardless of how much
+`ss.client_register`'s propagation wait consumed. **This has not been
+re-verified live for the own-server case** — no `--full` acceptance run has
+exercised an own-server join since the fix landed, so `2.7.md`'s clause
+stays marked as not (yet) met rather than closed. What would confirm it: a
+future full acceptance run reaching `ACTIVE, verified: true` for an
+own-server join, which Wave 3's proof work is expected to produce
+incidentally.
+
+The shape chosen was giving `join.r1_verify` a budget of its own rather than
+the run's leftovers. The other candidate considered — making re-verifying an
+`ACTIVE` record its own idempotent endpoint — was not pursued: the budget
+fix addresses the timing directly and needs no new endpoint, so the
+`resume`-refuses-`ACTIVE` gap above is no longer load-bearing for this
+defect.
 
 ### Sizing: spec §12's numbers hold; its closing sentence does not (Step 4)
 
