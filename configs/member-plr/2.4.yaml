@@ -15,7 +15,8 @@ services:
     spec_url: http://app-plr:8000/spec.yaml
     access:                    # deliberate: PNEA only — MOEYS:PEMIS excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
-semantic:                      # from the Module 4 semantic map — 'enrolment' means:
+semantic:                      # from configs/semantic/semantic-map.yaml — 'enrolment' means:
   entity: enrolment
   key: nin
   fields: [nin, school, level, enrolment_year, status]
+  pattern: digital_registries_lookup

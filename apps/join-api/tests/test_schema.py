@@ -11,7 +11,7 @@ import pydantic
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from schema import BackendAuth, JoinPayload  # noqa: E402
+from schema import BackendAuth, ExchangePattern, JoinPayload  # noqa: E402
 
 
 def _consume_only(**overrides) -> dict:
@@ -70,6 +70,37 @@ def test_invalid_backend_auth_value_is_rejected():
 
 def test_backend_auth_enum_has_exactly_the_three_spec_values():
     assert {m.value for m in BackendAuth} == {"none", "network_allowlist", "proxy_injected"}
+
+
+def test_semantic_pattern_defaults_to_none():
+    """Optional (Wave 2 Task 1 Step 3, G-04) -- required would reject every
+    existing config until all are classified against ExchangePattern."""
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id", "status"]},
+    ))
+    assert payload.semantic.pattern is None
+
+
+def test_semantic_pattern_accepts_a_declared_value():
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id"],
+                  "pattern": "digital_registries_lookup"},
+    ))
+    assert payload.semantic.pattern == ExchangePattern.digital_registries_lookup
+
+
+def test_semantic_pattern_rejects_a_value_outside_the_enum():
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(
+            services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                       "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+            semantic={"entity": "award", "key": "award_id", "fields": ["award_id"],
+                      "pattern": "not_a_real_pattern"},
+        ))
 
 
 def test_hosted_on_defaults_to_none():

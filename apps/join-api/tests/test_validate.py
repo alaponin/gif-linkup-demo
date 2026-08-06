@@ -84,6 +84,14 @@ EXISTING_SERVERS = {
     "pnia": {"code": "SS-PNIA", "dns_name": "ss-pnia", "hosted_on": None},
 }
 
+# Mirrors configs/semantic/semantic-map.yaml (Wave 2 Task 1) -- a fixture
+# copy, not a disk read, matching how MANIFEST/POLICY/EXISTING_SERVERS above
+# are already fixture dicts rather than files loaded from PACK_DIR.
+SEMANTIC_MAP = {
+    "person": {"anchor": "CEDS", "fields": ["nin", "given_name", "family_name", "date_of_birth", "sex", "region"]},
+    "enrolment": {"anchor": "OneRoster", "fields": ["nin", "school", "level", "enrolment_year", "status"]},
+}
+
 
 def _payload(**overrides) -> dict:
     base = {
@@ -98,11 +106,13 @@ def _payload(**overrides) -> dict:
     return base
 
 
-def _run(raw: dict, *, manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS, **kw):
+def _run(raw: dict, *, manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS,
+         semantic_map=SEMANTIC_MAP, **kw):
     # validate() returns (payload, ValidationContext) since Task 5 (the
     # context's fetched_specs feeds module 2.7's join-time drift baseline) --
     # every caller in this file wants just the payload.
-    payload, _ctx = validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers, **kw)
+    payload, _ctx = validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers,
+                              semantic_map=semantic_map, **kw)
     return payload
 
 
@@ -128,7 +138,7 @@ def test_publishing_hosted_join_passes_every_check():
     payload = _run(_payload(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                    "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
-        semantic={"entity": "award", "key": "award_id", "fields": ["award_id", "status"]},
+        semantic={"entity": "person", "key": "nin", "fields": ["nin", "region"]},
     ), fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.services[0].code == "awards-api"
 
@@ -281,13 +291,40 @@ def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic()
     assert payload.services[0].access == []
 
 
+def test_purpose_limitation_rejects_an_entity_not_in_the_semantic_map():
+    """Conformance, not presence, since Wave 2 Task 1 Step 2 (K-03):
+    semantic.entity must be a key in configs/semantic/semantic-map.yaml."""
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                    semantic={"entity": "award", "key": "award_id", "fields": ["award_id"]})
+    err = _rejects(raw, "purpose_limitation")
+    assert "award" in err.message
+
+
+def test_purpose_limitation_rejects_a_field_not_declared_for_the_entity():
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                    semantic={"entity": "person", "key": "nin", "fields": ["nin", "award_id"]})
+    err = _rejects(raw, "purpose_limitation")
+    assert "award_id" in err.message
+
+
+def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
+    payload = _run(_payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+        semantic={"entity": "enrolment", "key": "nin", "fields": ["nin", "status"]},
+    ), fetch_spec=_fetch_fixture("clean.yaml"))
+    assert payload.semantic.entity == "enrolment"
+
+
 # -- check 9: backend reachability ----------------------------------------------
 
 
 def test_backend_reachability_rejects_an_unreachable_servers_url():
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
-                    semantic={"entity": "award", "key": "award_id", "fields": ["award_id"]})
+                    semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "backend_reachability", fetch_spec=_fetch_fixture("unreachable.yaml"))
     assert "127.0.0.1:1" in err.message
 
@@ -307,7 +344,7 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
 def test_allowed_methods_rejects_a_delete_operation():
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
-                    semantic={"entity": "award", "key": "award_id", "fields": ["award_id"]})
+                    semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "allowed_methods", fetch_spec=_fetch_fixture("has_delete.yaml"))
     assert "DELETE" in err.message
 
@@ -328,7 +365,7 @@ def test_backend_auth_declared_passes_for_every_schema_enum_value():
     for value in BackendAuth:
         payload = payload.model_copy(update={"backend": Backend(auth=value)})
         ctx = ValidationContext(payload=payload, manifest=MANIFEST, policy=POLICY,
-                                  existing_servers=EXISTING_SERVERS)
+                                  existing_servers=EXISTING_SERVERS, semantic_map=SEMANTIC_MAP)
         assert validate_module._check_backend_auth_declared(ctx) is None
 
 

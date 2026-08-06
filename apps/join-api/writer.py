@@ -148,6 +148,8 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
             "key": payload.semantic.key,
             "fields": list(payload.semantic.fields),
         }
+        if payload.semantic.pattern:
+            body["semantic"]["pattern"] = payload.semantic.pattern.value
     body["backend"] = {"auth": payload.backend.auth.value}
     if payload.requested_access:
         body["requested_access"] = list(payload.requested_access)

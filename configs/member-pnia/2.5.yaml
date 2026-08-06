@@ -15,7 +15,8 @@ services:
     spec_url: http://app-pnia:8000/spec.yaml
     access:                    # deliberate: PNEA only — MOEYS:PEMIS excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
-semantic:                      # from the Module 4 semantic map — 'person identity' means:
+semantic:                      # from configs/semantic/semantic-map.yaml — 'person identity' means:
   entity: person
   key: nin
   fields: [nin, given_name, family_name, date_of_birth, sex, region]
+  pattern: digital_registries_lookup

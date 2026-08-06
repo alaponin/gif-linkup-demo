@@ -67,10 +67,26 @@ class Service(_Strict):
     access: list[str] = Field(default_factory=list)
 
 
+class ExchangePattern(str, Enum):
+    """Wave 2 Task 1 Step 3 (G-04): the contract shape a semantic exchange
+    takes. The enum -- not a configs/x-road-bus/2.7.yaml policy key -- is
+    deliberate (spec S8: "the permissible values of a field are a schema
+    concern"), the same rule BackendAuth above already follows."""
+
+    registration = "registration"
+    digital_registries_lookup = "digital_registries_lookup"
+    consent = "consent"
+    messaging = "messaging"
+    payments = "payments"
+
+
 class Semantic(_Strict):
     entity: str
     key: str
     fields: list[str]
+    # Optional: making it required would reject every existing config until
+    # all are classified against ExchangePattern (Wave 2 Task 1 Step 3).
+    pattern: ExchangePattern | None = None
 
 
 class Backend(_Strict):

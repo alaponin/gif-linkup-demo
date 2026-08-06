@@ -73,6 +73,20 @@ def test_render_member_config_matches_the_documented_shape():
         assert absent not in doc
 
 
+def test_render_member_config_includes_pattern_when_classified():
+    """Wave 2 Task 1 Step 3 (G-04): pattern is optional on Semantic, but when
+    a joining payload does set it, the rendered config must carry it -- not
+    silently drop a field the schema now accepts."""
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id"],
+                  "pattern": "digital_registries_lookup"},
+    )
+    doc = yaml.safe_load(writer.render_member_config("ptsb", payload))
+    assert doc["semantic"]["pattern"] == "digital_registries_lookup"
+
+
 def test_render_member_config_omits_empty_optional_blocks():
     doc = yaml.safe_load(writer.render_member_config("ptsb", _payload()))
     assert "services" not in doc

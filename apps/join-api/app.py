@@ -261,6 +261,7 @@ def submit_request(
             manifest=_load_manifest(),
             policy=_load_join_policy(),
             existing_servers=validate.load_existing_security_servers(PACK_DIR),
+            semantic_map=validate.load_semantic_map(PACK_DIR),
         )
     except validate.RejectionError as exc:
         record = {

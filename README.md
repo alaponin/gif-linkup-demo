@@ -135,6 +135,15 @@ extra containers and RAM, and sidesteps every own-server finding in
 and host-CPU-contention risk under several concurrent JVMs) — reserve a
 joined member's own server for when the demonstration specifically needs one.
 
+What this pack is an instance of: X-Road as the message bus, join-api as the
+onboarding gate, and `configs/semantic/semantic-map.yaml` (Module 4, checked
+by `apps/join-api/validate.py` check 8, not merely published — see
+`docs/superpowers/plans/2026-08-05-kp2-wave2-data-layers.md` Task 1) as the
+shared field dictionary together realise GovStack's **Information Mediation**
+building block (GovStack subtopic 4.7) — a member joins the mediator once
+(module 2.7) and reaches every other member's declared exchanges through it,
+rather than negotiating a bilateral integration per pair.
+
 By design, KP2's slice is **Joget-free**: the member systems are mocks behind
 stable OpenAPI contracts — the seam where KP4's Joget DX apps plug in later
 without touching the X-Road configuration.

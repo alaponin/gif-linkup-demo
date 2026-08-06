@@ -62,6 +62,15 @@ def load_existing_security_servers(pack_dir: str | pathlib.Path) -> dict[str, di
     return result
 
 
+# The Module 4 semantic map (Wave 2 Task 1 Step 1): entity -> {anchor,
+# fields}. Loaded the same inline way as the security-server scan above --
+# one small function, no shared YAML-loading utility for a single file.
+def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
+    pack_dir = pathlib.Path(pack_dir)
+    path = pack_dir / "configs" / "semantic" / "semantic-map.yaml"
+    return yaml.safe_load(path.read_text()) or {}
+
+
 # -- backend I/O ---------------------------------------------------------------
 # Two separate callables, both overridable (apps/join-api/tests inject fakes):
 # fetch_spec reads the OpenAPI document text from spec_url; check_reachable
@@ -92,6 +101,7 @@ class ValidationContext:
     manifest: dict
     policy: dict  # configs/x-road-bus/2.7.yaml's join: block only
     existing_servers: dict[str, dict]  # key -> {code, dns_name, hosted_on}
+    semantic_map: dict  # configs/semantic/semantic-map.yaml -- entity -> {anchor, fields}
     fetch_spec: Callable[[str], str] = _default_fetch_spec
     check_reachable: Callable[[str], None] = _default_check_reachable
     # Populated by check 9, consumed by check 10 -- avoids fetching the same
@@ -295,21 +305,40 @@ def _check_acl_sanity(ctx: ValidationContext) -> str | None:
 
 
 def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
-    """Presence/non-empty check only, not a semantic judgement (spec S8
-    check 8, task-2 brief point 8). Publishing a service AND granting
-    another subsystem access to it is an exchange -- this pack's own
-    convention for one (configs/member-pnia/2.5.yaml's semantic: block) is
-    to document it. This check enforces that the joining payload does the
-    same when it creates an exchange; it cannot judge whether the field list
-    is the legally correct one for the stated purpose -- that is the human
-    operator's job at approval."""
+    """Conformance check against configs/semantic/semantic-map.yaml (spec S8
+    check 8, Wave 2 Task 1 Step 2 -- closes K-03). Publishing a service AND
+    granting another subsystem access to it is an exchange -- this pack's
+    own convention for one (configs/member-pnia/2.5.yaml's semantic: block)
+    is to document it, and now to declare a real entity from the Module 4
+    semantic map: semantic.entity must be a key in the map, and every
+    semantic.fields entry must be declared for that entity there. This
+    check still cannot judge whether the field list is the legally correct
+    one for the stated purpose -- that is the human operator's job at
+    approval."""
     publishes_with_access = any(svc.access for svc in ctx.payload.services)
-    if publishes_with_access and not (ctx.payload.semantic and ctx.payload.semantic.fields):
+    if not publishes_with_access:
+        return None
+    semantic = ctx.payload.semantic
+    if not (semantic and semantic.fields):
         return (
             "this join publishes a service and grants another subsystem "
             "access to it, which makes it a provenance-tracked exchange -- a "
             "semantic: block (entity, key, fields) is required, matching "
             "this pack's existing convention (configs/member-pnia/2.5.yaml)"
+        )
+    entity_fields = (ctx.semantic_map.get(semantic.entity) or {}).get("fields")
+    if entity_fields is None:
+        return (
+            f"semantic.entity {semantic.entity!r} is not declared in "
+            f"configs/semantic/semantic-map.yaml (known entities: "
+            f"{sorted(ctx.semantic_map)})"
+        )
+    undeclared = [f for f in semantic.fields if f not in entity_fields]
+    if undeclared:
+        return (
+            f"semantic.fields {undeclared} is not declared for entity "
+            f"{semantic.entity!r} in configs/semantic/semantic-map.yaml "
+            f"(declared fields: {entity_fields})"
         )
     return None
 
@@ -460,6 +489,7 @@ def validate(
     manifest: dict,
     policy: dict,
     existing_servers: dict,
+    semantic_map: dict,
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
 ) -> tuple[JoinPayload, ValidationContext]:
@@ -485,6 +515,7 @@ def validate(
         manifest=manifest,
         policy=policy,
         existing_servers=existing_servers,
+        semantic_map=semantic_map,
         fetch_spec=fetch_spec,
         check_reachable=check_reachable,
     )
