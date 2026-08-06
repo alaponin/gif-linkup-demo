@@ -355,15 +355,63 @@ def test_identifier_characters_rejects_a_bad_service_code_last_after_9_10_11_pas
     _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))
 
 
-def test_identifier_characters_rejects_a_dotted_service_code():
-    """join-b Task 2 review finding 1: design spec S8 check 12 names dots
-    as a plausible bad character alongside spaces and slashes ("a service
-    code copied from a third-party tool's human-facing API name" -- e.g.
-    Joget API Builder's own operation naming, "awards.list"). Uses the
-    service-code field specifically, not the top-level `code` field: a dot
-    in `code` is caught earlier, by check 2 (key_derivation)'s [a-z0-9]+
-    regex -- services[].code isn't looked at by that check, so this is the
-    field that actually isolates check 12's own dot rejection."""
+def test_identifier_characters_accepts_a_dotted_service_code():
+    """join-b Task 2 review finding 1 banned '.' after "awards.list" (a
+    service code copied from a third-party tool's human-facing API name)
+    slipped through every other check -- but X-Road >=7.3.0's actual
+    allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) permits '.'. That finding
+    was solving the wrong problem: "awards.list" is a valid X-Road
+    identifier and this pack must not reject it. Deliberately asserting
+    ACCEPTANCE here, not rejection -- do not "fix" this back to a reject,
+    that would resurrect the false-reject bug Task 1 (G-01) corrected."""
     raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": []}])
-    _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))
+    payload = _run(raw, fetch_spec=_fetch_fixture("bad_service_code.yaml"))
+    assert payload.services[0].code == "awards.list"
+
+
+# Table-driven per Task 1 (G-01) Step 4: X-Road >=7.3.0's identifier
+# allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) disagrees with this pack's old
+# denylist in both directions -- see validate.py's comment above
+# _bad_identifier for the full story. Exercised against `subsystem`
+# specifically (not `code`): a bad `code` is always caught earlier by check
+# 2, key_derivation (see test_a_space_in_code_is_caught_earlier_by_key_
+# derivation above), so `code` can never isolate check 12 on its own.
+_ACCEPTED_IDENTIFIERS = [
+    "PTSB",
+    "SS-PTSB",
+    "PT.SB",
+    # The dotted-service-code case is covered on its own above
+    # (test_identifier_characters_accepts_a_dotted_service_code) since it
+    # needs a service code, not a subsystem, to isolate check 12 -- listed
+    # here too because it is also a plain "dot in an identifier" case.
+    "PTSB.X",
+]
+
+_REJECTED_IDENTIFIERS = [
+    "MOE_YS",  # underscore: outside the allowlist
+    "PTSB_2",  # underscore: outside the allowlist
+    "P&B",
+    "PT#B",
+    "PT@B",
+    "PT$B",
+    "PT~B",
+    "PT*B",
+    "PTSB!",
+    'PT"B',
+    "PT\\B",
+    "PT<B",
+    "PT[B",
+    "PT{B",
+]
+
+
+@pytest.mark.parametrize("subsystem", _ACCEPTED_IDENTIFIERS)
+def test_identifier_characters_accepts_allowlisted_subsystems(subsystem):
+    payload = _run(_payload(subsystem=subsystem))
+    assert payload.subsystem == subsystem
+
+
+@pytest.mark.parametrize("subsystem", _REJECTED_IDENTIFIERS)
+def test_identifier_characters_rejects_non_allowlisted_subsystems(subsystem):
+    _rejects(_payload(subsystem=subsystem), "identifier_characters")

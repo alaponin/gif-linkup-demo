@@ -123,6 +123,13 @@ def _check_key_derivation(ctx: ValidationContext) -> str | None:
     time, against the stricter constraint the key must actually satisfy:
     configs/member-<key>/ becomes a directory name and
     hurl/check_scenarios.py's scenario_member_re expects [a-z0-9]+."""
+    # [a-z0-9]+ here is deliberately narrower than _check_identifier_characters'
+    # X-Road allowlist below (a-zA-Z0-9'()+,-.=?) -- not a contradiction, a
+    # different thing being constrained. That check enforces what X-Road
+    # itself will accept for code/subsystem/service codes; this one enforces
+    # what a *directory name and YAML map key* can survive, which is
+    # stricter (no uppercase, no punctuation) and unrelated to X-Road's own
+    # rules. Both stay as they are.
     key = ctx.key
     if not re.fullmatch(r"[a-z0-9]+", key):
         return (
@@ -345,33 +352,38 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
     return None
 
 
-# X-Road identifier separators this pack has already been bitten by adjacent
-# characters in (hurl/generate.py's dn_escape() docstring: a comma in a
-# member_name broke DN construction) -- code/subsystem/service-code are more
-# restrictive fields than member_name, so reject the characters X-Road's own
-# REST message protocol uses to separate identifier components, plus
-# whitespace and control characters, rather than wait for one of these to
-# break something downstream that looks like an unrelated failure. Design
-# spec S8 check 12 names spaces, dots and slashes as the plausible source
-# ("a service code copied from a third-party tool's human-facing API name")
-# -- '.' is included here for exactly that reason (join-b Task 2 review
-# finding 1: it was missing, and a dotted service code like "awards.list"
-# passed every check without it).
-_BAD_CHARS = frozenset("/:;%.")
-
-
+# X-Road >=7.3.0 enforces a strict identifier allowlist, strict by default
+# on fresh installations (XRDDEV-1960): code, subsystem and service codes
+# may contain only a-zA-Z0-9'()+,-.=? -- the Security Server itself rejects
+# anything else, regardless of what this check lets through. This used to
+# be a denylist instead (reject '/', ':', ';', '%', '.', whitespace and
+# control characters), built from a guess at which separator characters
+# might collide with X-Road's own REST message protocol -- join-b Task 2
+# review finding 1 added '.' to that denylist after "awards.list" (a
+# service code copied from a third-party tool's human-facing API name,
+# hurl/generate.py's dn_escape() docstring tells the same "a comma in
+# member_name broke DN construction" story) slipped through every other
+# check. That guess disagreed with X-Road's actual allowlist in both
+# directions: it accepted characters ('_', '&', '#', '@', '$', '~', '*',
+# '!', '"', '\', '<', '[', '{') X-Road >=7.3.0 rejects outright, and it
+# rejected '.', which X-Road's allowlist permits -- so "awards.list" was a
+# valid X-Road identifier all along, and the finding that banned dots was
+# solving the wrong problem. A positive match against X-Road's own
+# published set replaces the denylist rather than patching it further.
+# Empty and whitespace-only values need no separate check: they match
+# nothing in this pattern and fall out of fullmatch() on their own.
 def _bad_identifier(value: str) -> bool:
-    if not value or not value.strip():
-        return True
-    return any(c in _BAD_CHARS or c.isspace() or ord(c) < 0x20 for c in value)
+    return not re.fullmatch(r"[a-zA-Z0-9'()+,\-.=?]+", value)
 
 
 def _check_identifier_characters(ctx: ValidationContext) -> str | None:
     """code, subsystem, and every service code satisfy X-Road's identifier
-    restrictions (spec S8 check 12). Reject empty, whitespace, and the
-    characters X-Road uses as identifier separators (/, :, ;, %, .) and
-    control characters -- named in the rejection message, per spec, rather
-    than discovered later inside certificate signing."""
+    restrictions (spec S8 check 12). X-Road >=7.3.0 enforces a strict
+    allowlist by default on fresh installations (XRDDEV-1960) -- reject
+    anything outside a-zA-Z0-9'()+,-.=?, which also rejects empty and
+    whitespace-only values (they match nothing in that set). The permitted
+    set is named in the rejection message, per spec, rather than left for
+    the operator to discover later inside certificate signing."""
     candidates = [("code", ctx.payload.code), ("subsystem", ctx.payload.subsystem)]
     for svc in ctx.payload.services:
         candidates.append(("services[].code", svc.code))
@@ -379,9 +391,9 @@ def _check_identifier_characters(ctx: ValidationContext) -> str | None:
         if _bad_identifier(value):
             return (
                 f"{label} {value!r} is not a valid X-Road identifier -- "
-                "identifiers must be non-empty, contain no whitespace or "
-                "control characters, and must not contain '/', ':', ';', "
-                "'%' or '.' (X-Road: Message Protocol for REST)"
+                "identifiers must be non-empty and contain only letters, "
+                "digits, and the characters in \"'()+,-.=?\" "
+                "(X-Road >=7.3.0 identifier restriction, XRDDEV-1960)"
             )
     return None
 
