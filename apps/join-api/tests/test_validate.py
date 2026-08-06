@@ -389,6 +389,12 @@ _ACCEPTED_IDENTIFIERS = [
 ]
 
 _REJECTED_IDENTIFIERS = [
+    # Brief Step 1: "keep the empty and whitespace rejections -- they fall
+    # out of the pattern, but assert them in tests rather than assuming."
+    # schema.py's `subsystem: str` has no min_length, so these reach check
+    # 12 rather than being stopped at check 1 (schema).
+    "",
+    "   ",
     "MOE_YS",  # underscore: outside the allowlist
     "PTSB_2",  # underscore: outside the allowlist
     "P&B",
