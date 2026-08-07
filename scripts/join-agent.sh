@@ -59,5 +59,19 @@ if [ -z "$(docker ps -q -f "name=^${SS}$")" ]; then
 fi
 
 log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server image takes a few minutes to become healthy"
-"${COMPOSE[@]}" up -d --wait --wait-timeout "${JOIN_AGENT_WAIT:-600}" "$SS"
+# COMPOSE_ALL, not COMPOSE: cs and ca's healthchecks are defined only in
+# hurl/compose.hurl.yml (see that file's own comment), not in the base
+# docker-compose.yml. $SS's x-sidecar anchor declares depends_on: [cs, ca],
+# so bringing it up with the narrower COMPOSE file set still touches cs/ca
+# via that dependency -- and because their merged config differs (no
+# healthcheck) from the COMPOSE_HURL view run-linkup.sh originally started
+# them with, Compose sees a config drift and recreates them, silently
+# stripping the healthcheck they had (found live, Wave 3 Task 6: cs/ca
+# reported no Config.Healthcheck at all after a join-agent.sh run).
+# COMPOSE_ALL already includes hurl/compose.hurl.yml (lib-stack.sh), so this
+# invocation's view of cs/ca matches what is already running -- no drift,
+# no recreate. Functionally harmless either way (state lives in the named
+# volumes), but a needless restart and a lost health signal are both worth
+# avoiding.
+"${COMPOSE_ALL[@]}" up -d --wait --wait-timeout "${JOIN_AGENT_WAIT:-600}" "$SS"
 log "$SS is healthy -- resume the BLOCKED join request (the console's Resume button, or POST /requests/<id>/resume)"

@@ -193,20 +193,28 @@ un-join cases — `2.7.1`, `2.7.r1(PVTB.awards-api)`,
 `2.7.deny(PVTB.awards-api)`, `2.7.unjoin(PVTB)` (own-server),
 `2.7.unjoin(PHTB)` (hosted, all five clauses) and `2.7.unjoin.topology` all
 green, and the un-join clauses re-run green on two later cold deploys.
+**Re-verified 2026-08-07 (Wave 3 Task 6)** against the collapsed single (D5)
+topology, `--full` from cold, with both a hosted and an own-server join and
+un-join (identity PTSB, see `docs/production-delta.md`): `2.7.1`,
+`2.7.unjoin(PTSB)` and `2.7.unjoin.topology` all green from
+`scripts/acceptance.sh`, and — new since the last VERIFIED note — the
+own-server case reached `ACTIVE, verified: true` for the first time (see
+below).
 
-**One clause of the own-server case was NOT met when this was last measured
-(2026-08-03), and the record above predates the fix:** clause 7's sibling —
-the request reaching `ACTIVE, **verified: true**` — did not happen for an
+**Historical: one clause of the own-server case was NOT met when this was
+last measured (2026-08-03) — since re-verified live (Wave 3 Task 6,
+2026-08-07), record kept for the diagnosis.** Clause 7's sibling — the
+request reaching `ACTIVE, **verified: true**` — did not happen for an
 own-server join at that time. It reached `ACTIVE` with `verified: false`,
 because `apps/join-api/job.py`'s single per-run retry budget (120s) was
 spent on `ss.client_register`'s propagation wait before `join.r1_verify`
 ran, and no resume could revisit the step afterwards. `job.py` now gives
 `join.r1_verify` its own budget, `R1_RETRY_BUDGET = 54`, separate from the
-run's shared budget — but this has **not been re-verified live** for the
-own-server case; no `--full` run has exercised it since. The r1 clause above
-still passes, from `scripts/acceptance.sh`, against the same member — so the
-member really is reachable and correctly fenced; it was the *record* that
-could not say so. What would confirm the fix: a future full acceptance run
-reaching `ACTIVE, verified: true` for an own-server join. See
-`docs/production-delta.md`, "An own-server join could not reach `verified:
-true` — fixed, not yet re-verified live".
+run's shared budget. **Re-verified live 2026-08-07 (Wave 3 Task 6):** a real
+own-server join (PTSB) reached `ACTIVE, verified: true` 131s after
+`resume`, with 7 of the shared run's 12 retries left when `join.r1_verify`
+started and nowhere near exhausting its own 54 — the fix works against a
+real federation, not just the synthesised-response test in
+`apps/join-api/tests/test_job.py`. See `docs/production-delta.md`, "An
+own-server join could not reach `verified: true` — fixed, and now
+re-verified live" and "Wave 3 Task 6: proved live from cold".

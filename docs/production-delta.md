@@ -448,7 +448,14 @@ auto-processed `CLIENT_DELETION_REQUEST` (`status: null`, confirming §11
 finding 1 for the own-server topology too). That is an audit log, the same
 one every canonical member's registrations sit in — not residue.
 
-### An own-server join could not reach `verified: true` — fixed, not yet re-verified live
+### An own-server join could not reach `verified: true` — fixed, and now re-verified live (Wave 3 Task 6, 2026-08-07)
+
+**Update, Wave 3 Task 6:** re-verified live. A real own-server join (PTSB)
+reached `ACTIVE, verified: true` 131s after `resume`, with 7 of 12 shared
+retries left when `join.r1_verify` started and nowhere near exhausting its
+own 54. See "Wave 3 Task 6: proved live from cold" below for the full
+account. The record below is left as originally written — it is the
+diagnosis that led to the fix, not superseded by the confirmation.
 
 **Reproduced on both own-server cycles measured 2026-08-03, and not a
 federation fault.** The join reached `ACTIVE` with `verified: false` and
@@ -726,3 +733,137 @@ land, so there is exactly one re-baselining event instead of one per task.
 `hurl/README.md`'s lite/full scenario-numbering table and prose were not
 touched for the same reason: Task 4 (profile-machinery removal) rewrites
 that material wholesale, and touching it twice would be wasted motion.
+
+## Wave 3 Task 6: proved live from cold, and every estimate replaced (2026-08-07)
+
+The closing task of the wave 3 plan — regenerate the golden corpus, run one
+`scripts/verify.sh --full` from cold (Tasks 1–5 had never been proved live
+together), run a real join and un-join through `apps/join-api`, and replace
+every estimated figure in this document, `README.md` and
+`docs/topology-profile-decision.md` with a measured one.
+
+**Golden regeneration:** `python3 hurl/generate.py --out <tmp> --env
+tests/golden/env.fixture` and `tests/test_golden.py`'s own
+`_generate_hosted_fixture()` both reproduced `tests/golden/deployment/` and
+`tests/golden/hosted-fixture/generated/` byte-identical to what Task 5 already
+committed — nothing to update. Diffed the new `deployment/` tree against the
+pre-Wave-3 `tests/golden/full/` (checked out from `d658566^`) by eye: every
+difference is either MoEYS's removal (its Security Server, its subsystem
+entry, its scenario files, its `vars.env`/`topology.sh` lines) or the
+`"profile"` key's removal from `topology.json` — plus the capability-based
+config filenames Task 3 already renamed (`configs/x-road-bus/2.1.yaml` →
+`federation-core.yaml`, etc., visible in the scenarios' `# Source of truth:`
+comments). No late-surfacing defect from Tasks 1–5.
+
+**`scripts/verify.sh --full` from cold:** green, first time all of Wave 3's
+changes ran together, including the console smoke pass exercising Task 4's
+rewritten `apps/console/truth.py`/`static/app.js`/`static/index.html` for the
+first time live. `2.6.4` (the once-only-exchange negative check) confirmed the
+open tripwire Task 1's ledger flagged for this run: the unauthorised caller is
+now `PROGRESSA/GOV/PLR/ENROLMENT` (moved off the retired MoEYS), and the
+denial came back as the specific X-Road fault
+`{"type": "Server.ServerProxy.AccessDenied", "message": "Request is not
+allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api", ...}` — not a
+transport error, not a hang. `--full`'s own `xroad fixture drift check`
+(`scripts/capture-xroad-fixtures.sh --check`) independently re-captured the
+same fault live and confirmed it still matches the committed fixture.
+
+**A real hosted join and un-join, end to end (`apps/join-api`):** PTSB
+("Progressa Tertiary Scholarship Board"), the fixture identity
+`apps/join-api/tests/test_job.py`'s own `_payload()`/`_own_payload()` already
+use, publishing `awards-api` (the `app-ptsb` mock `docker-compose.yml` already
+ships specifically for this live-proof purpose) with access granted to
+PNEA:EXAMS. `POST /requests` → validated, `SUBMITTED` → `POST
+.../approve` (`decision_reference` supplied) → `ACTIVE, verified: true` in
+**~73s**, `verified_by` a real `r1` call returning `HTTP 404` from the
+service root (the "registry-perfect but dead" check passing on a live
+backend that has no `/` route — exactly the non-X-Road-response proof
+`job.py`'s own comment says any such response gives). `DELETE
+/members/ptsb` walked it back to `RETIRED` in **~3s**, and `configs/` /
+`manifest.yaml` came back git-clean.
+
+**A real own-server join and un-join, end to end — the first live
+confirmation of the `R1_RETRY_BUDGET` fix:** same PTSB identity, re-submitted
+with `security_server.own_server: true` after the hosted record above was
+fully retired (freeing the code). Reached `BLOCKED` almost immediately
+(waiting for `ss-ptsb`); `scripts/join-agent.sh ptsb` brought it healthy in
+**102s** (within the documented 76–100s range); `POST .../resume` ran the
+full own-server bring-up sequence (`ss.bringup_init` through
+`ss.client_register`, then `service.publish`/`service.acl`, then
+`join.r1_verify`) and reached **`ACTIVE, verified: true` in 131s** — the
+shared run budget (`RETRY_BUDGET = 12`) had 7 of its 12 retries left when
+`join.r1_verify` started (i.e. `ss.client_register`'s propagation wait
+consumed about 5, not the 11 of 12 the original defect report measured), and
+`join.r1_verify` itself succeeded well inside its own `R1_RETRY_BUDGET = 54`
+(9-minute) window without needing more than a handful of retries. **This
+closes the open item both this document ("An own-server join could not reach
+`verified: true` — fixed, not yet re-verified live", above) and
+`acceptance/join-member.md` (its own-server case's un-met clause) recorded**:
+the fix genuinely works live, not just in `apps/join-api/tests/test_job.py`'s
+synthesised-response test. Un-joined back to `RETIRED` (fast — the same
+federation-side walk as the hosted case), then the two documented manual
+Docker commands (`docker rm -f ss-ptsb`; `docker volume rm kp2-ptsb-db
+kp2-ptsb-conf kp2-ptsb-archive`).
+
+**A real, live-found defect in `scripts/join-agent.sh` — fixed in the same
+commit.** Bringing `ss-ptsb` up left `cs` and `ca` with `Config.Healthcheck:
+null` — their Docker `HEALTHCHECK` had silently disappeared. Root cause:
+`cs`/`ca`'s healthchecks are defined only in `hurl/compose.hurl.yml` (see
+that file's own comment), never in the base `docker-compose.yml`.
+`join-agent.sh` was invoking `docker compose` with `lib-stack.sh`'s
+`COMPOSE` array (`docker-compose.yml` + `compose.members.yml` only) — and
+`ss-<key>`'s `x-sidecar` anchor declares `depends_on: [cs, ca]`, so bringing
+up `ss-ptsb` still touches `cs`/`ca` via that dependency. Compose computes
+each service's up-to-date-ness from a hash of its *own invocation's* merged
+config; against the narrower `COMPOSE` file set that hash no longer matches
+what `run-linkup.sh` originally started `cs`/`ca` with (under
+`COMPOSE_HURL` = `COMPOSE` + `hurl/compose.hurl.yml`), so Compose silently
+recreated them — using the config that has no healthcheck at all. Harmless
+functionally (their state lives in named volumes, and both came back up
+fine), but a real, reproducible regression in the operator's own health
+signal, discovered only because this task actually ran the manual own-server
+join path live — something no automated tier (`--fast`, `--live`, or even
+`--full`'s own console smoke pass) exercises, because `--full` never
+automates past `BLOCKED` (design decision 8: this API has no Docker socket).
+**Traces to the join-c plan (Wave 1), which wrote `scripts/join-agent.sh`
+using `COMPOSE` from the start** — not something Wave 3 introduced; Wave 3
+only exposed it by being the first `--full`-plus-manual-own-server-join
+proof run since. **Fixed:** `join-agent.sh` now uses `COMPOSE_ALL` (already
+defined in `lib-stack.sh`, already includes `hurl/compose.hurl.yml`), so its
+view of `cs`/`ca` matches what is already running and Compose has no drift
+to "fix" by recreating them.
+
+**Measured, replacing every estimate:**
+
+| | Estimate (pre-Task-6) | Measured (2026-08-07) |
+|---|---|---|
+| `--fast` | ~49s (2026-08-03, 291 tests) | **~53s**, 331 tests [330 passed, 1 skipped] |
+| `--live` | ~78s | **~81s** — confirms, does not correct |
+| `--full` (cold, single D5 topology) | ~670s (~11 min), `docs/topology-profile-decision.md` §2 | **~763s (~12.7 min)** — `out/deploy-timings.txt`: 200s containers-healthy + 404s Hurl admin-API run = 604s deploy subtotal, plus `--fast`/teardown/seed/acceptance/console-smoke around it |
+| RAM (steady state, canonical topology up) | ~11 GB | **~10.9 GiB** (`docker stats --no-stream`: 4× Security Server 2.23–2.25 GiB, `cs` 1.81 GiB, `ca` 88 MiB, `app-pnia`/`app-plr` 32 MiB each) — confirms, does not correct |
+| Hosted join → `ACTIVE, verified: true` | ~64–93s (join-b/join-c) | **~73s** — within noise |
+| Hosted un-join → `RETIRED` | seconds | **~3s** |
+| Own-server bring-up (`join-agent.sh`) | 76–100s | **102s** — within range |
+| Own-server resume → `ACTIVE, verified: true` | not previously reached | **131s**, well inside `R1_RETRY_BUDGET`'s 540s ceiling |
+
+`--fast` and `--live` are within noise of their prior figures — no
+correction needed. RAM likewise confirms the design's ~11 GB estimate almost
+exactly. **`--full` is the one figure that moved**: 763s measured against
+~670s estimated, about 14% (~93s) higher. `docs/topology-profile-decision.md`
+§2 and §5.3 are corrected accordingly — §5.3's crossover point (where
+dropping the profile split stops being a net time win across a plan) moves
+from the estimated N≈4 down to N≈2.9; the qualitative recommendation still
+holds for plans with 1–2 `--full` cycles, is roughly a wash at 3 (not clearly
+a win, as the estimate had it), and is a net loss at 4+. `README.md`'s
+`--fast`/`--live`/`--full`/join timing paragraphs and this section together
+are the two places those figures are now recorded as measured rather than
+estimated.
+
+**Un-join byte-identity clause, confirmed against the single golden:** after
+both un-joins above, `hurl/topology.json` diffed byte-identical against
+`tests/golden/deployment/topology.json`, and `scripts/acceptance.sh` itself
+confirmed it: `PASS 2.7.unjoin(PTSB)` and `PASS 2.7.unjoin.topology`, discovered
+generically from the newest `RETIRED` record in `out/join/*.json` (the
+own-server one) — there is no more `lite`/`full` choice to make (Task 4/5
+already collapsed that), so this is simply "byte-identical to the golden,"
+full stop.

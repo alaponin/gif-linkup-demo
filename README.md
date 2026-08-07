@@ -28,8 +28,9 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   the *rendered* Compose config, profiles and `${VAR}` interpolation
   resolved, which is what makes it worth having, and that read needs
   neither a running Docker daemon nor `.env` — confirmed 2026-07-31 with the
-  daemon itself stopped, see `tests/test_tiers.py`) **~49s** (measured
-  2026-08-03, 291 tests [290 passed, 1 skipped] — was ~29s/203 tests on
+  daemon itself stopped, see `tests/test_tiers.py`) **~53s** (measured
+  2026-08-07, Wave 3 Task 6, 331 tests [330 passed, 1 skipped], post-reduction
+  — was ~49s/291 tests on 2026-08-03, ~29s/203 tests on
   2026-08-02, ~16s/66 tests on 2026-08-01 and ~8s/48 tests on 2026-07-28
   before that; the growth is tests added across several plans, not a
   regression in any single one of them, but note it compounds: `--full`
@@ -38,12 +39,28 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   `--live`
   (`--fast`, then `acceptance.sh` against a running stack; refuses rather
   than deploying one if nothing is reachable)
-  **~78s** (measured 2026-08-03, two consecutive runs, both 78s — the
-  earlier "~29s" figure predated both `--fast`'s growth and 2.7's own
+  **~81s** (re-measured 2026-08-07, Wave 3 Task 6, against the single D5
+  topology, confirming — not materially different from — the earlier ~78s
+  measured 2026-08-03, two consecutive runs, both 78s — the earlier "~29s"
+  figure predated both `--fast`'s growth and 2.7's own
   checks); `--full` (purge, deploy, seed, acceptance, console smoke — the
-  reproducibility proof) **~872s (~14.5 min)** — measured 2026-08-03, two
-  independent cold runs (825s, 918s), join-c Task 5, all four green,
-  unchanged within noise from the earlier ~918s baseline. See
+  reproducibility proof) **~763s (~12.7 min)** — measured cold 2026-08-07,
+  Wave 3 Task 6, the first `--full` run against the single D5 topology (four
+  Security Servers, no lite/full split): `out/deploy-timings.txt`'s own
+  phase split was 200s containers-healthy + 404s Hurl admin-API run = 604s
+  deploy subtotal, plus `--fast` (~53s), teardown, seeding, acceptance and
+  the console smoke pass around it for the 763s wall-clock total. This
+  **supersedes** two numbers: the older **~872s (~14.5 min)** figure
+  (measured 2026-08-03, two independent cold runs of the now-retired
+  five-server `full` profile, 825s/918s) it replaces outright — that
+  topology no longer exists — and `docs/topology-profile-decision.md`
+  §2/§5.3's **~670s estimate** for this exact (T1/D5) topology, which this
+  measurement shows ran about 14% (~93s) longer live than estimated; see
+  that document for the corrected per-plan arithmetic. RAM: **~10.9 GiB**
+  measured live (`docker stats --no-stream`, this same run's steady state:
+  four Security Servers ~2.2–2.3 GiB each, Central Server ~1.8 GiB, Test CA
+  ~88 MiB, two mock providers ~32 MiB each) — within noise of the ~11 GB
+  design estimate it confirms rather than corrects. See
   `docs/production-delta.md` "An own-server join and its un-join, live end
   to end". There is one topology now (Wave 3 Task 4, design decision 5) —
   no lite/full split to develop against or measure separately; run
@@ -74,6 +91,27 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   convenient: **`--live` stays vacuous-by-default**, and a real join is a
   deliberate, separate, manual procedure (`runbook.md`'s "Join via the API
   (automated)"), not something bolted onto the routine `--live` tier.
+
+  ***Wave 3 Task 6, post-reduction, both re-run live end to end on the
+  single D5 topology (2026-08-07):*** a hosted join (PTSB, `awards-api`
+  published and granted to PNEA:EXAMS) reached `ACTIVE, verified: true` in
+  **~73s** and un-joined back to `RETIRED` in **~3s** — both within noise
+  of the figures above. An own-server join (same PTSB identity,
+  `security_server.own_server: true`) reached `BLOCKED` almost immediately,
+  took **102s** for `scripts/join-agent.sh ptsb` to bring `ss-ptsb` healthy
+  (within the documented 76–100s range), and **131s** from `resume` to
+  `ACTIVE, verified: true` — the first live confirmation that
+  `apps/join-api/job.py`'s `R1_RETRY_BUDGET = 54` fix (join-c plan Task 5
+  review fix 2) actually works: the shared run budget had 7 of 12 retries
+  left when `join.r1_verify` ran, and `join.r1_verify` itself needed only a
+  handful of its own 54, nowhere near exhausting it. This closes the open
+  item `acceptance/join-member.md` and `docs/production-delta.md` both
+  recorded ("fixed, not yet re-verified live") — an own-server join really
+  does reach `verified: true` now, not just `ACTIVE`. Un-joined cleanly back
+  to `RETIRED` plus the two documented `docker rm`/`docker volume rm`
+  commands. See `docs/production-delta.md`'s own record of this run for the
+  full detail, including a real defect it found in `scripts/join-agent.sh`
+  (fixed in the same commit).
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — X-Road
 version pins, network bind, and (`cs_digest`/`ss_digest`/`testca_tag`) the
