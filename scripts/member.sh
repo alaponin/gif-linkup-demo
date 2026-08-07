@@ -14,11 +14,11 @@ Usage: scripts/member.sh list
 
   list          Print the deployed member set (key, origin, server, ports),
                 read from hurl/topology.json.
-  remove <key>  Delete configs/member-<key>/ and manifest.yaml's
-                identity.members.<key> entry, then regenerate. Refuses on a
-                canonical member. Does not touch a running federation --
-                the member stays registered there until
-                scripts/teardown.sh --purge.
+  remove <key>  Delete configs/member-<key>/, onboarding/<key>/ and
+                manifest.yaml's identity.members.<key> entry, then
+                regenerate. Refuses on a canonical member. Does not touch a
+                running federation -- the member stays registered there
+                until scripts/teardown.sh --purge.
   drift <key>   Re-fetch a joined member's current OpenAPI spec and diff its
                 endpoint set against the baseline captured at join time
                 (design spec §2.4/§5.4). No auth, no HTTP to the join API --
@@ -62,6 +62,13 @@ PY
   [ "$origin" = "canonical" ] && fail "'$key' is a canonical member -- the canonical five never renumber or leave. Only a joined member can be removed."
 
   rm -r "$dir"
+  # The onboarding record is demo evidence that this member passed its
+  # gates, not a message log -- the inverse of the message-log archive
+  # volume's own retention note (production-delta.md's un-join row: deleting
+  # THAT before a statutory retention period elapses converts a retirement
+  # into an evidence gap). A removed member's onboarding record has nothing
+  # left to be evidence of, so deleting it here is correct, not an oversight.
+  rm -rf "$PACK_DIR/onboarding/$key"
 
   python3 - "$key" "$PACK_DIR/manifest.yaml" <<'PY'
 import sys, pathlib

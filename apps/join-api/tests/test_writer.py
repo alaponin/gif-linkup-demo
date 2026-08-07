@@ -323,3 +323,135 @@ def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     assert manifest["identity"]["members"]["ptsb"]["origin"] == "joined"
     # generate.py ran for real too -- topology.json is one of its outputs.
     assert (pack / "hurl" / "topology.json").exists()
+
+
+# -- onboarding/<key>/ (Wave 4 Task 2, G-07) -----------------------------------
+
+
+def test_render_gates_table_links_sla_when_the_member_has_services():
+    text = writer.render_gates_table(True)
+    assert "[`03-sla/`](03-sla/)" in text
+    assert "not implemented in this demo" in text
+
+
+def test_render_gates_table_names_the_consumer_only_absence():
+    text = writer.render_gates_table(False)
+    assert "consumer-only member has none" in text
+    assert "[`03-sla/`]" not in text
+
+
+def test_render_requirements_record_shows_every_stated_item():
+    payload = _payload()
+    text = writer.render_requirements_record(payload.member_requirements)
+    assert "Jane Doe" in text
+    assert "consent" in text
+    assert "| yes |" in text
+
+
+def test_render_requirements_record_names_where_an_unset_lawful_basis_is_satisfied():
+    payload = _payload(member_requirements=_requirements(lawful_basis=None))
+    text = writer.render_requirements_record(payload.member_requirements)
+    assert "satisfied by this member's published services" in text
+
+
+def test_render_sla_record_carries_every_term_and_the_signatory():
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "sla": _sla()}],
+    )
+    text = writer.render_sla_record(payload.services[0])
+    assert "awards-api" in text
+    assert "99.5% monthly uptime" in text
+    assert "Signed by: Head of IT" in text
+
+
+def test_render_registration_record_shows_hosting_and_acl():
+    payload = _payload(requested_access=["PROGRESSA/GOV/PNIA/IDENTITY"])
+    text = writer.render_registration_record(
+        subsystem=payload.subsystem,
+        security_server=payload.security_server,
+        acl_subjects=["PROGRESSA/GOV/PNIA/IDENTITY"],
+        request_id="abc123",
+    )
+    assert "SCHOLARSHIP" in text
+    assert "hosted on `ss-plr`" in text
+    assert "PROGRESSA/GOV/PNIA/IDENTITY" in text
+    assert "`abc123`" in text
+
+
+def test_render_registration_record_names_an_own_server_join_with_no_request_id():
+    payload = _payload(security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "own_server": True})
+    text = writer.render_registration_record(
+        subsystem=payload.subsystem,
+        security_server=payload.security_server,
+        acl_subjects=[],
+        request_id=None,
+    )
+    assert "runs its own Security Server" in text
+    assert "registered by hand" in text
+
+
+def test_apply_real_renders_the_onboarding_tree_for_a_provider(tmp_path):
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
+    )
+    writer.apply_real(pack, "ptsb", payload, repo_root=repo_root, request_id="req-123")
+
+    onboarding = pack / "onboarding" / "ptsb"
+    assert (onboarding / "00-gates.md").exists()
+    assert (onboarding / "02-requirements.md").exists()
+    assert (onboarding / "03-sla" / "awards-api.md").exists()
+    registration = (onboarding / "05-registration.md").read_text()
+    assert "req-123" in registration
+    assert "PROGRESSA/GOV/PNEA/EXAMS" in registration
+
+
+def test_apply_real_renders_no_sla_directory_for_a_consumer_only_member(tmp_path):
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+
+    writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root, request_id="req-456")
+
+    onboarding = pack / "onboarding" / "ptsb"
+    assert (onboarding / "00-gates.md").exists()
+    assert not (onboarding / "03-sla").exists()
+
+
+def test_apply_real_refuses_when_onboarding_is_dirty(tmp_path):
+    """Step 4: the refusal-when-dirty check now watches onboarding/ too, not
+    just configs/ and manifest.yaml."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+    (pack / "onboarding").mkdir()
+    (pack / "onboarding" / "stray.md").write_text("uncommitted\n")
+
+    with pytest.raises(writer.DirtyCheckoutError):
+        writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+    assert not (pack / "configs" / "member-ptsb").exists()

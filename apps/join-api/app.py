@@ -507,7 +507,7 @@ def approve_request(
 
     payload = schema.JoinPayload(**record["payload"])
     try:
-        writer.apply_real(PACK_DIR, payload.code.lower(), payload)
+        writer.apply_real(PACK_DIR, payload.code.lower(), payload, request_id=request_id)
     except writer.DirtyCheckoutError as exc:
         raise HTTPException(409, str(exc)) from exc
     except writer.GitCheckFailure as exc:

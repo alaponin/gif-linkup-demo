@@ -18,11 +18,15 @@ _run_generate):
 
   apply_real()     -- the same sequence, against the real pack_dir. Refuses
                      first (DirtyCheckoutError) if `git status --porcelain
-                     configs/ manifest.yaml` is not clean (spec S9's
-                     mitigation: a join must never stack on top of
+                     configs/ manifest.yaml onboarding/` is not clean (spec
+                     S9's mitigation: a join must never stack on top of
                      uncommitted work of unclear provenance). Called by
                      app.py's POST /requests/{id}/approve, before the job
-                     (job.py) starts.
+                     (job.py) starts. Once generate.py accepts the result,
+                     also renders onboarding/<key>/ (Wave 4 Task 2, G-07) --
+                     render_onboarding_tree() is the same function
+                     scripts/render-onboarding.sh calls for the three
+                     canonical members (Wave 4 Task 3).
 
 Design spec S9 is explicit that config-writing happens "on APPROVED, before
 any live mutation" -- that governs apply_real only. dry_run_diff runs at
@@ -41,7 +45,7 @@ import tempfile
 
 import yaml
 
-from schema import JoinPayload
+from schema import JoinPayload, MemberRequirements, SecurityServer, Service
 
 # Everything hurl/generate.py's main() reads via load()/discover_members()/
 # TEMPLATES/read_env() (hurl/generate.py: PACK/HURL_DIR/ENV_PATH at the top,
@@ -238,6 +242,161 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
     return "".join(lines[:end] + entry_block.splitlines(keepends=True) + lines[end:])
 
 
+# -- onboarding/<key>/ (Wave 4 Task 2, G-07) -----------------------------------
+#
+# Four generated files per member -- not the onboarding path's ten (D3: no
+# curriculum change). Never hand-maintained (P2, design decision 3): an
+# absent file means the gate has not been passed, whatever the calendar
+# says, so nothing here backfills a plausible-looking stub.
+
+_GATES_TABLE = """\
+# Onboarding gates
+
+Every row is a gate exit (`docs/onboarding-alignment-design.md`'s P2: a named
+absence teaches as well as an implementation). A missing file means the gate
+has not been passed, whatever the calendar says.
+
+| Gate | Exit test | Accountable | Status |
+| --- | --- | --- | --- |
+| Member Requirements (5.2) | Checklist stated by the applicant | Operating Authority | [`02-requirements.md`](02-requirements.md) |
+| SLA (5.3) | Signed SLA per published service | Operating Authority | {sla_status} |
+| Registration (5.4) | Subsystem registered, ACL granted | Operating Authority | [`05-registration.md`](05-registration.md) |
+| Application (G0) | Application + signed membership agreement | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+| Admission (G1) | Minuted admission decision | Steering Committee | not implemented in this demo -- see `docs/production-delta.md` |
+| Certificates (G3) | CA/TSA issuance record, member-verified | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+| Go-live (G6) | Monitored first production transactions | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+"""
+
+
+def render_gates_table(has_services: bool) -> str:
+    """00-gates.md -- one table, not four near-identical stub files
+    (simplification pass, 2026-08-05): every gate KP2 teaches or exceeds,
+    with the file that proves it or a named absence pointing at
+    production-delta.md. Identical for every member except the SLA row,
+    which depends on whether this member published anything to sign one
+    for."""
+    sla_status = (
+        "[`03-sla/`](03-sla/)"
+        if has_services
+        else (
+            "no services published -- a consumer-only member has none "
+            "(TK-IO-09 is written for providers; the onboarding path's own "
+            "§8 open question 5)"
+        )
+    )
+    return _GATES_TABLE.format(sla_status=sla_status)
+
+
+def render_requirements_record(requirements: MemberRequirements) -> str:
+    """02-requirements.md -- Module 5.2's six-item checklist, stated by the
+    applicant, not derived (Wave 4 design decision 1)."""
+    lawful_basis = requirements.lawful_basis or (
+        "satisfied by this member's published services (each service's own "
+        "`lawful_basis`, Wave 2 Task 3) -- see `03-sla/`"
+    )
+    return (
+        "# Member Requirements -- Module 5.2\n\n"
+        "The checklist Module 5.2 teaches: what an agency must have in place "
+        "before it can join.\n\n"
+        "| Item | Stated |\n"
+        "| --- | --- |\n"
+        f"| Security Server in place | {'yes' if requirements.has_security_server else 'no'} |\n"
+        f"| Registered identity on the bus | {'yes' if requirements.has_registered_identity else 'no'} |\n"
+        f"| Standards portfolio adopted | {'yes' if requirements.standards_portfolio_adopted else 'no'} |\n"
+        f"| Data cleaned and conformed to the schema | {'yes' if requirements.data_conformant else 'no'} |\n"
+        f"| Lawful basis for its exchanges | {lawful_basis} |\n"
+        f"| Named technical contact | {requirements.technical_contact} |\n"
+    )
+
+
+def render_sla_record(service: Service) -> str:
+    """03-sla/<service-code>.md -- Module 5.3's five-term template, "reuse
+    the same template for every service on the bus" (design decision 2).
+    Caller guarantees service.sla is set (validate.py's sla_required check,
+    or Task 3's canonical configs)."""
+    sla = service.sla
+    assert sla is not None, f"render_sla_record called for {service.code!r} with no sla block"
+    return (
+        f"# SLA -- {service.code}\n\n"
+        "Module 5.3's template, signed and reused for every service on the bus.\n\n"
+        "| Term | Target |\n"
+        "| --- | --- |\n"
+        f"| Availability | {sla.availability} |\n"
+        f"| Response time | {sla.response_time} |\n"
+        f"| Support hours | {sla.support_hours} |\n"
+        f"| Incident response | {sla.incident_response} |\n"
+        f"| Change notice | {sla.change_notice} |\n\n"
+        f"Signed by: {sla.signatory}\n"
+    )
+
+
+def render_registration_record(
+    *,
+    subsystem: str,
+    security_server: SecurityServer,
+    acl_subjects: list[str],
+    request_id: str | None,
+) -> str:
+    """05-registration.md -- Module 5.4's registration gate: subsystem,
+    Security Server, the ACL subjects this member's services granted, and
+    the join request that did it (None for a canonical member, registered
+    by hand via prompts/register-member.md, never through the join API)."""
+    if security_server.own_server:
+        hosting = "runs its own Security Server"
+    else:
+        hosting = f"hosted on `{security_server.hosted_on}`"
+    acl = ", ".join(f"`{s}`" for s in acl_subjects) if acl_subjects else "none"
+    request_line = (
+        f"`{request_id}`"
+        if request_id
+        else "registered by hand (`prompts/register-member.md`) -- no join request"
+    )
+    return (
+        "# Registration -- Module 5.4\n\n"
+        "| Field | Value |\n"
+        "| --- | --- |\n"
+        f"| Subsystem | {subsystem} |\n"
+        f"| Security Server | {security_server.code} (`{security_server.dns_name}`) |\n"
+        f"| Hosting | {hosting} |\n"
+        f"| ACL subjects granted | {acl} |\n"
+        f"| Join request id | {request_line} |\n"
+    )
+
+
+def render_onboarding_tree(
+    target_dir: pathlib.Path,
+    key: str,
+    payload: JoinPayload,
+    *,
+    request_id: str | None = None,
+) -> None:
+    """Writes onboarding/<key>/'s four files under target_dir. Shared by
+    apply_real() (a real join) and scripts/render-onboarding.sh (the three
+    canonical members, Wave 4 Task 3) -- "the same writer.py code path a
+    join uses" for both, so there is exactly one place that decides what an
+    onboarding record looks like."""
+    onboarding_dir = target_dir / "onboarding" / key
+    onboarding_dir.mkdir(parents=True)
+    (onboarding_dir / "00-gates.md").write_text(render_gates_table(bool(payload.services)))
+    (onboarding_dir / "02-requirements.md").write_text(render_requirements_record(payload.member_requirements))
+    if payload.services:
+        sla_dir = onboarding_dir / "03-sla"
+        sla_dir.mkdir()
+        for svc in payload.services:
+            (sla_dir / f"{svc.code}.md").write_text(render_sla_record(svc))
+    acl_subjects = sorted(
+        {subject for svc in payload.services for subject in svc.access} | set(payload.requested_access)
+    )
+    (onboarding_dir / "05-registration.md").write_text(
+        render_registration_record(
+            subsystem=payload.subsystem,
+            security_server=payload.security_server,
+            acl_subjects=acl_subjects,
+            request_id=request_id,
+        )
+    )
+
+
 def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> None:
     """The one write-the-config-and-manifest-entry routine, shared by both
     dry_run_diff (target_dir is a temp copy) and apply_real (target_dir is
@@ -320,7 +479,13 @@ def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
     try:
         rel = pack_dir.relative_to(repo_root)
         proc = subprocess.run(
-            ["git", "-C", str(repo_root), "status", "--porcelain", str(rel / "configs"), str(rel / "manifest.yaml")],
+            # Wave 4 Task 2 Step 4 (G-07): the live-but-uncommitted window
+            # production-delta.md already documents now covers a third tree --
+            # apply_real() writes onboarding/<key>/ too, so the refusal-when-
+            # dirty check must watch it exactly like configs/ and
+            # manifest.yaml, not just the two trees that predate this wave.
+            ["git", "-C", str(repo_root), "status", "--porcelain",
+             str(rel / "configs"), str(rel / "manifest.yaml"), str(rel / "onboarding")],
             capture_output=True,
             text=True,
             check=True,
@@ -341,6 +506,7 @@ def apply_real(
     payload: JoinPayload,
     *,
     repo_root: pathlib.Path | None = None,
+    request_id: str | None = None,
 ) -> None:
     """The real write-then-regenerate sequence, against the real pack_dir --
     what actually makes the join real. repo_root defaults to three levels
@@ -350,19 +516,21 @@ def apply_real(
     relying on that exact nesting.
 
     Refuses (DirtyCheckoutError) before writing anything if `git status
-    --porcelain configs/ manifest.yaml` is not clean (spec S9) -- a join
-    must never stack on top of uncommitted work of unclear provenance.
+    --porcelain configs/ manifest.yaml onboarding/` is not clean (spec S9) --
+    a join must never stack on top of uncommitted work of unclear provenance.
 
     Called by app.py's POST /requests/{id}/approve, before the job starts --
-    the point a request moves SUBMITTED -> APPROVED -> RUNNING.
+    the point a request moves SUBMITTED -> APPROVED -> RUNNING. request_id is
+    the approved request's own id, threaded through to
+    onboarding/<key>/05-registration.md's "join request id" field.
     """
     repo_root = repo_root or pack_dir.resolve().parents[2]
     dirty = _git_status_dirty(repo_root, pack_dir)
     if dirty.strip():
         raise DirtyCheckoutError(
-            "refusing to start a join job: configs/ or manifest.yaml already "
-            f"has uncommitted changes (spec S9) -- commit or discard them "
-            f"first:\n{dirty}"
+            "refusing to start a join job: configs/, manifest.yaml or "
+            f"onboarding/ already has uncommitted changes (spec S9) -- commit "
+            f"or discard them first:\n{dirty}"
         )
     try:
         _write_member(pack_dir, key, payload)
@@ -374,3 +542,7 @@ def apply_real(
     proc = _run_generate(pack_dir / "hurl" / "generate.py")
     if proc.returncode != 0:
         raise GenerateFailure(proc.stderr, proc.returncode)
+    # Only after generate.py accepts the result -- a rejected/failed config
+    # write must not leave onboarding evidence for a member that was never
+    # actually created.
+    render_onboarding_tree(pack_dir, key, payload, request_id=request_id)
