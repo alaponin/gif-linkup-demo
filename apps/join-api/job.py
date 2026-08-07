@@ -764,7 +764,8 @@ def _sign_key_id(step: JobStep, captures: dict) -> str | None:
     """This member's SIGN key id on the token PROBE_SS_SIGN_KEY just read, or
     None if it has none. Correlated by keys[].certificates[].owner_id, NEVER
     by label: a shared host's token carries one identically-labelled "Sign
-    key" per hosted member (four, live, on ss-plr under profile: lite --
+    key" per hosted member (security_server.hosted_on; four, live, on
+    ss-plr under the since-retired lite profile at the time --
     PROBE_SS_SIGN_KEY.hurl.tmpl's own comment, confirmed join-a plan Task 5
     Step 4).
 

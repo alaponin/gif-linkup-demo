@@ -34,9 +34,10 @@ fi
 mkdir -p "$OUT_DIR"
 
 # PNIA's own admin UI port -- resolved via HOST_SS, not hardcoded to
-# ss-pnia, because under profile: lite PNIA is hosted on ss-plr instead
-# (the same lite/full trap scripts/acceptance.sh already documents and
-# avoids for the same reason).
+# ss-pnia, because a member with security_server.hosted_on set (a joined,
+# hosted member) would be reachable via its host's server instead (the same
+# resolution scripts/acceptance.sh already documents and relies on for the
+# same reason).
 PNIA_SS=${HOST_SS[PNIA:IDENTITY]}
 PLR_SS=${HOST_SS[PLR:ENROLMENT]}
 

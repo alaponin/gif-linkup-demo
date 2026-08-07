@@ -7,7 +7,7 @@ building_block: member-pnia
 # Dogfooded 2026-07-26.
 security_server:
   code: SS-PNIA
-  dns_name: ss-pnia            # lite profile: hosted on ss-plr instead
+  dns_name: ss-pnia
 services:
   # type/forwarding URL/enabled/tls_verify: not config fields, see 2.2.yaml's
   # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.

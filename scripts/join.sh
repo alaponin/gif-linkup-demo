@@ -27,9 +27,8 @@ if git_common_dir=$(cd "$PACK_DIR" && git rev-parse --git-common-dir 2>/dev/null
   KP2_GIT_COMMON_DIR=$(cd "$PACK_DIR" && cd "$git_common_dir" && pwd)
   export KP2_GIT_COMMON_DIR
 fi
-# COMPOSE already carries --profile full/lite from deployment.yaml (lib-stack.sh);
-# --profile demo is additive, and only join-api is ever targeted below, so
-# this never starts or restarts the federation itself.
+# --profile demo is additive to COMPOSE (lib-stack.sh); only join-api is ever
+# targeted below, so this never starts or restarts the federation itself.
 COMPOSE_DEMO=("${COMPOSE[@]}" --profile demo)
 
 case "${1:-}" in

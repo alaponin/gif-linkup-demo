@@ -1,11 +1,11 @@
 """apps/console/truth.py -- the single reader of pack truth.
 
-Loads deployment.yaml (profile), hurl/topology.json (hosts, hosting,
-services, configured ACLs) and configs/x-road-bus/once-only-exchange.yaml
-(the exchange: calls, r1 paths, prefills, the four layer_* strings,
-asked_once, negative_check). The console never re-derives topology or
-exchange semantics -- it renders what this module loads, and this module
-never invents a value the files don't already state.
+Loads hurl/topology.json (hosts, hosting, services, configured ACLs) and
+configs/x-road-bus/once-only-exchange.yaml (the exchange: calls, r1 paths,
+prefills, the four layer_* strings, asked_once, negative_check). The console
+never re-derives topology or exchange semantics -- it renders what this
+module loads, and this module never invents a value the files don't already
+state.
 
 Two things confirmed live before writing this (2026-07-26), both load-bearing
 here:
@@ -17,12 +17,14 @@ here:
     is a static string (today "http://ss-plr:8080") that this module never
     trusts directly -- entrypoints are always resolved from topology.json's
     hosted_on instead, the same mechanism the consumer entrypoint above
-    uses. This still matters even though PLR:ENROLMENT (the negative check's
-    unauthorised caller since Wave 3 Task 1) happens to be self-hosted in
-    every profile: the earlier caller, MoEYS, was not -- under profile:
-    lite it was hosted on ss-plr, and a literal "http://ss-moeys:8080"
-    would have been wrong there. Resolving from topology.json rather than
-    special-casing per member is what keeps that class of bug out.
+    uses. This mattered under the old lite profile, where the negative
+    check's unauthorised caller could be hosted rather than self-standing
+    (MoEYS, before it was retired in Wave 3 Task 1) -- a literal
+    "http://ss-moeys:8080" would have been wrong there. With one topology
+    (Wave 3 Task 4, design decision 5) every canonical member is
+    self-hosted, but resolving from topology.json rather than
+    special-casing per member is still what a future hosted (joined)
+    member's entrypoint depends on, so the mechanism stays.
 """
 from __future__ import annotations
 
@@ -64,7 +66,6 @@ class FormField:
 @dataclasses.dataclass(frozen=True)
 class Truth:
     pack_dir: pathlib.Path
-    profile: str
     topology: dict
     exchange: dict
     form_fields: list[FormField]
@@ -111,9 +112,6 @@ def _subsystem_code_for_member(topology: dict, member_code: str) -> str:
 
 def load_truth(pack_dir: str | pathlib.Path) -> Truth:
     pack_dir = pathlib.Path(pack_dir)
-
-    deployment = yaml.safe_load((pack_dir / "deployment.yaml").read_text())
-    profile = deployment.get("profile", "full")
 
     topo_path = pack_dir / "hurl" / "topology.json"
     if not topo_path.exists():
@@ -198,7 +196,6 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
 
     return Truth(
         pack_dir=pack_dir,
-        profile=profile,
         topology=topology,
         exchange=exchange,
         form_fields=form_fields,

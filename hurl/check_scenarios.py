@@ -181,12 +181,12 @@ def main() -> None:
                 "members belong in the frozen identifiers: cross-pack contract"
             )
 
-    # hurl/topology.json (apps/console's only source of topology) must exist,
-    # match the deployed profile, and describe at least the canonical members
-    # frozen in manifest.yaml -- the same class of agreement check as
-    # identity:/identifiers: above. A joined member is allowed to add a
-    # subsystem topology.json knows about that identifiers: doesn't (design
-    # decision 2) -- it's a superset relationship, not exact equality.
+    # hurl/topology.json (apps/console's only source of topology) must exist
+    # and describe at least the canonical members frozen in manifest.yaml --
+    # the same class of agreement check as identity:/identifiers: above. A
+    # joined member is allowed to add a subsystem topology.json knows about
+    # that identifiers: doesn't (design decision 2) -- it's a superset
+    # relationship, not exact equality.
     deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
 
     # A spec that would publish the stack outside this host, without saying
@@ -204,9 +204,6 @@ def main() -> None:
         note("hurl/topology.json does not exist -- run hurl/generate.py")
     else:
         topo = json.loads(topo_path.read_text())
-        expected_profile = deployment.get("profile", "full")
-        if topo.get("profile") != expected_profile:
-            note(f"topology.json profile ({topo.get('profile')!r}) disagrees with deployment.yaml ({expected_profile!r})")
         topo_ids = {s["id"] for s in topo.get("subsystems", [])}
         manifest_ids = set()
         for member_str in ids["members"]:

@@ -14,16 +14,14 @@ host, and run the once-only exchange that proves it. Demo only — see
   automatically before it does anything expensive; running it by hand here
   first is what turns a mid-deploy failure into a pre-deploy one.
 - Docker ≥ 24 with Docker Compose ≥ 2.24.
-- ~13 GB RAM in steady state for the full profile (5 Security Servers), measured
-  P0 2026-07-25 on a 16 GB colima VM via `docker stats --no-stream`: ~2.0–2.3 GB
-  per Security Server (≈10.7 GB), 1.7 GB for the Central Server, under 100 MB
-  each for the Test CA and the three mock providers. Fits in 16 GB with modest
-  headroom (~3 GB) — tight enough that a smaller host should prefer the lite
-  profile: ~8.9 GB (measured P5, 2026-07-26). Set it in `deployment.yaml`
-  (`profile: lite`, not `.env` — deployment shape lives in `deployment.yaml`,
-  secrets stay in `.env`): the scripts then skip the compose "full" profile,
-  ss-pnia/ss-moeys do not run, and their subsystems are hosted on ss-plr
-  (cross-server calls stay real: ss-pnea → ss-plr).
+- ~13 GB RAM in steady state, measured P0 2026-07-25 on a 16 GB colima VM via
+  `docker stats --no-stream` for the 5-Security-Server topology of that time:
+  ~2.0–2.3 GB per Security Server (≈10.7 GB), 1.7 GB for the Central Server,
+  under 100 MB each for the Test CA and the mock providers. Fits in 16 GB
+  with modest headroom (~3 GB). One Security Server fewer since (MoEYS
+  retired, Wave 3 Task 1) — figure not re-measured for the 4-server
+  topology, but expect roughly 2 GB less. There is one topology now (Wave 3
+  Task 4, design decision 5): no smaller alternative to opt into.
 - `curl`, `jq`, `python3` on the workstation.
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
@@ -95,8 +93,8 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   `409 init_already_initialized` on a persisted CS, and every later
   registration call would fail the same way). Resume with the containers
   directly: `docker compose -f docker-compose.yml -f hurl/compose.hurl.yml
-  --profile full up -d` — the persisted `/etc/xroad` state in each volume is
-  everything the federation needs; nothing else has to run.
+  up -d` — the persisted `/etc/xroad` state in each volume is everything the
+  federation needs; nothing else has to run.
 - `scripts/teardown.sh --purge` — also deletes the volumes: full reset to zero.
   The reproducibility proof (P5) is: `--purge`, redeploy (`hurl/run-linkup.sh`,
   the from-zero path), reseed, acceptance green.
@@ -147,9 +145,9 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   `GET /requests/{id}` (or watch the tab; it polls itself) until `state` is
   `ACTIVE` — a hosted join with one published service and one ACL grant
   measured **~93s** end to end (approve to `ACTIVE, verified: true`,
-  join-b Task 6's live proof, `deployment.yaml: profile: lite`), well under
-  the ~2-minute threshold past which `--live` would stop being cheap enough
-  to run routinely (see README.md's `--live` tier note).
+  join-b Task 6's live proof), well under the ~2-minute threshold past
+  which `--live` would stop being cheap enough to run routinely (see
+  README.md's `--live` tier note).
   - **Recovering a `FAILED` job:** the record's `error` names the step and
     the last thing observed. Fix the underlying cause (a real federation
     problem, not usually this API's own code — see the OCSP trap below),

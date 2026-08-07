@@ -102,14 +102,13 @@ let TOPOLOGY = null; // cached from the one /api/topology fetch on load --
 
 async function loadTopologyBadge() {
   TOPOLOGY = await api("/api/topology");
-  $("#profile-badge").textContent = `profile: ${TOPOLOGY.profile}`;
   const total = TOPOLOGY.security_servers.length;
   const up = TOPOLOGY.security_servers.filter(s => s.reachable).length;
   $("#context-health").textContent = `Federation: ${up}/${total} reachable`;
   $("#context-health").classList.toggle("denied-label", up < total);
 }
 
-// -- persistent context bar: current learner, federation health, profile,
+// -- persistent context bar: current learner, federation health,
 // journal state, reset -- all visible regardless of which tab is open
 // (UX plan Task 9, Step 2). Permissions state comes from
 // refreshJournalBanner()'s own poll of /api/acl.dirty, not a second one.

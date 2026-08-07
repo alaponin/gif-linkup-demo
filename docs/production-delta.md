@@ -247,6 +247,12 @@ above are precisely the four sequences that would run concurrently.
 
 ## Lite profile's full cycle, measured (two-decisions plan Task 1/T2)
 
+**Retired 2026-08-06 (Wave 3 Task 4, design decision 5):** `profile: lite`
+no longer exists — one topology (full minus MoEYS) remains, and
+`deployment.yaml` has no `profile:` key to set. The measurements below are
+kept as historical record of what the two-tier topology cost while it
+existed; nothing past this point is an instruction to set `profile: lite`.
+
 The full-profile figures above measure everything except the alternative:
 nobody had timed `--full` under `profile: lite` (three Security Servers —
 PDGA, PLR, PNEA — instead of five, PNIA and MoEYS hosted as clients on
@@ -608,6 +614,11 @@ and is: the Central Server forgets the member whether or not anyone ever
 turns the member's server off.
 
 ## The Task 6 gate: does lite plus an own-server join cover `profile: full`? (join-c plan Task 5)
+
+**Historical: `profile: lite`/`profile: full` were retired 2026-08-06 (Wave
+3 Task 4, design decision 5), by a different route than the one join-c
+Task 6 (referenced below) considered — this section records why join-c's
+own Task 6 was gated off at the time, not a live choice today.**
 
 The join-c plan's Task 6 acts on this sentence, so it is stated flatly first:
 

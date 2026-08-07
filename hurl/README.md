@@ -55,7 +55,7 @@ thing NIIS's `run-hurl.sh` does. The numbering is the execution order:
 | --- | --- |
 | `00`–`03` | Central Server: initialise `PROGRESSA`, member class `GOV`, signing keys, Test CA + OCSP + TSA, members and subsystems, management service provider, download the anchor |
 | `10` | management Security Server at PDGA: certificates, registration, the management WSDL and the owners-group ACL. Captures `ca_name`, `tsa_name`, `tsa_url` for everything after it |
-| `20`–`23` | PNIA, PLR, MoEYS, PNEA: anchor, init, AUTH + SIGN keys, Test CA signing, certificate import, registration, approval, subsystem client |
+| `20`–`23` | PNIA, PLR, PNEA: anchor, init, AUTH + SIGN keys, Test CA signing, certificate import, registration, approval, subsystem client (`22` was MoEYS's; retired, reserved, not reused -- see `generate.py`'s `PINNED_SCENARIO_NO`) |
 | `30`–`32` | OpenAPI 3 service descriptions, enable, access rights |
 
 Which module each scenario realises is recorded in `manifest.yaml` (`scenarios:`
@@ -82,8 +82,7 @@ same PACK-not-HURL_DIR distinction already documented at line 32 for
 `manifest.yaml` and `configs/`.
 
 The golden corpus (below) is what makes editing a template safe: every
-change is checked against a byte-exact baseline for both profiles before it
-can be trusted.
+change is checked against a byte-exact baseline before it can be trusted.
 
 **Measured result** (docs/reviews/2026-08-01-branch-review.md finding C14):
 `generate.py` went from 1639 to 1085 lines (-34%); `main()` from 706 to 521
@@ -126,7 +125,7 @@ captures do not cross file boundaries).
   for. See `hurl/steps.py`'s module docstring for the full reasoning.
 - **`tests/test_steps.py` is what keeps the declarations honest.** It parses
   each step's raw `.tmpl` source (never the rendered `hurl/scenarios/`
-  output, which reflects only one already-chosen member/profile) and
+  output, which reflects only one already-chosen member set) and
   asserts: `provides` equals the template's exact capture set; every
   `{{name}}` reference is accounted for by `requires`, `provides`, or a known
   `vars.env` global; and, walking the registry in order, every `requires` is
@@ -225,9 +224,11 @@ new burden, it is naming one that already existed.
 `generate.py` emits today — `scenarios/`, `vars.env`, `topology.json`,
 `topology.sh`, `compose.members.yml` — generated from a fixed, fake
 `tests/golden/env.fixture` rather than a real `.env`. `tests/test_golden.py`
-regenerates both profiles (via `generate.py --out DIR --profile P --env
-FILE`, flags that exist only for this test) and diffs against it, in under
-two seconds, no Docker, no network:
+regenerates (via `generate.py --out DIR --env FILE`, flags that exist only
+for this test) and diffs against it, in under two seconds, no Docker, no
+network. `generate.py` lost the profile concept in Wave 3 Task 4 (one
+topology, D5); `{full,lite}/` collapsing into a single directory is Wave 3
+Task 5's job, not done here:
 
 ```bash
 .venv/bin/python3 -m pytest tests/test_golden.py -v
@@ -241,12 +242,15 @@ corpus **in the same commit** as the change, so the diff is reviewable
 alongside the code that caused it:
 
 ```bash
-python3 hurl/generate.py --out /tmp/golden-full --profile full --env tests/golden/env.fixture
-python3 hurl/generate.py --out /tmp/golden-lite --profile lite --env tests/golden/env.fixture
-rm -rf tests/golden/full tests/golden/lite
+python3 hurl/generate.py --out /tmp/golden-full --env tests/golden/env.fixture
+rm -rf tests/golden/full
 cp -r /tmp/golden-full tests/golden/full
-cp -r /tmp/golden-lite tests/golden/lite
 ```
+
+(`tests/golden/lite/` is untouched by this command on purpose — regenerating
+it from the same profile-less `generate.py` would just be a second copy of
+`full/`, which is exactly the collapse Wave 3 Task 5 does deliberately, not
+as a side effect of an unrelated template change.)
 
 A golden test whose corpus gets updated blindly — without looking at what
 changed and why — is theatre, not a test. Read the diff before committing it.
@@ -268,18 +272,6 @@ rather than clicking the UIs.
   fails immediately (confirmed at P0, 2026-07-25). Resuming a stopped-but-not-
   purged federation is `docker compose ... up -d` directly — see runbook.md
   "Teardown" — not a rerun of `run-linkup.sh`, which is the from-zero path only.
-- **Lite profile (`deployment.yaml` `profile: lite`) hosts PNIA and MoEYS on
-  ss-plr.** Their SIGN key/cert and client registration are generated as
-  fragments appended into `21-ss-plr.hurl`, not their own files —
-  `20-ss-pnia.hurl`/`22-ss-moeys.hurl` become stubs (still written, so
-  `manifest.yaml`'s scenario claims keep resolving) explaining where the real
-  content actually runs. See `generate.py`'s `LITE_HOSTED_ON` and
-  `build_hosted_client()`. Live-verified at P5 (2026-07-26): ~8.9 GB RAM vs
-  full's ~13 GB.
-- The runner's `depends_on` waits on `cs`, `ca`, `ss-pdga`, `ss-pnea` and
-  `ss-plr` only; `ss-pnia` and `ss-moeys` belong to the `full` compose profile,
-  which a non-profiled dependency cannot reference, so they are covered by the
-  retries instead.
 - The scenarios have not yet been parsed by `hurl` or `hurlfmt` — the sandbox
   this pack was authored in has no network access to the Hurl release. Run
   `hurlfmt --check hurl/.build/setup.hurl` at P0 before trusting the syntax.

@@ -41,23 +41,13 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   **~78s** (measured 2026-08-03, two consecutive runs, both 78s — the
   earlier "~29s" figure predated both `--fast`'s growth and 2.7's own
   checks); `--full` (purge, deploy, seed, acceptance, console smoke — the
-  reproducibility proof) **~872s (~14.5 min) under `profile: full` (825s,
-  918s), ~466s (~7.8 min) under `profile: lite` (443s, 488s)** — measured
-  2026-08-03, two independent cold runs each, join-c Task 5, all four
-  green. Full is unchanged within noise from the earlier ~918s; **lite is
-  ~100s slower than its earlier ~370s and that is not a regression in the
-  deploy** — lite's deploy phases are the same (95–102s containers,
-  161–230s Hurl) and the difference is almost entirely `--fast` growing
-  from ~8–16s to ~49s plus 2.7's new un-join checks in `acceptance.sh`. See
-  `docs/production-delta.md` "Lite profile's full cycle, measured" and
-  "An own-server join and its un-join, live end to end".
-  Lite proves everything except PNIA's and MoEYS's own certificate
-  sequences (hosted as clients on `ss-plr` instead) — develop against
-  lite for the cheap full cycle, run one `--full` under full profile
-  before closing out a plan. An own-server *join* on a lite base now
-  exercises that same certificate sequence live (join-c Task 5), but does
-  **not** replace the full-profile run: see `docs/production-delta.md`'s
-  "The Task 6 gate" for exactly what it does and does not cover. See
+  reproducibility proof) **~872s (~14.5 min)** — measured 2026-08-03, two
+  independent cold runs (825s, 918s), join-c Task 5, all four green,
+  unchanged within noise from the earlier ~918s baseline. See
+  `docs/production-delta.md` "An own-server join and its un-join, live end
+  to end". There is one topology now (Wave 3 Task 4, design decision 5) —
+  no lite/full split to develop against or measure separately; run
+  `--fast` after each step and one `--full` before closing out a plan. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
   tier replaced. **When to run which, inside a plan:** `--fast` after each
   step (it's the one that's always cheap enough to run every time), `--live`
@@ -73,8 +63,8 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   terms, discovered from `out/join/*.json`'s `RETIRED` records). Task 6's
   own live proof measured a real hosted join
   (`apps/join-api`, `POST /requests` → approve → `ACTIVE, verified: true`)
-  at **~93s** end to end under `profile: lite` — re-measured at **64s** by
-  join-c Task 5 on the same profile, and an own-server join at **~163s
+  at **~93s** end to end — re-measured at **64s** by join-c Task 5, and an
+  own-server join at **~163s
   after the member's server is up** (plus 76–100s to stand it up, plus
   whatever `BLOCKED` really costs, which in production is days) —
   comfortably under the
@@ -85,12 +75,12 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   deliberate, separate, manual procedure (`runbook.md`'s "Join via the API
   (automated)"), not something bolted onto the routine `--live` tier.
 
-What's here: `deployment.yaml` (the analyst-facing deployment spec — topology
-profile, X-Road version pins, and (`cs_digest`/`ss_digest`/`testca_tag`) the
+What's here: `deployment.yaml` (the analyst-facing deployment spec — X-Road
+version pins, network bind, and (`cs_digest`/`ss_digest`/`testca_tag`) the
 digest pins that back them; `.env` carries only secrets), `docker-compose.yml`
-(X-Road 7.7.0: Central Server, Test CA, five Security Servers — `deployment.yaml`'s
-`profile: lite` runs three, PNIA and MoEYS hosted as extra clients on ss-plr;
-see `hurl/README.md` "Known limits"), `configs/` (declarative YAML per module),
+(X-Road 7.7.0: Central Server, Test CA, four Security Servers — PDGA plus
+PNEA, PLR and PNIA each on their own; MoEYS is retired, Wave 3 Task 1),
+`configs/` (declarative YAML per module),
 `prompts/` (the bb-config-gen plays that generate the configs), `hurl/` (the
 federation as config-as-code — Hurl scenarios driving the admin REST APIs,
 generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),

@@ -1,11 +1,18 @@
 """Golden-corpus test for hurl/generate.py -- testing-strategy plan Task 1.
 
-Regenerates both profiles into a temp directory (via --out/--profile/--env,
-which exist only for this test -- see hurl/generate.py's parse_args()) and
-diffs the result against tests/golden/{full,lite}/. Turns the byte-identical
-ritual pasted into every plan that touches generate.py into a two-second
-check. If a change to generate.py *should* alter the output, regenerate the
-corpus in the same commit -- see hurl/README.md.
+Regenerates into a temp directory (via --out/--env, which exist only for
+this test -- see hurl/generate.py's parse_args()) and diffs the result
+against tests/golden/{full,lite}/. Turns the byte-identical ritual pasted
+into every plan that touches generate.py into a two-second check. If a
+change to generate.py *should* alter the output, regenerate the corpus in
+the same commit -- see hurl/README.md.
+
+generate.py itself lost the profile concept in Wave 3 Task 4 (D5: one
+topology) -- both parametrize ids below now generate the exact same tree
+and diff it against their own still-separate golden directory.
+tests/golden/{full,lite}/ collapsing to one, and this test dropping the
+parametrize entirely, is Wave 3 Task 5's job, not this one: left alone here
+so that job's diff is legible on its own.
 
 No Docker, no network, no running federation: this is the fast tier.
 """
@@ -26,12 +33,13 @@ def _generate(tmp_path: pathlib.Path, profile: str) -> pathlib.Path:
     out_dir = tmp_path / profile
     # The pack's own system python3 (see hurl/README.md's host-runtime note:
     # 3.9+, not whatever interpreter is running pytest), so this test
-    # exercises the host floor rather than sidestepping it.
+    # exercises the host floor rather than sidestepping it. No --profile:
+    # generate.py no longer has the concept (Wave 3 Task 4, D5) -- both
+    # parametrize ids below produce the identical tree from this call.
     result = subprocess.run(
         [
             "python3", "hurl/generate.py",
             "--out", str(out_dir),
-            "--profile", profile,
             "--env", str(ENV_FIXTURE),
         ],
         cwd=PACK,
@@ -39,7 +47,7 @@ def _generate(tmp_path: pathlib.Path, profile: str) -> pathlib.Path:
         text=True,
     )
     assert result.returncode == 0, (
-        f"generate.py --profile {profile} failed:\n{result.stdout}\n{result.stderr}"
+        f"generate.py failed:\n{result.stdout}\n{result.stderr}"
     )
     return out_dir
 

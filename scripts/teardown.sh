@@ -5,8 +5,8 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-stack.sh"
 
-# COMPOSE_ALL always enables the "full" profile so every service is torn down
-# even if LITE was flipped after a full deploy.
+# COMPOSE_ALL (lib-stack.sh) covers every federation service unconditionally --
+# no profile flag needed now that there is only one topology (design decision 5).
 if [ "${1:-}" = "--purge" ]; then
   log "purging: containers + volumes (full reset)"
   "${COMPOSE_ALL[@]}" down -v

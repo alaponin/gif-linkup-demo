@@ -130,9 +130,9 @@ member look gone from wherever you happened to look.
      key behind entirely intact (`REGISTERED`, `active`, good OCSP) and that
      nothing in the admin API ever collects it, so the first half is a real
      assertion about a step that can silently not happen; and a shared host
-     under `profile: lite` carries several keys all labelled `"Sign key"`,
-     so the second half is what would catch a reversal that deleted the
-     *wrong* agency's key by matching on the label;
+     (`security_server.hosted_on`) carries several keys all labelled
+     `"Sign key"`, so the second half is what would catch a reversal that
+     deleted the *wrong* agency's key by matching on the label;
   4. a **real `r1` call** to the departed member's service, from a consumer
      that was authorised before it left and through that consumer's own
      Security Server, fails with the specific X-Road fault
@@ -140,9 +140,9 @@ member look gone from wherever you happened to look.
      and not a generic transport error. This is the reachability clause of
      the join case run backwards, and it is the only one of the five that
      proves the *bus* forgot the member rather than just the registries;
-  5. `hurl/topology.json` is **byte-identical** to the golden file for this
-     deployment's profile (`tests/golden/{lite,full}/topology.json`) — the
-     working tree came back to exactly where it was before the join. This is
+  5. `hurl/topology.json` is **byte-identical** to the single deployment
+     golden (`tests/golden/full/topology.json`) — the working tree came back
+     to exactly where it was before the join. This is
      design spec §12's own acceptance clause and the join-c plan's Global
      Constraint. Asserted only when no joined member remains in the
      topology; with one still present, byte-identical to the canonical

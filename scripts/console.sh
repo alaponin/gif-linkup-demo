@@ -12,9 +12,8 @@ set -euo pipefail
 . "$(dirname "$0")/lib-stack.sh"
 
 CONSOLE_URL="http://localhost:8090"
-# COMPOSE already carries --profile full/lite from deployment.yaml (lib-stack.sh);
-# --profile demo is additive, and only console is ever targeted below, so
-# this never starts or restarts the federation itself.
+# --profile demo is additive to COMPOSE (lib-stack.sh); only console is ever
+# targeted below, so this never starts or restarts the federation itself.
 COMPOSE_DEMO=("${COMPOSE[@]}" --profile demo)
 
 case "${1:-}" in

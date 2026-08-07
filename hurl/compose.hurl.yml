@@ -81,6 +81,8 @@ services:
         condition: service_healthy
       ss-plr:
         condition: service_healthy
+      ss-pnia:
+        condition: service_healthy
 
 volumes:
   ca-certs: {name: kp2-ca-certs}

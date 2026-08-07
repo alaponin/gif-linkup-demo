@@ -175,10 +175,11 @@ PY
 # The exchange's shape (consumer, negative caller, the two r1 paths) comes
 # from configs/x-road-bus/once-only-exchange.yaml -- not restated as bash
 # literals. Its ENTRYPOINT fields stay unread on purpose: they are static
-# ("http://ss-pnea:8080") and only correct under profile: full -- under lite
-# the consumer/negative-caller can be hosted elsewhere, so the entrypoint is
-# resolved from HOST_SS/SS_REST instead, the same live-confirmed trap
-# apps/console/truth.py already documents and avoids.
+# ("http://ss-pnea:8080") and only correct for a member on its own server --
+# a hosted member (security_server.hosted_on) is reachable through its
+# host's server instead, so the entrypoint is resolved from HOST_SS/SS_REST
+# instead, the same live-confirmed trap apps/console/truth.py already
+# documents and avoids.
 mapfile -t _exchange < <(python3 - "$PACK_DIR/configs/x-road-bus/once-only-exchange.yaml" <<'PY'
 import sys, yaml
 cfg = yaml.safe_load(open(sys.argv[1]))['exchange']
@@ -198,8 +199,9 @@ BAD_MEMBER_SUBSYSTEM="${_exchange[1]//\//:}"; BAD_MEMBER_SUBSYSTEM="${BAD_MEMBER
 PNEA_REST="http://localhost:${SS_REST[${HOST_SS[$CONSUMER_MEMBER_SUBSYSTEM]}]}"
 # Negative check goes through the SS that hosts the unauthorised caller (its
 # own server -- so the denial genuinely comes from the provider-side ACL, not
-# from the consumer's SS rejecting an unknown client). Under LITE that is the
-# shared provider SS.
+# from the consumer's SS rejecting an unknown client). If that caller were
+# ever hosted (security_server.hosted_on), this would resolve to the host's
+# shared server instead.
 BAD_SS=${HOST_SS[$BAD_MEMBER_SUBSYSTEM]}
 BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
 
@@ -638,8 +640,8 @@ if _selection_touches_27; then
     # Clauses 2 and 3, both on the hosting Security Server -- skipped for an
     # own-server member, whose server went with it (retire_instruction()'s
     # docker rm -f / docker volume rm). Clause 3's second half is the one
-    # that matters most: a shared host under profile: lite carries several
-    # keys ALL labelled "Sign key", so "this member's key is gone" is only
+    # that matters most: a shared host (security_server.hosted_on) carries
+    # several keys ALL labelled "Sign key", so "this member's key is gone" is only
     # half the assertion -- every other hosted member's must still be there,
     # or a reversal that matched on the label deleted the wrong agency's
     # signing key (docs/xroad-770-notes.md #11, "What happens to a hosted
@@ -683,11 +685,11 @@ PY
 
   if [ ${#_27_RETIRED[@]} -gt 0 ]; then
     # Clause 5. The Global Constraint of the join-c plan: a join-then-unjoin
-    # cycle leaves hurl/topology.json byte-identical. The golden file for
-    # this deployment's profile IS the "before the join" state -- it is
-    # generated from the canonical member set alone (tests/test_golden.py),
-    # so with every joined member gone the two must be the same bytes.
-    GOLDEN_TOPO="$PACK_DIR/tests/golden/$([ "${LITE:-0}" = 1 ] && echo lite || echo full)/topology.json"
+    # cycle leaves hurl/topology.json byte-identical. The single deployment
+    # golden IS the "before the join" state -- it is generated from the
+    # canonical member set alone (tests/test_golden.py), so with every
+    # joined member gone the two must be the same bytes.
+    GOLDEN_TOPO="$PACK_DIR/tests/golden/full/topology.json"
     check_unjoin_topology() { cmp -s "$PACK_DIR/hurl/topology.json" "$GOLDEN_TOPO"; }
     # SKIP, not a vacuous PASS. With a member still joined, the golden
     # canonical topology is the wrong thing to compare against -- but

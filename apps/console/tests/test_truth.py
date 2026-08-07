@@ -11,27 +11,14 @@ from truth import load_truth  # noqa: E402
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 
-def test_full_profile_resolves():
+def test_topology_resolves():
     truth = load_truth(FIXTURES / "full")
-    assert truth.profile == "full"
     assert {s["host"] for s in truth.topology["security_servers"]} == {
         "ss-pdga", "ss-pnea", "ss-plr", "ss-pnia", "ss-moeys",
     }
-    # full profile: PNIA hosts itself; PLR (the negative check's caller
-    # since Wave 3 Task 1) is self-hosted in every profile.
-    assert truth.negative_check_entrypoint == "http://ss-plr:8080"
-    assert truth.consumer_entrypoint == "http://ss-pnea:8080"
-
-
-def test_lite_profile_resolves():
-    truth = load_truth(FIXTURES / "lite")
-    assert truth.profile == "lite"
-    assert {s["host"] for s in truth.topology["security_servers"]} == {
-        "ss-pdga", "ss-pnea", "ss-plr",
-    }
-    # lite profile: MoEYS is hosted on ss-plr, NOT the (nonexistent) ss-moeys
-    # -- this is the exact bug 2.6.yaml's static entrypoint field would cause
-    # if truth.py trusted it instead of resolving from topology.json.
+    # PNIA and PLR (the negative check's caller since Wave 3 Task 1) are
+    # both self-hosted -- resolved from topology.json's hosted_on, not from
+    # once-only-exchange.yaml's static entrypoint field (module docstring).
     assert truth.negative_check_entrypoint == "http://ss-plr:8080"
     assert truth.consumer_entrypoint == "http://ss-pnea:8080"
 

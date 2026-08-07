@@ -17,9 +17,10 @@
 # correlation, reused rather than re-built -- see hurl/steps.py's comment
 # on ss.sign_key_csr), never trusted blind from a resumed job's context: a
 # hosting server carries one identically-labelled "Sign key" per hosted
-# member (four, live, under profile: lite -- PROBE_SS_SIGN_KEY.hurl.tmpl's
-# own comment), so a label match, or a captured id that predates a
-# re-issued key, deletes a DIFFERENT agency's key.
+# member (security_server.hosted_on; four, live, under the since-retired
+# lite profile at the time -- PROBE_SS_SIGN_KEY.hurl.tmpl's own comment),
+# so a label match, or a captured id that predates a re-issued key, deletes
+# a DIFFERENT agency's key.
 DELETE https://{{@HOSTVAR@}}:4000/api/v1/keys/{{@CAP_P@_sign_key_id}}
 X-XSRF-TOKEN: {{@SESS_P@_xsrf_token}}
 

@@ -105,8 +105,8 @@ def _require_console_origin(request: Request) -> None:
         raise HTTPException(403, f"Sec-Fetch-Site {sec_fetch_site!r} is not same-origin")
 
 # Loaded once at startup, not per-request: a stale Truth after a redeploy
-# means the container needs restarting anyway (deployment.yaml/topology.json
-# changing is a redeploy event, not something this demo tool hot-reloads).
+# means the container needs restarting anyway (topology.json changing is a
+# redeploy event, not something this demo tool hot-reloads).
 TRUTH = truth_mod.load_truth(PACK_DIR)
 JOURNAL = journal_mod.Journal(OUT_DIR / "console-acl-journal.json")
 _last_heartbeat = time.time()
@@ -233,7 +233,7 @@ app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "profile": TRUTH.profile}
+    return {"status": "ok"}
 
 
 @app.get("/api/topology")

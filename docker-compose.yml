@@ -1,10 +1,9 @@
 # KP2 build pack — Linkup demonstration federation (X-Road 7.x)
 # Basis: NIIS KB "How to Set Up a Local Test Environment Using Docker Compose?"
-# Full profile: CS + Test CA + 5 Security Servers + 3 mock providers (~16 GB RAM).
-# Lite profile: LITE=1 in .env — scripts then omit "--profile full", so ss-pnia
-# (profile "full") does not run and its subsystem is hosted on ss-plr (see
-# scripts/lib-stack.sh HOST_SS). MoEYS was the other lite-hosted member; it is
-# retired (Wave 3 Task 1, docs/production-delta.md) rather than hosted.
+# CS + Test CA + 4 Security Servers (PDGA + PNEA + PLR + PNIA) + 2 mock
+# providers. One topology (Wave 3 Task 4, design decision 5): MoEYS is
+# retired (Wave 3 Task 1, docs/production-delta.md), not hosted, and PNIA
+# owns its own Security Server unconditionally -- no lite/full split.
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
 x-sidecar: &sidecar
@@ -83,14 +82,13 @@ services:
       - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
 
   ss-pnia:
-    # PNIA — provider (PROGRESSA/GOV/PNIA:IDENTITY). Full profile only.
+    # PNIA — provider (PROGRESSA/GOV/PNIA:IDENTITY).
     # Host port 5100, not 5000: macOS's AirPlay Receiver (ControlCenter) listens
     # on 5000 by default and silently swallows the connection instead of
     # refusing it, so a straight "5000:4000" mapping hangs on macOS rather than
     # failing fast. Confirmed at P0, 2026-07-25.
     <<: *sidecar
     container_name: ss-pnia
-    profiles: ["full"]
     ports: ["${XROAD_BIND:-127.0.0.1}:5100:4000", "${XROAD_BIND:-127.0.0.1}:5180:8080"]
     volumes:
       - ss-pnia-db:/var/lib/postgresql/16/main

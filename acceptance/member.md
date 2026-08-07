@@ -11,9 +11,8 @@ checks 2.2–2.5 make specifically for PNEA/PLR/PNIA hold for *any* member
   (`scripts/seed.sh`) — with whatever member set is currently configured, not
   necessarily the canonical four;
 - **When** the check reads `hurl/topology.json` (the one topology
-  `hurl/generate.py` derives from `configs/` + `manifest.yaml` +
-  `deployment.yaml`'s profile — nothing here is re-derived by hand) and, for
-  **every** subsystem it describes:
+  `hurl/generate.py` derives from `configs/` + `manifest.yaml` — nothing
+  here is re-derived by hand) and, for **every** subsystem it describes:
   - queries `GET /clients` on the Security Server `hosted_on` names, for that
     subsystem's registration status;
   - for **every** service that subsystem publishes, queries
@@ -45,7 +44,7 @@ wrote down. 2.6 stays the framework's headline, education-specific check
 proves is Progressa's story to tell, not every member's.
 
 Status: VERIFIED — this check already runs as part of `scripts/acceptance.sh`
-(member-parameterisation Task 7) and passes on the live stack under both the
-`full` and `lite` profiles, covering the canonical three today (Wave 3 Task 1
-retired MoEYS) and any joined member added later without a further code
-change.
+(member-parameterisation Task 7) and passes on the live stack, covering the
+canonical three today (Wave 3 Task 1 retired MoEYS; Wave 3 Task 4 retired the
+`full`/`lite` profile split it used to be verified under both of) and any
+joined member added later without a further code change.

@@ -73,17 +73,11 @@ SS DNS names are the container names.
 steady state — measured at P0 (2026-07-25) via `docker stats --no-stream` on a
 16 GB colima VM: ~2.0–2.3 GB per SS (≈10.7 GB), 1.7 GB for the CS, under
 100 MB each for the Test CA and the three mocks. Fits 16 GB with ~3 GB
-headroom — tight but workable; a smaller host should use the lite profile. A **lite profile** ships for smaller machines (compose profile
-"full" on ss-pnia/ss-moeys; `LITE=1` skips it): `ss-pdga` (management) + `ss-pnea`
-(consumer) + `ss-plr` as shared provider SS hosting the PLR, PNIA and PEMIS
-subsystems (an SS legitimately hosts multiple members' clients; `scripts/lib-stack.sh
-HOST_SS` is the single source of truth). The cross-server call stays real
-(consumer SS → provider SS); the video story keeps the full five-SS layout.
-*v0.3 gap:* the Hurl scenarios only generate the full topology and
-`hurl/run-linkup.sh` refuses `LITE=1`. Lite is a `generate.py` change — emit the
-PNIA and MoEYS subsystems as extra clients of `ss-plr` per `HOST_SS` — or a
-manual configuration per the runbook's fallback. Decide at P0 alongside the RAM
-measurement.
+headroom. There is one topology (Wave 3 Task 4, design decision 5): no
+smaller lite alternative that hosts PNIA (or, before its retirement in Wave
+3 Task 1, MoEYS) as an extra client of `ss-plr` instead of standing up its
+own Security Server. `ss-moeys` above is retired, not deployed — see
+`docs/production-delta.md`.
 
 **Identifiers** (all `[confirm]` until live): owner `PROGRESSA/GOV/PDGA`; members
 `GOV/MOEYS:PEMIS`, `GOV/PNEA:EXAMS`, `GOV/PLR:ENROLMENT`, `GOV/PNIA:IDENTITY`.
@@ -342,6 +336,12 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   X-Road's admin API sequence for a hosted member (client-add must precede its
   SIGN-key generation, which must precede its registration) — see
   `docs/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
+  **Retired 2026-08-06 (Wave 3 Task 4, design decision 5):** the profile
+  split itself — `deployment.yaml`'s `profile:` key, `--profile`, and the
+  lite topology it selected are gone; one topology (full minus MoEYS, which
+  Wave 3 Task 1 retired) remains. The ordering findings above are unaffected
+  — they hold for any hosted member under `security_server.hosted_on`,
+  which is how a hosted member is expressed now.
 - **Resolved at P0 (2026-07-25):** testca image digest pinned
   (`.env.example` `TESTCA_TAG=latest@sha256:018e9f...c16c0c5`); the test CA does
   write `ca.pem`/`ocsp.pem`/`tsa.pem` into `/home/ca/certs`, confirmed live; RAM

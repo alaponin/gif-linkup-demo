@@ -41,15 +41,9 @@ unset _cred_var
 # immediately before that script brings containers up (and so covers
 # scripts/deploy.sh, which execs into it).
 
-# deployment.yaml is the analyst-facing spec (topology profile, X-Road version
-# pins); .env carries only secrets. See
-# docs/superpowers/specs/2026-07-26-deployment-spec-and-lite-profile-design.md.
+# deployment.yaml is the analyst-facing spec (X-Road version pins, network
+# bind); .env carries only secrets.
 DEPLOY_SPEC="$PACK_DIR/deployment.yaml"
-case "$(yq_get "$DEPLOY_SPEC" profile)" in
-  lite) LITE=1 ;;
-  full) LITE=0 ;;
-  *) echo "lib-stack.sh: deployment.yaml profile must be 'full' or 'lite'" >&2; exit 1 ;;
-esac
 export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
@@ -91,58 +85,42 @@ esac
 
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
 # which SS hosts which subsystem, and which joined members own a container) --
-# generated once by hurl/generate.py (from configs/ + manifest.yaml +
-# deployment.yaml's profile) into hurl/topology.sh (declares SS_UI, SS_REST,
-# SS_ORDER and HOST_SS with exactly the lite/full-aware values this file used
-# to hand-declare) and hurl/compose.members.yml (joined members' compose
-# blocks, read below). apps/console reads the same generation run's
-# hurl/topology.json -- one topology, not hand-kept copies. Must run before
-# COMPOSE/COMPOSE_ALL are built: compose.members.yml has to exist before its
-# `-f` flag can be added. ss-pnia's 5100/5180 (not 5000/5080, which collides
-# with macOS's AirPlay Receiver) is pinned in hurl/generate.py's PINNED_PORTS
-# table -- see its comment.
+# generated once by hurl/generate.py (from configs/ + manifest.yaml) into
+# hurl/topology.sh (declares SS_UI, SS_REST, SS_ORDER and HOST_SS with
+# exactly the values this file used to hand-declare) and
+# hurl/compose.members.yml (joined members' compose blocks, read below).
+# apps/console reads the same generation run's hurl/topology.json -- one
+# topology, not hand-kept copies. Must run before COMPOSE/COMPOSE_ALL are
+# built: compose.members.yml has to exist before its `-f` flag can be added.
+# ss-pnia's 5100/5180 (not 5000/5080, which collides with macOS's AirPlay
+# Receiver) is pinned in hurl/generate.py's PINNED_PORTS table -- see its
+# comment.
 TOPOLOGY_SH="$PACK_DIR/hurl/topology.sh"
 if [ ! -f "$TOPOLOGY_SH" ]; then
   ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
 fi
 [ -f "$TOPOLOGY_SH" ] || { echo "lib-stack.sh: $TOPOLOGY_SH still missing after running generate.py" >&2; exit 1; }
 . "$TOPOLOGY_SH"
-# Regenerated only when missing, above -- a topology.sh left over from a
-# different profile would otherwise be sourced silently. hurl/topology.json
-# (same generation run) carries the profile it was built for; catch the
-# mismatch here with a clear message rather than let SS_ORDER/HOST_SS be
-# quietly wrong for whatever is about to run.
-TOPO_JSON="$PACK_DIR/hurl/topology.json"
-if [ -f "$TOPO_JSON" ]; then
-  topo_profile=$(python3 - "$TOPO_JSON" <<'PY'
-import json, sys
-print(json.load(open(sys.argv[1]))['profile'])
-PY
-)
-  deploy_profile=$(yq_get "$DEPLOY_SPEC" profile)
-  if [ "$topo_profile" != "$deploy_profile" ]; then
-    echo "lib-stack.sh: hurl/topology.json was generated for profile '$topo_profile' but deployment.yaml now says '$deploy_profile' -- run python3 hurl/generate.py (hurl/run-linkup.sh does this for you) before continuing" >&2
-    exit 1
-  fi
-fi
 
-# Full topology by default; profile: lite (deployment.yaml) drops ss-pnia/
-# ss-moeys (compose profile "full") and hosts their subsystems on ss-plr instead.
 # hurl/compose.members.yml (generated above -- joined members that own their
 # own Security Server) is added whenever it exists, to both arrays: a volume
 # it defines can only be removed by a `down -v` that names this file too,
-# same reason hurl/compose.hurl.yml is already in COMPOSE_ALL below.
+# same reason hurl/compose.hurl.yml is already in COMPOSE_ALL below. Every
+# service in docker-compose.yml that belongs to the federation itself (not
+# the demo-only console/join-api, tagged profiles: ["demo"]) is unconditional
+# now that "full" is the only topology -- no --profile flag is needed to
+# bring ss-pnia up or to tear it down, unlike when it was gated behind
+# profiles: ["full"] (design decision 5).
 COMPOSE_MEMBERS_YML="$PACK_DIR/hurl/compose.members.yml"
 COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
 [ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE+=(-f "$COMPOSE_MEMBERS_YML")
-[ "${LITE:-0}" != "1" ] && COMPOSE+=(--profile full)
-# Teardown must always see every service, whatever LITE is set to now, AND
-# every compose file that can have defined a volume -- hurl/compose.hurl.yml's
-# ca-certs volume mounts at /home/ca/certs, a subpath of the base file's
-# ca-data:/home/ca mount. Omitting it here left `down -v` unable to remove
-# ca-certs, so a "purged" reset still handed a fresh CA container stale certs
-# from the previous run (found at P0, 2026-07-25).
-COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml" --profile full)
+# Teardown must see every service, and every compose file that can have
+# defined a volume -- hurl/compose.hurl.yml's ca-certs volume mounts at
+# /home/ca/certs, a subpath of the base file's ca-data:/home/ca mount.
+# Omitting it here left `down -v` unable to remove ca-certs, so a "purged"
+# reset still handed a fresh CA container stale certs from the previous run
+# (found at P0, 2026-07-25).
+COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml")
 [ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE_ALL+=(-f "$COMPOSE_MEMBERS_YML")
 
 # The admin APIs authenticate by SESSION LOGIN, not by API key: POST /login with
