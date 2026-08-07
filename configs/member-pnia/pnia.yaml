@@ -15,8 +15,25 @@ services:
     spec_url: http://app-pnia:8000/spec.yaml
     access:                    # deliberate: PNEA only — PLR:ENROLMENT excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
+    sla:                       # Module 5.3's template — Wave 4 Task 3 Step 2:
+                                # illustrative demo values, not a real signed target.
+      availability: "99.5% monthly uptime"
+      response_time: "4 business hours; 1 hour for a P1 incident"
+      support_hours: "Mon-Fri 08:00-18:00 ICT"
+      incident_response: "P1 acknowledged within 1 hour, resolution target 8 hours"
+      change_notice: "5 business days for a planned change"
+      signatory: "Head of IT, PNIA"
 semantic:                      # from configs/semantic/semantic-map.yaml — 'person identity' means:
   entity: person
   key: nin
   fields: [nin, given_name, family_name, date_of_birth, sex, region]
   pattern: digital_registries_lookup
+member_requirements:           # Module 5.2's checklist — Wave 4 Task 1 (K-01).
+  has_security_server: true
+  has_registered_identity: true
+  standards_portfolio_adopted: true
+  data_conformant: true
+  # lawful_basis intentionally absent: a provider's own service states it
+  # (design decision 1) -- see docs/superpowers/plans/2026-08-05-kp2-wave2-
+  # data-layers.md Step 4, not yet populated for the canonical services.
+  technical_contact: "Head of IT, PNIA"

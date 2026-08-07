@@ -14,3 +14,21 @@ services: []                   # consumer in v0.1; provides nothing
 consumes:                      # the exchange this member exists for (wired in 2.6)
   - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
   - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
+member_requirements:           # Module 5.2's checklist — Wave 4 Task 1 (K-01).
+  has_security_server: true
+  has_registered_identity: true
+  standards_portfolio_adopted: true
+  data_conformant: true
+  # A consumer-only member has no service to state this on instead (design
+  # decision 1) -- stated here directly. A resolved value, not an unresolved
+  # confirm-marker (Service.lawful_basis' own convention, Wave 2 Task 3):
+  # the ship gate's --ready check scans configs/ for that marker pattern and
+  # refuses to ship one. This pack carries no real decree to cite (Module
+  # 2's decree is out of scope), so the category, not an article number, is
+  # what a demo can state without inventing legislation.
+  lawful_basis: "statutory function"
+  technical_contact: "Head of IT, PNEA"
+# No sla: block -- PNEA is consumer-only. TK-IO-09 is written for providers;
+# a consumer's own obligations (rate, purpose limitation, log cooperation)
+# have no template (the onboarding path's own §8 open question 5). See this
+# member's onboarding/pnea/00-gates.md and 02-requirements.md.

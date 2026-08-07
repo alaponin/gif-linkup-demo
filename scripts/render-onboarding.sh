@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Renders onboarding/{pnia,plr,pnea}/ for the three canonical members
+# through the same writer.py code path a real join uses (Wave 4 Task 3,
+# K-01) -- see scripts/render_onboarding.py's own docstring for how. Not
+# hand-authored, and not run automatically by hurl/generate.py: this reads
+# each canonical member's member_requirements/sla fields off
+# configs/member-<key>/<key>.yaml (added by hand, prompts/register-
+# member.md) and re-renders on every run, so it is safe to re-run after
+# editing one of those configs.
+set -euo pipefail
+. "$(dirname "$0")/lib-core.sh"
+
+PY="$PACK_DIR/.venv/bin/python3"
+[ -x "$PY" ] || fail "$PY not found -- set up the dev venv (see apps/console/tests/ and tests/test_golden.py for what it needs); rendering onboarding/ needs apps/join-api's own pydantic-based schema.py and writer.py."
+
+for key in pnia plr pnea; do
+  "$PY" "$PACK_DIR/scripts/render_onboarding.py" "$PACK_DIR" "$key"
+done
