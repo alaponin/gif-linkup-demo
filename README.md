@@ -67,7 +67,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   (date)" notes should say which tier backed them, so a later reader can
   tell a `--fast`-only claim from a `--full` one.
   **`--live` does not itself perform a real member join** (join-b Task 5's
-  own design: `acceptance/2.7.md`'s checks discover already-joined members
+  own design: `acceptance/join-member.md`'s checks discover already-joined members
   generically and pass vacuously when none exist — they never submit or
   approve one; join-c Task 5 added `2.7.unjoin(<member>)` on the same
   terms, discovered from `out/join/*.json`'s `RETIRED` records). Task 6's
@@ -129,7 +129,7 @@ without a running stack to submit against, or for a member type Plan B's
 join API doesn't cover (an own Security Server; Plan C). On a single-host demo
 deployment, default a joining member to `hosted_on` an existing Security
 Server rather than its own (the join API does this by default —
-`configs/x-road-bus/2.7.yaml`'s `default_hosting: hosted_on`): it costs zero
+`configs/x-road-bus/join-policy.yaml`'s `default_hosting: hosted_on`): it costs zero
 extra containers and RAM, and sidesteps every own-server finding in
 `docs/production-delta.md` (a real port-allocation bug, two real Compose gaps,
 and host-CPU-contention risk under several concurrent JVMs) — reserve a

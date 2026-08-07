@@ -268,7 +268,7 @@ def build_constants(pack_dir: pathlib.Path, payload: JoinPayload, secrets: dict[
     cheaper than depending on that file existing and being current."""
     generate, _ = _hurl_modules(pack_dir)
     identity = yaml.safe_load((pack_dir / "manifest.yaml").read_text())["identity"]
-    core = yaml.safe_load((pack_dir / "configs" / "x-road-bus" / "2.1.yaml").read_text())
+    core = yaml.safe_load((pack_dir / "configs" / "x-road-bus" / "federation-core.yaml").read_text())
     host = _host(pack_dir, payload)
     constants = {
         "xroad_instance": identity["instance"],
@@ -465,11 +465,11 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
                     SESS_P=sess_p,
                     CAP_P=cap_p,
                     ACL_SUBJECT=subject.replace("/", ":"),
-                    # Cold deploy names MoEYS here to explain acceptance/2.6's
-                    # negative check. A join has no such counterpart, and
-                    # naming a canonical member in a joined member's rendered
-                    # comment would be misleading.
-                    NEGATIVE="(none -- see acceptance/2.7.md)",
+                    # Cold deploy names MoEYS here to explain
+                    # acceptance/once-only-exchange.md's negative check. A join
+                    # has no such counterpart, and naming a canonical member in
+                    # a joined member's rendered comment would be misleading.
+                    NEGATIVE="(none -- see acceptance/join-member.md)",
                 ),
                 suffix=f":{svc.code}:{subject}",
             )
@@ -530,7 +530,7 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
     # the consumer's proxy, the provider's proxy and reaches the backend --
     # and any non-X-Road response proves that, including a backend 404. An
     # operation-specific path needs the spec re-fetched here and its path
-    # parameters invented; add that when acceptance/2.7.md needs a specific
+    # parameters invented; add that when acceptance/join-member.md needs a specific
     # endpoint asserted rather than reachability.
     path = "/".join(
         [

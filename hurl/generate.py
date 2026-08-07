@@ -356,7 +356,7 @@ def check_policy(core: dict) -> None:
     policy = core.get("policy") or {}
     if "auto_approve" in policy:
         raise SystemExit(
-            "generate.py: configs/x-road-bus/2.1.yaml declares policy.auto_approve, "
+            "generate.py: configs/x-road-bus/federation-core.yaml declares policy.auto_approve, "
             "but the scenarios approve management requests explicitly over the admin "
             "API and never write /etc/xroad/conf.d/local.ini. Either implement the "
             "flags here or set policy.management_request_approval: explicit. "
@@ -365,13 +365,13 @@ def check_policy(core: dict) -> None:
     approval = policy.get("management_request_approval")
     if approval != "explicit":
         raise SystemExit(
-            "generate.py: configs/x-road-bus/2.1.yaml must set "
+            "generate.py: configs/x-road-bus/federation-core.yaml must set "
             f"policy.management_request_approval: explicit (found: {approval!r})"
         )
 
 
 # The four keys apps/join-api/validate.py enforces (spec S8) -- kept here as
-# well so a fifth key sitting undetected in configs/x-road-bus/2.7.yaml is a
+# well so a fifth key sitting undetected in configs/x-road-bus/join-policy.yaml is a
 # generate-time failure, not something only discovered when a join is
 # submitted. Value-correctness for each of the four is validate.py's job (it
 # is the code that actually applies join: policy at request time); this is
@@ -382,7 +382,7 @@ JOIN_POLICY_KEYS = frozenset({"member_class", "approval", "default_hosting", "al
 
 def check_join_policy(join_config: dict, manifest: dict) -> None:
     """Sibling to check_policy() above, same reasoning, for
-    configs/x-road-bus/2.7.yaml's join: block -- spec S16.2 records three
+    configs/x-road-bus/join-policy.yaml's join: block -- spec S16.2 records three
     keys (max_services, require_semantic_for_provenance, backend_auth) that
     were invented and deleted for exactly this: a key nothing applies reads
     as configuration and is decoration.
@@ -401,7 +401,7 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
     extra = set(join) - JOIN_POLICY_KEYS
     if extra:
         raise SystemExit(
-            "generate.py: configs/x-road-bus/2.7.yaml join: declares "
+            "generate.py: configs/x-road-bus/join-policy.yaml join: declares "
             f"unrecognised key(s) {sorted(extra)} -- apps/join-api/validate.py "
             f"only enforces {sorted(JOIN_POLICY_KEYS)}. Either implement "
             "enforcement for the new key or remove it (spec S16.2)."
@@ -410,7 +410,7 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
     federation_class = manifest["identity"]["member_class"]
     if policy_class is not None and policy_class != federation_class:
         raise SystemExit(
-            "generate.py: configs/x-road-bus/2.7.yaml join.member_class "
+            "generate.py: configs/x-road-bus/join-policy.yaml join.member_class "
             f"({policy_class!r}) does not match manifest.yaml "
             f"identity.member_class ({federation_class!r})"
         )
@@ -466,7 +466,7 @@ def ss_prefix(dns_name: str) -> str:
 
 
 # The once-only exchange itself is NOT generated here. scripts/acceptance.sh
-# owns module 2.6's four assertions (happy path, right learner, asked once,
+# owns the once-only-exchange module's four assertions (happy path, right learner, asked once,
 # negative) -- including the two that a Hurl scenario cannot make: exact-set
 # equality of the assembled application, and the seeded-record comparison in
 # scripts/assert_record.py. A second, weaker copy of the pack's headline check
@@ -560,7 +560,7 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
                 ACL_SUBJECT=subject.replace("/", ":"),
                 # The 2.6 negative check's unauthorised caller (Wave 3 Task 1:
                 # moved off the now-retired MoEYS/PEMIS, onto PLR:ENROLMENT --
-                # configs/x-road-bus/2.6.yaml's negative_check.unauthorised_client
+                # configs/x-road-bus/once-only-exchange.yaml's negative_check.unauthorised_client
                 # is the source of truth; this is the same value restated for
                 # the generated comment below.
                 NEGATIVE="PROGRESSA:GOV:PLR:ENROLMENT",
@@ -716,9 +716,9 @@ def main() -> None:
     profile = args.profile or deployment.get("profile", "full")
     if profile not in ("full", "lite"):
         raise SystemExit(f"generate.py: deployment.yaml profile must be 'full' or 'lite' (got {profile!r})")
-    core = load("configs/x-road-bus/2.1.yaml")
+    core = load("configs/x-road-bus/federation-core.yaml")
     check_policy(core)
-    check_join_policy(load("configs/x-road-bus/2.7.yaml"), manifest)
+    check_join_policy(load("configs/x-road-bus/join-policy.yaml"), manifest)
     env = read_env()
     members = discover_members(PACK, identity)
     # member:/subsystem: no longer live in configs/*.yaml (removed 2026-07-26,
@@ -797,7 +797,7 @@ def main() -> None:
     )
     body += render(steps_module.BY_ID["cs.token_login"].template)
     body += render(steps_module.BY_ID["cs.signing_keys"].template)
-    write("00-cs-init.hurl", "configs/x-road-bus/2.1.yaml", body)
+    write("00-cs-init.hurl", "configs/x-road-bus/federation-core.yaml", body)
 
     # -- 01 trust services --------------------------------------------------
     ts = core["trust_services"]
@@ -808,7 +808,7 @@ def main() -> None:
         OCSP_URL=ts["certification_service"]["ocsp_responder"]["url"].replace("ca:", "{{ca_host}}:"),
         TSA_URL=ts["timestamping_service"]["url"].replace("ca:", "{{ca_host}}:"),
     )
-    write("01-cs-trust-services.hurl", "configs/x-road-bus/2.1.yaml", body)
+    write("01-cs-trust-services.hurl", "configs/x-road-bus/federation-core.yaml", body)
 
     # -- 02 members ---------------------------------------------------------
     body = render(
@@ -832,11 +832,11 @@ def main() -> None:
             SUBSYSTEM_CODE=s["code"],
             SUBSYSTEM_DESCRIPTION=s["description"],
         )
-    write("02-cs-members.hurl", "configs/member-*/2.*.yaml", body)
+    write("02-cs-members.hurl", "configs/member-*/*.yaml", body)
 
     # -- 03 anchor ----------------------------------------------------------
     body = render(steps_module.BY_ID["cs.anchor"].template)
-    write("03-cs-anchor.hurl", "configs/x-road-bus/2.1.yaml", body)
+    write("03-cs-anchor.hurl", "configs/x-road-bus/federation-core.yaml", body)
 
     # -- 10 management security server -------------------------------------
     host_var = f"{pdga_prefix}_host"
@@ -881,7 +881,7 @@ def main() -> None:
     body += render(steps_module.BY_ID["ss.activate"].template, HOSTVAR=host_var, P=pdga_prefix)
     body += render(steps_module.BY_ID["ss.tsa_capture"].template, HOSTVAR=host_var, P=pdga_prefix)
     body += render(steps_module.BY_ID["ss.tsa_post"].template, HOSTVAR=host_var, P=pdga_prefix)
-    write("10-ss-pdga.hurl", "configs/x-road-bus/2.1.yaml", body)
+    write("10-ss-pdga.hurl", "configs/x-road-bus/federation-core.yaml", body)
 
     # -- 2x member security servers ----------------------------------------
     # tsa_name / tsa_url and ca_name are captured on the management server
@@ -954,7 +954,7 @@ def main() -> None:
                 f"# {member['member']['member_code']} publishes no service in v0.1 "
                 f"({member.get('role_notes', '')}).\n"
                 "# It is registered on the bus so the negative check in "
-                "acceptance/2.6.md has a real,\n# registered-but-unauthorised caller "
+                "acceptance/once-only-exchange.md has a real,\n# registered-but-unauthorised caller "
                 "to make the denied request from.\n"
             )
         write(
@@ -963,7 +963,7 @@ def main() -> None:
             content,
         )
 
-    # Module 2.6 -- the once-only exchange -- has no scenario by design; see the
+    # The once-only-exchange module has no scenario by design; see the
     # note above probe data. scripts/acceptance.sh owns it.
 
     # -- hurl/topology.json --------------------------------------------------
@@ -1121,7 +1121,7 @@ declare -A HOST_SS=(
     print(f"\ndone -- {instance} federation, "
           f"{len(manifest['identifiers']['members'])} members, "
           f"{len(manifest['identifiers']['services'])} services "
-          f"(module 2.6 is proved by scripts/acceptance.sh, not by a scenario)")
+          f"(once-only-exchange is proved by scripts/acceptance.sh, not by a scenario)")
 
 
 if __name__ == "__main__":

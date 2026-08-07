@@ -229,9 +229,9 @@ def _load_manifest() -> dict:
 
 
 def _load_join_policy() -> dict:
-    """configs/x-road-bus/2.7.yaml's join: block only (spec S8) -- not the
-    whole file, mirroring validate.py's own ValidationContext.policy."""
-    doc = yaml.safe_load((PACK_DIR / "configs" / "x-road-bus" / "2.7.yaml").read_text()) or {}
+    """configs/x-road-bus/join-policy.yaml's join: block only (spec S8) -- not
+    the whole file, mirroring validate.py's own ValidationContext.policy."""
+    doc = yaml.safe_load((PACK_DIR / "configs" / "x-road-bus" / "join-policy.yaml").read_text()) or {}
     return doc.get("join") or {}
 
 
@@ -480,7 +480,7 @@ def approve_request(
     before any live mutation), then start the job. 202, not 200: the job runs
     past this response and the applicant polls GET /requests/{id}.
 
-    Wave 2 Task 2 (K-02, G-02): `configs/x-road-bus/2.7.yaml`'s
+    Wave 2 Task 2 (K-02, G-02): `configs/x-road-bus/join-policy.yaml`'s
     `approval: explicit` puts one operator's bearer token where Ref Model
     §5.3 puts the Steering Committee -- a RACI mismatch the onboarding
     path's own gap analysis names. The fix is not a second login (a

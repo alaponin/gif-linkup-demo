@@ -1,5 +1,5 @@
-# Module 2.7 — the join policy. Written by hand for join-b Task 2, before
-# prompts/2.7.md existed -- this file is what that prompt would have
+# The join policy. Written by hand for join-b Task 2, before
+# prompts/join-member.md existed -- this file is what that prompt would have
 # produced, not what running it produced (join-b Task 5 added the prompt
 # after the fact, in the same curriculum register as every other module).
 # Spec: docs/superpowers/specs/2026-08-01-member-join-api-design.md §8.
@@ -13,7 +13,7 @@
 # hurl/generate.py at generate time if a fifth key ever appears here). The
 # test for a new key, before adding one: can it be set to another value, and
 # does something observably change?
-module: "2.7"
+module: "join-policy"
 building_block: x-road-bus
 join:
   member_class: GOV          # Progressa's federation admits government bodies only

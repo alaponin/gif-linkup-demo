@@ -47,9 +47,9 @@ def test_collapsed_register_member_module_maps_each_member_to_its_own_config():
     manifest = yaml.safe_load((PACK / "manifest.yaml").read_text())
     by_member = _config_by_member(manifest)
 
-    assert by_member["PNEA"] == "configs/member-pnea/2.3.yaml"
-    assert by_member["PLR"] == "configs/member-plr/2.4.yaml"
-    assert by_member["PNIA"] == "configs/member-pnia/2.5.yaml"
+    assert by_member["PNEA"] == "configs/member-pnea/pnea.yaml"
+    assert by_member["PLR"] == "configs/member-plr/plr.yaml"
+    assert by_member["PNIA"] == "configs/member-pnia/pnia.yaml"
     # The bug this guards against: all three silently resolving to the same file.
     assert len({by_member["PNEA"], by_member["PLR"], by_member["PNIA"]}) == 3
 

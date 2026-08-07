@@ -1,21 +1,21 @@
 """apps/console/truth.py -- the single reader of pack truth.
 
 Loads deployment.yaml (profile), hurl/topology.json (hosts, hosting,
-services, configured ACLs) and configs/x-road-bus/2.6.yaml (the exchange:
-calls, r1 paths, prefills, the four layer_* strings, asked_once,
-negative_check). The console never re-derives topology or exchange
-semantics -- it renders what this module loads, and this module never
-invents a value the files don't already state.
+services, configured ACLs) and configs/x-road-bus/once-only-exchange.yaml
+(the exchange: calls, r1 paths, prefills, the four layer_* strings,
+asked_once, negative_check). The console never re-derives topology or
+exchange semantics -- it renders what this module loads, and this module
+never invents a value the files don't already state.
 
 Two things confirmed live before writing this (2026-07-26), both load-bearing
 here:
-  - the four layer_* strings are split two-and-two across 2.6.yaml's two
-    calls (identity-api: technical+legal; enrolment-api: organisational+
-    semantic) -- neither call carries all four, so layers() aggregates
-    across both;
-  - configs/x-road-bus/2.6.yaml's negative_check.entrypoint is a static
-    string (today "http://ss-plr:8080") that this module never trusts
-    directly -- entrypoints are always resolved from topology.json's
+  - the four layer_* strings are split two-and-two across
+    once-only-exchange.yaml's two calls (identity-api: technical+legal;
+    enrolment-api: organisational+semantic) -- neither call carries all
+    four, so layers() aggregates across both;
+  - configs/x-road-bus/once-only-exchange.yaml's negative_check.entrypoint
+    is a static string (today "http://ss-plr:8080") that this module never
+    trusts directly -- entrypoints are always resolved from topology.json's
     hosted_on instead, the same mechanism the consumer entrypoint above
     uses. This still matters even though PLR:ENROLMENT (the negative check's
     unauthorised caller since Wave 3 Task 1) happens to be self-hosted in
@@ -120,13 +120,13 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         raise RuntimeError(f"{topo_path} does not exist -- run `python3 hurl/generate.py` first")
     topology = json.loads(topo_path.read_text())
 
-    exchange_cfg = yaml.safe_load((pack_dir / "configs/x-road-bus/2.6.yaml").read_text())
+    exchange_cfg = yaml.safe_load((pack_dir / "configs/x-road-bus/once-only-exchange.yaml").read_text())
     exchange = exchange_cfg["exchange"]
 
     # -- form model: every citizen-provided field, every bus-prefilled field
     # tagged with which member supplies it (from that call's own prefills).
     # Built in call order (citizen field(s) first, then each call's prefills
-    # in the order 2.6.yaml lists them) rather than sorted -- the form reads
+    # in the order once-only-exchange.yaml lists them) rather than sorted -- the form reads
     # as "who you are, then where you studied", not a database dump.
     citizen_fields = list(exchange["asked_once"]["citizen_provides"])
     prefilled_fields = set(exchange["asked_once"]["prefilled_from_bus"])
@@ -143,7 +143,7 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
             if field in field_source:
                 raise RuntimeError(
                     f"truth.py: field {field!r} is prefilled by {member_code} but "
-                    "also citizen-provided -- configs/x-road-bus/2.6.yaml is inconsistent"
+                    "also citizen-provided -- configs/x-road-bus/once-only-exchange.yaml is inconsistent"
                 )
             field_source[field] = member_code
             field_group[field] = group
@@ -156,7 +156,7 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
             "truth.py: the union of every call's prefills "
             f"({sorted(union_of_prefills)}) does not equal "
             f"asked_once.prefilled_from_bus ({sorted(prefilled_fields)}) in "
-            "configs/x-road-bus/2.6.yaml"
+            "configs/x-road-bus/once-only-exchange.yaml"
         )
 
     form_fields = [
@@ -179,7 +179,7 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         for svc in subsystem["services"]:
             expected_acl[svc["code"]] = [_to_colon_id(a) for a in svc["access"]]
 
-    # -- entrypoints resolved from topology, never from 2.6.yaml's static
+    # -- entrypoints resolved from topology, never from once-only-exchange.yaml's static
     # (profile-unaware) entrypoint fields -- see module docstring.
     consumer_entrypoint = _entrypoint_for_member_code(topology, _member_code(exchange["consumer"]))
     negative_check_entrypoint = _entrypoint_for_member_code(
@@ -187,10 +187,10 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
     )
 
     # PNIA's mock backend, off the bus -- the "held" query never goes near
-    # X-Road (module docstring). Derived from configs/member-pnia/2.5.yaml's
+    # X-Road (module docstring). Derived from configs/member-pnia/pnia.yaml's
     # spec_url the same way apps/mock-registry/app.py's own servers.url is:
     # {base}/spec.yaml -> {base}/v1.
-    pnia_config = yaml.safe_load((pack_dir / "configs/member-pnia/2.5.yaml").read_text())
+    pnia_config = yaml.safe_load((pack_dir / "configs/member-pnia/pnia.yaml").read_text())
     identity_spec_url = next(
         svc["spec_url"] for svc in pnia_config["services"] if svc["code"] == "identity-api"
     )

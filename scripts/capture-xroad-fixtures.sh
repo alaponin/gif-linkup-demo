@@ -20,7 +20,7 @@ FIXTURE_DIR="$PACK_DIR/apps/console/tests/fixtures/xroad"
 CLIENT_ID="PROGRESSA:GOV:PNIA:IDENTITY"
 SUBJECT_ID="PROGRESSA:GOV:PNEA:EXAMS"
 # Wave 3 Task 1: MOEYS:PEMIS retired; PLR:ENROLMENT is the negative check's
-# unauthorised caller now (configs/x-road-bus/2.6.yaml's negative_check) --
+# unauthorised caller now (configs/x-road-bus/once-only-exchange.yaml's negative_check) --
 # same reasoning here, this only needs a real bus member not granted this
 # service.
 UNGRANTED_SUBJECT="PROGRESSA:GOV:PLR:ENROLMENT"

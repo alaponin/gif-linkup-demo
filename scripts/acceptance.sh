@@ -173,13 +173,13 @@ PY
 )
 
 # The exchange's shape (consumer, negative caller, the two r1 paths) comes
-# from configs/x-road-bus/2.6.yaml -- not restated as bash literals. Its
-# ENTRYPOINT fields stay unread on purpose: they are static ("http://ss-
-# pnea:8080") and only correct under profile: full -- under lite the
-# consumer/negative-caller can be hosted elsewhere, so the entrypoint is
+# from configs/x-road-bus/once-only-exchange.yaml -- not restated as bash
+# literals. Its ENTRYPOINT fields stay unread on purpose: they are static
+# ("http://ss-pnea:8080") and only correct under profile: full -- under lite
+# the consumer/negative-caller can be hosted elsewhere, so the entrypoint is
 # resolved from HOST_SS/SS_REST instead, the same live-confirmed trap
 # apps/console/truth.py already documents and avoids.
-mapfile -t _exchange < <(python3 - "$PACK_DIR/configs/x-road-bus/2.6.yaml" <<'PY'
+mapfile -t _exchange < <(python3 - "$PACK_DIR/configs/x-road-bus/once-only-exchange.yaml" <<'PY'
 import sys, yaml
 cfg = yaml.safe_load(open(sys.argv[1]))['exchange']
 print(cfg['headers']['X-Road-Client'])
