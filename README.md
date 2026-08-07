@@ -99,7 +99,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   of the figures above. An own-server join (same PTSB identity,
   `security_server.own_server: true`) reached `BLOCKED` almost immediately,
   took **102s** for `scripts/join-agent.sh ptsb` to bring `ss-ptsb` healthy
-  (within the documented 76–100s range), and **131s** from `resume` to
+  (just above the documented 76–100s range), and **131s** from `resume` to
   `ACTIVE, verified: true` — the first live confirmation that
   `apps/join-api/job.py`'s `R1_RETRY_BUDGET = 54` fix (join-c plan Task 5
   review fix 2) actually works: the shared run budget had 7 of 12 retries

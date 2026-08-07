@@ -50,7 +50,7 @@ host, and run the once-only exchange that proves it. Demo only — see
    Regenerates the Progressa demonstration data (Gambia-grounded, Progressa-named)
    and restarts the mock providers with it.
 4. **Prove** — `scripts/acceptance.sh`
-   Runs `acceptance/2.1.md` … `2.6.md` in order; exits non-zero on first failure.
+   Runs `acceptance/federation-core.md` … `once-only-exchange.md` in order; exits non-zero on first failure.
    2.6 is the framework's acceptance: the once-only exchange resolves, the right
    learner returns, nothing is asked twice, and the unauthorised caller is denied.
 5. **Demonstrate (optional)** — `scripts/console.sh up`

@@ -83,6 +83,9 @@ own Security Server. `ss-moeys` above is retired, not deployed — see
 `GOV/MOEYS:PEMIS`, `GOV/PNEA:EXAMS`, `GOV/PLR:ENROLMENT`, `GOV/PNIA:IDENTITY`.
 Service codes: `identity-api` (PNIA), `enrolment-api` (PLR), `pemis-api` (MoEYS).
 These are the cross-pack join keys for KP3/KP4 — freeze them in `manifest.yaml`.
+`GOV/MOEYS:PEMIS`/`pemis-api` above is historical: MoEYS was retired from the
+frozen contract in Wave 3 Task 1, with KP3/KP4 sign-off — `manifest.yaml`'s
+`identifiers:` block now lists only PNEA, PLR and PNIA.
 
 ## 3. Federation stand-up sequence (what the Hurl scenarios automate)
 
@@ -161,6 +164,12 @@ concurrent UI sessions in one browser log each other out.
 
 Each module = one config artefact + generating prompt (`bb-config-gen` play) + one
 acceptance check.
+
+The table below is historical (pre-Wave-3): modules 2.2–2.5 have since been
+collapsed into one `register-member` module, MoEYS's module 2.2 was retired,
+and everything was renamed from curriculum numbers to capability names
+(`federation-core`, `register-member`, `once-only-exchange`, `join-member`) —
+see `manifest.yaml` for the current module map.
 
 | Module | BB | Title | Config artefact | Acceptance proves |
 | --- | --- | --- | --- | --- |

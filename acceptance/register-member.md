@@ -26,7 +26,7 @@ notion of what a provider's own app actually returns.
 - **Then**:
   1. **PNEA (consumer)** — client `PROGRESSA/GOV/PNEA/EXAMS` exists with
      status `REGISTERED`; its connection type is `HTTP` (demo-only, per
-     `configs/member-pnea/2.3.yaml` — production must use HTTPS with a
+     `configs/member-pnea/pnea.yaml` — production must use HTTPS with a
      client TLS certificate, or the demo call fails outright); ss-pnea holds
      current global configuration (it can see the other members in the
      registry — precondition for routing any call in module 2.6); the soft
@@ -40,7 +40,7 @@ notion of what a provider's own app actually returns.
      URL `http://app-pnia:8000/v1`; a direct probe of `app-pnia` returns
      only the purpose-limited fields (`nin, given_name, family_name,
      date_of_birth, sex, region`) — no field beyond the decree's list,
-     matching `configs/member-pnia/2.5.yaml`'s `semantic.fields`.
+     matching `configs/member-pnia/pnia.yaml`'s `semantic.fields`.
 
   The ACL-exactness of both providers' services — that each service's
   granted-subject list is exactly `PROGRESSA/GOV/PNEA/EXAMS`, one entry, no

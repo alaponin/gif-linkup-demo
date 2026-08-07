@@ -787,7 +787,7 @@ confirmation of the `R1_RETRY_BUDGET` fix:** same PTSB identity, re-submitted
 with `security_server.own_server: true` after the hosted record above was
 fully retired (freeing the code). Reached `BLOCKED` almost immediately
 (waiting for `ss-ptsb`); `scripts/join-agent.sh ptsb` brought it healthy in
-**102s** (within the documented 76–100s range); `POST .../resume` ran the
+**102s** (just above the documented 76–100s range); `POST .../resume` ran the
 full own-server bring-up sequence (`ss.bringup_init` through
 `ss.client_register`, then `service.publish`/`service.acl`, then
 `join.r1_verify`) and reached **`ACTIVE, verified: true` in 131s** — the
@@ -843,7 +843,7 @@ to "fix" by recreating them.
 | RAM (steady state, canonical topology up) | ~11 GB | **~10.9 GiB** (`docker stats --no-stream`: 4× Security Server 2.23–2.25 GiB, `cs` 1.81 GiB, `ca` 88 MiB, `app-pnia`/`app-plr` 32 MiB each) — confirms, does not correct |
 | Hosted join → `ACTIVE, verified: true` | ~64–93s (join-b/join-c) | **~73s** — within noise |
 | Hosted un-join → `RETIRED` | seconds | **~3s** |
-| Own-server bring-up (`join-agent.sh`) | 76–100s | **102s** — within range |
+| Own-server bring-up (`join-agent.sh`) | 76–100s | **102s** — just above range |
 | Own-server resume → `ACTIVE, verified: true` | not previously reached | **131s**, well inside `R1_RETRY_BUDGET`'s 540s ceiling |
 
 `--fast` and `--live` are within noise of their prior figures — no

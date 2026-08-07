@@ -414,7 +414,7 @@ is a testing concern with a testing answer (a join in the `--full` cycle, which
 already happens), not a reason to model an unsourced topology in the canonical
 set.
 
-### 5.1 Feedback for the onboarding path
+### 6.1 Feedback for the onboarding path
 
 G2's hosting table would be stronger with the commercial-host model in it. As
 written it frames hosting as a delegation to avoid; practice treats it as a

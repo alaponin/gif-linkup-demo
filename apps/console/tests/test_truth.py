@@ -12,7 +12,7 @@ FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 
 def test_topology_resolves():
-    truth = load_truth(FIXTURES / "full")
+    truth = load_truth(FIXTURES / "pack")
     assert {s["host"] for s in truth.topology["security_servers"]} == {
         "ss-pdga", "ss-pnea", "ss-plr", "ss-pnia", "ss-moeys",
     }
@@ -24,7 +24,7 @@ def test_topology_resolves():
 
 
 def test_form_fields_cover_citizen_and_bus_exactly():
-    truth = load_truth(FIXTURES / "full")
+    truth = load_truth(FIXTURES / "pack")
     by_name = {f.name: f.source for f in truth.form_fields}
     assert by_name["nin"] == "citizen"
     assert by_name["given_name"] == "PNIA"
@@ -33,14 +33,14 @@ def test_form_fields_cover_citizen_and_bus_exactly():
 
 
 def test_layers_aggregate_across_both_calls():
-    truth = load_truth(FIXTURES / "full")
+    truth = load_truth(FIXTURES / "pack")
     assert set(truth.layers) == {"technical", "legal", "organisational", "semantic"}
     assert "cross-server" in truth.layers["technical"]
     assert "semantic map" in truth.layers["semantic"]
 
 
 def test_expected_acl_normalised_to_colon_form():
-    truth = load_truth(FIXTURES / "full")
+    truth = load_truth(FIXTURES / "pack")
     assert truth.expected_acl["identity-api"] == ["PROGRESSA:GOV:PNEA:EXAMS"]
     assert truth.expected_acl["enrolment-api"] == ["PROGRESSA:GOV:PNEA:EXAMS"]
     assert truth.expected_acl["pemis-api"] == []

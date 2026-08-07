@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
-os.environ["PACK_DIR"] = str(pathlib.Path(__file__).resolve().parent / "fixtures" / "full")
+os.environ["PACK_DIR"] = str(pathlib.Path(__file__).resolve().parent / "fixtures" / "pack")
 os.environ["OUT_DIR"] = "/tmp"
 os.environ["XROAD_ADMIN_USER"] = "xrd"
 os.environ["XROAD_ADMIN_PASSWORD"] = "secret"

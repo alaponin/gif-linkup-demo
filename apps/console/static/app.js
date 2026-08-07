@@ -442,7 +442,7 @@ function initBreakProof() {
 
 // Single column, ordered the way EIF is taught -- legal, organisational,
 // semantic, technical -- never the 1,4,3,2 grid order the layer_* keys
-// happen to sort into. Each pane keeps its 2.6.yaml sentence as a heading
+// happen to sort into. Each pane keeps its once-only-exchange.yaml sentence as a heading
 // and gains live evidence beneath it (UX plan Task 6).
 async function renderInspector(data) {
   $("#inspector-empty").style.display = "none";

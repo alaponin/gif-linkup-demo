@@ -5,7 +5,7 @@ services are registered, and global configuration is being generated — the
 federation core other modules build on.
 **Run by:** `scripts/acceptance.sh` (CS admin REST API)
 
-- **Given** `configs/x-road-bus/2.1.yaml` is deployed on the local stack
+- **Given** `configs/x-road-bus/federation-core.yaml` is deployed on the local stack
   (`scripts/deploy.sh` completed step §3.1–3.5 of PLAN.md);
 - **When** the check queries the CS admin API for initialisation status, member
   classes, certification services, timestamping services and the internal

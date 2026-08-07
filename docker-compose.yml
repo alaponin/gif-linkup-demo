@@ -145,7 +145,7 @@ services:
     # docs/production-delta.md). profiles: ["demo"] keeps it off by default
     # on a plain `docker compose up`; scripts/console.sh {up|down|reset|status}
     # is the intended entry point. Mounts reconstruct just enough of the pack
-    # (not the whole repo) for apps/console/truth.py to load: deployment.yaml,
+    # (not the whole repo) for apps/console/truth.py to load:
     # manifest.yaml, configs/, hurl/topology.json, apps/data/*.csv -- all
     # read-only. out/ is the one read-write mount, for the ACL journal.
     build: ./apps/console
