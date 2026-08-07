@@ -59,6 +59,22 @@ class SecurityServer(_Strict):
     own_server: bool = False
 
 
+class SLA(_Strict):
+    """Wave 4 Task 1 (K-01): Module 5.3's five terms, "reuse the same
+    template for every service on the bus" -- hence one SLA per Service, not
+    per member (design decision 2). Free text like `lawful_basis` above:
+    this pack has no numeric target registry to check these against, and a
+    demo's own targets need to stay editable prose ("99.5% monthly uptime"),
+    not a schema-enforced number."""
+
+    availability: str
+    response_time: str
+    support_hours: str
+    incident_response: str
+    change_notice: str
+    signatory: str
+
+
 class Service(_Strict):
     code: str
     spec_url: str
@@ -72,6 +88,12 @@ class Service(_Strict):
     # nothing to check it against, and a resolution check against a file we
     # also wrote would prove nothing (wave 2 plan, "what was cut and why").
     lawful_basis: str | None = None
+    # Optional at the schema level, enforced at validate.py instead (spec
+    # S8-style: a missing SLA on a published service is a REJECTED request
+    # naming the check, not a parse failure) -- Wave 4 Task 1 Step 4: required
+    # for a provider, optional for a consumer-only member (who has no
+    # services to attach one to in the first place).
+    sla: SLA | None = None
 
 
 class ExchangePattern(str, Enum):
@@ -100,6 +122,29 @@ class Backend(_Strict):
     auth: BackendAuth
 
 
+class MemberRequirements(_Strict):
+    """Wave 4 Task 1 (K-01): Module 5.2's six-item checklist -- "states, up
+    front, exactly what an agency must have in place before it can join."
+    Required on every JoinPayload, provider or consumer: 5.2 precedes
+    registration for everyone, not only for a member that publishes a
+    service. All six as stated fields, not a mix of asserted and
+    API-derived ones (simplification pass, 2026-08-05) -- the teaching
+    value is that the applicant answers the checklist.
+
+    `lawful_basis` is the one item that reuses a field rather than
+    declaring a second copy of it: Service.lawful_basis (Wave 2 Task 3)
+    already carries this for a provider's services, so a provider can leave
+    this None and rely on those; a consumer-only member, which has no
+    services to attach one to, states it here instead."""
+
+    has_security_server: bool
+    has_registered_identity: bool
+    standards_portfolio_adopted: bool
+    data_conformant: bool
+    lawful_basis: str | None = None
+    technical_contact: str
+
+
 class JoinPayload(_Strict):
     code: str
     name: str
@@ -111,6 +156,7 @@ class JoinPayload(_Strict):
     services: list[Service] = Field(default_factory=list)
     semantic: Semantic | None = None
     backend: Backend
+    member_requirements: MemberRequirements
     # Recorded and surfaced to the operator, never acted on by this API
     # (spec S2.7) -- a provider granting access is that provider's own
     # config, which this API cannot touch.

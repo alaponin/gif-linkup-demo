@@ -27,6 +27,32 @@ from schema import JoinPayload  # noqa: E402
 REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 
 
+def _requirements(**overrides) -> dict:
+    base = {
+        "has_security_server": True,
+        "has_registered_identity": True,
+        "standards_portfolio_adopted": True,
+        "data_conformant": True,
+        "lawful_basis": "consent",
+        "technical_contact": "Jane Doe",
+    }
+    base.update(overrides)
+    return base
+
+
+def _sla(**overrides) -> dict:
+    base = {
+        "availability": "99.5% monthly uptime",
+        "response_time": "4 business hours, P1",
+        "support_hours": "Mon-Fri 08:00-18:00 ICT",
+        "incident_response": "P1 acknowledged within 1 hour",
+        "change_notice": "5 business days for planned changes",
+        "signatory": "Head of IT",
+    }
+    base.update(overrides)
+    return base
+
+
 def _payload(**overrides) -> JoinPayload:
     base = dict(
         code="PTSB",
@@ -35,6 +61,7 @@ def _payload(**overrides) -> JoinPayload:
         subsystem_description="Scholarship award management",
         security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
         backend={"auth": "network_allowlist"},
+        member_requirements=_requirements(),
     )
     base.update(overrides)
     return JoinPayload(**base)
@@ -54,6 +81,7 @@ def test_render_member_config_matches_the_documented_shape():
                 "code": "awards-api",
                 "spec_url": "http://app-ptsb:8000/spec.yaml",
                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"],
+                "sla": _sla(),
             }
         ],
         semantic={"entity": "award", "key": "award_id", "fields": ["award_id", "status"]},
@@ -66,8 +94,10 @@ def test_render_member_config_matches_the_documented_shape():
     assert doc["security_server"] == {"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"}
     assert doc["services"][0]["code"] == "awards-api"
     assert doc["services"][0]["access"] == ["PROGRESSA/GOV/PNEA/EXAMS"]
+    assert doc["services"][0]["sla"]["signatory"] == "Head of IT"
     assert doc["semantic"]["fields"] == ["award_id", "status"]
     assert doc["backend"] == {"auth": "network_allowlist"}
+    assert doc["member_requirements"]["technical_contact"] == "Jane Doe"
     # generate.py never reads these -- a copy here would drift (2.5.yaml).
     for absent in ("type", "enabled", "tls_verify"):
         assert absent not in doc

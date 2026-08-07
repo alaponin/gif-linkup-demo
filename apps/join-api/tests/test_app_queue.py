@@ -77,6 +77,14 @@ def _submit(client) -> dict:
         subsystem_description="Scholarship award management",
         security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
         backend={"auth": "network_allowlist"},
+        member_requirements={
+            "has_security_server": True,
+            "has_registered_identity": True,
+            "standards_portfolio_adopted": True,
+            "data_conformant": True,
+            "lawful_basis": "consent",
+            "technical_contact": "Jane Doe",
+        },
     )
     resp = client.post("/requests", json=payload, headers=APPLICANT)
     assert resp.status_code == 201, resp.text
@@ -124,6 +132,14 @@ def test_list_newest_first(client):
         subsystem_description="Housing records",
         security_server={"code": "SS-PHIB", "dns_name": "ss-phib", "hosted_on": "ss-plr"},
         backend={"auth": "none"},
+        member_requirements={
+            "has_security_server": True,
+            "has_registered_identity": True,
+            "standards_portfolio_adopted": True,
+            "data_conformant": True,
+            "lawful_basis": "consent",
+            "technical_contact": "Jane Doe",
+        },
     )
     second = client.post("/requests", json=second_payload, headers=APPLICANT).json()
     assert second["state"] == "SUBMITTED"
@@ -219,6 +235,14 @@ def test_rejected_record_carries_no_steps(client):
             subsystem_description="x",
             security_server={"code": "SS-X", "dns_name": "ss-x", "hosted_on": "ss-plr"},
             backend={"auth": "none"},
+            member_requirements={
+                "has_security_server": True,
+                "has_registered_identity": True,
+                "standards_portfolio_adopted": True,
+                "data_conformant": True,
+                "lawful_basis": "consent",
+                "technical_contact": "Jane Doe",
+            },
         ),
         headers=APPLICANT,
     )

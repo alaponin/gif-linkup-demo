@@ -14,6 +14,19 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from schema import BackendAuth, ExchangePattern, JoinPayload  # noqa: E402
 
 
+def _requirements(**overrides) -> dict:
+    base = {
+        "has_security_server": True,
+        "has_registered_identity": True,
+        "standards_portfolio_adopted": True,
+        "data_conformant": True,
+        "lawful_basis": "consent",
+        "technical_contact": "Jane Doe",
+    }
+    base.update(overrides)
+    return base
+
+
 def _consume_only(**overrides) -> dict:
     base = {
         "code": "PTSB",
@@ -22,6 +35,7 @@ def _consume_only(**overrides) -> dict:
         "subsystem_description": "Scholarship award management",
         "security_server": {"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
         "backend": {"auth": "network_allowlist"},
+        "member_requirements": _requirements(),
     }
     base.update(overrides)
     return base
@@ -126,3 +140,67 @@ def test_lawful_basis_accepts_free_text():
                    "lawful_basis": "[confirm: cite the decree article]"}],
     ))
     assert payload.services[0].lawful_basis == "[confirm: cite the decree article]"
+
+
+# -- member_requirements (Wave 4 Task 1, K-01) ---------------------------------
+
+
+def test_member_requirements_is_required():
+    """Every join answers 5.2's checklist, provider or consumer -- unlike
+    semantic and lawful_basis, there is no default here."""
+    raw = _consume_only()
+    del raw["member_requirements"]
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**raw)
+
+
+def test_member_requirements_rejects_unknown_field():
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(member_requirements=_requirements(not_a_real_field=True)))
+
+
+def test_member_requirements_lawful_basis_defaults_to_none():
+    """Optional here too (Step 3): a provider leaves it unset and relies on
+    its services' own lawful_basis instead."""
+    payload = JoinPayload(**_consume_only(member_requirements=_requirements(lawful_basis=None)))
+    assert payload.member_requirements.lawful_basis is None
+
+
+# -- sla (Wave 4 Task 1, K-01) --------------------------------------------------
+
+
+def _sla(**overrides) -> dict:
+    base = {
+        "availability": "99.5% monthly uptime",
+        "response_time": "4 business hours, P1",
+        "support_hours": "Mon-Fri 08:00-18:00 ICT",
+        "incident_response": "P1 acknowledged within 1 hour",
+        "change_notice": "5 business days for planned changes",
+        "signatory": "Head of IT",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_sla_defaults_to_none_on_a_service():
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml"}],
+    ))
+    assert payload.services[0].sla is None
+
+
+def test_sla_accepts_the_full_block():
+    payload = JoinPayload(**_consume_only(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "sla": _sla()}],
+    ))
+    assert payload.services[0].sla.availability == "99.5% monthly uptime"
+    assert payload.services[0].sla.signatory == "Head of IT"
+
+
+def test_sla_rejects_unknown_field():
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(
+            services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                       "sla": _sla(not_a_real_field=True)}],
+        ))

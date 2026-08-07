@@ -57,7 +57,18 @@ DOCUMENT 2 — configs/member-<key>/<key>.yaml:
     registered member's config lists in ITS OWN access grants for a
     provenance-tracked exchange (mirrors 2.5.yaml's identity example): entity,
     key and field list, copied from the brief's semantic map. The field list
-    is a legal decision — only what the stated purpose needs.
+    is a legal decision — only what the stated purpose needs;
+(5) member_requirements — Module 5.2's six-item checklist, answered by the
+    joining agency, not assumed: has_security_server, has_registered_identity,
+    standards_portfolio_adopted, data_conformant (booleans), technical_contact
+    (a name), and lawful_basis — only if this agency is consumer-only; a
+    provider states its lawful basis per service instead (see (3) above),
+    and this field is then omitted here;
+(6) for each service in (3): sla — Module 5.3's five terms
+    (availability, response_time, support_hours, incident_response,
+    change_notice) plus a signatory, reusing the same template for every
+    service on the bus. Omit entirely for a consumer-only agency (no
+    services to attach one to).
 
 Rules: every identifier is [confirm: verify against the live X-Road registry].
 Do not add fields the purpose does not need; do not widen the ACL beyond what

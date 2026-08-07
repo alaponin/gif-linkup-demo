@@ -1,12 +1,15 @@
 """apps/join-api/validate.py -- eleven of the twelve checks spec S8 requires
-before a join request can be approved (join-b Task 2). Check 5 (member
-class) moved to hurl/generate.py's check_join_policy() -- a generate-time
-structural check, not a per-request one -- see the comment above where
-_check_member_class used to be; this module runs the other eleven. Pure
-functions over a payload, the manifest, the join policy and a fetched
-OpenAPI document -- no X-Road, no containers, no job. Checks run in the
-exact order spec S8 lists them (1 schema .. 12 identifier characters, minus
-5); the first failure raises
+before a join request can be approved (join-b Task 2), plus two more Wave 4
+adds beyond the spec (lawful_basis and sla_required, K-01) -- thirteen
+per-request checks in total. Check 5 (member class) moved to
+hurl/generate.py's check_join_policy() -- a generate-time structural check,
+not a per-request one -- see the comment above where _check_member_class
+used to be; this module runs the other eleven of S8's own list, plus
+lawful_basis and sla_required. Pure functions over a payload, the manifest,
+the join policy and a fetched OpenAPI document -- no X-Road, no containers,
+no job. S8's checks run in the exact order spec S8 lists them (1 schema ..
+12 identifier characters, minus 5); the two Wave 4 checks run alongside them
+(see _CHECKS below for where), and the first failure of any of them raises
 RejectionError(check, message) naming the check, which is what a REJECTED
 request carries (spec S4).
 
@@ -343,6 +346,43 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
     return None
 
 
+def _check_lawful_basis(ctx: ValidationContext) -> str | None:
+    """Wave 4 Task 1 Step 3 (K-01): 5.2's sixth checklist item (a lawful
+    basis for its exchanges) is satisfied by a provider's own services
+    (Service.lawful_basis, Wave 2 Task 3) -- never re-checked here, exactly
+    like check 8's own "recorded and surfaced, never resolved" treatment of
+    that field. A consumer-only member has no services to carry it, so it
+    must be on member_requirements.lawful_basis instead; a payload that sets
+    neither has nowhere for this item to live at all ("one field, one
+    place" -- design decision 1)."""
+    if ctx.payload.services:
+        return None
+    if not ctx.payload.member_requirements.lawful_basis:
+        return (
+            "member_requirements.lawful_basis is required for a consumer-only "
+            "member (no services to state one on instead) -- Module 5.2's "
+            "sixth checklist item has nowhere else to be recorded"
+        )
+    return None
+
+
+def _check_sla_required(ctx: ValidationContext) -> str | None:
+    """Wave 4 Task 1 Step 4 (K-01): every published service needs an SLA --
+    Module 5.3's own "reuse the same template for every service on the bus"
+    (design decision 2, schema.SLA lives on Service, not on JoinPayload). A
+    consumer-only member (no services) has nothing to check here and is
+    unaffected. Not one of spec S8's numbered twelve -- Wave 4 adds it, in
+    the same style: the first service missing one fails, naming it."""
+    for svc in ctx.payload.services:
+        if svc.sla is None:
+            return (
+                f"service {svc.code!r} publishes with no sla: block -- Module 5.3's "
+                "SLA template is required for every service a provider publishes "
+                "(a consumer-only member, with no services, needs none)"
+            )
+    return None
+
+
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
 
 
@@ -470,9 +510,11 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 
 # Checks run in this exact order -- spec S8's own numbered list, verbatim,
 # minus check 5 (member_class), which has no per-request implementation --
-# see the comment above where _check_member_class used to be. Check 1
-# (schema) happens in validate() itself, before a ValidationContext can even
-# be built.
+# see the comment above where _check_member_class used to be -- plus
+# lawful_basis and sla_required (Wave 4, K-01), neither one of S8's twelve,
+# inserted after purpose_limitation since all three inspect payload.services.
+# Check 1 (schema) happens in validate() itself, before a ValidationContext
+# can even be built.
 _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("key_derivation", _check_key_derivation),
     ("collision", _check_collision),
@@ -480,6 +522,8 @@ _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("hosting", _check_hosting),
     ("acl_sanity", _check_acl_sanity),
     ("purpose_limitation", _check_purpose_limitation),
+    ("lawful_basis", _check_lawful_basis),
+    ("sla_required", _check_sla_required),
     ("backend_reachability", _check_backend_reachability),
     ("allowed_methods", _check_allowed_methods),
     ("backend_auth_declared", _check_backend_auth_declared),
@@ -497,8 +541,9 @@ def validate(
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
 ) -> tuple[JoinPayload, ValidationContext]:
-    """Runs all eleven per-request checks (spec S8, minus check 5 -- see
-    _CHECKS' own comment) in order. Returns
+    """Runs all thirteen per-request checks (spec S8's eleven, minus check 5,
+    plus lawful_basis and sla_required -- see _CHECKS' own comment) in
+    order. Returns
     (validated JoinPayload, the ValidationContext checks ran against) on
     success -- the context is returned too because check 9 populates
     ctx.fetched_specs with every service's parsed OpenAPI document, and

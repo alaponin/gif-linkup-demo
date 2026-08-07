@@ -17,8 +17,10 @@ PLR, 2.5 PNIA) were one generation prompt run three times over three
 different briefs, not three different prompts. This prompt is that one
 generation, parameterised over which of the two shapes below the agency
 takes. Precondition for all three: the member has passed the Member
-Requirements checklist (Module 5.2; Interop Toolkit); a provider's service
-levels are additionally set in a signed SLA (Module 5.3).
+Requirements checklist (Module 5.2) and a provider's service levels are
+additionally set in a signed SLA (Module 5.3) — both now carried as fields
+this prompt generates (`member_requirements`, `sla`; Wave 4, K-01), not
+deferred to the Interop Toolkit.
 
 ## Prompt (copy-paste ready)
 
@@ -47,11 +49,19 @@ Generate the registration configuration as a single YAML document:
     forwarding target from the spec's own servers.url and always enables a
     published service explicitly, so a value here would be a second,
     driftable copy); access — the ACL, exactly the consumer subsystems the
-    access policy names; and semantic — the entity, key and field list this
+    access policy names; semantic — the entity, key and field list this
     service returns, copied from the semantic map (what this data means on
     the bus — for identity data specifically, the field list is a legal
     decision: only the fields the credential purpose needs, per the
-    decree's purpose limitation, never the full record).
+    decree's purpose limitation, never the full record); and sla — Module
+    5.3's five terms (availability, response_time, support_hours,
+    incident_response, change_notice) plus a signatory, one per service,
+    reusing the same template for every service on the bus;
+(4) member_requirements — Module 5.2's six-item checklist: has_security_server,
+    has_registered_identity, standards_portfolio_adopted, data_conformant
+    (booleans), technical_contact (a name), and lawful_basis — only for a
+    consumer-only agency (a provider's lawful basis is stated per service in
+    (3) instead, and this field is then omitted).
 
 Rules: every identifier is [confirm: verify against the live X-Road
 registry] — a wrong code silently routes nowhere or to the wrong agency. The

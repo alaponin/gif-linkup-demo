@@ -13,8 +13,10 @@ endpoint-level access rights over a tool-generated OpenAPI spec) —
 
 2.1–2.6 register the federation's own curriculum. 2.7 is the policy the join
 API (`apps/join-api/`) enforces on everyone who joins *after* that curriculum
-exists — four keys, read by `validate.py`'s eleven per-request checks and by
-`hurl/generate.py`'s `check_join_policy()`. This prompt exists so the policy
+exists — four keys, read by `validate.py`'s thirteen per-request checks
+(spec S8's eleven, plus `lawful_basis` and `sla_required`, Wave 4's
+additions beyond the spec) and by `hurl/generate.py`'s
+`check_join_policy()`. This prompt exists so the policy
 is teachable the way every other module's config is: as something a federation
 operator authors from a reference, not something that only happens to be
 correct because it was written by hand once. **It was, in fact, written by

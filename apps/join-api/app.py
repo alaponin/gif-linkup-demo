@@ -241,7 +241,8 @@ def submit_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
 ) -> dict:
-    """Validate synchronously (spec S8's eleven per-request checks --
+    """Validate synchronously (spec S8's eleven per-request checks plus
+    lawful_basis and sla_required, Wave 4's additions beyond the spec --
     validate.py's own module docstring: check 5 moved to generate-time),
     then either persist
     a REJECTED record or -- on success -- write the candidate config to a
@@ -278,7 +279,7 @@ def submit_request(
     try:
         diff = writer.dry_run_diff(PACK_DIR, key, payload)
     except writer.GenerateFailure as exc:
-        # Every one of the eleven per-request S8 checks passed, but generate.py itself still
+        # Every one of the thirteen per-request checks passed, but generate.py itself still
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
         # record, never a bare 500, per spec S7's "submission always

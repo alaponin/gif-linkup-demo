@@ -88,6 +88,14 @@ PAYLOAD = dict(
     subsystem_description="Scholarship award management",
     security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
     backend={"auth": "network_allowlist"},
+    member_requirements={
+        "has_security_server": True,
+        "has_registered_identity": True,
+        "standards_portfolio_adopted": True,
+        "data_conformant": True,
+        "lawful_basis": "consent",
+        "technical_contact": "Jane Doe",
+    },
 )
 
 

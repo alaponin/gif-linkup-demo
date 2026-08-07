@@ -63,6 +63,14 @@ def _payload(**overrides) -> dict:
         security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
         backend={"auth": "network_allowlist"},
         requested_access=["PROGRESSA/GOV/PNIA/IDENTITY"],
+        member_requirements={
+            "has_security_server": True,
+            "has_registered_identity": True,
+            "standards_portfolio_adopted": True,
+            "data_conformant": True,
+            "lawful_basis": "consent",
+            "technical_contact": "Jane Doe",
+        },
     )
     base.update(overrides)
     return base

@@ -115,9 +115,10 @@ def _copy_pack(pack_dir: pathlib.Path, dest: pathlib.Path) -> None:
 def render_member_config(key: str, payload: JoinPayload) -> str:
     """configs/member-<key>/<key>.yaml, in the shape prompts/member.md
     produces (see configs/member-pnia/2.5.yaml for the committed precedent),
-    plus the backend: and requested_access: blocks S2 adds. Deliberately
-    omits type, forwarding URL, enabled, tls_verify -- generate.py never
-    reads them and a copy here would drift (2.5.yaml's own comment)."""
+    plus the backend:, member_requirements: and requested_access: blocks S2
+    and Wave 4 add. Deliberately omits type, forwarding URL, enabled,
+    tls_verify -- generate.py never reads them and a copy here would drift
+    (2.5.yaml's own comment)."""
     today = datetime.date.today().isoformat()
     header = (
         f"# Member {payload.code} -- joined via the join API on {today}. Do "
@@ -144,6 +145,10 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
                 # never resolved against anything; there is no lawful-basis
                 # registry in this pack to check it against.
                 **({"lawful_basis": svc.lawful_basis} if svc.lawful_basis else {}),
+                # Wave 4 Task 1 (K-01): validate.py's sla_required check
+                # already guarantees this is set for a provider's service by
+                # the time apply_real writes this file.
+                **({"sla": svc.sla.model_dump()} if svc.sla else {}),
             }
             for svc in payload.services
         ]
@@ -156,6 +161,9 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
         if payload.semantic.pattern:
             body["semantic"]["pattern"] = payload.semantic.pattern.value
     body["backend"] = {"auth": payload.backend.auth.value}
+    # Wave 4 Task 1 (K-01): Module 5.2's checklist, required on every payload
+    # -- rendered unconditionally, unlike the optional blocks above.
+    body["member_requirements"] = payload.member_requirements.model_dump(exclude_none=True)
     if payload.requested_access:
         body["requested_access"] = list(payload.requested_access)
 

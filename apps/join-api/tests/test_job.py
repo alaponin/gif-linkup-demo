@@ -80,6 +80,14 @@ def _payload(**overrides) -> JoinPayload:
         ],
         semantic={"entity": "award", "key": "award_id", "fields": ["award_id", "status"]},
         backend={"auth": "network_allowlist"},
+        member_requirements={
+            "has_security_server": True,
+            "has_registered_identity": True,
+            "standards_portfolio_adopted": True,
+            "data_conformant": True,
+            "lawful_basis": None,
+            "technical_contact": "Jane Doe",
+        },
     )
     base.update(overrides)
     return JoinPayload(**base)

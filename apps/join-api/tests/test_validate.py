@@ -1,5 +1,6 @@
 """Unit tests for apps/join-api/validate.py -- join-b Task 2's twelve
-checks (spec S8). Pure functions over fixture dicts for checks 2-8 and 12;
+checks (spec S8), plus Wave 4's lawful_basis and sla_required (K-01), for
+thirteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
 Check 9 (backend reachability) is the one place this suite does real I/O,
@@ -93,6 +94,32 @@ SEMANTIC_MAP = {
 }
 
 
+def _requirements(**overrides) -> dict:
+    base = {
+        "has_security_server": True,
+        "has_registered_identity": True,
+        "standards_portfolio_adopted": True,
+        "data_conformant": True,
+        "lawful_basis": "consent",
+        "technical_contact": "Jane Doe",
+    }
+    base.update(overrides)
+    return base
+
+
+def _sla(**overrides) -> dict:
+    base = {
+        "availability": "99.5% monthly uptime",
+        "response_time": "4 business hours, P1",
+        "support_hours": "Mon-Fri 08:00-18:00 ICT",
+        "incident_response": "P1 acknowledged within 1 hour",
+        "change_notice": "5 business days for planned changes",
+        "signatory": "Head of IT",
+    }
+    base.update(overrides)
+    return base
+
+
 def _payload(**overrides) -> dict:
     base = {
         "code": "PTSB",
@@ -101,6 +128,7 @@ def _payload(**overrides) -> dict:
         "subsystem_description": "Scholarship award management",
         "security_server": {"code": "SS-PTSB", "dns_name": "ss-ptsb", "hosted_on": "ss-plr"},
         "backend": {"auth": "network_allowlist"},
+        "member_requirements": _requirements(),
     }
     base.update(overrides)
     return base
@@ -137,7 +165,7 @@ def test_consume_only_hosted_join_passes_every_check():
 def test_publishing_hosted_join_passes_every_check():
     payload = _run(_payload(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
         semantic={"entity": "person", "key": "nin", "fields": ["nin", "region"]},
     ), fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.services[0].code == "awards-api"
@@ -285,8 +313,8 @@ def test_purpose_limitation_rejects_a_publish_with_access_and_no_semantic():
 
 
 def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic():
-    payload = _run(_payload(services=[{"code": "awards-api",
-                                         "spec_url": "http://app-ptsb:8000/spec.yaml", "access": []}]),
+    payload = _run(_payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                                         "access": [], "sla": _sla()}]),
                     fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.services[0].access == []
 
@@ -312,10 +340,44 @@ def test_purpose_limitation_rejects_a_field_not_declared_for_the_entity():
 def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
     payload = _run(_payload(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
         semantic={"entity": "enrolment", "key": "nin", "fields": ["nin", "status"]},
     ), fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.semantic.entity == "enrolment"
+
+
+# -- lawful_basis and sla_required (Wave 4, K-01) -------------------------------
+
+
+def test_lawful_basis_rejects_a_consumer_only_member_with_none_stated():
+    """The checklist's sixth item has nowhere to live: no services to carry
+    it, and member_requirements.lawful_basis was left unset."""
+    raw = _payload(member_requirements=_requirements(lawful_basis=None))
+    _rejects(raw, "lawful_basis")
+
+
+def test_lawful_basis_is_satisfied_by_a_providers_services_even_when_unset_on_requirements():
+    """Design decision 1: "the requirement is satisfied by them" -- a
+    provider (any services at all) never has to duplicate it on
+    member_requirements."""
+    payload = _run(_payload(
+        member_requirements=_requirements(lawful_basis=None),
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": [], "sla": _sla()}],
+    ), fetch_spec=_fetch_fixture("clean.yaml"))
+    assert payload.member_requirements.lawful_basis is None
+
+
+def test_sla_required_rejects_a_published_service_with_no_sla():
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                                "access": []}])
+    err = _rejects(raw, "sla_required")
+    assert "awards-api" in err.message
+
+
+def test_sla_required_accepts_a_consumer_only_member_with_no_services():
+    payload = _run(_payload(requested_access=["PROGRESSA/GOV/PNIA/IDENTITY"]))
+    assert payload.services == []
 
 
 # -- check 9: backend reachability ----------------------------------------------
@@ -323,7 +385,7 @@ def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
 
 def test_backend_reachability_rejects_an_unreachable_servers_url():
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "backend_reachability", fetch_spec=_fetch_fixture("unreachable.yaml"))
     assert "127.0.0.1:1" in err.message
@@ -334,7 +396,7 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
         raise RuntimeError("connection refused")
 
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": []}])
+                                "access": [], "sla": _sla()}])
     _rejects(raw, "backend_reachability", fetch_spec=_boom)
 
 
@@ -343,7 +405,7 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
 
 def test_allowed_methods_rejects_a_delete_operation():
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
+                                "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "allowed_methods", fetch_spec=_fetch_fixture("has_delete.yaml"))
     assert "DELETE" in err.message
@@ -388,7 +450,7 @@ def test_identifier_characters_rejects_a_slash_in_subsystem():
 
 def test_identifier_characters_rejects_a_bad_service_code_last_after_9_10_11_pass():
     raw = _payload(services=[{"code": "awards api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": []}])
+                                "access": [], "sla": _sla()}])
     _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))
 
 
@@ -402,7 +464,7 @@ def test_identifier_characters_accepts_a_dotted_service_code():
     ACCEPTANCE here, not rejection -- do not "fix" this back to a reject,
     that would resurrect the false-reject bug Task 1 (G-01) corrected."""
     raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": []}])
+                                "access": [], "sla": _sla()}])
     payload = _run(raw, fetch_spec=_fetch_fixture("bad_service_code.yaml"))
     assert payload.services[0].code == "awards.list"
 
