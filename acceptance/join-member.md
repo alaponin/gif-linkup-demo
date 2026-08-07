@@ -141,7 +141,7 @@ member look gone from wherever you happened to look.
      the join case run backwards, and it is the only one of the five that
      proves the *bus* forgot the member rather than just the registries;
   5. `hurl/topology.json` is **byte-identical** to the single deployment
-     golden (`tests/golden/full/topology.json`) — the working tree came back
+     golden (`tests/golden/deployment/topology.json`) — the working tree came back
      to exactly where it was before the join. This is
      design spec §12's own acceptance clause and the join-c plan's Global
      Constraint. Asserted only when no joined member remains in the

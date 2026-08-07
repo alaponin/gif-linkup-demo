@@ -1,0 +1,85 @@
+{
+  "instance": "PROGRESSA",
+  "member_class": "GOV",
+  "central_server": {
+    "host": "cs",
+    "ui_port": 4000
+  },
+  "security_servers": [
+    {
+      "code": "SS-PDGA",
+      "host": "ss-pdga",
+      "ui_port": 4000,
+      "proxy_port": 8080,
+      "host_ui_port": 1000,
+      "host_proxy_port": 1080
+    },
+    {
+      "code": "SS-PNEA",
+      "host": "ss-pnea",
+      "ui_port": 4000,
+      "proxy_port": 8080,
+      "host_ui_port": 2000,
+      "host_proxy_port": 2080
+    },
+    {
+      "code": "SS-PLR",
+      "host": "ss-plr",
+      "ui_port": 4000,
+      "proxy_port": 8080,
+      "host_ui_port": 3000,
+      "host_proxy_port": 3080
+    },
+    {
+      "code": "SS-PNIA",
+      "host": "ss-pnia",
+      "ui_port": 4000,
+      "proxy_port": 8080,
+      "host_ui_port": 5100,
+      "host_proxy_port": 5180
+    }
+  ],
+  "subsystems": [
+    {
+      "id": "PROGRESSA:GOV:PNIA:IDENTITY",
+      "member_code": "PNIA",
+      "member_name": "Progressa National Identity Authority",
+      "subsystem_code": "IDENTITY",
+      "hosted_on": "ss-pnia",
+      "origin": "canonical",
+      "services": [
+        {
+          "code": "identity-api",
+          "access": [
+            "PROGRESSA/GOV/PNEA/EXAMS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROGRESSA:GOV:PLR:ENROLMENT",
+      "member_code": "PLR",
+      "member_name": "Progressa Learner Registry",
+      "subsystem_code": "ENROLMENT",
+      "hosted_on": "ss-plr",
+      "origin": "canonical",
+      "services": [
+        {
+          "code": "enrolment-api",
+          "access": [
+            "PROGRESSA/GOV/PNEA/EXAMS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROGRESSA:GOV:PNEA:EXAMS",
+      "member_code": "PNEA",
+      "member_name": "Progressa National Examination Authority",
+      "subsystem_code": "EXAMS",
+      "hosted_on": "ss-pnea",
+      "origin": "canonical",
+      "services": []
+    }
+  ]
+}

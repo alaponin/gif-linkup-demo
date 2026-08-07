@@ -689,7 +689,7 @@ PY
     # golden IS the "before the join" state -- it is generated from the
     # canonical member set alone (tests/test_golden.py), so with every
     # joined member gone the two must be the same bytes.
-    GOLDEN_TOPO="$PACK_DIR/tests/golden/full/topology.json"
+    GOLDEN_TOPO="$PACK_DIR/tests/golden/deployment/topology.json"
     check_unjoin_topology() { cmp -s "$PACK_DIR/hurl/topology.json" "$GOLDEN_TOPO"; }
     # SKIP, not a vacuous PASS. With a member still joined, the golden
     # canonical topology is the wrong thing to compare against -- but

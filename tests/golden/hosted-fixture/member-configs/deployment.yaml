@@ -1,0 +1,27 @@
+# deployment.yaml — the KP2 analyst-facing deployment spec.
+# Secrets (token PIN, admin password) stay in .env — never here, this file is
+# git-committed. Do not hand-edit configs/*.yaml or hurl/scenarios/ to change
+# deployment shape; change this file and regenerate (hurl/generate.py).
+
+target: docker-local   # only supported value today. Future: itu-cloud, vm (PLAN.md §9)
+
+network:
+  # Host interface every published port binds to. 127.0.0.1 keeps the whole
+  # stack reachable from this machine and from nowhere else. Reaching it from
+  # elsewhere is an SSH tunnel or a VPN, not a change here.
+  #
+  # Any other value ALSO requires acknowledge_public_exposure: true below --
+  # see scripts/lib-stack.sh's refusal for what is actually being exposed.
+  bind: 127.0.0.1
+  # acknowledge_public_exposure: true
+
+xroad:
+  version: 7.7.0
+  cs_tag: noble-7.7.0
+  testca_tag: "latest@sha256:018e9f6ea04634ec61a3d44abee9a86d9dc4f6a2508296fd8db95d272c16c0c5"
+  # Digest pins (PLAN.md decision 1: pin by digest, keep the *_tag/version
+  # above for readability) -- resolved 2026-08-01 from the images this pack
+  # was actually running (docker image inspect --format
+  # '{{index .RepoDigests 0}}'), not from a fresh pull.
+  cs_digest: "noble-7.7.0@sha256:679ef9969b963505a79d52e933b7f34d65517ccc2746aa6097aee3893e2b0b42"
+  ss_digest: "7.7.0@sha256:5fb081414b6654d7c6ac8b92d398e7d5df0123d1efb04111af5a578b55fb3d54"

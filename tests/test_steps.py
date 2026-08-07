@@ -3,8 +3,9 @@
 A declared requires/provides contract nobody verifies is documentation that
 rots (Task 4's own framing). This module makes it mechanically true by
 parsing each step's raw .tmpl source -- never the rendered hurl/scenarios/
-output, which only exists for one already-chosen member/profile combination
-and would hide the registry's per-id, cross-member contract.
+output, which only exists for one already-chosen member set (generate.py
+lost the profile concept in Wave 3 Task 4, D5: one topology) and would hide
+the registry's per-id, cross-member contract.
 
 Regex is sufficient (Task 4 Step 1): these are generated files with a fixed
 shape. Two regimes appear in the templates:

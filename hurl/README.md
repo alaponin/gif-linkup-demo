@@ -220,15 +220,34 @@ new burden, it is naming one that already existed.
 
 ## Golden corpus
 
-`tests/golden/{full,lite}/` is a committed fixture of exactly what
-`generate.py` emits today — `scenarios/`, `vars.env`, `topology.json`,
-`topology.sh`, `compose.members.yml` — generated from a fixed, fake
-`tests/golden/env.fixture` rather than a real `.env`. `tests/test_golden.py`
-regenerates (via `generate.py --out DIR --env FILE`, flags that exist only
-for this test) and diffs against it, in under two seconds, no Docker, no
-network. `generate.py` lost the profile concept in Wave 3 Task 4 (one
-topology, D5); `{full,lite}/` collapsing into a single directory is Wave 3
-Task 5's job, not done here:
+`generate.py` lost the profile concept in Wave 3 Task 4 (one topology, D5),
+and Wave 3 Task 5 collapsed the golden corpus to match: two directories, not
+a `{full,lite}/` pair that generated the identical tree twice.
+
+`tests/golden/deployment/` is a committed fixture of exactly what
+`generate.py` emits from the real `configs/` today — `scenarios/`,
+`vars.env`, `topology.json`, `topology.sh`, `compose.members.yml` —
+generated from a fixed, fake `tests/golden/env.fixture` rather than a real
+`.env`.
+
+`tests/golden/hosted-fixture/` covers the one code path nothing else in this
+suite reaches: `resolve_hosted_on_map()`'s explicit-`hosted_on` branch, the
+mechanism a joined member uses (`security_server.hosted_on` in its own
+config) and which no canonical member config sets today. It has two parts:
+`member-configs/` — a fixture copy of `manifest.yaml`, `deployment.yaml` and
+`configs/` in which PNEA's config additionally sets
+`security_server.hosted_on: ss-plr` — and `generated/`, the tree
+`generate.py` emits from that fixture set. Never deployed against a live
+stack; a `generate.py` input/output pair for the test to diff against, same
+as `deployment/`.
+
+`tests/test_golden.py` regenerates both (via `generate.py --out DIR --env
+FILE`, flags that exist only for this test) and diffs each against its own
+golden directory, in under two seconds, no Docker, no network. The
+hosted-fixture case cannot just point `--out`/`--env` at the real `hurl/`,
+because `generate.py` has no flag to redirect its *input* — see
+`tests/test_golden.py`'s `_generate_hosted_fixture()` docstring for the
+copy-generate.py-into-a-temp-dir mechanism this uses instead, and why:
 
 ```bash
 .venv/bin/python3 -m pytest tests/test_golden.py -v
@@ -242,15 +261,19 @@ corpus **in the same commit** as the change, so the diff is reviewable
 alongside the code that caused it:
 
 ```bash
-python3 hurl/generate.py --out /tmp/golden-full --env tests/golden/env.fixture
-rm -rf tests/golden/full
-cp -r /tmp/golden-full tests/golden/full
+python3 hurl/generate.py --out /tmp/golden-deployment --env tests/golden/env.fixture
+rm -rf tests/golden/deployment
+cp -r /tmp/golden-deployment tests/golden/deployment
 ```
 
-(`tests/golden/lite/` is untouched by this command on purpose — regenerating
-it from the same profile-less `generate.py` would just be a second copy of
-`full/`, which is exactly the collapse Wave 3 Task 5 does deliberately, not
-as a side effect of an unrelated template change.)
+`tests/golden/hosted-fixture/generated/` needs the same treatment, run from
+a copy of `generate.py` against `tests/golden/hosted-fixture/member-configs/`
+rather than the real `configs/` — `tests/test_golden.py`'s
+`_generate_hosted_fixture()` does this already; the simplest way to refresh
+the fixture by hand is to let that test build the temp copy, then `cp -r`
+its `hosted-fixture-out/` over `tests/golden/hosted-fixture/generated/`
+before the temp directory is cleaned up (`pytest --pdb` or a manual copy of
+the function body both work).
 
 A golden test whose corpus gets updated blindly — without looking at what
 changed and why — is theatre, not a test. Read the diff before committing it.
