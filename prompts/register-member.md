@@ -1,8 +1,8 @@
 # Generating prompt — register-member (PNEA, PLR and PNIA)
 
 **Building block(s):** member-pnea, member-plr, member-pnia
-**Produces:** `configs/member-pnea/2.3.yaml`, `configs/member-plr/2.4.yaml`,
-`configs/member-pnia/2.5.yaml`
+**Produces:** `configs/member-pnea/pnea.yaml`, `configs/member-plr/plr.yaml`,
+`configs/member-pnia/pnia.yaml`
 **Public spec:** NIIS X-Road member and subsystem registration; Security
 Server user guide (consumer connection types); OpenAPI 3 service
 descriptions; access rights (ACL)
@@ -66,8 +66,8 @@ YAML document.
 - **Inputs:** the registration spec(s) + this agency's service brief + (for
   a provider) the semantic map entity + the access policy + the frozen
   identifiers from `manifest.yaml`.
-- **Output:** one of `configs/member-pnea/2.3.yaml` (consumer),
-  `configs/member-plr/2.4.yaml` or `configs/member-pnia/2.5.yaml` (provider)
+- **Output:** one of `configs/member-pnea/pnea.yaml` (consumer),
+  `configs/member-plr/plr.yaml` or `configs/member-pnia/pnia.yaml` (provider)
   for this slice, applied by `scripts/deploy.sh`.
 
 ## Safeguard

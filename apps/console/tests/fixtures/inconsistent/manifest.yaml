@@ -95,7 +95,7 @@ modules:
     video_ref: "5.4"   # Topic 5 subtopic this module realises
     title: "Register PNIA and publish the identity service"
     building_blocks: [member-pnia]
-    config: configs/member-pnia/2.5.yaml
+    config: configs/member-pnia/pnia.yaml
     scenarios: hurl/scenarios/02-cs-members.hurl, hurl/scenarios/20-ss-pnia.hurl, hurl/scenarios/30-services-pnia.hurl
     prompt: prompts/2.5.md
     acceptance: acceptance/2.5.md

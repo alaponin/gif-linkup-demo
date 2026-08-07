@@ -1,7 +1,7 @@
 # Generating prompt — module 2.1 (Stand up the federation core)
 
 **Building block(s):** x-road-bus
-**Produces:** `configs/x-road-bus/2.1.yaml`
+**Produces:** `configs/x-road-bus/federation-core.yaml`
 **Public spec:** NIIS X-Road Central Server configuration (docs.x-road.global; niis.org); EIF Technical layer
 
 ## Problem
@@ -48,7 +48,7 @@ Output only the YAML document.
 
 - **Inputs:** the NIIS CS configuration guide (≥7.3) + the Progressa service brief
   (institutions, who operates the bus).
-- **Output:** `configs/x-road-bus/2.1.yaml`, applied by `scripts/deploy.sh`.
+- **Output:** `configs/x-road-bus/federation-core.yaml`, applied by `scripts/deploy.sh`.
 
 ## Safeguard
 

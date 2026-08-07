@@ -1,10 +1,10 @@
 # Generating prompt — module 2.7 (A new member joins the bus — the join API)
 
 **Building block(s):** x-road-bus
-**Produces:** `configs/x-road-bus/2.7.yaml`
+**Produces:** `configs/x-road-bus/join-policy.yaml`
 **Public spec:** NIIS X-Road management-request approval model (registration
 requires explicit operator approval — the same model
-`configs/x-road-bus/2.1.yaml`'s `policy.management_request_approval: explicit`
+`configs/x-road-bus/federation-core.yaml`'s `policy.management_request_approval: explicit`
 already commits the federation to); this pack's own §2.3 (service-level vs
 endpoint-level access rights over a tool-generated OpenAPI spec) —
 `docs/superpowers/specs/2026-08-01-member-join-api-design.md`
@@ -38,7 +38,7 @@ Generate the join policy as a single YAML document, exactly four keys under a
     identity.member_class before answering);
 (2) approval — "explicit" or "automatic". A federation that already requires
     explicit approval for its own management requests (policy.
-    management_request_approval in configs/x-road-bus/2.1.yaml) has already
+    management_request_approval in configs/x-road-bus/federation-core.yaml) has already
     answered this the same way; a federation admitting a genuinely open set of
     joiners with no human review is a different, riskier design and should
     say so if chosen;
@@ -57,7 +57,7 @@ Generate the join policy as a single YAML document, exactly four keys under a
 Rules: do not add a fifth key. Every key here must be enforced somewhere
 (validate.py's checks or generate.py's check_join_policy()) — a key nothing
 reads is decoration, not policy, and worse than no key at all (this is
-2.7.yaml's own standing rule, kept here rather than restated as decoration).
+join-policy.yaml's own standing rule, kept here rather than restated as decoration).
 Output only the YAML document.
 ```
 
@@ -65,7 +65,7 @@ Output only the YAML document.
 
 - **Inputs:** the X-Road management-request approval reference + this pack's
   §2.3 note on service-level vs endpoint-level access rights.
-- **Output:** `configs/x-road-bus/2.7.yaml`'s `join:` block — read by
+- **Output:** `configs/x-road-bus/join-policy.yaml`'s `join:` block — read by
   `apps/join-api/validate.py` (checks 4/6/10) and `hurl/generate.py`'s
   `check_join_policy()`. Not applied by `scripts/deploy.sh` like the other
   x-road-bus modules — it has no live-federation effect of its own; it only

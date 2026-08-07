@@ -1,7 +1,7 @@
 # Generating prompt — module 2.6 (Run the once-only exchange)
 
 **Building block(s):** x-road-bus
-**Produces:** `configs/x-road-bus/2.6.yaml`
+**Produces:** `configs/x-road-bus/once-only-exchange.yaml`
 **Public spec:** X-Road Message Protocol for REST (r1); PAERA v1.0 §5.2 Principle #5 (Once-Only)
 
 ## Problem
@@ -43,7 +43,7 @@ YAML document.
 
 - **Inputs:** the r1 protocol spec + the frozen identifiers + the Progressa
   once-only scenario.
-- **Output:** `configs/x-road-bus/2.6.yaml` — executed by `scripts/acceptance.sh`.
+- **Output:** `configs/x-road-bus/once-only-exchange.yaml` — executed by `scripts/acceptance.sh`.
 
 ## Safeguard
 
