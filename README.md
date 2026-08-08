@@ -30,7 +30,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   `docs/decisions/onboarding-path-gap-analysis.md`.
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
   `docs/decisions/onboarding-alignment-design.md` (design record — frozen; reasoning,
-  not status), `REVIEW.md` (self-review, archival)
+  not status)
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,

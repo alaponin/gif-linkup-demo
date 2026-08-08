@@ -78,7 +78,7 @@ topology (design decision 5): no smaller lite alternative that hosts PNIA
 standing up its own Security Server. `ss-moeys` above is retired, not
 deployed — see `docs/production-delta.md`.
 
-**Identifiers** (all `[confirm]` until live): owner `PROGRESSA/GOV/PDGA`; members
+**Identifiers** (frozen and verified against the live registry — `manifest.yaml`'s `identifiers:` block): owner `PROGRESSA/GOV/PDGA`; members
 `GOV/MOEYS:PEMIS`, `GOV/PNEA:EXAMS`, `GOV/PLR:ENROLMENT`, `GOV/PNIA:IDENTITY`.
 Service codes: `identity-api` (PNIA), `enrolment-api` (PLR), `pemis-api` (MoEYS).
 These are the cross-pack join keys for KP3/KP4 — freeze them in `manifest.yaml`.
@@ -259,9 +259,7 @@ was too short for a restart-from-persisted-volumes boot (60→120 retries);
 `ss-pnia`'s host port 5000 collided with macOS's AirPlay Receiver (moved to
 5100); and `acceptance.sh`'s registration-status checks were single-shot
 against an asynchronous propagation window (now retried, like everywhere else
-this asynchrony shows up). See
-`docs/decisions/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full build
-log. P6 (deltas) below.
+this asynchrony shows up). P6 (deltas) below.
 
 ## 8. Known traps
 
@@ -361,10 +359,10 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   overlay's `kp2-ca-certs` volume, which would have handed a fresh CA
   container stale certs on the next "clean" run. **Still open:** NIN format;
   the exact access-denied fault shape asserted by `acceptance.sh`.
-- **Video calibration (Module 5 bundle §5):** 5.5 says "four Security Servers";
-  the runnable topology needs five (X-Road management SS at PDGA). Raise at the
-  Tuesday call: either the script says "four member Security Servers (plus
-  PDGA's management server)" or the demo folds management onto PDGA on-screen.
+- **Video calibration (Module 5 bundle §5.5):** resolved by MoEYS's retirement
+  (design decision 5, §2) — the runnable topology is now four Security Servers
+  total (PDGA's management server plus PNEA, PLR, PNIA), matching what 5.5
+  already says. No script change needed.
 - **check_pack.py change made here:** `prompts/` is now exempt from the
   `[confirm:` scan (prompts must teach the literal marker; only `configs/` must
   be clean at `--ready`). Applied to the repo copy of the `itu-giga-kp` skill —
