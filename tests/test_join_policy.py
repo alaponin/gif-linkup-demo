@@ -22,6 +22,16 @@ PACK = pathlib.Path(__file__).resolve().parent.parent
 GOV_MANIFEST = {"identity": {"member_class": "GOV"}}
 
 
+def test_the_committed_federation_policy_is_explicit():
+    core = yaml.safe_load((PACK / "configs/x-road-bus/federation-core.yaml").read_text())
+    approval = core["policy"]["management_request_approval"]
+    assert approval == "explicit", (
+        "automatic is a demonstration setting; a clone of this repository must "
+        "not inherit a federation that approves registrations with no human in "
+        "the loop"
+    )
+
+
 def test_the_committed_join_policy_yaml_passes_against_the_real_manifest():
     config = yaml.safe_load((PACK / "configs/x-road-bus/join-policy.yaml").read_text())
     manifest = yaml.safe_load((PACK / "manifest.yaml").read_text())
