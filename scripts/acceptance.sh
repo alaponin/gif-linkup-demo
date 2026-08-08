@@ -8,9 +8,9 @@
 #                                          # with) 2.6 -- matches 2.6.1..2.6.5
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
-# Ids today are 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>),
-# 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.
-# <service>), 2.7.unjoin(<member>) and 2.7.unjoin.topology
+# Ids today are 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
+# 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>),
+# 2.7.deny(<member>.<service>), 2.7.unjoin(<member>) and 2.7.unjoin.topology
 # (member-parameterisation Task 7 generalised what used to be
 # discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
 # literal "2.4" id to select; --only/--from match against what actually
@@ -90,6 +90,31 @@ check_21() {  # paths confirmed live at P0 2026-07-25
     | jq -e 'map(.code)|index("GOV")!=null' >/dev/null
 }
 check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
+
+# ---- add-ons: operational + environmental monitoring (Wave 5, G-06) ---------
+# Server-level, not client-level -- xroad-monitor (environmental) and
+# xroad-opmonitor (operational) ship pre-installed and supervisord-managed on
+# the full (non-slim) Sidecar image every Security Server in this pack already
+# runs (docker-compose.yml's x-sidecar anchor, tests/test_addons.py's static
+# guard). Checked per SERVER (SS_ORDER, generated from configs/ + manifest.yaml
+# same as everything else in this file), not per member/subsystem pair: an
+# add-on is a property of the Security Server a member is hosted on, and
+# SS_ORDER already includes any joined member's own server -- a hosted member
+# needs no separate check, its host is already in this loop.
+check_addons_running() {  # $1 = SS container/host name
+  # `supervisorctl status` itself exits non-zero whenever ANY managed
+  # process is not RUNNING -- xroad-autologin is a one-shot unlock that
+  # legitimately EXITED once the software token is up, so its exit code
+  # cannot gate this check; only grep's own match/no-match result can.
+  local sup_status
+  sup_status=$(docker exec "$1" supervisorctl status 2>/dev/null; true)
+  printf '%s\n' "$sup_status" | grep -qE '^xroad-monitor\s+RUNNING' &&
+  printf '%s\n' "$sup_status" | grep -qE '^xroad-opmonitor\s+RUNNING'
+}
+for ss_host in "${SS_ORDER[@]}"; do
+  check_ss_addons() { retry 12 5 "${ss_host} add-ons RUNNING" check_addons_running "$ss_host"; }
+  check "2.x.addons(${ss_host})" "operational + environmental monitoring add-ons RUNNING on ${ss_host}" check_ss_addons
+done
 
 # ---- 2.2–2.5 member registrations & services --------------------------------
 # Every subsystem HOST_SS names, REGISTERED on the SS that hosts it -- covers
@@ -707,10 +732,10 @@ PY
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
 fi
 
 if [ "$SELECT_MODE" = all ]; then

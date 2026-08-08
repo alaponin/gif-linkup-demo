@@ -43,6 +43,17 @@ wrote down. 2.6 stays the framework's headline, education-specific check
 (`acceptance/2.6.md`) and is not generalised — the once-only exchange it
 proves is Progressa's story to tell, not every member's.
 
+**Monitoring add-ons (Wave 5, G-06).** The operational- and environmental-
+monitoring add-ons are server-level, not client-level, so this check does not
+extend the per-subsystem loop above for them — it checks every Security
+Server `hurl/topology.sh`'s `SS_ORDER` names (canonical or a joined member's
+own server) via `docker exec <host> supervisorctl status`, asserting both
+`xroad-monitor` and `xroad-opmonitor` are `RUNNING`. A joined member that
+skips the add-on is exactly the retrofit case the onboarding path warns
+against, and because the check is keyed to *server*, not *member*, a hosted
+member's host being covered already covers the hosted member — there is no
+per-member gap for a hosted join to fall through.
+
 Status: VERIFIED — this check already runs as part of `scripts/acceptance.sh`
 (member-parameterisation Task 7) and passes on the live stack, covering the
 canonical three today (Wave 3 Task 1 retired MoEYS; Wave 3 Task 4 retired the

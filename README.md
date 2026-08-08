@@ -62,7 +62,19 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   ~88 MiB, two mock providers ~32 MiB each) — within noise of the ~11 GB
   design estimate it confirms rather than corrects. See
   `docs/production-delta.md` "An own-server join and its un-join, live end
-  to end". There is one topology now (Wave 3 Task 4, design decision 5) —
+  to end".
+
+  **Wave 5 (2026-08-08) re-measured `--full` after adding the operational-
+  and environmental-monitoring add-ons' acceptance check (G-06)**: **~783s
+  (~13.0 min)**, +20s (+2.6%) over the 763s baseline above — within noise,
+  nowhere near the plan's own 15-minute re-scope ceiling, because the
+  add-ons themselves cost nothing to deploy (they already shipped on the
+  Sidecar image this pack was already using; see
+  `docs/production-delta.md` "Wave 5: monitoring add-ons installed,
+  collector deliberately absent"). RAM: **~11.1 GiB**, also within noise of
+  the figure above.
+
+  There is one topology now (Wave 3 Task 4, design decision 5) —
   no lite/full split to develop against or measure separately; run
   `--fast` after each step and one `--full` before closing out a plan. See
   `docs/superpowers/plans/2026-07-28-kp2-testing-strategy.md` for what each
