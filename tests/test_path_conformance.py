@@ -20,6 +20,7 @@ actually happens, and it costs nothing to keep true.
 """
 from __future__ import annotations
 
+import hashlib
 import pathlib
 import subprocess
 import sys
@@ -31,7 +32,7 @@ PACK = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = PACK / "docs" / "path-conformance.yaml"
 
 sys.path.insert(0, str(PACK / "scripts"))
-from render_path_conformance import STATUSES, render  # noqa: E402
+from render_path_conformance import SECTION_TITLES, STATUSES, render  # noqa: E402
 
 DOC = yaml.safe_load(SOURCE.read_text())
 CLAUSES = DOC["clauses"]
@@ -129,3 +130,39 @@ def test_every_gate_the_path_defines_has_at_least_one_clause():
     sections = {str(c["section"]) for c in CLAUSES}
     for gate in ("G0", "G1", "G2", "G3", "G4", "G5", "G6", "GX"):
         assert gate in sections, f"no clause covers {gate}"
+
+
+def test_the_path_document_exists():
+    """meta.path_document is the citation the whole file rests on, and was
+    the only one not checked by the evidence-path tests above (those walk
+    clause evidence, not meta)."""
+    target = PACK / DOC["meta"]["path_document"]
+    assert target.exists(), (
+        f"meta.path_document {DOC['meta']['path_document']!r} does not exist"
+    )
+
+
+def test_every_section_title_has_at_least_one_clause():
+    """The reverse of test_every_gate_the_path_defines_has_at_least_one_clause,
+    generalised to every section rather than just the eight gates, and the
+    reverse of render_path_conformance.render()'s own check: that function
+    fails on a clause in an unknown section; this fails on a known section
+    with no clause. No new data structure -- SECTION_TITLES is already the
+    one list of sections."""
+    sections_with_clauses = {str(c["section"]) for c in CLAUSES}
+    for key, title in SECTION_TITLES:
+        assert key in sections_with_clauses, f"{title!r} ({key}) has no clauses"
+
+
+def test_the_path_document_hash_matches():
+    """A changed path document must be an action, not a silence: this fails
+    the moment docs/GEATDM-Interop-Member-Onboarding-Path-v*.md changes, with
+    a message that says what to do about it."""
+    path_document = PACK / DOC["meta"]["path_document"]
+    expected = DOC["meta"].get("path_document_sha256")
+    assert expected, "meta.path_document_sha256 is missing from path-conformance.yaml"
+    actual = hashlib.sha256(path_document.read_bytes()).hexdigest()
+    assert actual == expected, (
+        "the onboarding path changed -- re-read it against this matrix, then "
+        f"update meta.path_document_sha256 to {actual} in docs/path-conformance.yaml"
+    )
