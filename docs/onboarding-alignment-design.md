@@ -1,6 +1,8 @@
 # KP2 build pack — alignment design
 
-**Status:** v0.3 design, 2026-08-05. High-level; implementation plans follow.
+**Status:** v0.3 design, 2026-08-05. **All five waves (§4) are now implemented
+(Wave 5 closed 2026-08-08)** — this document is kept as the decision record
+(§6) and the component-completeness reference (§8), not an open plan.
 **All five decisions are now taken (§6) — no open questions block planning.**
 **v0.2:** folded in the topology and profile decision (**D5**) — four Security
 Servers all own-server, `full`/`lite` split removed. Affects §3, Wave 3, §6, §7,

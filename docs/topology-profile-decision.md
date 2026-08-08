@@ -1,8 +1,14 @@
 # Topology and profiles — decision analysis
 
-**Status:** analysis for decision, 2026-08-05. No decision taken.
-**Question:** can we cut Security Servers further, and drop the `full` / `lite`
-profile split entirely?
+**Status: DECIDED and implemented.** T1 (4 servers, all own-server, no profile
+split) was chosen on the evidence in §2.3/§6 below and built in Wave 3 Task 4
+(2026-08-06). `deployment.yaml` has no `profile:` key; one topology exists.
+Wave 3 Task 6 (2026-08-07) then replaced this document's `--full` estimate
+with a real measurement — `docs/production-delta.md` carries the current
+figures. This document is kept as the decision record: why T1 over T2, and
+why dropping the profile split was worth it independent of server count.
+**Question analysed:** can we cut Security Servers further, and drop the
+`full` / `lite` profile split entirely?
 **Feeds:** `docs/onboarding-alignment-design.md` Wave 3 and §8.2.
 
 **Short answer:** the floor is **3 Security Servers**, not fewer; profiles can go,
@@ -168,24 +174,13 @@ and would not be on physical hosts.
 
 ## 3. Dropping the profiles — the work
 
-Profile-awareness is threaded through more of the pack than the two-line
-`deployment.yaml` key suggests. `generate.py` alone mentions `profile` 25 times.
-
-| # | Change | Nature |
-|---|---|---|
-| 1 | `generate.py`: delete `LITE_HOSTED_ON`; `resolve_hosted_on_map(members, profile)` loses its parameter and its lite branch | Simplification |
-| 2 | `deployment.yaml`: delete `profile:` | Trivial |
-| 3 | `docker-compose.yml`: remove compose profiles | **Removes a workaround** — see §4.1 |
-| 4 | `tests/golden/{full,lite}/` → one deployment golden + one hosted-rendering fixture, decoupled from deployment | See §5.2 — the corpus stays, its meaning changes |
-| 5 | `tests/test_golden.py`, `test_tiers.py`, `test_steps.py`: drop profile parametrisation | Simplification |
-| 6 | `acceptance/2.2.md`, `2.5.md`, `2.7.md`, `member.md`: remove lite caveats | 4 of 8 acceptance docs |
-| 7 | `README.md`: delete the tier×profile guidance (~40 lines) | **The biggest readability win** |
-| 8 | `runbook.md`, `docs/production-delta.md`: profile sections | Docs |
-| 9 | `apps/console/tests/fixtures/{full,lite}/` → one | Test fixtures |
-| 10 | Stub scenario files (`20-ss-pnia.hurl` written as a stub so manifest claims resolve) disappear | **Removes a workaround** |
-
-Rough size: comparable to the rename (S-02), and it lands in the same
-re-baselining wave, so it costs one regeneration rather than its own.
+**Done, Wave 3 Task 4 (2026-08-06).** This section originally scoped ten
+changes across `generate.py`, `deployment.yaml`, `docker-compose.yml`, the
+golden corpus, `acceptance/*.md`, `README.md`, `runbook.md`,
+`docs/production-delta.md` and the console test fixtures — all landed in one
+pass with a single golden regeneration, per §4.4's recommendation below. Two
+workarounds it removed are worth remembering as *why* this was worth doing,
+not just cheaper config — see §4.1.
 
 ---
 
