@@ -55,7 +55,7 @@ DOCUMENT 2 — configs/member-<key>/<key>.yaml:
     consumes;
 (4) semantic — only if this agency publishes a service another already-
     registered member's config lists in ITS OWN access grants for a
-    provenance-tracked exchange (mirrors 2.5.yaml's identity example): entity,
+    provenance-tracked exchange (mirrors pnia.yaml's identity example): entity,
     key and field list, copied from the brief's semantic map. The field list
     is a legal decision — only what the stated purpose needs;
 (5) member_requirements — Module 5.2's six-item checklist, answered by the

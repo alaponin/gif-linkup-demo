@@ -20,7 +20,8 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
   Progressa identifiers that are the KP3/KP4 join keys)
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
-  `REVIEW.md` (self-review; open decisions)
+  `docs/onboarding-alignment-design.md` (current design record, all five
+  waves implemented), `REVIEW.md` (day-1 self-review, archival)
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,
@@ -196,9 +197,9 @@ without touching the X-Road configuration.
 
 Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs,
 `kp-solution-verify` proves the pack runs. **Status: VERIFIED (2026-07-25,
-re-verified 2026-07-27 including `apps/console/`)** — `check_pack.py --ready`
+re-verified live through Wave 5, 2026-08-08)** — `check_pack.py --ready`
 passes and the live acceptance suite is green, including the reproducibility
 proof (`teardown.sh --purge` → cold redeploy → reseed → acceptance, unattended
-— PLAN.md §7) and, most recently, the same cycle plus a full console
-up/exercise/reset pass (PLAN.md §11). Scope: Education only, public anchors
-only. Demo only — never production (`docs/production-delta.md`).
+— PLAN.md §7) and a full console up/exercise/reset pass (PLAN.md §11). Scope:
+Education only, public anchors only. Demo only — never production
+(`docs/production-delta.md`).

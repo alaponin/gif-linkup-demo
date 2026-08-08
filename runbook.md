@@ -14,14 +14,15 @@ host, and run the once-only exchange that proves it. Demo only — see
   automatically before it does anything expensive; running it by hand here
   first is what turns a mid-deploy failure into a pre-deploy one.
 - Docker ≥ 24 with Docker Compose ≥ 2.24.
-- ~13 GB RAM in steady state, measured P0 2026-07-25 on a 16 GB colima VM via
-  `docker stats --no-stream` for the 5-Security-Server topology of that time:
-  ~2.0–2.3 GB per Security Server (≈10.7 GB), 1.7 GB for the Central Server,
-  under 100 MB each for the Test CA and the mock providers. Fits in 16 GB
-  with modest headroom (~3 GB). One Security Server fewer since (MoEYS
-  retired, Wave 3 Task 1) — figure not re-measured for the 4-server
-  topology, but expect roughly 2 GB less. There is one topology now (Wave 3
-  Task 4, design decision 5): no smaller alternative to opt into.
+- **~10.9–11.1 GiB RAM in steady state**, measured live for the current
+  4-Security-Server topology (Wave 3 Task 6, 2026-08-07 and Wave 5,
+  2026-08-08 — `docker stats --no-stream`: four Security Servers ~2.2–2.3 GiB
+  each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB, two mock providers ~32
+  MiB each). Fits comfortably in 16 GB. This supersedes the original P0
+  2026-07-25 figure (~13 GB), which measured the now-retired 5-server
+  topology including MoEYS (retired Wave 3 Task 1). There is one topology
+  now (Wave 3 Task 4, design decision 5): no smaller alternative to opt
+  into.
 - `curl`, `jq`, `python3` on the workstation.
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
@@ -40,7 +41,11 @@ host, and run the once-only exchange that proves it. Demo only — see
    auth-cert registration and its explicit approval on the CS, subsystem) → service
    publishing (OpenAPI3) → ACLs. Global-conf propagation is asynchronous, so a stretch
    of HTTP errors and retries partway through is expected, not a failure. Measured
-   P0 2026-07-25 (16 GB colima VM, cold `--purge`d state): ~9–10 minutes end to end.
+   live for the current 4-server topology (Wave 5, 2026-08-08,
+   `out/deploy-timings.txt`): **~156s containers-healthy + ~395s Hurl run ≈
+   9.2 minutes end to end** — within noise of the original P0 2026-07-25
+   figure (~9–10 minutes) despite one fewer Security Server since (MoEYS
+   retired, Wave 3 Task 1).
 
    The sequence is a Progressa retargeting of `development/hurl/scenarios/setup.hurl`
    at X-Road tag **7.7.0**. The scenarios live in `hurl/`, generated from `configs/` —

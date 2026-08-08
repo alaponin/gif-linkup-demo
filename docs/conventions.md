@@ -82,8 +82,8 @@ a name alone answers "whose is this, what is it for, which environment, and
 which one" without a lookup.
 
 **What this pack actually does:** `ss-<key>` — the member key with an
-`ss-` prefix, nothing more. `configs/member-plr/2.4.yaml`'s
-`security_server.dns_name: ss-plr` and `configs/member-pnia/2.5.yaml`'s
+`ss-` prefix, nothing more. `configs/member-plr/plr.yaml`'s
+`security_server.dns_name: ss-plr` and `configs/member-pnia/pnia.yaml`'s
 `security_server.dns_name: ss-pnia` are both this pattern; `hurl/generate.py`
 derives every Security Server's DNS name and container name from the member
 key the same way. There is deliberately no validator check that a derived

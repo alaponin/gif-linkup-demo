@@ -83,7 +83,7 @@ re-runnable.
 images, hard-codes `DEV:COM` identifiers, keeps no persistent volumes, and ships
 a topology of two Security Servers plus example adapters. The pack keeps its own
 compose file — release images, named volumes so the federation survives a
-restart, five Security Servers mapped to Progressa's institutions — and takes
+restart, Security Servers mapped to Progressa's institutions — and takes
 from upstream only what is genuinely reusable: **the call sequence**. The one
 development image retained is `xrddev-testca`, which has no release equivalent
 and is demo-only by nature.
