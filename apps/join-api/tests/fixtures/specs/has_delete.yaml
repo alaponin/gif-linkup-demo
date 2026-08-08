@@ -2,7 +2,7 @@
 # backend as clean.yaml, but with a DELETE operation: check 10 (allowed
 # methods) must reject this even though check 9 (reachability) passes it,
 # because the API Builder-generated spec of a real form-backed app is
-# exactly this shape (spec S2.3 -- the whole reason check 10 exists).
+# exactly this shape (the whole reason check 10 exists).
 openapi: "3.0.0"
 info:
   title: PTSB Awards API

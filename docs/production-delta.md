@@ -23,13 +23,13 @@ ship the demo as production.
 | Console holds admin credentials server-side; loopback bind plus a CSRF guard (a custom header plus an Origin check) are its only access controls — neither is authentication, and the guard defends the write/exchange endpoints against a cross-origin *browser*, not against anyone who can already reach `:8090` directly | Credentials never colocated with a public-facing demo tool; network-level isolation, and real authentication in front of any tool that can read/mutate ACLs |
 | Console's ACL write path exists purely to be theatrical for an audience | No tool mutates production ACLs for demonstration purposes, ever |
 | Proxy's `server-conf-cache-period` tuned to 5s (`xroad-demo-local.ini`, default is 60s) so an ACL change is filmable | Leave at the documented default (or size deliberately) — a short cache period trades proxy CPU for faster-to-reflect ACL changes, a trade a real federation's traffic volume should make on purpose, not by copying a demo value |
-| The join API's operator does not provision the joining member's own server — a hosted join defaults it onto an existing Security Server, and even an own-server join (Plan C) has the pack's own host agent simulate the joining agency's infrastructure team (`apps/join-api/`, design spec §6.1) | In production, `BLOCKED` is satisfied by the member, on the member's own hardware, with the member's own CA-issued certificates — and takes days, not seconds |
-| One shared `KP2_JOIN_APPLICANT_TOKEN` for every applicant (`scripts/gen-secrets.sh`) | One credential per agency; should prefer mTLS (design spec §7's "Token model, and its limit") |
+| The join API's operator does not provision the joining member's own server — a hosted join defaults it onto an existing Security Server, and even an own-server join (Plan C) has the pack's own host agent simulate the joining agency's infrastructure team (`apps/join-api/`) | In production, `BLOCKED` is satisfied by the member, on the member's own hardware, with the member's own CA-issued certificates — and takes days, not seconds |
+| One shared `KP2_JOIN_APPLICANT_TOKEN` for every applicant (`scripts/gen-secrets.sh`) | One credential per agency; should prefer mTLS (a stronger token model than this pack's shared bearer token) |
 | A joining member's AUTH and SIGN certificates are signed by the Test CA (`http://ca:8888`) with no identity vetting whatsoever, same as every canonical member | In production this step — verifying who is actually asking to join — is the entire trust decision, not a formality the join API can automate |
-| `backend.auth: none` is what every mock in this pack actually accepts, demo-only posture (`apps/join-api/schema.py`'s `BackendAuth`, exercised by the PTSB fixture) | A real joining member must use `network_allowlist` or `proxy_injected`; the consumer must never hold the provider's own API credential (design spec §2.5) |
-| A joined member's service description is never automatically refreshed — X-Road reloads only on explicit refresh, so a real third-party backend (a Joget app someone edited in a browser) drifts silently from what the federation publishes | `scripts/member.sh drift <key>` *detects* this (design spec §2.4); nothing in this pack *remedies* it — a production operator still has to act on what drift reports |
-| The join policy admits `GET` operations only (`configs/x-road-bus/join-policy.yaml`'s `allowed_methods`, design spec §2.3) | A production federation that needs to admit write endpoints from a joined member needs endpoint-level access rights and a different acceptance assertion — service-level `access:` grants the whole service, not the specific operations a review actually approved |
-| **Live-but-uncommitted window:** `writer.apply_real()` writes `configs/member-<key>/` and the `manifest.yaml` entry, and the job then makes the member live on the running federation, all before anyone runs `git commit` — a member can be `ACTIVE, verified: true` on the stack while `git status` still shows it untracked. Two mitigations exist, not a fix: `apply_real()` refuses to *start* a new job while `configs/`/`manifest.yaml` are already dirty (spec S9), and the console's join tab surfaces the fact live (an "uncommitted" flag on the request, `apps/join-api/app.py`'s `_live_uncommitted`) | A production join workflow should not have a window where the running system and its version-controlled description of itself can disagree at all — e.g. gate "live" on a successful commit, not the other way around |
+| `backend.auth: none` is what every mock in this pack actually accepts, demo-only posture (`apps/join-api/schema.py`'s `BackendAuth`, exercised by the PTSB fixture) | A real joining member must use `network_allowlist` or `proxy_injected`; the consumer must never hold the provider's own API credential |
+| A joined member's service description is never automatically refreshed — X-Road reloads only on explicit refresh, so a real third-party backend (a Joget app someone edited in a browser) drifts silently from what the federation publishes | `scripts/member.sh drift <key>` *detects* this; nothing in this pack *remedies* it — a production operator still has to act on what drift reports |
+| The join policy admits `GET` operations only (`configs/x-road-bus/join-policy.yaml`'s `allowed_methods`) | A production federation that needs to admit write endpoints from a joined member needs endpoint-level access rights and a different acceptance assertion — service-level `access:` grants the whole service, not the specific operations a review actually approved |
+| **Live-but-uncommitted window:** `writer.apply_real()` writes `configs/member-<key>/` and the `manifest.yaml` entry, and the job then makes the member live on the running federation, all before anyone runs `git commit` — a member can be `ACTIVE, verified: true` on the stack while `git status` still shows it untracked. Two mitigations exist, not a fix: `apply_real()` refuses to *start* a new job while `configs/`/`manifest.yaml` are already dirty, and the console's join tab surfaces the fact live (an "uncommitted" flag on the request, `apps/join-api/app.py`'s `_live_uncommitted`) | A production join workflow should not have a window where the running system and its version-controlled description of itself can disagree at all — e.g. gate "live" on a successful commit, not the other way around |
 | No rate limiting, no quota — the join API accepts as many requests as it is given | Production needs both, plus abuse monitoring on an endpoint that can register federation members |
 | Job context (`out/join/*.json`) lives on local disk only | Not durable, not replicated, and not access-controlled beyond filesystem permissions — production needs a real datastore behind this, with its own access control |
 | TCP **5500** (message exchange) and **5577** (OCSP) are never opened — this demo is single-host on a loopback bind (`deployment.yaml`'s `network.bind`) and never needs either port reachable from outside that host | A real member's Security Server needs both ports reachable to and from every peer; opening them is a ministry firewall change that takes weeks, not a config edit (onboarding path §2 G4) |
@@ -205,7 +205,7 @@ deliberately so:**
   is normal.
 - **`BLOCKED` therefore is not a spinner.** `apps/join-api/job.py` never
   expires it into `FAILED`, and a resume that still finds the server absent
-  returns to `BLOCKED` as many times as it takes (spec S6.1) — that is not
+  returns to `BLOCKED` as many times as it takes — that is not
   defensive coding, it is the only honest model of a state whose exit
   condition is another organisation finishing its work. A demonstration that
   clears `BLOCKED` in under two minutes should say out loud that it is
@@ -214,7 +214,7 @@ deliberately so:**
 
 The reverse direction inherits the same split. `DELETE /members/{key}`
 finishes in seconds and then hands the operator two Docker commands, because
-this API has no Docker socket by design (spec decision 8). In production
+this API has no Docker socket by design. In production
 those two commands are again the member's own work, on the member's own
 infrastructure, and the federation has no way to compel them — which is
 exactly why the *federation-side* reversal has to be complete on its own,
@@ -381,7 +381,7 @@ real, reproducible regression in the operator's own health signal,
 discoverable only by actually running the manual own-server join path live —
 something no automated tier (`--fast`, `--live`, or even `--full`'s own
 console smoke pass) exercises, because `--full` never automates past
-`BLOCKED` (design decision 8: this API has no Docker socket). **Fixed:**
+`BLOCKED` (this API has no Docker socket by design). **Fixed:**
 `join-agent.sh` now uses `COMPOSE_ALL` (already defined in `lib-stack.sh`,
 already includes `hurl/compose.hurl.yml`), so its view of `cs`/`ca` matches
 what is already running and Compose has no drift to "fix" by recreating
@@ -570,7 +570,7 @@ retirement — retirement does not delete it, by design, it *is* the
 retirement record) throws `FileExistsError`, returns an uncaught 500, and
 leaves `configs/` and `manifest.yaml` genuinely modified and uncommitted —
 which then blocks every subsequent join attempt via the same dirty-checkout
-guard (spec S9) that was supposed to prevent exactly this kind of half-done
+guard that was supposed to prevent exactly this kind of half-done
 state. Worked around by hand for this spike (`git checkout -- manifest.yaml`,
 removing the untracked `configs/member-<key>/`) rather than fixed — out of
 scope for a spike that commits no code, but real and reproducible on the

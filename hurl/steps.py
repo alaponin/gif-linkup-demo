@@ -20,14 +20,14 @@ import dataclasses
 class Step:
     id: str                    # "cs.init", "ss.auth_key_csr" -- dotted, stable, never renumbered
     template: str               # filename under hurl/templates/
-    actor: str                  # "operator" | "member" -- see design decision 5
+    actor: str                  # "operator" | "member"
     requires: tuple[str, ...]   # Hurl {{var}} names this step reads
     provides: tuple[str, ...]   # Hurl [Captures] names this step writes
     # "has this already happened?" -- filename under hurl/templates/, or None.
     # Set only for the 409-ambiguous class identified by the join-a plan's
     # audit (see the classification comment above each step
-    # below). Read-only and 409-safe steps need no probe: design spec Section
-    # 5.3's default is 409-as-success, proven live for service.acl
+    # below). Read-only and 409-safe steps need no probe: 409-as-success is
+    # the default, proven live for service.acl
     # (PLAN.md Section 11, apps/console/xroad.py's 409 handling).
     probe: str | None = None
     # Class (d) from the same audit: True means Plan B's runner must refuse
@@ -54,13 +54,13 @@ class Step:
 # -- 409-safety classification --------------
 # Every step below is tagged with one of:
 #   (a) read-only        -- no mutation, always safe to re-run.
-#   (b) 409-safe mutation -- repeat either conflicts cleanly (409, per
-#       design spec Section 5.3's default -- proven live for service.acl,
-#       PLAN.md Section 11 / apps/console/xroad.py) or is a state-setting
-#       call that's naturally idempotent (e.g. a PATCH to the same value).
+#   (b) 409-safe mutation -- repeat either conflicts cleanly (409, proven
+#       live for service.acl, PLAN.md Section 11 / apps/console/xroad.py)
+#       or is a state-setting call that's naturally idempotent (e.g. a
+#       PATCH to the same value).
 #   (c) ambiguous -- carries a `probe`. Two distinct failure modes
-#       land here, both worth a probe even though only one is what design
-#       spec Section 5.3 anticipated: some of these create a NEW resource
+#       land here, both worth a probe even though only one was
+#       anticipated: some of these create a NEW resource
 #       with no natural uniqueness constraint (a repeat silently doubles
 #       key/CA material rather than 409ing at all -- not "ambiguous 409",
 #       genuinely ABSENT 409, arguably the harder case); others bundle a
@@ -70,13 +70,13 @@ class Step:
 #   (d) unsafe to repeat at all -- none found; tests/test_steps.py asserts
 #       this class stays empty.
 # Audited count: 3 (a), 10 (b), 8 (c), 0 (d) of 21 steps -- roughly a third
-# need a probe, more than Section 5.3's "rare" framing anticipated but not
-# "most" of them; recorded in the design spec Section 15/5.3.
+# need a probe, more than the "rare" framing anticipated but not
+# "most" of them.
 REGISTRY: tuple[Step, ...] = (
     # (b) POST /login is a re-authenticate (idempotent); POST /initialization
-    # is a bootstrap-once call X-Road is expected to 409 on repeat, per
-    # Section 5.3's general claim -- UNVERIFIED for this specific endpoint
-    # until confirmed against a live deploy.
+    # is a bootstrap-once call X-Road is expected to 409 on repeat --
+    # UNVERIFIED for this specific endpoint until confirmed against a live
+    # deploy.
     Step(
         id="cs.init",
         template="fragments/CS_INIT.hurl.tmpl",
@@ -139,8 +139,7 @@ REGISTRY: tuple[Step, ...] = (
     # (b) Same reasoning as cs.members_owner -- and the one cs.* step Plan B's
     # join flow actually reaches (a new member's own registration on the CS).
     # Rendered once per member, in a loop, in generate.py -- the registry
-    # holds this step once (design decision 4 of the templates plan; the
-    # join-a plan applies the same rule here).
+    # holds this step once (the join-a plan applies the same rule here).
     # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 6) -- sixth and LAST step in the reversal order
     # (REVERSAL_ORDER below): the member's identity leaves the Central
@@ -168,7 +167,7 @@ REGISTRY: tuple[Step, ...] = (
     # concrete per-member Hurl identifier (e.g. "pdga_host") before Hurl ever
     # sees the file -- same step, rendered once per Security Server owner.
     # See the module docstring for why that is not the requires/provides
-    # conflation design decision 2 warns about: whatever sub() leaves inside
+    # conflation it warns about: whatever sub() leaves inside
     # {{...}} or a [Captures] name is a Hurl runtime identifier regardless of
     # whether it still contains an @token@ pending its own substitution.
     #
@@ -177,7 +176,7 @@ REGISTRY: tuple[Step, ...] = (
     # cert-import run is member; CS approval is operator" (join-a plan).
     # Two call sites are declared exceptions to these defaults,
     # documented at the call site rather than as a second field, because Plan
-    # A has no executor to read either value yet (design decision 6):
+    # A has no executor to read either value yet:
     #   - main()'s 10-ss-pdga block reuses ss.bringup_init/ss.auth_key_csr/
     #     ss.sign_key_csr/ss.activate/ss.tsa_post to bring up the *operator's*
     #     own management Security Server, never a joining member's -- read
@@ -272,7 +271,7 @@ REGISTRY: tuple[Step, ...] = (
         probe="fragments/PROBE_SS_MGMT_REGISTER.hurl.tmpl",
     ),
     # (b) PUT .../activate on an already-active cert is a state-transition
-    # X-Road is expected to 409 on repeat, per Section 5.3's default.
+    # X-Road is expected to 409 on repeat.
     Step(
         id="ss.activate",
         template="fragments/SS_ACTIVATE.hurl.tmpl",
@@ -348,7 +347,7 @@ REGISTRY: tuple[Step, ...] = (
     # (b) POST .../service-descriptions has a natural unique key
     # (rest_service_code per client) -- repeat conflicts; the separate PUT
     # .../enable on an already-enabled description is a state-transition
-    # X-Road is expected to 409 on repeat, per Section 5.3's default.
+    # X-Road is expected to 409 on repeat.
     # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 2) -- second step in the reversal order (REVERSAL_ORDER
     # below), after service.acl's revoke and before ss.client_register's

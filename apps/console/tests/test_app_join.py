@@ -57,7 +57,7 @@ def _patch_join_api(monkeypatch, status_code=200, body=None):
     return calls
 
 
-# -- request-boundary guard (S13) --------------------------------
+# -- request-boundary guard --------------------------------
 
 
 def test_join_requests_endpoint_requires_the_console_header(monkeypatch):
@@ -97,8 +97,8 @@ def test_join_requests_with_foreign_origin_is_refused(monkeypatch):
 
 def test_join_requests_proxies_to_the_real_unprefixed_join_api_path(monkeypatch):
     """join-api's real routes have no "/api/join"
-    prefix, despite design spec §7's stated-but-inaccurate base path
-    (a discrepancy already found and left alone)."""
+    prefix, despite a documented-but-inaccurate base path claiming
+    otherwise (a discrepancy already found and left alone)."""
     calls = _patch_join_api(monkeypatch, body={"requests": [{"id": "r1", "state": "SUBMITTED"}]})
     resp = _client().get("/api/join/requests", headers={HEADER: "1"})
     assert resp.status_code == 200

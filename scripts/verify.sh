@@ -42,8 +42,8 @@ run_fast() {
   # plan) when the host floor was raised to 3.9+ -- see hurl/README.md's
   # "Host Python runtime" note for what it would have enforced.
   #
-  # scripts/preflight.sh's python3/PyYAML check does not belong here either
-  # (shell-python-boundary plan, Design decision 3): --fast is meant to stay
+  # scripts/preflight.sh's python3/PyYAML check does not belong here either:
+  # --fast is meant to stay
   # ~8s, and adding a dependency check to it would need this tier's public
   # claims (T1, tests/test_tiers.py) revisited again. Preflight runs once, in
   # the deploy path (hurl/run-linkup.sh), where the cost it guards against

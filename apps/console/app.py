@@ -39,14 +39,14 @@ ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 JOIN_API_URL = os.environ.get("JOIN_API_URL", "http://join-api:8000")
 JOIN_OPERATOR_TOKEN = os.environ["KP2_JOIN_OPERATOR_TOKEN"]
 
-# Design decision 4: only one ACL is mutable in this demo -- identity-api's
+# Only one ACL is mutable in this demo -- identity-api's
 # grant to PNEA:EXAMS. enrolment-api stays untouched so a broken reset is
 # always visible as an asymmetry between the two tabs, not hidden by symmetry.
 MUTABLE_SERVICE = "identity-api"
 HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
 
-# Journal integrity plan (S16): _mutate_acl is reached from `def` (not
+# _mutate_acl is reached from `def` (not
 # `async def`) endpoints, so FastAPI runs it in a threadpool -- two
 # concurrent POSTs genuinely interleave without this. Serialises every
 # path that reads-then-writes the journal or calls reset(): _mutate_acl,
@@ -57,7 +57,7 @@ WATCHDOG_POLL_S = 10
 # doing.
 _MUTATE_LOCK = threading.Lock()
 
-# Request-boundary plan (S12): shape confirmed against apps/data/persons.csv
+# Shape confirmed against apps/data/persons.csv
 # (scripts/gen_seed_data.py's nin() -- 11 digits, 0-9). \A/\Z rather than
 # ^/$: $ matches before a trailing newline in Python, exactly the kind of
 # near-miss this validator exists to stop.
@@ -70,7 +70,7 @@ def _validated_nin(nin: str) -> str:
     return nin
 
 
-# Request-boundary plan (S13): a cross-origin <form method=POST> is sent by
+# A cross-origin <form method=POST> is sent by
 # the browser regardless of CORS -- CORS only stops the attacker reading the
 # response, and the attacker does not need to read it, the side effect IS
 # the attack. Loopback bind is not a control either: the browser is on the
@@ -179,13 +179,13 @@ def _reset_locked() -> dict:
 
 
 async def _watchdog() -> None:
-    """Belt and braces (design decision 3): a demo that silently leaves the
+    """Belt and braces: a demo that silently leaves the
     ACL revoked and makes acceptance.sh fail an hour later for an
     unrelated-looking reason is exactly the kind of thing that discredits
     the pack. Reset after HEARTBEAT_TIMEOUT_S with no page heartbeat.
 
     reset() performs several blocking HTTPS logins at up to 10s timeout
-    each (S17) -- without to_thread, the whole ASGI event loop stops for
+    each -- without to_thread, the whole ASGI event loop stops for
     that period: /api/health and /api/heartbeat cannot answer, so the
     page's own heartbeat cannot land, so the watchdog's own timeout logic
     is being starved by the watchdog."""
@@ -201,7 +201,7 @@ async def _watchdog() -> None:
 async def _lifespan(app: FastAPI):
     startup_reset_task = None
     if JOURNAL.is_dirty():
-        # Non-blocking, a deliberate choice (S17 Step 2) between two real
+        # Non-blocking, a deliberate choice between two real
         # alternatives: blocking startup until the reset completes means
         # /api/health cannot answer until every reset HTTP call finishes
         # (several, at up to 10s timeout each) -- very likely what
@@ -283,7 +283,7 @@ def get_exchange(nin: str):
     acceptance.sh already writes to out/application-{nin}.json -- plus the
     per-call technical detail the inspector tab renders.
 
-    Guarded too (request-boundary plan S13 Step 5), even though a read
+    Guarded too, even though a read
     doesn't mutate the ACL: it does cause the console to issue real,
     authenticated calls over the X-Road bus, so a cross-origin
     `<img src>` (no fetch, no CORS preflight needed for a plain GET) could
@@ -334,7 +334,7 @@ def _identity_held_fields(nin: str) -> list[str]:
     doesn't send -- read directly from the mock, off the bus entirely,
     never through xroad.py. Never the values."""
     # Validated again even though get_exchange already validated its nin --
-    # deliberate double-check (request-boundary plan S12): this is a
+    # deliberate double-check: this is a
     # module-level function a future caller could reach directly, not just
     # via get_exchange, and it builds its own URL below.
     nin = _validated_nin(nin)
@@ -386,7 +386,7 @@ def get_acl():
 
 
 def _mutate_acl(action: str) -> dict:
-    """Only MUTABLE_SERVICE (design decision 4) is ever mutated here."""
+    """Only MUTABLE_SERVICE is ever mutated here."""
     subsystem = _subsystem_for_service(MUTABLE_SERVICE)
     subjects = TRUTH.expected_acl[MUTABLE_SERVICE]
     if not subjects:
@@ -394,7 +394,7 @@ def _mutate_acl(action: str) -> dict:
     subject = subjects[0]
 
     # Held across the read that establishes prior_state, the journal write,
-    # the live call, AND mark_applied (S16) -- releasing it earlier would
+    # the live call, AND mark_applied -- releasing it earlier would
     # let a second mutation read a prior_state the first has already
     # invalidated but not yet applied, the exact interleave that loses a
     # journal entry: A reads [], B reads [], A writes [x], B writes [y] --
@@ -465,9 +465,9 @@ def post_heartbeat():
 # (JOIN_OPERATOR_TOKEN above); the browser only ever sees join-api's own
 # response bodies, which never carry it.
 #
-# Route paths verified directly against apps/join-api/app.py, not spec §7's
-# stated-but-inaccurate "/api/join" base path (a discrepancy already
-# found and left alone) -- join-api's real routes have no prefix:
+# Route paths verified directly against apps/join-api/app.py's actual routes,
+# not the documented-but-inaccurate "/api/join" base path (a discrepancy
+# already found and left alone) -- join-api's real routes have no prefix:
 # POST/GET /requests, POST /requests/{id}/{approve,resume,reject}.
 _JOIN_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
 

@@ -1,7 +1,7 @@
 """Tests for apps/join-api/job.py.
 
 No containers and no network: the executor takes its "run this rendered file,
-give me the report" function as an argument (spec S12's --fast row: the step
+give me the report" function as an argument (the --fast row: the step
 engine driven against recorded fixtures), and these tests pass a fake that
 replays tests/fixtures/xroad/*.json -- real Hurl report elements sliced out of
 a real lite-profile deploy (out/hurl-report/report.json), see each fixture's
@@ -233,7 +233,7 @@ def test_each_service_is_published_against_its_own_spec_url():
 
 
 def test_consume_only_join_has_no_reachability_step():
-    """Nothing published, nothing to be reachable: spec S4 says a consume-only
+    """Nothing published, nothing to be reachable: a consume-only
     member's ACTIVE means registered and able to reach the global
     configuration, not callable."""
     steps = job.build_sequence(REAL_PACK_DIR, _payload(services=[], semantic=None))
@@ -247,18 +247,18 @@ def test_r1_target_is_the_consumers_own_security_server():
 
 
 def test_r1_target_raises_loud_not_silent_when_topology_has_drifted_from_manifest(tmp_path):
-    """An ACL subject that check 7 (ACL sanity,
-    validate.py) already proved exists in manifest.yaml but is missing from
-    hurl/topology.json at job-run time -- the two files disagreeing is
-    exactly what job.py's own module docstring (S12) calls "registry-perfect
-    but dead": the case join.r1_verify exists to catch. The previous
-    behaviour was to return None and silently drop the step, reaching ACTIVE
-    with `verified` never set. This should never happen if check 7 did its
-    job -- reproduced here by copying the real pack (writer._copy_pack, the
-    same fixture pattern test_writer.py uses) and deleting the one topology
-    entry the default payload's access[] names, which is exactly the kind of
-    manifest/topology divergence check 7 cannot see (it only reads
-    manifest.yaml, never topology.json)."""
+    """An ACL subject that validate.py's ACL sanity check already proved
+    exists in manifest.yaml but is missing from hurl/topology.json at
+    job-run time -- the two files disagreeing is exactly what job.py's own
+    module docstring calls "registry-perfect but dead": the case
+    join.r1_verify exists to catch. The previous behaviour was to return
+    None and silently drop the step, reaching ACTIVE with `verified` never
+    set. This should never happen if the ACL sanity check did its job --
+    reproduced here by copying the real pack (writer._copy_pack, the same
+    fixture pattern test_writer.py uses) and deleting the one topology entry
+    the default payload's access[] names, which is exactly the kind of
+    manifest/topology divergence the ACL sanity check cannot see (it only
+    reads manifest.yaml, never topology.json)."""
     writer._copy_pack(REAL_PACK_DIR, tmp_path)
     topology_path = tmp_path / "hurl" / "topology.json"
     topology = json.loads(topology_path.read_text())
@@ -304,7 +304,7 @@ def test_session_tokens_are_never_persisted_but_are_still_injected():
 
 
 def test_409_on_a_repeat_counts_as_success():
-    """The idempotence default (spec S5.3): the templates assert HTTP 201, so
+    """The idempotence default: the templates assert HTTP 201, so
     a step whose effect already exists fails its assert with a 409 on the
     wire -- proven live for service.acl (PLAN.md S11)."""
     conflict = {
@@ -330,7 +330,7 @@ def test_a_step_that_exhausts_the_budget_fails_with_its_id_and_the_last_response
 
 
 def test_the_retry_budget_is_one_for_the_run_not_one_per_step():
-    """Spec S5.5. Three attempts burnt early leave the later step nine, not a
+    """Three attempts burnt early leave the later step nine, not a
     fresh twelve."""
     flaky = [_FAILED, _FAILED, _FAILED, json.loads((FIXTURES / "cs.init.json").read_text())]
     hurl = FakeHurl({"cs.init": flaky, "ss.client_add": _FAILED})
@@ -384,7 +384,7 @@ def test_ocsp_staleness_is_named_rather_than_surfaced_as_a_tls_error():
 
 
 def test_a_failed_reachability_call_is_active_unverified_not_failed():
-    """Spec S4: a member that registered and published but whose reachability
+    """A member that registered and published but whose reachability
     call has not passed is ACTIVE with verified: false -- one fact about the
     member, not a place in the lifecycle."""
     record = _run(_record(), FakeHurl(), r1=_fake_r1(False, "connection refused"))
@@ -481,7 +481,7 @@ def test_resume_reinjects_the_captures_the_first_run_persisted():
 
 def test_resume_probes_an_ambiguous_step_and_skips_it_when_it_already_happened():
     """Probes only on the steps classified as ambiguous,
-    and only on resume (spec S5.3: resume does not need probes for the steps
+    and only on resume (resume does not need probes for the steps
     the job context already accounts for)."""
     record = _run(_record(), FakeHurl({"ss.client_register": _FAILED}))
     assert record["last_completed_step"] == "ss.sign_key_csr"
@@ -522,7 +522,7 @@ def test_resume_refuses_a_last_completed_step_that_is_not_in_this_sequence():
 
 
 def test_the_serialised_job_context_of_a_completed_job_carries_no_credential(tmp_path):
-    """A headline test for spec S5.4's explicit ask:
+    """A headline test for the explicit ask:
     asserted over the real serialised file against the real values in the
     environment, not by reading the code. The values below are the ones
     app.py hands job.run() (XROAD_ADMIN_PASSWORD, XROAD_TOKEN_PIN) plus both
@@ -746,7 +746,7 @@ def test_the_dockerfile_bundles_the_same_hurl_image_the_compose_overlay_pins():
 
 
 # -- own-server joins ---------------------------------------------------------
-# The other half of spec S6: the joining member brings up its OWN Security
+# The other half: the joining member brings up its OWN Security
 # Server, so the sequence is cold deploy's build_ss_file() rather than
 # build_hosted_client()'s, the registry's per-step `actor` is read as declared
 # instead of overridden to "operator", and BLOCKED becomes reachable.
@@ -894,7 +894,7 @@ def test_a_job_whose_members_server_is_absent_goes_blocked_not_failed():
 
 def test_a_blocked_job_resumes_to_active_once_the_server_appears():
     """Step 7's first half, and Step 2's exit condition: the poll IS the
-    completion signal (spec S6.1) -- no callback, no work-order endpoint."""
+    completion signal -- no callback, no work-order endpoint."""
     record = _run(
         _record(payload=_own_payload().model_dump(mode="json")), OwnServerHurl(), server_up=lambda dns: False
     )
@@ -920,7 +920,7 @@ def test_a_blocked_job_stays_blocked_indefinitely_without_ever_failing():
 
 
 def test_a_hosted_join_can_never_reach_blocked():
-    """Spec S4's BLOCKED row: "own-server joins only". Nothing about a hosted
+    """BLOCKED is "own-server joins only". Nothing about a hosted
     join asks the member for anything, so even a server_up that always says
     "down" cannot block one."""
     record = _run(_record(), FakeHurl(), server_up=lambda dns: False)
@@ -1179,7 +1179,7 @@ def test_the_walk_runs_the_live_verified_reversal_order_not_the_sequence_reverse
 
 
 def test_the_walk_re_establishes_the_sessions_it_needs_before_touching_anything():
-    """Session captures are never persisted (spec S5.4), so the walk re-runs
+    """Session captures are never persisted, so the walk re-runs
     the steps that provide them -- the same thing a resume does, for the same
     reason. Nothing is reversed before both sessions exist."""
     hurl = ReverseHurl()
@@ -1373,7 +1373,7 @@ def test_the_walk_refuses_to_delete_a_key_it_cannot_correlate():
 def test_an_own_server_un_join_skips_the_sign_key_and_names_the_three_volumes():
     """An own-server member's key dies with its container and volumes, so Step
     4b does not apply to it -- what it leaves instead is Docker state this API
-    deliberately cannot touch (design decision 8)."""
+    deliberately cannot touch."""
     record = _run(
         _record(payload=_own_payload().model_dump(mode="json")), OwnServerHurl(), server_up=lambda dns: True
     )

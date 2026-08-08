@@ -1,7 +1,7 @@
 """POST /requests/{id}/approve and /resume through FastAPI's
 TestClient. The pack is a temp copy inside a throwaway git repo, three levels
 down, because writer.apply_real() runs `git status --porcelain` against the
-enclosing checkout (spec S9) and app.py lets it default repo_root the way
+enclosing checkout and app.py lets it default repo_root the way
 docker-compose.yml lays the real one out.
 
 The job itself is not run here -- app_module._start_job is replaced, so these
@@ -109,7 +109,7 @@ def test_approve_writes_the_config_for_real_and_starts_the_job(client):
     assert body["queued"] is False
     assert body["decision_reference"] == DECISION["decision_reference"]
     assert started == [record["id"]]
-    # spec S9: config is written on APPROVED, before any live mutation.
+    # Config is written on APPROVED, before any live mutation.
     assert (app_module.PACK_DIR / "configs" / "member-ptsb" / "ptsb.yaml").exists()
     assert "ptsb" in (app_module.PACK_DIR / "manifest.yaml").read_text()
 
@@ -197,7 +197,7 @@ def test_resume_is_only_possible_from_failed(client):
 
 def test_resume_is_also_the_exit_from_blocked(client):
     """BLOCKED leaves through this same endpoint --
-    no callback route, no work-order endpoint (spec S6.1). The operator runs
+    no callback route, no work-order endpoint. The operator runs
     scripts/join-agent.sh, then resumes, and job.run() polls the server it
     just stood up."""
     record = _submit(client)
@@ -264,7 +264,7 @@ def test_a_member_directory_collision_is_a_409_not_a_500(client, monkeypatch):
 
 
 def test_a_dirty_checkout_refuses_the_approval(client):
-    """spec S9's mitigation: a join must never stack on uncommitted work of
+    """A join must never stack on uncommitted work of
     unclear provenance."""
     record = _submit(client)
     (app_module.PACK_DIR / "manifest.yaml").write_text(

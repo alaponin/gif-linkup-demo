@@ -4,7 +4,7 @@ allocate_ports() and FORBIDDEN_PORT_RANGE exist because of two live incidents,
 both documented at length in docs/production-delta.md: port 5000 and port
 7000, on both of which macOS's AirPlay Receiver hangs the TCP connection
 mid-TLS-handshake rather than refusing it outright -- an afternoon each to
-diagnose. tests/test_golden.py only proves the canonical five produce known
+diagnose. tests/test_golden.py only proves the canonical four produce known
 output; nothing asserted that a *forbidden* port is actually refused, which
 is the property the incidents bought.
 """

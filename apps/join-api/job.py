@@ -1,11 +1,10 @@
-"""apps/join-api/job.py -- the join job engine (design spec
-S5). One approved request becomes an ordered list of steps; each step is one
+"""apps/join-api/job.py -- the join job engine. One approved request becomes an ordered list of steps; each step is one
 Hurl invocation over ONE of Plan A's registry templates (hurl/steps.py), run
 against the live federation, with its `provides` captures parsed back out of
 Hurl's JSON report and threaded into the next step.
 
 Three things make this different from what hurl/run-linkup.sh does with the
-same templates, and all three follow from resumability (decision 5):
+same templates, and all three follow from resumability:
 
   1. **One invocation per step, not one per run.** run-linkup.sh concatenates
      every rendered step into a single setup.hurl, so a variable captured
@@ -16,20 +15,20 @@ same templates, and all three follow from resumability (decision 5):
      got for free: cs.init (CS session), cs.anchor (the anchor),
      ss.bringup_init against the HOST (the host's session) and
      ss.ca_name_capture (ca_name).
-  2. **No Docker.** Design decision 8 (spec S3/S6): this container never gets
+  2. **No Docker.** This container never gets
      a Docker socket, so `docker compose run --rm hurl` is closed to it. The
      pinned Hurl image's own binary is copied into this image at build time
      (see Dockerfile) and shelled out to locally. join-api is on the linkup
      network, so https://cs:4000 / https://ss-plr:4000 resolve here exactly
      as they do for the hurl compose service.
-  3. **Session captures are never persisted.** Spec S5.4: the job context
+  3. **Session captures are never persisted.** The job context
      must never contain the token PIN, the admin password, or a session
      token. Any capture named *_xsrf_token is dropped on the way to disk --
      and a step that provides one therefore re-runs on resume (see
      JobStep.must_rerun), which is safe because those steps are all class
      (a)/(b) in hurl/steps.py's 409-safety audit.
 
-Two shapes of join (spec S6):
+Two shapes of join:
 
   - **hosted_on**: the joining member's subsystem becomes an extra client on
     an EXISTING member's Security Server. Every step is the operator's,
@@ -68,11 +67,11 @@ import yaml
 import validate
 from schema import JoinPayload
 
-# hurl/run-linkup.sh's own proven values (spec S5.5: match them). The budget
+# hurl/run-linkup.sh's own proven values (match them). The budget
 # is for the WHOLE RUN, not per step -- a step that fails is retried at the
 # job level, from the top of that step, and every retry comes out of the same
 # pot. Retrying the whole step rather than the failed entry inside it is what
-# 409-as-success (spec S5.3) makes safe.
+# 409-as-success makes safe.
 RETRY_BUDGET = 12
 RETRY_INTERVAL_SECONDS = 10.0
 
@@ -91,11 +90,11 @@ RETRY_INTERVAL_SECONDS = 10.0
 # the shared run budget for every other step kind.
 R1_RETRY_BUDGET = 54
 
-# BLOCKED (spec S4, S6.1). Before an `actor: member` step -- one this API has
+# BLOCKED. Before an `actor: member` step -- one this API has
 # no business performing on its own, against a Security Server it does not
-# own -- the run polls that server's :4000. The poll IS the completion signal:
-# spec S6.1 records why the work-order queue and the callback endpoint an
-# earlier draft had were deleted, and this is what replaced them. Bounded, and
+# own -- the run polls that server's :4000. The poll IS the completion signal,
+# replacing the work-order queue and the callback endpoint an
+# earlier draft had. Bounded, and
 # a bound that expires is NOT a failure: the request goes BLOCKED and stays
 # there, indefinitely, until someone runs scripts/join-agent.sh and resumes.
 # The bound exists only so the job stops holding app.py's single _JOB_LOCK
@@ -134,7 +133,7 @@ HURL_ENV = {"LD_LIBRARY_PATH": "/opt/hurl-lib"}
 
 class StepFailure(Exception):
     """A step that exhausted the run's retry budget. Carries the step id and
-    the last thing observed, which is what spec S5.5 says a FAILED request
+    the last thing observed, which a FAILED request
     must record."""
 
     def __init__(self, step_id: str, message: str):
@@ -181,8 +180,8 @@ class JobStep:
 
     @property
     def must_rerun(self) -> bool:
-        """This step provides a session token, which is never persisted (spec
-        S5.4), so a resume has to re-run it to get one -- derived from the
+        """This step provides a session token, which is never persisted,
+        so a resume has to re-run it to get one -- derived from the
         capture names rather than hand-listed, so a registry change cannot
         leave a hand-list stale."""
         return any(name.endswith("_xsrf_token") for name in self.provides)
@@ -202,7 +201,7 @@ _NOT_SECRET = {"ss_admin_user"}
 
 
 def scrub(text: str, secrets: dict[str, str]) -> str:
-    """Belt and braces for spec S5.4: no credential in a persisted error
+    """Belt and braces: no credential in a persisted error
     message. Hurl's own error output quotes the template source (`{{token_pin}}`,
     unexpanded -- verified), so this should never have anything to do; it
     costs one pass over a short string and removes the need to trust that."""
@@ -228,7 +227,7 @@ def _host(pack_dir: pathlib.Path, payload: JoinPayload) -> dict:
     """The Security Server this join's steps run against, and the identity
     its session belongs to. Under hosted_on that is the existing member whose
     server hosts the join, resolved from disk the same way validate.py's
-    hosting check (S8 check 6) does, so an approved request cannot resolve to
+    hosting check does, so an approved request cannot resolve to
     a different host than the one that was validated.
 
     For an own-server join the member IS its own host -- so every @HOSTVAR@,
@@ -490,10 +489,10 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
 
 
 def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
-    """Where to make the reachability call from, and to (spec decision 6,
-    S2.6, S12's acceptance clause). Returns None for a consume-only join --
+    """Where to make the reachability call from, and to. Returns None for a
+    consume-only join --
     it publishes nothing to be reachable, and its ACTIVE means "registered
-    and able to reach the global configuration" (spec S4), not "callable".
+    and able to reach the global configuration", not "callable".
 
     The consumer is the first subject the payload grants access to: check 7
     (ACL sanity) already proved it exists, and hurl/topology.json -- rewritten
@@ -512,10 +511,10 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
         # proved this exact subject exists in manifest.yaml before the
         # request was ever approved, so its absence here means manifest.yaml
         # and hurl/topology.json have diverged since -- "registry-perfect but
-        # dead" (design spec S12), the one case join.r1_verify exists to
+        # dead", the one case join.r1_verify exists to
         # catch. Silently omitting the step (the previous behaviour) would
         # reach ACTIVE with `verified` never set at all, which is a worse
-        # silence than the one S12 calls out.
+        # silence than this one.
         raise StepFailure(
             "plan",
             f"ACL subject {subject_id!r} passed check 7 against manifest.yaml but is missing from "
@@ -562,7 +561,7 @@ def _default_run_hurl(
     deploy), so every call gets a fresh directory that is deleted again here.
     --insecure mirrors run-linkup.sh: the Test CA's certificates are
     self-signed. Hurl's own --retry is not used -- the retry budget is the
-    run's, not the step's (spec S5.5), and lives in run() below.
+    run's, not the step's, and lives in run() below.
 
     cookie_jar (--cookie/--cookie-jar, same file for both): found live --
     cs.members_member 401ed even though it
@@ -600,7 +599,7 @@ def _default_run_hurl(
         element = json.loads(report_path.read_text())[-1]
         element["_stderr"] = proc.stderr
         # Response bodies live in files beside the report, referenced by
-        # relative path. The OCSP marker (spec S5.5) arrives in a body, not
+        # relative path. The OCSP marker arrives in a body, not
         # in Hurl's own error text, so read them here while the directory
         # still exists.
         element["_bodies"] = "\n".join(
@@ -705,7 +704,7 @@ def _statuses(element: dict) -> list[int]:
 
 
 def _succeeded(element: dict) -> bool:
-    """409-as-success, the idempotence default (spec S5.3): the templates
+    """409-as-success, the idempotence default: the templates
     assert exact created-statuses (HTTP 201), so a step whose effect already
     exists fails its assert with a 409 on the wire. Proven live for
     service.acl (PLAN.md S11, apps/console/xroad.py's grant()); assumed, per
@@ -889,7 +888,7 @@ def run(
     sequence = build_sequence(pack_dir, payload)
     constants = build_constants(pack_dir, payload, secrets)
     context = dict(record.get("context") or {})
-    # The captures spec S5.4 forbids on disk (session tokens) live here for
+    # The captures forbidden on disk (session tokens) live here for
     # the length of the run and nowhere else. This split is the whole reason
     # JobStep.must_rerun exists: a resume has no session dict to restore, so
     # the steps that provide one run again.
@@ -904,7 +903,7 @@ def run(
     # asserting on the step engine itself, never making a real HTTP call, so
     # there is nothing for a cookie jar to do there. A fresh, empty jar every
     # run/resume, never persisted to record or disk beyond this process's
-    # tempdir: spec S5.4's "session state is never persisted" applies to
+    # tempdir: "session state is never persisted" applies to
     # cookies exactly as it already does to *_xsrf_token.
     run_hurl, cookie_jar_dir = _shared_cookie_jar(run_hurl)
 
@@ -925,7 +924,7 @@ def run(
         record["started_at"] = _now()
         record["error"] = None
         record["blocked"] = None
-        # One budget per RUN (spec S5.5), so a resume starts with a full one --
+        # One budget per RUN, so a resume starts with a full one --
         # the operator resuming is a new run, and the previous run's exhausted
         # budget is not evidence about this one.
         record["retry_budget_left"] = RETRY_BUDGET
@@ -997,7 +996,7 @@ def run(
         record["state"] = "ACTIVE"
         record["finished_at"] = _now()
         if not payload.services:
-            # spec S4: a consume-only member's ACTIVE means registered and able
+            # A consume-only member's ACTIVE means registered and able
             # to reach the global configuration -- there is nothing of its own to
             # call, and it cannot call anyone until the providers it named in
             # requested_access: grant it. Say so rather than report an
@@ -1015,7 +1014,7 @@ def run(
 
 
 # The retry budget is a single mutable cell for the whole run rather than a
-# parameter threaded through: one budget, one place (spec S5.5).
+# parameter threaded through: one budget, one place.
 def _execute(
     step: JobStep,
     variables: dict,
@@ -1084,7 +1083,7 @@ def _execute(
 
         if budget <= 0:
             if r1:
-                # Not a job failure: spec S4 says a member that registered and
+                # Not a job failure: a member that registered and
                 # published but whose reachability call has not passed is
                 # ACTIVE with verified: false, one fact about the member
                 # rather than a place in the lifecycle.
@@ -1108,7 +1107,7 @@ def _execute(
 
 def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> bool:
     """Has this step already happened? Only asked on resume, and only for the
-    steps classified as ambiguous (spec S5.3): a probe
+    steps classified as ambiguous: a probe
     failure answers "no", never fails the job -- re-running is the safe
     default and the whole point of the classification."""
     generate, _ = _hurl_modules(pack_dir)
@@ -1158,7 +1157,7 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
 
 _HURL_VAR_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 
-# The reversal analogue of _succeeded()'s 409-as-success (spec S5.3). Repeating
+# The reversal analogue of _succeeded()'s 409-as-success. Repeating
 # any of the six is safe and distinguishable (docs/decisions/xroad-770-notes.md #11):
 # 1 -> 409 accessright_not_found, 2 -> 404 service_description_not_found,
 # 4 -> 404 client_not_found, 5 -> 404, 6 -> 404 member_not_found. So a 404 or
@@ -1277,8 +1276,8 @@ REVERSAL_ABSENT: dict[str, Callable[[JobStep, dict, dict], bool]] = {
 
 def retire_instruction(payload: JoinPayload) -> dict | None:
     """What the operator must do by hand for an own-server
-    member, because this API never gets a Docker socket (design decision 8,
-    the same split scripts/join-agent.sh makes for the bring-up direction).
+    member, because this API never gets a Docker socket (the same split
+    scripts/join-agent.sh makes for the bring-up direction).
     None for a hosted member -- it owns no container and no volumes, and its
     residue is the SIGN key the walk deletes instead (Step 4b).
 
@@ -1371,7 +1370,7 @@ def unjoin(
 
         try:
             # The sessions this walk authenticates with are exactly the ones
-            # the forward path never persisted (spec S5.4), re-established the
+            # the forward path never persisted, re-established the
             # same way a resume does: by re-running the steps that provide
             # them. cs.init for the Central Server, ss.bringup_init for the
             # Security Server the member's client lives on.

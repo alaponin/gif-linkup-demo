@@ -1,5 +1,5 @@
 # PTSB awards API — the OpenAPI3 service description X-Road parses for the
-# live-proof join (design spec §2.1). GET-only, mirroring
+# live-proof join. GET-only, mirroring
 # apps/specs/pnia-identity.openapi.yaml's shape exactly -- Plan B's join
 # policy (configs/x-road-bus/2.7.yaml's allowed_methods: [GET]) rejects
 # anything else.
@@ -9,7 +9,7 @@ info:
   version: "1.0"
   description: >
     Whether a candidate holds a scholarship award, for PNEA to verify before
-    issuing a certificate (design spec §2.1 point 2).
+    issuing a certificate.
 servers:
   - url: http://app-ptsb:8000/v1
 paths:

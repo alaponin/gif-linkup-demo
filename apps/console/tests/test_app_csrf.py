@@ -1,4 +1,4 @@
-"""Request-boundary plan (S13): POST /api/acl/revoke, /api/acl/grant
+"""POST /api/acl/revoke, /api/acl/grant
 and /api/reset accepted a request with no body, no custom header and no
 token -- a plain cross-origin <form method=POST> could flip a live ACL.
 No network, no Docker -- PACK_DIR points at the existing test fixtures;

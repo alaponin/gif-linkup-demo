@@ -1,5 +1,5 @@
 """GET /requests (the operator queue) and
-POST /requests/{id}/reject -- both in spec S7's original API surface but
+POST /requests/{id}/reject -- both part of the original API surface but
 never built alongside submit/approve, and both genuinely needed by the console's join
 tab (the pending queue, and reject-with-a-reason). Same fixture pattern as
 test_app_approve.py: a temp copy of the pack inside a throwaway git repo,
@@ -149,7 +149,7 @@ def test_list_newest_first(client):
 
 
 def test_active_record_carries_the_uncommitted_flag(client):
-    """spec S9's known gap, made visible: approved-and-written but not yet
+    """A known gap, made visible: approved-and-written but not yet
     committed. apply_real() itself writes the files without committing --
     a fresh queue read right after approval must say so."""
     record = _submit(client)

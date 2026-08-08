@@ -185,7 +185,7 @@ def main() -> None:
     # and describe at least the canonical members frozen in manifest.yaml --
     # the same class of agreement check as identity:/identifiers: above. A
     # joined member is allowed to add a subsystem topology.json knows about
-    # that identifiers: doesn't (design decision 2) -- it's a superset
+    # that identifiers: doesn't -- it's a superset
     # relationship, not exact equality.
     deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
 

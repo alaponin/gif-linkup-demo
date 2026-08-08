@@ -40,7 +40,7 @@ class Journal:
         text = self.path.read_text().strip()
         if not text:
             return []
-        # Journal integrity plan (S15): a corrupt file must refuse loudly,
+        # A corrupt file must refuse loudly,
         # never be silently treated as "nothing to do" -- that would convert
         # "the federation may be mid-mutation and I cannot tell" into a
         # silent reset-ok, exactly what this module exists to prevent.

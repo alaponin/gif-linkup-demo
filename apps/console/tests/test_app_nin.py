@@ -1,4 +1,4 @@
-"""Request-boundary plan (S12): a path parameter went straight into a
+"""A path parameter went straight into a
 URL that addresses an X-Road service (get_exchange, get_exchange_negative)
 or the mock registry directly (_identity_held_fields). No network, no
 Docker -- PACK_DIR points at the existing test fixtures; rejected requests
@@ -94,7 +94,7 @@ def test_identity_held_fields_rejects_bad_nin_directly():
         _assert_rejected(app._identity_held_fields, nin)
 
 
-# The CSRF guard (request-boundary plan S13, test_app_csrf.py) runs before
+# The CSRF guard (test_app_csrf.py) runs before
 # these handlers do, so it needs satisfying here too -- these tests are
 # about the NIN boundary, not the CSRF one.
 CSRF_HEADERS = {"X-KP2-Console": "1"}

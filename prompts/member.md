@@ -89,15 +89,14 @@ the brief names. Output only the two YAML documents.
   This is the by-hand path. The same Document-2 payload (reshaped to the
   join API's `JoinPayload` schema, `apps/join-api/schema.py`) can instead be
   submitted directly to the join API, `POST /requests` (`apps/join-api/
-  app.py` — the API has no `/api/join` path prefix despite the design
-  spec's §7 calling that its base path; every route hangs directly off the
-  app root, confirmed by reading `app.py`, not assumed from the spec). This
+  app.py` — the API has no `/api/join` path prefix; every route hangs
+  directly off the app root, confirmed by reading `app.py`). This
   enforces the same two safeguards below (`origin: joined` never optional;
   `hosted_on` naming a real, unhosted host) mechanically rather than by
   reviewer discipline, **plus** three checks a human authoring this file by
   hand has no equivalent of: reachability of the declared backend, no
   operation outside the join policy's `allowed_methods`, and a declared
-  backend-auth mechanism (spec §8 checks 9–11). Module 2.7 is this path,
+  backend-auth mechanism. Module 2.7 is this path,
   first-class.
 
 ## Safeguard

@@ -1,5 +1,5 @@
 """Unit tests for apps/join-api/validate.py -- twelve
-checks (spec S8), plus lawful_basis and sla_required (K-01), for
+checks, plus lawful_basis and sla_required (K-01), for
 thirteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
@@ -358,7 +358,7 @@ def test_lawful_basis_rejects_a_consumer_only_member_with_none_stated():
 
 
 def test_lawful_basis_is_satisfied_by_a_providers_services_even_when_unset_on_requirements():
-    """Design decision 1: "the requirement is satisfied by them" -- a
+    """The requirement is satisfied by them -- a
     provider (any services at all) never has to duplicate it on
     member_requirements."""
     payload = _run(_payload(

@@ -15,9 +15,9 @@ granted-subject list equals its config's `access:` list exactly. 2.7 asserts
 what `member.md` cannot: the **join transition** itself (a request submitted
 through the API, approved, and run to `ACTIVE` produces exactly that
 registered, ACL-exact state) and **reachability** — that the resulting
-member's backend is actually there, not merely registered. Design spec §2.6
-explains why registry state is not evidence of a working backend this pack
-did not write; that is the gap this check closes.
+member's backend is actually there, not merely registered. Registry state is
+not evidence of a working backend this pack did not write; that is the gap
+this check closes.
 
 - **Given** a deployed, seeded federation (`scripts/deploy.sh`,
   `scripts/seed.sh`) and a valid join payload for a member with `hosted_on`
@@ -50,7 +50,7 @@ did not write; that is the gap this check closes.
      `check_265`): the denial must come from the provider-side ACL, proving
      the join did not just register a name but actually put a reachable,
      correctly-fenced backend behind it. This is the only assertion in the
-     whole acceptance suite that would catch design spec §2.4's
+     whole acceptance suite that would catch a
      registry-perfect-but-dead member — a join that passed every validation
      check yet points at a backend nobody can reach.
   3b. **field conformance (G5.9)** — a real, key-specific `r1` call through
@@ -91,7 +91,7 @@ work, not the operator's. That is the whole of what this case adds:
   5. the request reached `BLOCKED` at all, and reached it *before* running
      any `actor: member` step — a job that walked straight through would
      mean the operator had silently provisioned the member's infrastructure,
-     which is the one thing spec §6.1's `BLOCKED` exists to prevent;
+     which is the one thing `BLOCKED` exists to prevent;
   6. `BLOCKED` never expired into `FAILED`: a resume that still finds the
      server absent goes back to `BLOCKED`, as many times as it takes;
   7. the member's own Security Server is a real, registered server of the
@@ -99,7 +99,7 @@ work, not the operator's. That is the whole of what this case adds:
      `REGISTERED` on its own token and the Central Server lists it under
      `GET /security-servers`. This is what the hosted case has no analogue
      for at all: a hosted member owns no AUTH key, so nothing in
-     `acceptance/2.7.md`'s hosted clauses exercises this path.
+     this file's hosted clauses exercises this path.
 
 ## The un-join transition
 
@@ -150,8 +150,7 @@ member look gone from wherever you happened to look.
   5. `hurl/topology.json` is **byte-identical** to the single deployment
      golden (`tests/golden/deployment/topology.json`) — the working tree came back
      to exactly where it was before the join. This is
-     design spec §12's own acceptance clause and the join-c plan's Global
-     Constraint. Asserted only when no joined member remains in the
+     the join-c plan's Global Constraint. Asserted only when no joined member remains in the
      topology; with one still present, byte-identical to the canonical
      golden is the wrong expectation and the check says so rather than
      failing.
@@ -164,7 +163,7 @@ member look gone from wherever you happened to look.
 
 ## Tier placement
 
-Per design spec §12's own table, this check is a `--live`-tier check: it
+This check is a `--live`-tier check: it
 needs a running, seeded stack, and its cost is the real propagation waits
 (registration settling, ACL propagation) that `--fast` cannot mock away.
 Specifically the **hosted** join (`default_hosting: hosted_on` / an explicit

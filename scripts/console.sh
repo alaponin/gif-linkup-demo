@@ -31,7 +31,7 @@ case "${1:-}" in
     log "console stopped"
     ;;
   reset)
-    # -H required since the request-boundary plan's CSRF guard (S13): no
+    # -H required since the CSRF guard: no
     # Origin header from curl, so that check is skipped, but the custom
     # header is mandatory for every caller, script or browser alike.
     curl -sf -X POST -H "X-KP2-Console: 1" "$CONSOLE_URL/api/reset" | python3 -m json.tool

@@ -23,8 +23,8 @@ Usage: scripts/member.sh list
                 a running federation -- the member stays registered there
                 until scripts/teardown.sh --purge.
   drift <key>   Re-fetch a joined member's current OpenAPI spec and diff its
-                endpoint set against the baseline captured at join time
-                (design spec §2.4/§5.4). No auth, no HTTP to the join API --
+                endpoint set against the baseline captured at join time.
+                No auth, no HTTP to the join API --
                 works whether or not it is even running. Fails clearly if
                 '<key>' has no ACTIVE out/join/*.json record to compare
                 against (never joined through the API, or joined before this
@@ -64,7 +64,7 @@ m = yaml.safe_load(open(sys.argv[1]))['identity']['members'].get(sys.argv[2]) or
 print(m.get('origin', 'canonical'))
 PY
 )
-  [ "$origin" = "canonical" ] && fail "'$key' is a canonical member -- the canonical five never renumber or leave. Only a joined member can be removed."
+  [ "$origin" = "canonical" ] && fail "'$key' is a canonical member -- the canonical four never renumber or leave. Only a joined member can be removed."
 
   rm -r "$dir"
   # The onboarding record is NOT deleted here. It is evidence of two things,
@@ -108,7 +108,7 @@ cmd_drift() {
   local dir="$PACK_DIR/configs/member-$key"
   [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to check"
 
-  # The join-time baseline (spec S5.4) lives in the job context, i.e. the
+  # The join-time baseline lives in the job context, i.e. the
   # most recently-submitted ACTIVE out/join/*.json record whose payload.code
   # matches this key (case-insensitively) -- nothing enforces there is only
   # ever one, so pick the newest on ambiguity rather than assume. A member

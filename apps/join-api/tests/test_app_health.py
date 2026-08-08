@@ -58,7 +58,7 @@ def test_health_response_never_carries_a_credential():
         assert secret not in body
 
 
-# -- bearer-token auth (spec S7, decision 10) --------------------------------
+# -- bearer-token auth --------------------------------------------------
 
 def test_require_applicant_accepts_the_applicant_token():
     req = _request({"authorization": "Bearer test-applicant-token"})

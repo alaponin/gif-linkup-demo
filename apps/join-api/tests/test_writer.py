@@ -281,8 +281,7 @@ def test_apply_real_refuses_cleanly_when_the_git_check_itself_cannot_run(tmp_pat
 
 
 def test_apply_real_refuses_cleanly_on_a_member_directory_collision(tmp_path):
-    """validate.py's own collision check (S8
-    check 3) already refuses a request whose key collides with an existing
+    """validate.py's own collision check already refuses a request whose key collides with an existing
     configs/member-<key>/ at submission time -- this reproduces the
     unlikely race where a directory for the same key appears between that
     check and approval, which used to raise a raw, unhandled

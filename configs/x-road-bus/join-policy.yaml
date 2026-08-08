@@ -5,7 +5,7 @@
 #
 # Exactly three keys. Do not add a fourth: an earlier draft invented
 # max_services, require_semantic_for_provenance and backend_auth and all
-# three were deleted (spec §16.2) because nothing applied them -- "a block
+# three were deleted because nothing applied them -- "a block
 # the generator silently ignores is worse than no block at all: it reads as
 # configuration and is decoration" (hurl/generate.py's check_policy()
 # docstring, and now also check_join_policy(), which hard-fails

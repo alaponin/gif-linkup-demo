@@ -73,7 +73,7 @@ SS DNS names are the container names.
 steady state, measured via `docker stats --no-stream` on a 16 GB colima VM:
 ~2.0–2.3 GB per SS (≈10.7 GB), 1.7 GB for the CS, under 100 MB each for the
 Test CA and the three mocks. Fits 16 GB with ~3 GB headroom. There is one
-topology (design decision 5): no smaller lite alternative that hosts PNIA
+topology: no smaller lite alternative that hosts PNIA
 (or, before its retirement, MoEYS) as an extra client of `ss-plr` instead of
 standing up its own Security Server. `ss-moeys` above is retired, not
 deployed — see `docs/production-delta.md`.
@@ -303,7 +303,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   by default; a real join stays a separate, manual procedure instead. Two
   real bugs were found and fixed by the live proof, neither caught by
   `--fast`'s fixture-driven tests: the `apps/join-api` container image had no `git`
-  binary, but `writer.apply_real()`'s dirty-checkout guard (spec S9) shells
+  binary, but `writer.apply_real()`'s dirty-checkout guard shells
   out to it — fixed in the Dockerfile; and `job.py` ran each step as its own
   Hurl process with no cookie jar, so any step after the one that logged in
   401'd (X-Road's admin API validates the XSRF header against the session
@@ -337,8 +337,8 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   hosted as extra clients on `ss-plr`, ~8.9 GB RAM vs full's ~13 GB, both
   live-verified `ACCEPTANCE GREEN`); the profile split itself is gone —
   `deployment.yaml`'s `profile:` key, `--profile`, and the lite topology it
-  selected have all been removed. One topology remains (full minus MoEYS,
-  design decision 5). Two ordering bugs found and fixed at the time in
+  selected have all been removed. One topology remains (full minus MoEYS).
+  Two ordering bugs found and fixed at the time in
   X-Road's admin API sequence for a hosted member remain relevant: client-add
   must precede its SIGN-key generation, which must precede its registration.
   These findings are unaffected by the profile split's removal — they hold
@@ -360,7 +360,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   container stale certs on the next "clean" run. **Still open:** NIN format;
   the exact access-denied fault shape asserted by `acceptance.sh`.
 - **Video calibration (Module 5 bundle §5.5):** resolved by MoEYS's retirement
-  (design decision 5, §2) — the runnable topology is now four Security Servers
+  (§2) — the runnable topology is now four Security Servers
   total (PDGA's management server plus PNEA, PLR, PNIA), matching what 5.5
   already says. No script change needed.
 - **check_pack.py change made here:** `prompts/` is now exempt from the

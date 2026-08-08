@@ -362,14 +362,14 @@ PY
 log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + provenance)"
 
 # ---- 2.7 a new member joins the bus -- the join API -------------------------
-# acceptance/2.7.md's clause: a real r1 call through an authorized consumer's
+# acceptance/join-member.md's clause: a real r1 call through an authorized consumer's
 # own Security Server against a joined member's service returns 2xx, and the
 # same call from an unauthorized subsystem is denied by the provider ACL --
 # the one assertion in this suite that would catch a registry-perfect-but-
-# dead member (design spec §2.4). Registry state itself (REGISTERED, exact
+# dead member. Registry state itself (REGISTERED, exact
 # ACL) is NOT re-asserted here -- acceptance/member.md's existing generic
 # checks already cover any member, joined or not; duplicating them here was
-# explicitly ruled out (spec §12, "do not duplicate").
+# explicitly ruled out ("do not duplicate").
 #
 # This is the one section that starts and stops its own building block
 # (join-api, profile "demo") rather than assuming it is already up --
@@ -502,7 +502,7 @@ for _row in "${_27_ROWS[@]}"; do
 done
 
 # ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
-# acceptance/2.7.md's un-join clause: five assertions, which are exactly
+# acceptance/join-member.md's un-join clause: five assertions, which are exactly
 # docs/decisions/xroad-770-notes.md #11's closing claims. Discovered the same generic,
 # vacuous-by-default way the r1 rows above are: the newest RETIRED
 # out/join/*.json record per member code. A federation nobody has un-joined
@@ -654,7 +654,7 @@ if _selection_touches_27; then
     GOOD_REST="http://${XROAD_BIND}:${SS_REST[$GOOD_SS]}"
     BAD_REST="http://${XROAD_BIND}:${SS_REST[$BAD_SS]}"
 
-    # "2xx" per acceptance/2.7.md's prose meant, in practice, "the call
+    # "2xx" per acceptance/join-member.md's prose meant, in practice, "the call
     # traversed X-Road and reached the backend" -- true for job.py's own
     # r1_verify (which passed) even though the service-root call above 404s
     # against every mock in this pack (none exposes a collection route, only
@@ -734,7 +734,7 @@ PY
     check "2.7.fields(${code}.${svc})" "${client_header} r1 call to ${svc} carries exactly its contract's declared fields (G5.9)" check_r1_fields
   done
 
-  # -- the un-join transition (acceptance/2.7.md's un-join clause) ------------
+  # -- the un-join transition (acceptance/join-member.md's un-join clause) ------------
   # Clauses 1-4 per retired member; clause 5 (byte-identical topology) is a
   # property of the working tree, not of a member, so it is asserted once.
   for _row in "${_27_RETIRED[@]}"; do

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stand up ONE joined member's own Security Server -- the demo's stand-in for
-# the joining agency's own infrastructure team (design spec S6.1). Run it when
+# the joining agency's own infrastructure team. Run it when
 # the console shows a join request BLOCKED; the request leaves that state on
 # its own resume, once join-api's poll finds this server answering.
 #
@@ -30,14 +30,14 @@ CFG=$(find "$MEMBER_DIR" -maxdepth 1 -name '*.yaml' | sort | head -1)
 
 SS=$(yq_get "$CFG" security_server.dns_name)
 HOSTED=$(yq_get "$CFG" security_server.hosted_on 2>/dev/null || true)
-[ -z "$HOSTED" ] || fail "member '$KEY' is hosted on $HOSTED and owns no Security Server -- a hosted join never enters BLOCKED and needs no agent (design spec S6.2)"
+[ -z "$HOSTED" ] || fail "member '$KEY' is hosted on $HOSTED and owns no Security Server -- a hosted join never enters BLOCKED and needs no agent"
 
 UI="${SS_UI[$SS]:-}"
 REST="${SS_REST[$SS]:-}"
 { [ -n "$UI" ] && [ -n "$REST" ]; } || fail "hurl/topology.sh has no ports for $SS -- run 'python3 hurl/generate.py' first"
 
 # A busy host port is a FAILURE, naming the port and the process holding it --
-# never a silent re-allocation (design spec open question 6). Re-allocating
+# never a silent re-allocation. Re-allocating
 # would change the ports hurl/topology.json, hurl/topology.sh, the console's
 # "copy as curl" and hurl/compose.members.yml all already agree on, for one
 # machine, at run time: the Global Constraint's determinism (same member set,

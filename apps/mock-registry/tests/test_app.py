@@ -9,7 +9,7 @@ six-to-fifteen-minute live run.
 
 ENTITY/CSV_FILE/SPEC_FILE/KEY_FIELD are pointed at the REAL
 apps/data/persons.csv and apps/specs/pnia-identity.openapi.yaml, not a
-fixture copy (Design decision 2, 2026-08-01-kp2-testing-gaps.md) -- using
+fixture copy -- using
 the real files means this test breaks if the spec and the seed data ever
 diverge, which is itself worth catching. app.py reads all four env vars at
 import time, so they have to be set before import -- the same pattern
@@ -42,7 +42,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 client = TestClient(app.app)
 
 # persons.csv carries these three; pnia-identity.openapi.yaml declares none
-# of them (Design decision 2) -- the withheld set this whole filter exists
+# of them -- the withheld set this whole filter exists
 # to enforce.
 WITHHELD_FIELDS = ("mother_name", "birth_registration_no", "residence_address")
 

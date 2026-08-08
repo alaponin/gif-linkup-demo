@@ -1,5 +1,5 @@
 """apps/join-api/writer.py -- turning a validated JoinPayload into files on
-disk that hurl/generate.py accepts (design spec S9). Nothing
+disk that hurl/generate.py accepts. Nothing
 here talks to X-Road; nothing here decides whether a payload is admissible
 (that is validate.py's job, already run before either function below is
 called).
@@ -10,7 +10,7 @@ _run_generate):
   dry_run_diff()  -- copies the whole pack to a throwaway temp directory,
                      writes the candidate config + manifest entry into THAT
                      COPY, runs the copy's own generate.py, and returns a
-                     diff string. Used at submission (spec S7: "the config
+                     diff string. Used at submission ("the config
                      diff the join would write, computed at submission").
                      Never writes to, or reads mutable state from, the real
                      checkout -- it reads pack_dir exactly once, to seed the
@@ -18,8 +18,8 @@ _run_generate):
 
   apply_real()     -- the same sequence, against the real pack_dir. Refuses
                      first (DirtyCheckoutError) if `git status --porcelain
-                     configs/ manifest.yaml onboarding/` is not clean (spec
-                     S9's mitigation: a join must never stack on top of
+                     configs/ manifest.yaml onboarding/` is not clean (a join
+                     must never stack on top of
                      uncommitted work of unclear provenance). Called by
                      app.py's POST /requests/{id}/approve, before the job
                      (job.py) starts. Once generate.py accepts the result,
@@ -28,7 +28,7 @@ _run_generate):
                      scripts/render-onboarding.sh calls for the three
                      canonical members.
 
-Design spec S9 is explicit that config-writing happens "on APPROVED, before
+Config-writing happens "on APPROVED, before
 any live mutation" -- that governs apply_real only. dry_run_diff runs at
 submission, always against a copy, precisely so an unapproved (possibly
 REJECTED) request never leaves a mark on the real checkout.
@@ -71,8 +71,8 @@ class GenerateFailure(Exception):
 
 
 class DirtyCheckoutError(Exception):
-    """`git status --porcelain configs/ manifest.yaml` was not empty (spec
-    S9) -- refuses to start a real-apply job on top of uncommitted,
+    """`git status --porcelain configs/ manifest.yaml` was not empty --
+    refuses to start a real-apply job on top of uncommitted,
     unattributable work."""
 
 
@@ -92,7 +92,7 @@ class MemberCollisionError(Exception):
     """A member directory with this key was created between validation and
     approval -- the race _write_member's own comment names as the only way
     its `mkdir(parents=True)` (not exist_ok) can raise FileExistsError.
-    validate.py's collision check (S8 check 3) already refused any request
+    validate.py's collision check already refused any request
     whose key collided with an existing configs/member-<key>/ at submission
     time; this catches the (unlikely) case where a second request for the
     same key was approved in between -- this must not escape apply_real
@@ -243,7 +243,7 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
 # -- onboarding/<key>/ (G-07) --------------------------------------------------
 #
 # Four generated files per member -- not the onboarding path's ten (D3: no
-# curriculum change). Never hand-maintained (P2, design decision 3): an
+# curriculum change). Never hand-maintained (P2): an
 # absent file means the gate has not been passed, whatever the calendar
 # says, so nothing here backfills a plausible-looking stub.
 
@@ -328,7 +328,7 @@ def render_admission_record(request_id: str, decision_reference: str, approved_a
 
 def render_requirements_record(requirements: MemberRequirements) -> str:
     """02-requirements.md -- Module 5.2's six-item checklist, stated by the
-    applicant, not derived (design decision 1)."""
+    applicant, not derived."""
     lawful_basis = (
         _sanitize_cell(requirements.lawful_basis) if requirements.lawful_basis else
         "satisfied by this member's published services (each service's own "
@@ -351,7 +351,7 @@ def render_requirements_record(requirements: MemberRequirements) -> str:
 
 def render_sla_record(service: Service) -> str:
     """03-sla/<service-code>.md -- Module 5.3's five-term template, "reuse
-    the same template for every service on the bus" (design decision 2).
+    the same template for every service on the bus".
     Caller guarantees service.sla is set (validate.py's sla_required check,
     or the canonical configs, which already have it set)."""
     sla = service.sla
@@ -459,8 +459,8 @@ def render_onboarding_tree(
     join uses" for both, so there is exactly one place that decides what an
     onboarding record looks like.
 
-    01-admission.md is written only when request_id is not None (design
-    decision 5): the three canonical members never passed an admission, and
+    01-admission.md is written only when request_id is not None: the
+    three canonical members never passed an admission, and
     writing them one would be fiction. apply_real() is the only real caller
     that ever passes request_id, and it always passes decision_reference/
     approved_at alongside it."""
@@ -503,7 +503,7 @@ def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> N
     ran first, differs between the two callers."""
     member_dir = target_dir / "configs" / f"member-{key}"
     member_dir.mkdir(parents=True)  # not exist_ok: validate.py's collision
-    # check (S8 check 3) already refuses a request whose key collides with
+    # check already refuses a request whose key collides with
     # an existing configs/member-<key>/ -- a FileExistsError here means that
     # guarantee was violated somewhere upstream, and should be loud. apply_real
     # (the only caller where this race is reachable -- dry_run_diff's target
@@ -616,7 +616,7 @@ def apply_real(
     relying on that exact nesting.
 
     Refuses (DirtyCheckoutError) before writing anything if `git status
-    --porcelain configs/ manifest.yaml onboarding/` is not clean (spec S9) --
+    --porcelain configs/ manifest.yaml onboarding/` is not clean --
     a join must never stack on top of uncommitted work of unclear provenance.
 
     Called by app.py's POST /requests/{id}/approve, before the job starts --
@@ -634,7 +634,7 @@ def apply_real(
     if dirty.strip():
         raise DirtyCheckoutError(
             "refusing to start a join job: configs/, manifest.yaml or "
-            f"onboarding/ already has uncommitted changes (spec S9) -- commit "
+            f"onboarding/ already has uncommitted changes -- commit "
             f"or discard them first:\n{dirty}"
         )
     try:

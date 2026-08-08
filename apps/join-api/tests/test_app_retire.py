@@ -368,5 +368,5 @@ def test_a_crashing_walk_records_the_failure_instead_of_leaving_it_silent(client
     stored = app_module._load_request(record["id"])
     assert stored["state"] == "RETIRING"
     assert "kaboom" in stored["error"]["message"]
-    # Scrubbed like every other persisted error message (spec S5.4).
+    # Scrubbed like every other persisted error message.
     assert app_module.TOKEN_PIN not in json.dumps(stored)

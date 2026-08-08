@@ -67,7 +67,7 @@ case "$XROAD_BIND" in
 network.acknowledge_public_exposure: true.
 
 On a non-loopback interface this publishes, with no authentication:
-  - the five Security Server :8080 proxy ports. X-Road's client-proxy
+  - the four Security Server :8080 proxy ports. X-Road's client-proxy
     interface has NO authentication -- the caller simply asserts who it is
     in the X-Road-Client header, because that interface is defined to sit on
     the agency's trusted internal network. Anyone who can reach it can
@@ -111,7 +111,7 @@ fi
 # the demo-only console/join-api, tagged profiles: ["demo"]) is unconditional
 # now that "full" is the only topology -- no --profile flag is needed to
 # bring ss-pnia up or to tear it down, unlike when it was gated behind
-# profiles: ["full"] (design decision 5).
+# profiles: ["full"].
 COMPOSE_MEMBERS_YML="$PACK_DIR/hurl/compose.members.yml"
 COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
 [ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE+=(-f "$COMPOSE_MEMBERS_YML")

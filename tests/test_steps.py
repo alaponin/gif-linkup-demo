@@ -1,10 +1,10 @@
-"""hurl/steps.py's registry contract -- see the join-a-step-registry plan.
+"""hurl/steps.py's registry contract.
 
 A declared requires/provides contract nobody verifies is documentation that
 rots. This module makes it mechanically true by parsing each step's raw
 .tmpl source -- never the rendered hurl/scenarios/ output, which only
 exists for one already-chosen member set (generate.py lost the profile
-concept; D5: one topology) and would hide the registry's per-id,
+concept; there is one topology now) and would hide the registry's per-id,
 cross-member contract.
 
 Regex is sufficient: these are generated files with a fixed shape. Two
@@ -20,8 +20,8 @@ regimes appear in the templates:
     becomes "pdga_xsrf_token" or "pnia_xsrf_token" depending only on which
     member is being rendered). hurl/steps.py's requires/provides use that
     same raw, unrendered form -- see its module docstring for why that is
-    not the requires/provides-vs-@name@-token conflation design decision 2
-    warns about: whatever sub() leaves inside {{...}} or a [Captures] name
+    not the requires/provides-vs-@name@-token conflation it warns
+    about: whatever sub() leaves inside {{...}} or a [Captures] name
     is a Hurl runtime identifier regardless of whether it still contains an
     @token@ pending its own substitution. @DESCRIPTION@, @MEMBER_CODE@ and
     friends never appear inside {{...}} or a capture name -- they're baked
@@ -238,7 +238,7 @@ def test_reversal_requires_satisfiable_from_a_completed_forward_run():
     surface at runtime, on the first live reversal attempt.
 
     "Available" here means job.py's persisted `context`, not the in-memory
-    `session` dict spec S5.4 forbids writing to disk (job.py module
+    `session` dict, which is forbidden from writing to disk (job.py module
     docstring point 3): every HOSTED_JOIN_FORWARD_SEQUENCE step's
     non-secret `provides` (a capture named *_xsrf_token is a session
     capture, dropped -- job.py's `_is_secret()`). Session-shaped refs

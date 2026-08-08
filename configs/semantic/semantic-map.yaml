@@ -1,10 +1,10 @@
 # The Module 4 semantic map — referenced by configs/member-plr/2.4.yaml and
 # configs/member-pnia/2.5.yaml's semantic: blocks, and checked (not merely
-# published) by apps/join-api/validate.py's _check_purpose_limitation (spec
-# S8 check 8): semantic.entity must be a key below, and every semantic.fields
+# published) by apps/join-api/validate.py's _check_purpose_limitation:
+# semantic.entity must be a key below, and every semantic.fields
 # entry must be declared for that entity.
 #
-# Entity -> source anchor -> field list only (design decision 4): no
+# Entity -> source anchor -> field list only: no
 # per-field element descriptions here -- the anchor is where those live.
 person:
   anchor: CEDS

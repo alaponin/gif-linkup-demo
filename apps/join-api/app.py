@@ -76,11 +76,10 @@ APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN")
 OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN")
 
 # Request-boundary guard -- copied verbatim from apps/console/app.py's
-# _require_console_origin (request-boundary plan S12/S13): a required custom
+# _require_console_origin: a required custom
 # header a cross-origin request cannot set without triggering a CORS
 # preflight this app never answers with permission, plus an Origin check
-# when the browser sends one. Spec §7: "the same request-boundary guard the
-# console already applies".
+# when the browser sends one.
 CONSOLE_HEADER = "x-kp2-console"
 
 
@@ -101,14 +100,13 @@ def _require_console_origin(request: Request) -> None:
         raise HTTPException(403, f"Sec-Fetch-Site {sec_fetch_site!r} is not same-origin")
 
 
-# Bearer-token auth (spec §7, decision 10): two roles, applicant and
+# Bearer-token auth: two roles, applicant and
 # operator, each its own token from scripts/gen-secrets.sh. Deliberately no
-# per-request ownership -- spec §7 ("Applicant request scoping") and §16.4
-# explain why: in a demo where one person plays both roles it is machinery
-# guarding a boundary nobody crosses, and restoring it later (a
+# per-request ownership: in a demo where one person plays both roles it is
+# machinery guarding a boundary nobody crosses, and restoring it later (a
 # `submitted_by` field and one comparison) is cheap if the module is ever
 # run with genuinely separate applicant/operator actors. The *asymmetry* is
-# the teaching point (decision 10): an applicant cannot approve.
+# the teaching point: an applicant cannot approve.
 def _bearer_token(request: Request) -> str:
     header = request.headers.get("authorization", "")
     scheme, _, value = header.partition(" ")
@@ -118,7 +116,7 @@ def _bearer_token(request: Request) -> str:
 
 
 def require_applicant(request: Request) -> str:
-    """Applicant may read any request (spec §7) -- any valid token, applicant
+    """Applicant may read any request -- any valid token, applicant
     or operator, satisfies this dependency. Used by read/submit routes."""
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
@@ -129,7 +127,7 @@ def require_applicant(request: Request) -> str:
 
 
 def require_operator(request: Request) -> str:
-    """Approve, reject and resume are operator-only (spec §7) -- the
+    """Approve, reject and resume are operator-only -- the
     applicant token is rejected here, not just left unchecked."""
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
@@ -145,11 +143,11 @@ def health():
     return {"status": "ok"}
 
 
-# -- request persistence (spec S5.4) -----------------------------------------
+# -- request persistence -------------------------------------------------------
 # out/join/<request-id>.json, the same OUT_DIR convention apps/console/
 # journal.py already uses for out/console-acl-journal.json. One file per
-# request, carrying every state it has been through (spec S4's seven,
-# including BLOCKED: an own-server join waits in it for the member's own
+# request, carrying every state it has been through (seven, including
+# BLOCKED: an own-server join waits in it for the member's own
 # Security Server) and the job's own record: last_completed_step, the
 # non-secret captures (context), verified, queued, retry_budget_left,
 # {step, message} on FAILED, and {step, server, message} on BLOCKED.
@@ -226,7 +224,7 @@ def _load_manifest() -> dict:
 
 
 def _load_join_policy() -> dict:
-    """configs/x-road-bus/join-policy.yaml's join: block only (spec S8) -- not
+    """configs/x-road-bus/join-policy.yaml's join: block only -- not
     the whole file, mirroring validate.py's own ValidationContext.policy."""
     doc = yaml.safe_load((PACK_DIR / "configs" / "x-road-bus" / "join-policy.yaml").read_text()) or {}
     return doc.get("join") or {}
@@ -238,13 +236,13 @@ def submit_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
 ) -> dict:
-    """Validate synchronously (spec S8's eleven per-request checks plus
-    lawful_basis and sla_required, additions beyond the spec --
+    """Validate synchronously (eleven per-request checks plus
+    lawful_basis and sla_required, additions beyond those eleven --
     validate.py's own module docstring: check 5 moved to generate-time),
     then either persist
     a REJECTED record or -- on success -- write the candidate config to a
     throwaway copy of the pack, run its generate.py, and persist a SUBMITTED
-    record carrying the resulting diff. Either way: 201 (spec S7 -- the
+    record carrying the resulting diff. Either way: 201 (the
     applicant retrieves the outcome via GET /requests/{id}, there is no
     separate failure status here). A malformed body (bad JSON, wrong types,
     an unrecognised key) is check 1 ("schema") -- validate() itself does
@@ -279,8 +277,8 @@ def submit_request(
         # Every one of the thirteen per-request checks passed, but generate.py itself still
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
-        # record, never a bare 500, per spec S7's "submission always
-        # returns 201" -- stderr is passed through verbatim.
+        # record, never a bare 500 -- submission always
+        # returns 201 -- stderr is passed through verbatim.
         record = {
             "id": request_id,
             "state": "REJECTED",
@@ -305,7 +303,7 @@ def submit_request(
         "submitted_at": submitted_at,
         "payload": payload.model_dump(mode="json"),
         "diff": diff,
-        # The join-time drift baseline (spec S5.4): each published service's
+        # The join-time drift baseline: each published service's
         # endpoint set, as check 9 (_check_backend_reachability) already
         # fetched and parsed it into vctx.fetched_specs. scripts/member.sh
         # drift re-fetches the *current* spec later and diffs its paths
@@ -337,7 +335,7 @@ def get_request(
 ) -> dict:
     """The whole record, which also carries last_completed_step, the job
     context's captures, verified, and the failing step + last error when
-    FAILED (spec S7's row for this endpoint). Deliberately the RAW record
+    FAILED. Deliberately the RAW record
     (test_app_requests.py asserts GET round-trips POST's response
     byte-for-byte) -- the derived, operator-only view (_record_view below)
     lives on GET /requests instead, not here."""
@@ -347,11 +345,11 @@ def get_request(
     return record
 
 
-# -- the operator queue (spec S7: "GET /requests -- the queue, filterable by
+# -- the operator queue ("GET /requests -- the queue, filterable by
 # state. Each entry carries the config diff ... computed at submission.")
 # This listing endpoint and reject below are both genuinely needed by the
 # console's operator tab (the pending queue, and reject-with-a-reason) and
-# are pure additions to the API surface spec S7 already specifies, not a
+# are pure additions to the API surface, not a
 # change to any existing route.
 
 
@@ -373,7 +371,7 @@ def _step_summary(pack_dir: pathlib.Path, payload: schema.JoinPayload) -> list[d
 
 
 def _live_uncommitted(key: str) -> bool | None:
-    """Spec S9's known gap, made visible: an ACTIVE member's config can be
+    """A known gap, made visible: an ACTIVE member's config can be
     live on the running federation before anyone has committed
     configs/member-<key>/ and manifest.yaml to git. join-api is the only
     service in this pack with the enclosing .git mounted (docker-compose.yml's
@@ -425,10 +423,10 @@ def list_requests(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """The operator queue (spec S7): every persisted request, newest first,
+    """The operator queue: every persisted request, newest first,
     each enriched via _record_view. Operator-only, unlike GET /requests/{id}
-    -- an applicant reads its own outcome by id (spec §7's "own request
-    only" was dropped, but the queue-wide view is still an operator tool)."""
+    -- an applicant reads its own outcome by id (the "own request
+    only" restriction was dropped, but the queue-wide view is still an operator tool)."""
     records = []
     for path in sorted(_requests_dir().glob("*.json")):
         try:
@@ -439,7 +437,7 @@ def list_requests(
     return {"requests": [_record_view(r) for r in records]}
 
 
-# -- approval and the job (spec S4, S5) --------------------------------------
+# -- approval and the job -----------------------------------------------------
 # One job at a time, others queue. threading.Lock, not a queue or a worker
 # pool, for the same reason apps/console/app.py's _MUTATE_LOCK is one: this is
 # one process, and two joins converging the same federation concurrently would
@@ -481,7 +479,7 @@ def approve_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """Operator approval: write the config for real (spec S9 -- on APPROVED,
+    """Operator approval: write the config for real (on APPROVED,
     before any live mutation), then start the job. 202, not 200: the job runs
     past this response and the applicant polls GET /requests/{id}.
 
@@ -561,11 +559,11 @@ def resume_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """Re-run from last_completed_step. Only from FAILED or BLOCKED (spec S7,
-    S4's BLOCKED row) -- resuming a RUNNING job would put two runners on one
+    """Re-run from last_completed_step. Only from FAILED or BLOCKED --
+    resuming a RUNNING job would put two runners on one
     federation, and resuming an ACTIVE one has nothing left to do.
 
-    BLOCKED is the exit that spec S6.1 chose over a callback endpoint: the
+    BLOCKED is the exit chosen over a callback endpoint: the
     operator runs scripts/join-agent.sh, then resumes, and job.run() polls the
     now-existing Security Server and carries on. A resume that finds it still
     absent re-enters BLOCKED rather than failing, as many times as it takes --
@@ -588,11 +586,11 @@ def reject_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """Operator rejection with a reason (spec S7, the console's operator tab).
+    """Operator rejection with a reason (the console's operator tab).
     Only from SUBMITTED -- once a request is APPROVED the config is already
     written and a job may be running or done; rejecting at that point isn't
     "this join should not happen", it's un-joining, which is DELETE
-    /members/{key} (spec S10, Plan C, not this endpoint)."""
+    /members/{key} (Plan C, not this endpoint)."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
@@ -606,7 +604,7 @@ def reject_request(
     return record
 
 
-# -- un-joining (spec S10) ----------------------------------------------------
+# -- un-joining -----------------------------------------------------------------
 # The reverse of everything above: DELETE /members/{key} walks the member's
 # completed steps backwards (job.unjoin), then delegates the config-and-manifest
 # half to scripts/member.sh remove.
@@ -744,7 +742,7 @@ def retire_member(
     if entry.get("origin", "canonical") != "joined":
         raise HTTPException(
             403,
-            f"'{key}' is a canonical member and cannot be un-joined. The canonical five are the "
+            f"'{key}' is a canonical member and cannot be un-joined. The canonical four are the "
             "frozen KP3/KP4 cross-pack contract (manifest.yaml's identifiers: block) -- other packs "
             "build against those exact identifiers, so a demonstration un-join must never change "
             "them. Only a member with origin: joined can leave.",

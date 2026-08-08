@@ -1,22 +1,22 @@
-"""apps/join-api/validate.py -- eleven of the twelve checks spec S8 requires
+"""apps/join-api/validate.py -- eleven of the twelve checks required
 before a join request can be approved, plus two more that go
-beyond the spec (lawful_basis and sla_required, K-01) -- thirteen
+beyond that (lawful_basis and sla_required, K-01) -- thirteen
 per-request checks in total. Check 5 (member class) moved to
 hurl/generate.py's check_join_policy() -- a generate-time structural check,
 not a per-request one -- see the comment above where _check_member_class
-used to be; this module runs the other eleven of S8's own list, plus
+used to be; this module runs the other eleven, plus
 lawful_basis and sla_required. Pure functions over a payload, the manifest,
 the join policy and a fetched OpenAPI document -- no X-Road, no containers,
-no job. S8's checks run in the exact order spec S8 lists them (1 schema ..
+no job. Checks run in the exact order listed (1 schema ..
 12 identifier characters, minus 5); the two additional checks run alongside them
 (see _CHECKS below for where), and the first failure of any of them raises
 RejectionError(check, message) naming the check, which is what a REJECTED
-request carries (spec S4).
+request carries.
 
 Two things this module deliberately does NOT do, both on purpose:
   - it never sets origin. schema.JoinPayload has no such field; wherever a
     validated payload becomes a manifest.yaml identity.members entry (a
-    later task, spec S9), origin: joined is forced there, not here.
+    later task), origin: joined is forced there, not here.
   - it never touches a canonical member. check 4 (not_canonical) reads the
     canonical set from manifest.yaml itself (identity.members' origin:
     canonical entries, plus identity.owner.code) rather than hardcoding the
@@ -79,9 +79,9 @@ def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
 # fetch_spec reads the OpenAPI document text from spec_url; check_reachable
 # attempts to resolve-and-connect to a backend URL, raising on failure. Kept
 # separate rather than one URL-dispatched callable because production fetches
-# spec_url over the network too (a third-party spec, spec S2.2) -- only the
+# spec_url over the network too (a third-party spec) -- only the
 # *test* fixtures short-circuit that half; the reachability half must always
-# be a real attempt (spec S8 check 9).
+# be a real attempt (the backend_reachability check).
 
 
 def _default_fetch_spec(url: str) -> str:
@@ -92,8 +92,8 @@ def _default_fetch_spec(url: str) -> str:
 
 def _default_check_reachable(url: str) -> None:
     # Any response -- even a 404 -- proves the TCP/TLS handshake and HTTP
-    # exchange succeeded, which is what "resolve and connect to it" (spec
-    # S2.4) asks for. No raise_for_status(): endpoint correctness is not
+    # exchange succeeded, which is what "resolve and connect to it"
+    # asks for. No raise_for_status(): endpoint correctness is not
     # this check's job, only reachability.
     httpx.get(url, timeout=5.0)
 
@@ -125,7 +125,7 @@ class ValidationContext:
 
 
 class RejectionError(Exception):
-    """Carries the specific check name spec S4's REJECTED state records."""
+    """Carries the specific check name that ends up on a REJECTED record."""
 
     def __init__(self, check: str, message: str):
         super().__init__(f"{check}: {message}")
@@ -137,7 +137,7 @@ class RejectionError(Exception):
 
 
 def _check_key_derivation(ctx: ValidationContext) -> str | None:
-    """key == code.lower() (spec S8 check 2) -- discover_members()
+    """key == code.lower() -- discover_members()
     (hurl/generate.py ~line 191) already enforces exactly this agreement
     between a config directory's key and its identity.members entry, and
     fails loudly at generate time otherwise. Enforced here too, at request
@@ -165,7 +165,7 @@ def _check_key_derivation(ctx: ValidationContext) -> str | None:
 def _check_collision(ctx: ValidationContext) -> str | None:
     """No existing configs/member-<key>/, no existing identity.members.<key>,
     no existing member's Security Server dns_name or code already equal to
-    this payload's proposed values (spec S8 check 3)."""
+    this payload's proposed values."""
     key = ctx.key
     if key in ctx.existing_servers:
         return f"configs/member-{key}/ already exists"
@@ -188,7 +188,7 @@ def _check_collision(ctx: ValidationContext) -> str | None:
 
 
 def _check_not_canonical(ctx: ValidationContext) -> str | None:
-    """The key is not one of the frozen five (spec S8 check 4). Derived from
+    """The key is not one of the frozen four. Derived from
     manifest.yaml, not hardcoded: every identity.members entry whose origin
     is canonical (default, if absent) PLUS identity.owner.code -- the
     Central Server's owner, PDGA, which is not itself an identity.members
@@ -207,11 +207,11 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
     return None
 
 
-# Spec S8 check 5 ("member class -- matches the policy") has no per-request
+# Check 5 ("member class -- matches the policy") has no per-request
 # implementation here, on purpose. The payload schema (schema.py) carries
 # no member_class field of its own --
-# Progressa is a single-member_class federation by design (spec S9's
-# "Explicitly out of scope" excludes multi-federation joins) -- so there is
+# Progressa is a single-member_class federation by design (multi-federation
+# joins are explicitly out of scope) -- so there is
 # currently nothing about a *submitted request* for a check 5 to compare.
 # The one real assertion that name suggested -- join.member_class must
 # agree with manifest.yaml's identity.member_class -- is a static
@@ -227,7 +227,7 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
 def _check_hosting(ctx: ValidationContext) -> str | None:
     """Reproduces resolve_hosted_on_map()'s (hurl/generate.py ~line 243) two
     hard failures at request time -- unknown host, hosting chain -- plus the
-    hosting decision itself (spec S8 check 6).
+    hosting decision itself.
 
     join.default_hosting: hosted_on no longer means "own-server requests are
     rejected". Plan C gave this pack a real own-server code path
@@ -286,7 +286,7 @@ def _check_hosting(ctx: ValidationContext) -> str | None:
 def _check_acl_sanity(ctx: ValidationContext) -> str | None:
     """Every access: subject and every requested_access: target resolves to
     a subsystem that exists in manifest.yaml's identity.members, in
-    <instance>/<member_class>/<CODE>/<SUBSYSTEM> form (spec S8 check 7).
+    <instance>/<member_class>/<CODE>/<SUBSYSTEM> form.
     The subsystem this join is itself creating is not yet in that set and is
     not a valid target either -- a member cannot grant or request access to
     itself."""
@@ -316,8 +316,8 @@ def _check_acl_sanity(ctx: ValidationContext) -> str | None:
 
 
 def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
-    """Conformance check against configs/semantic/semantic-map.yaml (spec S8
-    check 8 -- closes K-03). Publishing a service AND
+    """Conformance check against configs/semantic/semantic-map.yaml (closes
+    K-03). Publishing a service AND
     granting another subsystem access to it is an exchange -- this pack's
     own convention for one (configs/member-pnia/2.5.yaml's semantic: block)
     is to document it, and now to declare a real entity from the Module 4
@@ -359,8 +359,9 @@ def _check_lawful_basis(ctx: ValidationContext) -> str | None:
     does the applicant hold a legal mandate for the data it proposes to
     expose as authoritative? One check, two shapes: a published service must
     carry its own basis (Service.lawful_basis) -- never resolved against
-    anything, recorded and surfaced only, exactly like check 8's "recorded
-    and surfaced, never resolved" treatment of semantic.pattern; a member
+    anything, recorded and surfaced only, exactly like the purpose_limitation
+    check's "recorded and surfaced, never resolved" treatment of
+    semantic.pattern; a member
     with no services has none to carry it, so it must be on
     member_requirements.lawful_basis instead. One field, one place -- a
     payload with services that also sets member_requirements.lawful_basis is
@@ -387,9 +388,9 @@ def _check_lawful_basis(ctx: ValidationContext) -> str | None:
 def _check_sla_required(ctx: ValidationContext) -> str | None:
     """Every published service needs an SLA (K-01) --
     Module 5.3's own "reuse the same template for every service on the bus"
-    (design decision 2, schema.SLA lives on Service, not on JoinPayload). A
+    (schema.SLA lives on Service, not on JoinPayload). A
     consumer-only member (no services) has nothing to check here and is
-    unaffected. Not one of spec S8's numbered twelve -- an additional check,
+    unaffected. Not one of the numbered twelve -- an additional check,
     in the same style: the first service missing one fails, naming it."""
     for svc in ctx.payload.services:
         if svc.sla is None:
@@ -405,9 +406,9 @@ _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "tr
 
 
 def _check_allowed_methods(ctx: ValidationContext) -> str | None:
-    """No operation outside join.allowed_methods (spec S8 check 10, S2.3).
-    Operates on the spec check 9 already fetched -- fetching twice would be
-    a second, driftable read of the same document."""
+    """No operation outside join.allowed_methods.
+    Operates on the spec the backend_reachability check already fetched --
+    fetching twice would be a second, driftable read of the same document."""
     allowed = {m.upper() for m in (ctx.policy.get("allowed_methods") or [])}
     for svc in ctx.payload.services:
         spec_doc = ctx.fetched_specs.get(svc.code)
@@ -422,17 +423,17 @@ def _check_allowed_methods(ctx: ValidationContext) -> str | None:
                         f"service {svc.code!r}'s OpenAPI spec declares "
                         f"{method.upper()} {path}, outside join.allowed_methods "
                         f"{sorted(allowed)} (configs/x-road-bus/2.7.yaml) -- a "
-                        "joined member may publish read-only services (spec S2.3)"
+                        "joined member may publish read-only services"
                     )
     return None
 
 
 def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
     """backend.auth is present and one of the values the payload schema
-    permits (spec S8 check 11, S2.5). schema.JoinPayload already requires
-    Backend and validates the enum at parse time (check 1); this check
-    exists as the explicit, named enforcement spec S8 lists as its own
-    numbered item, not a second, looser copy of that validation."""
+    permits. schema.JoinPayload already requires
+    Backend and validates the enum at parse time (the schema check); this
+    check exists as the explicit, named enforcement, not a second, looser
+    copy of that validation."""
     backend = ctx.payload.backend
     if backend is None or not isinstance(backend.auth, BackendAuth):
         return "backend.auth must be one of: none, network_allowlist, proxy_injected"
@@ -461,14 +462,14 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
 # fullmatch() on their own. Published as the pack's stated convention in
 # docs/conventions.md -- this constant is that page's cited source, not a
 # copy of a value that lives somewhere else. One rule, one place, no
-# indirection (design decision 1).
+# indirection.
 def _bad_identifier(value: str) -> bool:
     return not re.fullmatch(r"[a-zA-Z0-9'()+,\-.=?]+", value)
 
 
 def _check_identifier_characters(ctx: ValidationContext) -> str | None:
     """code, subsystem, and every service code satisfy X-Road's identifier
-    restrictions (spec S8 check 12). X-Road >=7.3.0 enforces a strict
+    restrictions. X-Road >=7.3.0 enforces a strict
     allowlist by default on fresh installations (XRDDEV-1960) -- reject
     anything outside a-zA-Z0-9'()+,-.=?, which also rejects empty and
     whitespace-only values (they match nothing in that set). The permitted
@@ -521,7 +522,7 @@ def contract_fields(spec: dict) -> tuple[frozenset[str], frozenset[str]]:
 
 def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     """Fetch spec_url, parse servers.url, resolve-and-connect to it from
-    inside the linkup network (spec S8 check 9, S2.4). Catches the
+    inside the linkup network. Catches the
     registry-perfect-but-dead member: a spec that fetches fine but whose
     servers.url the Security Server can never reach. Rejection names the URL
     it could not reach."""
@@ -554,10 +555,10 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     return None
 
 
-# Checks run in this exact order -- spec S8's own numbered list, verbatim,
+# Checks run in this exact order -- the original numbered list, verbatim,
 # minus check 5 (member_class), which has no per-request implementation --
 # see the comment above where _check_member_class used to be -- plus
-# lawful_basis and sla_required (K-01), neither one of S8's twelve,
+# lawful_basis and sla_required (K-01), neither one of the original twelve,
 # inserted after purpose_limitation since all three inspect payload.services.
 # Check 1 (schema) happens in validate() itself, before a ValidationContext
 # can even be built.
@@ -587,19 +588,19 @@ def validate(
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
 ) -> tuple[JoinPayload, ValidationContext]:
-    """Runs all thirteen per-request checks (spec S8's eleven, minus check 5,
+    """Runs all thirteen per-request checks (eleven, minus check 5,
     plus lawful_basis and sla_required -- see _CHECKS' own comment) in
     order. Returns
     (validated JoinPayload, the ValidationContext checks ran against) on
-    success -- the context is returned too because check 9 populates
-    ctx.fetched_specs with every service's parsed OpenAPI document, and
-    module 2.7's join-time drift baseline (spec S5.4, scripts/member.sh
+    success -- the context is returned too because the backend_reachability
+    check populates ctx.fetched_specs with every service's parsed OpenAPI
+    document, and module 2.7's join-time drift baseline (scripts/member.sh
     drift) needs that document's endpoint set. Discarding the context here
     (as this function used to) meant the only place that data existed was
     gone by the time app.py persisted the SUBMITTED record. Raises
     RejectionError(check, message) naming the first failing check on
     failure -- the caller (app.py's endpoint) catches it to set the
-    request REJECTED with that check name (spec S4)."""
+    request REJECTED with that check name."""
     try:
         payload = JoinPayload(**raw)
     except pydantic.ValidationError as exc:

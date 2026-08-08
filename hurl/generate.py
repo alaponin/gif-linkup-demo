@@ -91,7 +91,7 @@ PINNED_PORTS = {
 PINNED_SERVICE_SCENARIO_NO = {"pnia": "30", "plr": "31", "moeys": "32"}
 
 # Where a NEW member's numbers/ports come from once nothing pins them --
-# safely above every pinned value today, so the canonical five never
+# safely above every pinned value today, so the canonical four never
 # collide with a fresh allocation.
 FRESH_SS_SCENARIO_START = 40
 FRESH_SERVICE_SCENARIO_START = 50
@@ -172,7 +172,7 @@ def allocate_ports(owner_keys: list) -> dict:
         used_rest.add(rest)
     return result
 
-# The canonical five's Security Server scenario numbers -- never renumbered,
+# The canonical four's Security Server scenario numbers -- never renumbered,
 # so an existing member's scenario files keep their names as others join or
 # leave. A member absent from this table sorts after every pinned one,
 # alphabetically by key.
@@ -244,7 +244,7 @@ def resolve_hosted_on_map(members: dict) -> dict[str, str]:
     own config, naming a Security Server DNS name -- the mechanism a joining
     member uses to be hosted rather than own a server. Absent from the
     returned map means "own server" -- true of all three canonical members
-    today (design decision 5: one topology, nothing preset-hosted).
+    today (one topology, nothing preset-hosted).
 
     A hosted_on naming a server no member owns, or one that is itself
     hosted (a hosting chain), is a hard failure -- "hosted_on... absent
@@ -347,7 +347,7 @@ def check_policy(core: dict) -> None:
         )
 
 
-# The four keys apps/join-api/validate.py enforces (spec S8) -- kept here as
+# The four keys apps/join-api/validate.py enforces -- kept here as
 # well so a fifth key sitting undetected in configs/x-road-bus/join-policy.yaml is a
 # generate-time failure, not something only discovered when a join is
 # submitted. Value-correctness for each of the four is validate.py's job (it
@@ -359,9 +359,9 @@ JOIN_POLICY_KEYS = frozenset({"member_class", "default_hosting", "allowed_method
 
 def check_join_policy(join_config: dict, manifest: dict) -> None:
     """Sibling to check_policy() above, same reasoning, for
-    configs/x-road-bus/join-policy.yaml's join: block -- spec S16.2 records three
-    keys (max_services, require_semantic_for_provenance, backend_auth) that
-    were invented and deleted for exactly this: a key nothing applies reads
+    configs/x-road-bus/join-policy.yaml's join: block -- three
+    keys (max_services, require_semantic_for_provenance, backend_auth) were
+    invented and deleted for exactly this: a key nothing applies reads
     as configuration and is decoration.
 
     Also carries the one value-correctness assertion that belongs here
@@ -381,7 +381,7 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
             "generate.py: configs/x-road-bus/join-policy.yaml join: declares "
             f"unrecognised key(s) {sorted(extra)} -- apps/join-api/validate.py "
             f"only enforces {sorted(JOIN_POLICY_KEYS)}. Either implement "
-            "enforcement for the new key or remove it (spec S16.2)."
+            "enforcement for the new key or remove it."
         )
     policy_class = join.get("member_class")
     federation_class = manifest["identity"]["member_class"]
@@ -548,7 +548,7 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
 def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     """Register a member's subsystem as an extra client on an already-
     bootstrapped Security Server -- the mechanism a member with an explicit
-    security_server.hosted_on (e.g. a joining member, design decision 5)
+    security_server.hosted_on (e.g. a joining member)
     uses instead of owning its own server: a fresh SIGN key/cert for this
     member specifically, then the client-registration flow -- both
     authenticated with the HOST's session (sess_p), captured under this
@@ -640,7 +640,7 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     hurl/compose.hurl.yml (hand-written) adds the same healthcheck to each
     canonical Security Server BY NAME, so run-linkup.sh's runner waits for it
     to answer on :4000 before driving admin APIs at it. That file stays
-    hand-written and scoped to the canonical five (design decision 5); a
+    hand-written and scoped to the canonical four; a
     joined member's own server gets it here instead, so it is never a
     container nothing waits for. Found live (member-parameterisation plan):
     without it, Compose waits only for the process to start, not for its
@@ -872,8 +872,8 @@ def main() -> None:
             # here so this module's manifest.yaml scenario claim keeps
             # resolving to a real, existing file.
             #
-            # A member ends up in hosted_on_map for exactly one reason now
-            # (design decision 5): its own config sets security_server.
+            # A member ends up in hosted_on_map for exactly one reason now:
+            # its own config sets security_server.
             # hosted_on -- the mechanism a joining member uses. No preset
             # overlay exists anymore to produce a second kind of stub.
             stub = (
@@ -932,9 +932,8 @@ def main() -> None:
     # git-committed -- same convention as hurl/scenarios/ and hurl/vars.env
     # (regenerated fresh every run, never staged; see hurl/README.md).
     # Port allocation order: "pdga" (the owner, not a discovered member)
-    # plus every SS-owning (unhosted) member, sorted alphabetically by key --
-    # the fresh-allocation order this plan specifies. Pinned ports
-    # win regardless of position, so this ordering only ever affects a
+    # plus every SS-owning (unhosted) member, sorted alphabetically by key.
+    # Pinned ports win regardless of position, so this ordering only ever affects a
     # member nothing pins.
     owner_keys = ["pdga"] + sorted(k for k in members if k not in hosted_on_map)
     ports_by_key = allocate_ports(owner_keys)
@@ -1023,8 +1022,8 @@ declare -A HOST_SS=(
     print("  wrote hurl/topology.sh")
 
     # -- hurl/compose.members.yml --------------------------------------
-    # docker-compose.yml keeps the canonical five hand-written, comments
-    # and all (design decision 5) -- a joined member that owns its own
+    # docker-compose.yml keeps the canonical four hand-written, comments
+    # and all -- a joined member that owns its own
     # Security Server gets a service block here instead, mirroring the
     # canonical blocks' shape exactly. A joined member that is hosted
     # (hosted_on_map) owns no container at all and never appears here.
