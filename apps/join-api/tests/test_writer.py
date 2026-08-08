@@ -354,6 +354,13 @@ def test_render_requirements_record_names_where_an_unset_lawful_basis_is_satisfi
     assert "satisfied by this member's published services" in text
 
 
+def test_render_requirements_record_sanitises_a_pipe_and_newline_lawful_basis():
+    payload = _payload(member_requirements=_requirements(lawful_basis="Act 1 | 2\n(consent)"))
+    text = writer.render_requirements_record(payload.member_requirements)
+    basis_line = next(line for line in text.splitlines() if line.startswith("| Lawful basis"))
+    assert basis_line == "| Lawful basis for its exchanges | Act 1 \\| 2 (consent) |"
+
+
 def test_render_sla_record_carries_every_term_and_the_signatory():
     payload = _payload(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "sla": _sla()}],
@@ -362,6 +369,43 @@ def test_render_sla_record_carries_every_term_and_the_signatory():
     assert "awards-api" in text
     assert "99.5% monthly uptime" in text
     assert "Signed by: Head of IT" in text
+
+
+def test_render_gates_table_names_the_admission_absence_by_default():
+    text = writer.render_gates_table(True)
+    admission_row = next(line for line in text.splitlines() if line.startswith("| Admission"))
+    assert "not implemented in this demo" in admission_row
+
+
+def test_render_gates_table_points_at_01_admission_when_admitted():
+    text = writer.render_gates_table(True, admitted=True)
+    admission_row = next(line for line in text.splitlines() if line.startswith("| Admission"))
+    assert "01-admission.md" in admission_row
+    assert "not implemented in this demo" not in admission_row
+
+
+def test_render_admission_record_carries_the_reference_id_and_role():
+    text = writer.render_admission_record("req-789", "RIHA-2026-003", "2026-08-08T12:00:00+00:00")
+    assert "req-789" in text
+    assert "RIHA-2026-003" in text
+    assert "2026-08-08T12:00:00+00:00" in text
+    assert "| Approving role | operator |" in text
+
+
+def test_render_admission_record_sanitises_a_pipe_and_newline_reference():
+    """A pasted decision_reference containing a pipe or newline must not
+    break the record's table structure. A raw (unescaped) "|" in the value
+    would add a cell the table never declared; this asserts the pipe
+    survives only escaped, and the newline is gone."""
+    text = writer.render_admission_record("req-1", "RIHA | 2026\n001", "2026-08-08T00:00:00+00:00")
+    lines = text.splitlines()
+    reference_line = next(line for line in lines if line.startswith("| Decision reference"))
+    assert reference_line == "| Decision reference | RIHA \\| 2026 001 |"
+    assert reference_line.count("\\|") == 1
+
+
+def test_sanitize_cell_collapses_whitespace_and_escapes_pipes():
+    assert writer._sanitize_cell("a\nb  c | d") == "a b c \\| d"
 
 
 def test_render_registration_record_shows_hosting_and_acl():
@@ -388,6 +432,32 @@ def test_render_registration_record_names_an_own_server_join_with_no_request_id(
     )
     assert "runs its own Security Server" in text
     assert "registered by hand" in text
+    assert "Signing key" not in text
+
+
+def test_render_registration_record_names_the_signing_key_delegation_when_hosted():
+    """A hosted member's SIGN key lives on the host's token, not its own --
+    the path's own G2 warning names this as 'a delegation with no
+    counterpart in the obligation set', and until this row existed the fact
+    was recorded nowhere a member would read."""
+    payload = _payload()  # default: hosted_on="ss-plr"
+    text = writer.render_registration_record(
+        subsystem=payload.subsystem,
+        security_server=payload.security_server,
+        acl_subjects=[],
+        request_id="abc123",
+    )
+    assert "Signing key" in text
+    assert "held on `ss-plr`'s token" in text
+    assert "delegation" in text
+
+
+def test_render_retirement_record_carries_the_fixed_facts():
+    text = writer.render_retirement_record("ptsb", "2026-08-08T12:00:00+00:00", "req-999")
+    assert "2026-08-08T12:00:00+00:00" in text
+    assert "req-999" in text
+    assert "REVERSAL_ORDER" in text
+    assert "message-log" in text.lower() and "separate" in text.lower()
 
 
 def test_apply_real_renders_the_onboarding_tree_for_a_provider(tmp_path):
@@ -406,7 +476,10 @@ def test_apply_real_renders_the_onboarding_tree_for_a_provider(tmp_path):
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                    "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
     )
-    writer.apply_real(pack, "ptsb", payload, repo_root=repo_root, request_id="req-123")
+    writer.apply_real(
+        pack, "ptsb", payload, repo_root=repo_root, request_id="req-123",
+        decision_reference="RIHA-2026-001", approved_at="2026-08-08T00:00:00+00:00",
+    )
 
     onboarding = pack / "onboarding" / "ptsb"
     assert (onboarding / "00-gates.md").exists()
@@ -415,6 +488,13 @@ def test_apply_real_renders_the_onboarding_tree_for_a_provider(tmp_path):
     registration = (onboarding / "05-registration.md").read_text()
     assert "req-123" in registration
     assert "PROGRESSA/GOV/PNEA/EXAMS" in registration
+    admission = (onboarding / "01-admission.md").read_text()
+    assert "req-123" in admission and "RIHA-2026-001" in admission
+    admission_row = next(
+        line for line in (onboarding / "00-gates.md").read_text().splitlines() if line.startswith("| Admission")
+    )
+    assert "01-admission.md" in admission_row
+    assert "not implemented in this demo" not in admission_row
 
 
 def test_apply_real_renders_no_sla_directory_for_a_consumer_only_member(tmp_path):
@@ -429,11 +509,15 @@ def test_apply_real_renders_no_sla_directory_for_a_consumer_only_member(tmp_path
         "commit", "-q", "-m", "seed", cwd=repo_root,
     )
 
-    writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root, request_id="req-456")
+    writer.apply_real(
+        pack, "ptsb", _payload(), repo_root=repo_root, request_id="req-456",
+        decision_reference="RIHA-2026-002", approved_at="2026-08-08T00:00:00+00:00",
+    )
 
     onboarding = pack / "onboarding" / "ptsb"
     assert (onboarding / "00-gates.md").exists()
     assert not (onboarding / "03-sla").exists()
+    assert (onboarding / "01-admission.md").exists()
 
 
 def test_apply_real_refuses_when_onboarding_is_dirty(tmp_path):

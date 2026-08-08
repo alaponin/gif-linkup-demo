@@ -192,11 +192,14 @@ clauses:
   clause: Member names a Technical Focal Point and, where personal data flows, a DPO
   status: named-absence
   note: >-
-    A free-text technical_contact is required and rendered. There is no DPO
-    field and no role semantics on the contact -- the absence is not currently
-    named anywhere a reader would meet it.
+    A free-text technical_contact is required and rendered. There is still no
+    DPO field and no role semantics on the contact -- unchanged -- but this is
+    no longer a SILENT absence: 00-gates.md's Application (G0) row now names
+    the DPO explicitly, so a reader following the register meets the absence
+    instead of it hiding behind a generic "not implemented" line.
   evidence:
     - {path: apps/join-api/schema.py, symbol: technical_contact}
+    - {path: apps/join-api/writer.py, symbol: DPO}
     - {path: onboarding/plr/02-requirements.md}
 
 - id: G0.4
@@ -204,15 +207,18 @@ clauses:
   clause: >-
     Exit test -- does the applicant hold a legal mandate for data it proposes
     to expose as authoritative?
-  status: named-absence
+  status: implemented
   note: >-
-    Not testable. _check_lawful_basis returns early when the payload declares
-    services, so the requirement applies only to consumer-only members -- the
-    inverse of the applicant class the exit test exists to catch. Neither
-    canonical provider states a lawful basis for the data it publishes.
+    Closed. _check_lawful_basis no longer returns early when the payload
+    declares services: every published service must carry its own
+    lawful_basis, naming the missing service in the rejection message. What
+    is enforced is the STATEMENT of a basis, not its truth, which no
+    validator can check. Both canonical providers now state one on their
+    published service.
   evidence:
     - {path: apps/join-api/validate.py, symbol: _check_lawful_basis}
     - {path: configs/member-plr/plr.yaml, symbol: lawful_basis}
+    - {path: configs/member-pnia/pnia.yaml, symbol: lawful_basis}
 
 # -- G1 ----------------------------------------------------------------------
 
@@ -236,12 +242,13 @@ clauses:
   status: implemented
   note: >-
     POST /approve refuses without a decision_reference and rejects the
-    applicant token outright. The reference is checked for non-emptiness only,
-    and is not yet written into a per-member admission record -- so the
-    coupling exists at the API boundary but leaves no gate-exit artefact.
+    applicant token outright. The reference, the request id, the approving
+    role and the timestamp are now written into a per-member admission
+    record (onboarding/<key>/01-admission.md), so the coupling leaves a
+    gate-exit artefact, not just an API-boundary check.
   evidence:
     - {path: apps/join-api/app.py, symbol: decision_reference}
-    - {path: apps/join-api/app.py, symbol: require_operator}
+    - {path: apps/join-api/writer.py, symbol: render_admission_record}
 
 - id: G1.3
   section: G1
@@ -278,8 +285,11 @@ clauses:
     Implemented exactly as the path describes, including the consequence: the
     SIGN key id must be correlated by certificate owner_id, never by label,
     because a shared token carries one identically-labelled key per hosted
-    member. The delegation is not recorded in the member's onboarding record.
+    member. A hosted member's 05-registration.md now states whose token
+    holds its signing key, so the delegation is recorded where a member
+    would read it, not just enforced in code.
   evidence:
+    - {path: apps/join-api/writer.py, symbol: "a hosting delegation"}
     - {path: apps/join-api/job.py, symbol: _sign_key_id}
     - {path: hurl/generate.py, symbol: build_hosted_client}
 
@@ -522,18 +532,24 @@ clauses:
 - id: G5.9
   section: G5
   clause: Exit test part 3 -- the response carries exactly the fields the contract declares
-  status: named-absence
+  status: implemented
   note: >-
-    OPEN DEFECT, not a deliberate deferral. Nothing compares a live response
-    against the OpenAPI contract. The property currently holds by construction
-    because the mock provider derives its own output from the same contract,
-    and the nearest assertion compares returned values to the seed row field
-    by field -- so a response that drops a required field, or that adds a
-    field the CSV carries and the contract withholds, passes silently. This is
-    the check that stops being free when a real backend replaces the mock.
+    Closed. validate.py's contract_fields() computes declared
+    and required field-name sets once, at validation, from the spec already
+    fetched for check 9; the two sets are persisted on the request record and
+    read back by job.py's r1 step, which reports returned-declared
+    (undeclared) and required-returned (missing) as field NAMES only, never
+    values. A mismatch sets verified: false with the named diff; state still
+    becomes ACTIVE (consistent with R1_RETRY_BUDGET exhaustion) -- a fault
+    means no route, a mismatch means a route to something that does not match
+    its contract. Asserted live by scripts/acceptance.sh's check_266 (the
+    canonical once-only exchange) and check_r1_fields (any joined member
+    whose backend follows the generic mock-registry pattern). The negative
+    case has been observed failing -- see docs/production-delta.md.
   evidence:
-    - {path: apps/mock-registry/app.py, symbol: DECLARED_FIELDS}
-    - {path: scripts/assert_record.py}
+    - {path: apps/join-api/validate.py, symbol: contract_fields}
+    - {path: apps/join-api/job.py, symbol: _default_r1_call}
+    - {path: scripts/acceptance.sh, symbol: check_266}
 
 - id: G5.10
   section: G5
@@ -608,10 +624,15 @@ clauses:
     The absence half is asserted, including from the shared host's token with
     every other member's key still present. The retention half is inverted:
     teardown deletes the archive volume, with the consequence stated in prose
-    beside the instruction rather than prevented.
+    beside the instruction rather than prevented. The absence half now has
+    its own artefact -- onboarding/<key>/99-retirement.md, written at exit
+    -- and names the retention half there too, as a deliberately separate,
+    still-unmet question; this clause stays named-absence because the
+    retention half genuinely is one.
   evidence:
     - {path: acceptance/join-member.md, symbol: RETIRED}
     - {path: runbook.md, symbol: retention}
+    - {path: apps/join-api/writer.py, symbol: render_retirement_record}
 
 # -- 3. The technical sequence -----------------------------------------------
 
@@ -647,7 +668,7 @@ clauses:
   note: >-
     Split across two places: the positive half runs inside the join, the
     negative half in the acceptance suite. See G5.7 and G5.8; the field
-    conformance clause is G5.9 and is open.
+    conformance clause is G5.9.
   evidence:
     - {path: apps/join-api/job.py, symbol: _default_r1_call}
     - {path: scripts/acceptance.sh, symbol: check_r1_denied}
@@ -659,12 +680,14 @@ clauses:
     choice, automatic or manual, since 6.21.0
   status: named-absence
   note: >-
-    Only the manual policy is implemented. The join policy declares
-    `approval: explicit` and the key is whitelisted, but its value is never
-    read -- setting it to automatic changes nothing. By the pack's own rule
-    that a key nothing applies is decoration, this key is decoration.
+    Only the manual policy is implemented. The duplicated, unread `approval`
+    key in join-policy.yaml is gone -- approval mode was never that file's
+    fact to state. The real one is federation-core.yaml's
+    `policy.management_request_approval: explicit`, which check_policy()
+    genuinely enforces; nothing generates the automatic alternative.
   evidence:
-    - {path: configs/x-road-bus/join-policy.yaml, symbol: approval}
+    - {path: configs/x-road-bus/federation-core.yaml, symbol: management_request_approval}
+    - {path: hurl/generate.py, symbol: check_policy}
     - {path: hurl/generate.py, symbol: JOIN_POLICY_KEYS}
 
 - id: S3.5
@@ -797,13 +820,14 @@ clauses:
 - id: S7.2
   section: "7"
   clause: "01-admission.md -- G1 admission decision and allocated identity"
-  status: named-absence
+  status: implemented
   note: >-
-    The API holds everything this file needs at approve time -- request id,
-    decision reference, approving principal, timestamp -- and writes none of
-    it. The cheapest remaining gate artefact.
+    Written by render_admission_record() from apply_real(), for a real join
+    only (request_id is not None) -- the three canonical members never
+    passed an admission, so their gate register keeps the named absence
+    rather than a backfilled stub.
   evidence:
-    - {path: onboarding/plr/00-gates.md, symbol: "Admission (G1)"}
+    - {path: apps/join-api/writer.py, symbol: render_admission_record}
     - {path: apps/join-api/app.py, symbol: decision_reference}
 
 - id: S7.3
@@ -811,10 +835,14 @@ clauses:
   clause: "02-topology.md -- G2 hosting decision, reason, trust note, sizing"
   status: named-absence
   note: >-
-    Not written, and not named in the gate register either -- the hosting
-    decision survives only as one row of the registration record.
+    Still not written as its own file -- the hosting decision survives only
+    as rows of 05-registration.md (which now also states, for a hosted
+    member, whose token holds its signing key). No longer unnamed in the
+    gate register, though: 00-gates.md's new Hosting (G2) row points at it,
+    so the absence is of the dedicated file, not of any record at all.
   evidence:
     - {path: onboarding/plr/05-registration.md, symbol: Hosting}
+    - {path: apps/join-api/writer.py, symbol: "Hosting (G2)"}
 
 - id: S7.4
   section: "7"
@@ -829,9 +857,14 @@ clauses:
     04-platform-conformance.md -- G4 result, monitoring add-ons confirmed,
     host name, firewall record, waivers
   status: named-absence
-  note: Not written, and not named in the gate register.
+  note: >-
+    Still not written as its own file. No longer unnamed in the gate register:
+    00-gates.md's new Platform conformance (G4) row states both halves --
+    add-ons confirmed per server, no central collector -- and links
+    acceptance/member.md.
   evidence:
     - {path: acceptance/member.md, symbol: xroad-opmonitor}
+    - {path: apps/join-api/writer.py, symbol: "Platform conformance (G4)"}
 
 - id: S7.6
   section: "7"
@@ -855,13 +888,16 @@ clauses:
 - id: S7.8
   section: "7"
   clause: "99-retirement.md -- written only at exit"
-  status: named-absence
+  status: implemented
   note: >-
-    Not written, and not named in the gate register, although GX is the most
-    completely implemented gate in the pack -- and the record is deleted at
-    retirement rather than closed out.
+    Closed. Written by apps/join-api/app.py's DELETE /members/{key} handler
+    once job.unjoin() reaches RETIRED -- retired-at, the request id, and the
+    fixed reversal sentence. scripts/member.sh remove no longer deletes
+    onboarding/<key>/: the folder is kept as evidence of what the operator
+    revoked, which is what the retirement exit test is about.
   evidence:
-    - {path: scripts/member.sh, symbol: onboarding}
+    - {path: apps/join-api/writer.py, symbol: render_retirement_record}
+    - {path: apps/join-api/app.py, symbol: "99-retirement.md"}
 
 - id: S7.9
   section: "7"
@@ -872,8 +908,12 @@ clauses:
   note: >-
     The rule is stated at the top of every member's gate register and the
     records are generated, never hand-maintained, so nothing backfills a
-    plausible-looking stub. The pack builds four files where the path
-    specifies ten, and the gate register names four of the six absences.
+    plausible-looking stub. A canonical member builds four files where the
+    path specifies ten; a real join can reach six (01-admission.md at
+    approve, 99-retirement.md only at exit). The gate register itself now
+    names every gate the path defines, not four of the six absences -- G2
+    and G4 are stated as passed/partial rather than left silent, and GX
+    points at the record its own exit test needs.
   evidence:
     - {path: apps/join-api/writer.py, symbol: render_onboarding_tree}
     - {path: onboarding/plr/00-gates.md, symbol: "has not been passed"}

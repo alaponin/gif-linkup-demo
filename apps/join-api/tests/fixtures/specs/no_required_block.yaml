@@ -1,0 +1,23 @@
+# Fixture OpenAPI document (Wave 6 Task 2) -- a declared 200 response schema
+# with no `required` block, for contract_fields()'s "a spec with no
+# `required` block declares nothing required, not everything" case.
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:18765
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  title: {type: string}

@@ -13,6 +13,7 @@ services:
   # comment -- hurl/generate.py never reads them. Dogfooded.
   - code: identity-api
     spec_url: http://app-pnia:8000/spec.yaml
+    lawful_basis: "National Identity Decree, purpose-limited person lookup for credential issuance" # illustrative wording, not a real signed statute reference
     access:                    # deliberate: PNEA only — PLR:ENROLMENT excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
     sla:                       # Module 5.3's template —
@@ -33,7 +34,7 @@ member_requirements:           # Module 5.2's checklist (K-01).
   has_registered_identity: true
   standards_portfolio_adopted: true
   data_conformant: true
-  # lawful_basis intentionally absent: a provider's own service states it
-  # (design decision 1) -- see docs/superpowers/plans/2026-08-05-kp2-wave2-
-  # data-layers.md Step 4, not yet populated for the canonical services.
+  # lawful_basis intentionally absent here: a provider's own service states
+  # it (see the identity-api service block above), not duplicated on the
+  # member as a whole.
   technical_contact: "Head of IT, PNIA"

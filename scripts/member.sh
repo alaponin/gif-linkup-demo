@@ -14,10 +14,13 @@ Usage: scripts/member.sh list
 
   list          Print the deployed member set (key, origin, server, ports),
                 read from hurl/topology.json.
-  remove <key>  Delete configs/member-<key>/, onboarding/<key>/ and
-                manifest.yaml's identity.members.<key> entry, then
-                regenerate. Refuses on a canonical member. Does not touch a
-                running federation -- the member stays registered there
+  remove <key>  Delete configs/member-<key>/ and manifest.yaml's
+                identity.members.<key> entry, then regenerate. Does NOT
+                touch onboarding/<key>/ -- that record survives as evidence
+                of what the operator revoked; it is written by
+                DELETE /members/{key}'s federation-side retirement, not by
+                this command. Refuses on a canonical member. Does not touch
+                a running federation -- the member stays registered there
                 until scripts/teardown.sh --purge.
   drift <key>   Re-fetch a joined member's current OpenAPI spec and diff its
                 endpoint set against the baseline captured at join time
@@ -64,13 +67,16 @@ PY
   [ "$origin" = "canonical" ] && fail "'$key' is a canonical member -- the canonical five never renumber or leave. Only a joined member can be removed."
 
   rm -r "$dir"
-  # The onboarding record is demo evidence that this member passed its
-  # gates, not a message log -- the inverse of the message-log archive
-  # volume's own retention note (production-delta.md's un-join row: deleting
-  # THAT before a statutory retention period elapses converts a retirement
-  # into an evidence gap). A removed member's onboarding record has nothing
-  # left to be evidence of, so deleting it here is correct, not an oversight.
-  rm -rf "$PACK_DIR/onboarding/$key"
+  # The onboarding record is NOT deleted here. It is evidence of two things,
+  # not one: that this member passed its gates, AND what the operator
+  # revoked -- a deleted folder has nothing left to be evidence of either
+  # way. This function is config removal, not retirement: retirement is the
+  # federation-side reversal (apps/join-api/job.py's unjoin(), driven by
+  # DELETE /members/{key}), which already ran before this script is ever
+  # invoked and is what writes onboarding/<key>/99-retirement.md. A member
+  # removed only by this command (never through the join API) has had no
+  # federation-side retirement, so no retirement record is the truthful
+  # outcome, and this script does not fabricate one.
 
   python3 - "$key" "$PACK_DIR/manifest.yaml" <<'PY'
 import sys, pathlib

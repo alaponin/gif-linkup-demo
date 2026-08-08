@@ -4,19 +4,24 @@
 # register as every other module).
 # Spec: docs/superpowers/specs/2026-08-01-member-join-api-design.md §8.
 #
-# Exactly four keys. Do not add a fifth: an earlier draft invented
+# Exactly three keys. Do not add a fourth: an earlier draft invented
 # max_services, require_semantic_for_provenance and backend_auth and all
 # three were deleted (spec §16.2) because nothing applied them -- "a block
 # the generator silently ignores is worse than no block at all: it reads as
 # configuration and is decoration" (hurl/generate.py's check_policy()
 # docstring, and now also check_join_policy(), which hard-fails
-# hurl/generate.py at generate time if a fifth key ever appears here). The
+# hurl/generate.py at generate time if a fourth key ever appears here). The
 # test for a new key, before adding one: can it be set to another value, and
 # does something observably change?
+#
+# approval mode is NOT a key here, on purpose -- it is a property of how the
+# Central Server was deployed, not of a join request, so this file is the
+# wrong scope for it regardless of value. It lives in
+# configs/x-road-bus/federation-core.yaml's policy.management_request_approval,
+# which hurl/generate.py's check_policy() genuinely enforces.
 module: "join-policy"
 building_block: x-road-bus
 join:
   member_class: GOV          # Progressa's federation admits government bodies only
-  approval: explicit         # a human operator approves; never automatic
   default_hosting: hosted_on # a join defaults to hosting; own_server must be asked for
   allowed_methods: [GET]     # a joined member publishes read services only (§2.3)

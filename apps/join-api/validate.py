@@ -110,6 +110,14 @@ class ValidationContext:
     # Populated by check 9, consumed by check 10 -- avoids fetching the same
     # spec twice for services that pass check 9.
     fetched_specs: dict[str, dict] = dataclasses.field(default_factory=dict)
+    # Populated by check 9 alongside fetched_specs -- a service's declared
+    # and required response fields, persisted on the request record at
+    # validation time so job.py's r1 step never re-fetches spec_url: the
+    # post-approval job path must not add a second fetch of an
+    # applicant-controlled URL.
+    contract_fields: dict[str, tuple[frozenset[str], frozenset[str]]] = dataclasses.field(
+        default_factory=dict
+    )
 
     @property
     def key(self) -> str:
@@ -347,15 +355,25 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
 
 
 def _check_lawful_basis(ctx: ValidationContext) -> str | None:
-    """5.2's sixth checklist item (a lawful
-    basis for its exchanges, K-01) is satisfied by a provider's own services
-    (Service.lawful_basis) -- never re-checked here, exactly
-    like check 8's own "recorded and surfaced, never resolved" treatment of
-    that field. A consumer-only member has no services to carry it, so it
-    must be on member_requirements.lawful_basis instead; a payload that sets
-    neither has nowhere for this item to live at all ("one field, one
-    place" -- design decision 1)."""
+    """5.2's sixth checklist item (a lawful basis for its exchanges, K-01):
+    does the applicant hold a legal mandate for the data it proposes to
+    expose as authoritative? One check, two shapes: a published service must
+    carry its own basis (Service.lawful_basis) -- never resolved against
+    anything, recorded and surfaced only, exactly like check 8's "recorded
+    and surfaced, never resolved" treatment of semantic.pattern; a member
+    with no services has none to carry it, so it must be on
+    member_requirements.lawful_basis instead. One field, one place -- a
+    payload with services that also sets member_requirements.lawful_basis is
+    not double-checked; the service field is authoritative once there is
+    one."""
     if ctx.payload.services:
+        missing = [svc.code for svc in ctx.payload.services if not svc.lawful_basis]
+        if missing:
+            return (
+                f"service(s) {missing} publish with no lawful_basis -- every "
+                "published service must state the legal mandate for the data "
+                "it proposes to expose as authoritative"
+            )
         return None
     if not ctx.payload.member_requirements.lawful_basis:
         return (
@@ -473,6 +491,34 @@ def _check_identifier_characters(ctx: ValidationContext) -> str | None:
 # -- checks 9-11: touch the joining member's backend --------------------------
 
 
+def contract_fields(spec: dict) -> tuple[frozenset[str], frozenset[str]]:
+    """Which field names a service's own OpenAPI contract declares for its
+    200 response, and which of those are required. One path per service
+    spec (this pack's own convention, modules 2.4/2.5), so the first path's
+    GET 200 application/json schema is the contract; a spec with no
+    `required` block declares nothing required, not everything.
+
+    Mirrors apps/mock-registry/app.py's DECLARED_FIELDS expression exactly,
+    on purpose -- that module is a separate container that cannot import
+    this one, and the two computing the same set independently is why a live
+    response silently diverging from its own contract went unnoticed for as
+    long as it did: the provider and the contract could not disagree. Do not
+    factor this out into a shared library -- a shared library here would
+    hide the very coupling this check exists to break."""
+    schema = (
+        next(iter((spec.get("paths") or {}).values()), {})
+        .get("get", {})
+        .get("responses", {})
+        .get("200", {})
+        .get("content", {})
+        .get("application/json", {})
+        .get("schema", {})
+    )
+    declared = frozenset((schema.get("properties") or {}).keys())
+    required = frozenset(schema.get("required") or [])
+    return declared, required
+
+
 def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     """Fetch spec_url, parse servers.url, resolve-and-connect to it from
     inside the linkup network (spec S8 check 9, S2.4). Catches the
@@ -504,6 +550,7 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
                 f"inside the linkup network: {exc}"
             )
         ctx.fetched_specs[svc.code] = spec_doc
+        ctx.contract_fields[svc.code] = contract_fields(spec_doc)
     return None
 
 

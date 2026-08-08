@@ -259,19 +259,27 @@ has not been passed, whatever the calendar says.
 | Member Requirements (5.2) | Checklist stated by the applicant | Operating Authority | [`02-requirements.md`](02-requirements.md) |
 | SLA (5.3) | Signed SLA per published service | Operating Authority | {sla_status} |
 | Registration (5.4) | Subsystem registered, ACL granted | Operating Authority | [`05-registration.md`](05-registration.md) |
-| Application (G0) | Application + signed membership agreement | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
-| Admission (G1) | Minuted admission decision | Steering Committee | not implemented in this demo -- see `docs/production-delta.md` |
+| Application (G0) | Application + signed membership agreement; Technical Focal Point and, where personal data flows, a DPO | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+| Admission (G1) | Minuted admission decision | Steering Committee | {admission_status} |
+| Hosting (G2) | Own Security Server vs hosted as a client; hosting compatible with the member's role | Operating Authority | passed -- [`05-registration.md`](05-registration.md)'s hosting row |
 | Certificates (G3) | CA/TSA issuance record, member-verified | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+| Platform conformance (G4) | Add-ons installed; monitoring data arriving centrally | Operating Authority | add-ons confirmed per server (`acceptance/member.md`); no central collector -- see `docs/production-delta.md` |
 | Go-live (G6) | Monitored first production transactions | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
+| Retirement (GX) | Absent everywhere; message-log records retained for the statutory period | Operating Authority | written at exit by the API (`99-retirement.md`, once retired) -- the absence half is asserted (`acceptance/join-member.md`), the message-log retention half is unmet by demo teardown, see `docs/production-delta.md` |
 """
 
+_ADMISSION_NOT_IMPLEMENTED = "not implemented in this demo -- see `docs/production-delta.md`"
+_ADMISSION_RECORDED = "decided outside this system; reference recorded in [`01-admission.md`](01-admission.md)"
 
-def render_gates_table(has_services: bool) -> str:
+
+def render_gates_table(has_services: bool, *, admitted: bool = False) -> str:
     """00-gates.md -- one table, not four near-identical stub files: every
     gate KP2 teaches or exceeds, with the file that proves it or a named absence pointing at
-    production-delta.md. Identical for every member except the SLA row,
-    which depends on whether this member published anything to sign one
-    for."""
+    production-delta.md. Identical for every member except the SLA row
+    (whether this member published anything to sign one for) and the
+    Admission row (`admitted`: True for a member that joined through this
+    API and has a 01-admission.md; False -- including every canonical
+    member, which never passed an admission -- keeps the named absence)."""
     sla_status = (
         "[`03-sla/`](03-sla/)"
         if has_services
@@ -281,13 +289,47 @@ def render_gates_table(has_services: bool) -> str:
             "§8 open question 5)"
         )
     )
-    return _GATES_TABLE.format(sla_status=sla_status)
+    admission_status = _ADMISSION_RECORDED if admitted else _ADMISSION_NOT_IMPLEMENTED
+    return _GATES_TABLE.format(sla_status=sla_status, admission_status=admission_status)
+
+
+def _sanitize_cell(text: str) -> str:
+    """Operator-supplied free text going into a markdown table cell -- strip
+    newlines and escape pipes, exactly as scripts/render_path_conformance.py's
+    _cell() already does. Without this, one pasted decision_reference or
+    lawful_basis value breaks the record's structure."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def render_admission_record(request_id: str, decision_reference: str, approved_at: str) -> str:
+    """01-admission.md -- G1's admission decision and allocated identity.
+    The API already holds everything this needs at approve time -- request
+    id, decision reference, approving role, timestamp -- this is the first
+    place it gets written down. The admission decision itself (whether to
+    admit) is taken outside this system (Ref Model §5.3's Steering
+    Committee); this file records only the coupling already enforced at the
+    API boundary: the technical join could not proceed without this
+    reference."""
+    return (
+        "# Admission -- G1\n\n"
+        "The admission decision itself is taken outside this system (Ref "
+        "Model §5.3's Steering Committee) -- this file records only the "
+        "coupling: the technical join could not proceed without this "
+        "reference.\n\n"
+        "| Field | Value |\n"
+        "| --- | --- |\n"
+        f"| Join request id | `{request_id}` |\n"
+        f"| Decision reference | {_sanitize_cell(decision_reference)} |\n"
+        f"| Approved at | {approved_at} |\n"
+        "| Approving role | operator |\n"
+    )
 
 
 def render_requirements_record(requirements: MemberRequirements) -> str:
     """02-requirements.md -- Module 5.2's six-item checklist, stated by the
     applicant, not derived (design decision 1)."""
-    lawful_basis = requirements.lawful_basis or (
+    lawful_basis = (
+        _sanitize_cell(requirements.lawful_basis) if requirements.lawful_basis else
         "satisfied by this member's published services (each service's own "
         "`lawful_basis`) -- see `03-sla/`"
     )
@@ -340,8 +382,17 @@ def render_registration_record(
     by hand via prompts/register-member.md, never through the join API)."""
     if security_server.own_server:
         hosting = "runs its own Security Server"
+        delegation_row = ""
     else:
         hosting = f"hosted on `{security_server.hosted_on}`"
+        # G2's own warning is a delegation with no counterpart in the
+        # obligation set: this member's SIGN key lives on the host's token,
+        # not its own, and until this row existed that fact was recorded
+        # nowhere a member would read.
+        delegation_row = (
+            f"| Signing key | held on `{security_server.hosted_on}`'s token, "
+            "not this member's own (a hosting delegation) |\n"
+        )
     acl = ", ".join(f"`{s}`" for s in acl_subjects) if acl_subjects else "none"
     request_line = (
         f"`{request_id}`"
@@ -355,8 +406,40 @@ def render_registration_record(
         f"| Subsystem | {subsystem} |\n"
         f"| Security Server | {security_server.code} (`{security_server.dns_name}`) |\n"
         f"| Hosting | {hosting} |\n"
+        f"{delegation_row}"
         f"| ACL subjects granted | {acl} |\n"
         f"| Join request id | {request_line} |\n"
+    )
+
+
+# steps.py's own REVERSAL_ORDER states the sequence once; this sentence is
+# fixed text, not a dynamic enumeration of it -- the two must be read
+# together, not kept in sync field by field.
+_RETIREMENT_REVERSAL_SENTENCE = (
+    "the standard reversal was applied: service ACLs revoked, service "
+    "descriptions deleted, client unregistered and deleted, signing key "
+    "deleted, member removed from the Central Server (hurl/steps.py's "
+    "REVERSAL_ORDER)"
+)
+
+
+def render_retirement_record(key: str, retired_at: str, request_id: str) -> str:
+    """99-retirement.md -- written only at exit. Written by
+    apps/join-api/app.py's DELETE /members/{key} handler once job.unjoin()
+    has reached RETIRED -- that module already imports this one and already
+    performs the federation-side retirement, so it writes the record;
+    scripts/member.sh remove is config removal only and neither writes nor
+    destroys it. Four lines of content, no more: retired-at, the request id,
+    the fixed reversal sentence, and a pointer naming message-log retention
+    as a SEPARATE question this file does not answer (the archive volume's
+    own retention policy, not asserted here)."""
+    return (
+        "# Retirement -- GX\n\n"
+        f"Retired at: {retired_at}\n\n"
+        f"Join request id: `{request_id}`\n\n"
+        f"Reversal: {_RETIREMENT_REVERSAL_SENTENCE}.\n\n"
+        "Message-log retention is a separate question, governed by the "
+        "archive volume's own retention policy -- not answered by this file.\n"
     )
 
 
@@ -366,16 +449,34 @@ def render_onboarding_tree(
     payload: JoinPayload,
     *,
     request_id: str | None = None,
+    decision_reference: str | None = None,
+    approved_at: str | None = None,
 ) -> None:
-    """Writes onboarding/<key>/'s four files under target_dir. Shared by
+    """Writes onboarding/<key>/'s files under target_dir. Shared by
     apply_real() (a real join) and scripts/render-onboarding.sh (the three
     canonical members) -- "the same writer.py code path a
     join uses" for both, so there is exactly one place that decides what an
-    onboarding record looks like."""
+    onboarding record looks like.
+
+    01-admission.md is written only when request_id is not None (design
+    decision 5): the three canonical members never passed an admission, and
+    writing them one would be fiction. apply_real() is the only real caller
+    that ever passes request_id, and it always passes decision_reference/
+    approved_at alongside it."""
     onboarding_dir = target_dir / "onboarding" / key
     onboarding_dir.mkdir(parents=True)
-    (onboarding_dir / "00-gates.md").write_text(render_gates_table(bool(payload.services)))
+    (onboarding_dir / "00-gates.md").write_text(
+        render_gates_table(bool(payload.services), admitted=request_id is not None)
+    )
     (onboarding_dir / "02-requirements.md").write_text(render_requirements_record(payload.member_requirements))
+    if request_id is not None:
+        assert decision_reference is not None and approved_at is not None, (
+            "render_onboarding_tree: request_id given but decision_reference/"
+            "approved_at missing -- every real caller must pass both"
+        )
+        (onboarding_dir / "01-admission.md").write_text(
+            render_admission_record(request_id, decision_reference, approved_at)
+        )
     if payload.services:
         sla_dir = onboarding_dir / "03-sla"
         sla_dir.mkdir()
@@ -503,6 +604,8 @@ def apply_real(
     *,
     repo_root: pathlib.Path | None = None,
     request_id: str | None = None,
+    decision_reference: str | None = None,
+    approved_at: str | None = None,
 ) -> None:
     """The real write-then-regenerate sequence, against the real pack_dir --
     what actually makes the join real. repo_root defaults to three levels
@@ -519,6 +622,11 @@ def apply_real(
     the point a request moves SUBMITTED -> APPROVED -> RUNNING. request_id is
     the approved request's own id, threaded through to
     onboarding/<key>/05-registration.md's "join request id" field.
+    decision_reference/approved_at, when request_id is given, must be passed
+    in by the caller rather than read off the request record afterwards --
+    app.py's approve endpoint computes both BEFORE calling this function and
+    only assigns them onto the record after it returns, so reading them off
+    the record here would write 01-admission.md with them still empty.
     """
     repo_root = repo_root or pack_dir.resolve().parents[2]
     dirty = _git_status_dirty(repo_root, pack_dir)
@@ -541,4 +649,7 @@ def apply_real(
     # Only after generate.py accepts the result -- a rejected/failed config
     # write must not leave onboarding evidence for a member that was never
     # actually created.
-    render_onboarding_tree(pack_dir, key, payload, request_id=request_id)
+    render_onboarding_tree(
+        pack_dir, key, payload,
+        request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
+    )

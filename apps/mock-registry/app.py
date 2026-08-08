@@ -44,6 +44,13 @@ with open(SPEC_FILE) as f:
     _spec = yaml.safe_load(f)
 # Exactly one path per spec (this generic app serves one entity each) --
 # its 200 response schema's declared properties are the contract.
+# Mirrors apps/join-api/validate.py's contract_fields() expression exactly,
+# on purpose -- this container cannot import join-api's code, and the two
+# computing the same set independently is why a live response silently
+# diverging from its own contract went unnoticed for as long as it did: the
+# provider and the contract could not disagree. Do not factor this out into
+# a shared library -- that would hide the very coupling the check this
+# enables exists to break.
 _response_schema = next(iter(_spec["paths"].values()))["get"]["responses"]["200"]["content"]["application/json"]["schema"]
 DECLARED_FIELDS = list(_response_schema["properties"].keys())
 

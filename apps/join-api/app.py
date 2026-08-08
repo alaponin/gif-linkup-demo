@@ -316,6 +316,15 @@ def submit_request(
             code: sorted((spec_doc or {}).get("paths", {}).keys())
             for code, spec_doc in vctx.fetched_specs.items()
         },
+        # A service's declared and required response fields, captured once
+        # here (check 9 already parsed the spec) and read back by job.py's
+        # r1 step at approval time -- never re-fetched, so the record
+        # verifies against the contract the member was ADMITTED on, not
+        # against whatever spec_url serves after approval.
+        "contract_fields": {
+            code: {"declared": sorted(declared), "required": sorted(required)}
+            for code, (declared, required) in vctx.contract_fields.items()
+        },
     }
     _save_request(record)
     return record
@@ -477,12 +486,11 @@ def approve_request(
     before any live mutation), then start the job. 202, not 200: the job runs
     past this response and the applicant polls GET /requests/{id}.
 
-    `configs/x-road-bus/join-policy.yaml`'s `approval: explicit` puts one
-    operator's bearer token where Ref Model §5.3 puts the Steering
-    Committee -- a RACI mismatch the onboarding path's own gap analysis
-    names (K-02, G-02). The fix is not a second login (a committee doesn't
-    hold an API token); it's requiring the call to name the decision it is
-    actuating. `decision_reference` is untyped like
+    Manual approval puts one operator's bearer token where Ref Model §5.3
+    puts the Steering Committee -- a RACI mismatch the onboarding path's own
+    gap analysis names (K-02, G-02). The fix is not a second login (a
+    committee doesn't hold an API token); it's requiring the call to name
+    the decision it is actuating. `decision_reference` is untyped like
     reject_request's `body`, not a schema.py model -- this is evidence, not
     another auth layer, so a required non-empty string is the whole check."""
     record = _load_request(request_id)
@@ -500,10 +508,19 @@ def approve_request(
             "must be told the minute identifier and date it is acting on.",
         )
     decision_reference = decision_reference.strip()
+    # Computed here, before apply_real -- which writes onboarding/<key>/01-
+    # admission.md, needing both -- rather than read off `record` afterwards
+    # (writer.apply_real's own docstring names this ordering trap: record's
+    # own approved_at/decision_reference fields are not assigned until after
+    # apply_real returns, below).
+    approved_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     payload = schema.JoinPayload(**record["payload"])
     try:
-        writer.apply_real(PACK_DIR, payload.code.lower(), payload, request_id=request_id)
+        writer.apply_real(
+            PACK_DIR, payload.code.lower(), payload,
+            request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
+        )
     except writer.DirtyCheckoutError as exc:
         raise HTTPException(409, str(exc)) from exc
     except writer.GitCheckFailure as exc:
@@ -531,7 +548,7 @@ def approve_request(
         raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
-    record["approved_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    record["approved_at"] = approved_at
     record["decision_reference"] = decision_reference
     record["queued"] = _JOB_LOCK.locked()
     _save_request(record)
@@ -647,6 +664,17 @@ def _run_unjoin(request_id: str) -> None:
             return
         if record.get("state") != "RETIRED":
             return  # the walk stopped; record["error"] says where. DELETE again to resume.
+
+        # The federation-side retirement just completed, so this is where
+        # the retirement record gets written -- not scripts/member.sh remove
+        # below, which is config removal only. Idempotent (same content
+        # every time): a repeat DELETE that reaches here just rewrites the
+        # same file, which is cheap and simpler than guarding it.
+        key = record["payload"]["code"].lower()
+        (PACK_DIR / "onboarding" / key / "99-retirement.md").write_text(
+            writer.render_retirement_record(key, record["retired_at"], record["id"])
+        )
+
         if record.get("config_removed"):
             # Already done by an earlier run of this walk. scripts/member.sh
             # remove is NOT idempotent -- it exits non-zero on a member whose
@@ -664,7 +692,6 @@ def _run_unjoin(request_id: str) -> None:
         # regenerates. Last, after the federation no longer holds the member:
         # regenerating first would rewrite hurl/topology.json out from under
         # a walk that has not finished.
-        key = record["payload"]["code"].lower()
         proc = subprocess.run(
             [str(PACK_DIR / "scripts" / "member.sh"), "remove", key],
             capture_output=True, text=True, timeout=120,

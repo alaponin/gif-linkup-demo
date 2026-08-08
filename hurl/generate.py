@@ -355,7 +355,7 @@ def check_policy(core: dict) -> None:
 # is the code that actually applies join: policy at request time); this is
 # purely the same "no undeclared decoration" guard check_policy() already
 # applies to the bus policy above.
-JOIN_POLICY_KEYS = frozenset({"member_class", "approval", "default_hosting", "allowed_methods"})
+JOIN_POLICY_KEYS = frozenset({"member_class", "default_hosting", "allowed_methods"})
 
 
 def check_join_policy(join_config: dict, manifest: dict) -> None:

@@ -13,6 +13,7 @@ services:
   # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
   - code: enrolment-api
     spec_url: http://app-plr:8000/spec.yaml
+    lawful_basis: "Learner Registry Act, PLR as the authoritative source of enrolment records" # illustrative wording, not a real signed statute reference
     access:                    # deliberate: PNEA only (negative check 2.6 now tests PNIA's identity-api, not this service)
       - PROGRESSA/GOV/PNEA/EXAMS
 semantic:                      # from configs/semantic/semantic-map.yaml — 'enrolment' means:

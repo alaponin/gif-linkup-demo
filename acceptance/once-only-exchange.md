@@ -40,6 +40,14 @@ Additional negative: a NIN seeded in PNIA but deliberately absent from PLR
 returns identity + a clean 404 from enrolment — proving errors are observable,
 not silent.
 
+5. **Field conformance** (G5.9) — both responses carry exactly the fields
+   their own OpenAPI contract declares: nothing the contract withholds is
+   returned, and nothing the contract requires is missing. Distinct from
+   assertion 2 ("right learner"), which compares returned values to the
+   seeded row and cannot see a response that adds a field the CSV carries and
+   the contract withholds — the serious case, since that field is exactly
+   what purpose limitation exists to keep off the wire.
+
 **Artefact:** on success the suite writes `out/application-{nin}.json` — the
 assembled credential application with per-field provenance (the one citizen
 field vs every bus-pre-filled field and its source). This is the tangible

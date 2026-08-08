@@ -28,13 +28,23 @@ def test_the_committed_join_policy_yaml_passes_against_the_real_manifest():
     check_join_policy(config, manifest)  # does not raise
 
 
-def test_exactly_four_keys_are_recognised():
-    assert JOIN_POLICY_KEYS == {"member_class", "approval", "default_hosting", "allowed_methods"}
+def test_exactly_three_keys_are_recognised():
+    assert JOIN_POLICY_KEYS == {"member_class", "default_hosting", "allowed_methods"}
 
 
-def test_an_undeclared_fifth_key_is_a_hard_failure():
+def test_an_undeclared_fourth_key_is_a_hard_failure():
     with pytest.raises(SystemExit, match="max_services"):
         check_join_policy({"join": {"member_class": "GOV", "max_services": 4}}, GOV_MANIFEST)
+
+
+def test_approval_is_no_longer_a_recognised_key():
+    """The worked example of the rule this file enforces: approval mode is a
+    property of how the Central Server was deployed, not of a join request,
+    so this file is the wrong scope for it regardless of value -- a
+    resurrected `approval` key is rejected exactly like any other
+    undeclared one."""
+    with pytest.raises(SystemExit, match="approval"):
+        check_join_policy({"join": {"member_class": "GOV", "approval": "explicit"}}, GOV_MANIFEST)
 
 
 def test_an_empty_join_block_passes():

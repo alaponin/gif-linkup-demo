@@ -130,9 +130,15 @@ class FakeHurl:
         return json.loads(fixture.read_text())
 
 
-def _fake_r1(ok: bool = True, detail: str = "http://ss-pnea:8080/...: HTTP 200"):
-    def call(url: str, client_header: str) -> tuple[bool, str]:
-        return ok, detail
+def _fake_r1(
+    ok: bool = True,
+    detail: str = "http://ss-pnea:8080/...: HTTP 200",
+    mismatch: dict | None = None,
+):
+    def call(
+        url: str, client_header: str, declared: frozenset, required: frozenset
+    ) -> tuple[bool, str, dict | None]:
+        return ok, detail, mismatch
 
     return call
 
@@ -348,9 +354,9 @@ def test_the_r1_check_gets_its_own_budget_however_little_the_run_has_left():
     flaky = [_FAILED] * (job.RETRY_BUDGET - 1) + [json.loads((FIXTURES / "cs.init.json").read_text())]
     attempts = []
 
-    def r1(url: str, client_header: str) -> tuple[bool, str]:
+    def r1(url: str, client_header: str, declared: frozenset, required: frozenset) -> tuple[bool, str, dict | None]:
         attempts.append(url)
-        return len(attempts) >= 5, "http://ss-pnea:8080/...: HTTP 200"
+        return len(attempts) >= 5, "http://ss-pnea:8080/...: HTTP 200", None
 
     hurl = FakeHurl({"cs.init": flaky})
     record = _run(_record(), hurl, r1=r1)
@@ -384,6 +390,39 @@ def test_a_failed_reachability_call_is_active_unverified_not_failed():
     record = _run(_record(), FakeHurl(), r1=_fake_r1(False, "connection refused"))
     assert record["state"] == "ACTIVE"
     assert record["verified"] is False
+
+
+def test_a_contract_mismatch_is_active_unverified_not_failed_and_names_the_diff():
+    """A route that reaches something whose response does not match its own
+    contract is a different fact from an X-Road fault -- not a reason to
+    keep spending the retry budget, and not a FAILED job. The member is
+    joined; its service does not conform, and the diff is named as field
+    NAMES only."""
+    mismatch = {"undeclared": ["mother_name"], "missing": []}
+    record = _run(
+        _record(contract_fields={"awards-api": {"declared": ["award_id"], "required": []}}),
+        FakeHurl(),
+        r1=_fake_r1(True, "http://ss-pnea:8080/...: HTTP 200", mismatch),
+    )
+    assert record["state"] == "ACTIVE"
+    assert record["verified"] is False
+    assert "mother_name" in record["verified_by"]
+    assert "undeclared" in record["verified_by"]
+
+
+def test_a_contract_mismatch_message_is_scrubbed_like_every_other_r1_message():
+    """Every message written into a persisted record goes through
+    job.scrub() -- this is a new path into out/join/*.json exactly like the
+    existing FAILED/error paths already scrubbed."""
+    secret = SECRETS["ss_admin_password"]
+    mismatch = {"undeclared": [f"leaked-{secret}"], "missing": []}
+    record = _run(
+        _record(contract_fields={"awards-api": {"declared": [], "required": []}}),
+        FakeHurl(),
+        r1=_fake_r1(True, "http://ss-pnea:8080/...: HTTP 200", mismatch),
+    )
+    assert secret not in record["verified_by"]
+    assert "***" in record["verified_by"]
 
 
 # -- resume ------------------------------------------------------------------

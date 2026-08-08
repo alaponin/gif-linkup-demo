@@ -315,6 +315,34 @@ check_265() {
 }
 check 2.6.5 "negative — NIN absent from PLR yields a clean 404, not silence" check_265
 
+check_266() {  # On the pack's headline exchange: the response carries exactly
+               # the fields its own OpenAPI contract declares -- not merely
+               # "seeded values match" (2.6.2), which cannot see a response
+               # that adds a field the CSV carries and the contract withholds
+               # (purpose limitation failing silently). Declared/required read
+               # straight off the in-repo spec, mirroring
+               # apps/join-api/validate.py's contract_fields() -- no HTTP fetch
+               # needed, the canonical specs are already on disk.
+  python3 - "$PACK_DIR/apps/specs/pnia-identity.openapi.yaml" "$id_json" \
+            "$PACK_DIR/apps/specs/plr-enrolment.openapi.yaml" "$en_json" <<'PY'
+import json, sys
+import yaml
+
+def contract_fields(spec_path):
+    spec = yaml.safe_load(open(spec_path))
+    schema = next(iter(spec["paths"].values()))["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    return set(schema.get("properties", {})), set(schema.get("required", []))
+
+for spec_path, body_json in ((sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])):
+    declared, required = contract_fields(spec_path)
+    returned = set(json.loads(body_json))
+    undeclared = sorted(returned - declared)
+    missing = sorted(required - returned)
+    assert not undeclared and not missing, f"{spec_path}: undeclared={undeclared} missing={missing}"
+PY
+}
+check 2.6.6 "field conformance — both responses carry exactly the fields their contract declares (G5.9)" check_266
+
 # ---- artefact: the assembled application with per-field provenance -----------
 # The tangible 'asked once' object (video demo prop; the seam a KP4 Joget form
 # later replaces). Optional further evidence at P0: the exchange in the provider
@@ -445,7 +473,16 @@ for sub in subs:
         bad_pair = f"{bad['member_code']}:{bad['subsystem_code']}"
 
         r1_path = f"/r1/{instance}/{mclass}/{code}/{sub['subsystem_code']}/{svc['code']}/"
-        print(f"{sub['hosted_on']}\t{code}\t{svc['code']}\t{good_str}\t{good_pair}\t{bad_str}\t{bad_pair}\t{r1_path}")
+        # The field-conformance check below needs the service's own contract
+        # -- the payload's spec_url, exactly as the join recorded it
+        # (check_r1_fields resolves this to an in-repo
+        # apps/specs/*.openapi.yaml path, no HTTP fetch either).
+        payload_svc = next(
+            (s for s in (baseline_rec.get("payload") or {}).get("services") or [] if s.get("code") == svc["code"]),
+            None,
+        )
+        spec_url = (payload_svc or {}).get("spec_url", "")
+        print(f"{sub['hosted_on']}\t{code}\t{svc['code']}\t{good_str}\t{good_pair}\t{bad_str}\t{bad_pair}\t{r1_path}\t{spec_url}")
 PY
 )
 
@@ -460,8 +497,8 @@ PY
 # with no SKIP log line to say so.
 _27_IDS=(2.7.1)
 for _row in "${_27_ROWS[@]}"; do
-  IFS=$'\t' read -r _ _code _svc _ _ _ _ _ <<<"$_row"
-  _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})")
+  IFS=$'\t' read -r _ _code _svc _ _ _ _ _ _ <<<"$_row"
+  _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})" "2.7.fields(${_code}.${_svc})")
 done
 
 # ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
@@ -607,7 +644,7 @@ if _selection_touches_27; then
   check 2.7.1 "join-api deploys and reports healthy" check_271
 
   for _row in "${_27_ROWS[@]}"; do
-    IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path <<<"$_row"
+    IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path spec_url <<<"$_row"
     GOOD_SS=${HOST_SS[$good_pair]:-}
     BAD_SS=${HOST_SS[$bad_pair]:-}
     if [ -z "$GOOD_SS" ] || [ -z "$BAD_SS" ]; then
@@ -642,6 +679,59 @@ if _selection_touches_27; then
         | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
     }
     check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
+
+    # Field conformance on a JOINED member's own service, not just the two
+    # canonical providers check_266 covers. Declared/required read straight
+    # off the in-repo apps/specs/*.openapi.yaml -- no HTTP fetch, mirroring
+    # apps/join-api/validate.py's contract_fields() -- resolved from
+    # spec_url via docker-compose.yml's SPEC_FILE/CSV_FILE/KEY_FIELD (the
+    # generic mock-registry pattern every joined member's demo backend
+    # follows). A joined member with no such backend (spec_url not served by
+    # this pack's own mock pattern) is skipped, not failed -- there is no
+    # in-repo contract to check it against.
+    check_r1_fields() {
+      python3 - "$PACK_DIR" "$spec_url" "$GOOD_REST" "$r1_path" "$client_header" <<'PY'
+import json, pathlib, sys, urllib.parse
+import urllib.request
+
+import yaml
+
+pack_dir, spec_url, good_rest, r1_path, client_header = sys.argv[1:6]
+host = urllib.parse.urlparse(spec_url).hostname
+
+compose = yaml.safe_load(open(f"{pack_dir}/docker-compose.yml"))
+svc = (compose.get("services") or {}).get(host)
+if svc is None:
+    print(f"SKIP: no docker-compose.yml service named {host!r} for {spec_url}", file=sys.stderr)
+    sys.exit(0)
+env = svc.get("environment") or {}
+spec_file = env.get("SPEC_FILE", "")
+csv_file = env.get("CSV_FILE", "")
+key_field = env.get("KEY_FIELD", "")
+if not (spec_file.startswith("/specs/") and csv_file.startswith("/data/") and key_field):
+    print(f"SKIP: {host!r} does not follow the generic mock-registry pattern", file=sys.stderr)
+    sys.exit(0)
+
+spec = yaml.safe_load(open(f"{pack_dir}/apps/specs/{spec_file.removeprefix('/specs/')}"))
+schema = next(iter(spec["paths"].values()))["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+declared = set(schema.get("properties", {}))
+required = set(schema.get("required", []))
+
+import csv as csv_module
+with open(f"{pack_dir}/apps/data/{csv_file.removeprefix('/data/')}", newline="") as f:
+    key = next(csv_module.DictReader(f))[key_field]
+
+req = urllib.request.Request(f"{good_rest}{r1_path}{key}", headers={"X-Road-Client": client_header})
+with urllib.request.urlopen(req, timeout=10) as resp:
+    body = json.loads(resp.read())
+
+returned = set(body)
+undeclared = sorted(returned - declared)
+missing = sorted(required - returned)
+assert not undeclared and not missing, f"{spec_url}: undeclared={undeclared} missing={missing}"
+PY
+    }
+    check "2.7.fields(${code}.${svc})" "${client_header} r1 call to ${svc} carries exactly its contract's declared fields (G5.9)" check_r1_fields
   done
 
   # -- the un-join transition (acceptance/2.7.md's un-join clause) ------------

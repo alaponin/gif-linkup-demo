@@ -53,6 +53,13 @@ did not write; that is the gap this check closes.
      whole acceptance suite that would catch design spec §2.4's
      registry-perfect-but-dead member — a join that passed every validation
      check yet points at a backend nobody can reach.
+  3b. **field conformance (G5.9)** — a real, key-specific `r1` call through
+     the authorized consumer (not the service-root call clause 3 makes, which
+     404s against every mock in this pack) returns exactly the fields the
+     joined member's own OpenAPI contract declares. Skipped, not failed, for
+     a joined member whose backend does not follow this pack's generic
+     mock-registry pattern (`scripts/acceptance.sh`'s `check_r1_fields`) --
+     there is then no in-repo contract to check it against.
   4. the config and manifest on disk describe the member that is actually
      live — `configs/member-<key>/<key>.yaml` exists, and
      `manifest.yaml`'s `identity.members.<key>` has `origin: joined`.

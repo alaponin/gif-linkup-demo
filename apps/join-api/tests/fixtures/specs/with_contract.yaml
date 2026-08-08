@@ -1,0 +1,25 @@
+# Fixture OpenAPI document (Wave 6 Task 2) -- same reachable backend as
+# clean.yaml, with a declared 200 response schema for contract_fields()'s
+# unit tests: two required fields, one optional.
+openapi: "3.0.0"
+info:
+  title: PTSB Awards API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:18765
+paths:
+  /awards/{id}:
+    get:
+      operationId: getAward
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, title]
+                properties:
+                  id: {type: string}
+                  title: {type: string}
+                  note: {type: string}

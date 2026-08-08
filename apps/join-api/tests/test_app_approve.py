@@ -113,6 +113,15 @@ def test_approve_writes_the_config_for_real_and_starts_the_job(client):
     assert (app_module.PACK_DIR / "configs" / "member-ptsb" / "ptsb.yaml").exists()
     assert "ptsb" in (app_module.PACK_DIR / "manifest.yaml").read_text()
 
+    # A real approve writes 01-admission.md, with the decision reference and
+    # approved_at actually populated -- the ordering bug apply_real's
+    # docstring names (reading them off `record` after apply_real returns
+    # finds them still empty) must not have recurred.
+    admission = (app_module.PACK_DIR / "onboarding" / "ptsb" / "01-admission.md").read_text()
+    assert record["id"] in admission
+    assert DECISION["decision_reference"] in admission
+    assert body["approved_at"] in admission
+
     # Step 2: persisted, and surfaced verbatim on a follow-up GET (raw-dict
     # return, apps/join-api/app.py:325-340) -- no separate wiring needed.
     follow_up = client.get(f"/requests/{record['id']}", headers=OPERATOR)

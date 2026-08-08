@@ -18,10 +18,11 @@ import sys
 import threading
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import validate as validate_module  # noqa: E402
-from validate import RejectionError, ValidationContext, validate  # noqa: E402
+from validate import RejectionError, ValidationContext, contract_fields, validate  # noqa: E402
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "specs"
 REACHABLE_PORT = 18765
@@ -164,7 +165,7 @@ def test_consume_only_hosted_join_passes_every_check():
 
 def test_publishing_hosted_join_passes_every_check():
     payload = _run(_payload(
-        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                    "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
         semantic={"entity": "person", "key": "nin", "fields": ["nin", "region"]},
     ), fetch_spec=_fetch_fixture("clean.yaml"))
@@ -287,13 +288,13 @@ def test_hosting_rejects_a_hosting_chain():
 
 
 def test_acl_sanity_rejects_an_access_target_that_is_not_a_real_subsystem():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/NOPE/NOTHING"]}])
     _rejects(raw, "acl_sanity")
 
 
 def test_acl_sanity_rejects_a_self_grant():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PTSB/SCHOLARSHIP"]}])
     _rejects(raw, "acl_sanity")
 
@@ -307,13 +308,13 @@ def test_acl_sanity_rejects_an_unresolvable_requested_access():
 
 
 def test_purpose_limitation_rejects_a_publish_with_access_and_no_semantic():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}])
     _rejects(raw, "purpose_limitation")
 
 
 def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic():
-    payload = _run(_payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    payload = _run(_payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                          "access": [], "sla": _sla()}]),
                     fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.services[0].access == []
@@ -322,7 +323,7 @@ def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic()
 def test_purpose_limitation_rejects_an_entity_not_in_the_semantic_map():
     """Conformance, not presence (K-03):
     semantic.entity must be a key in configs/semantic/semantic-map.yaml."""
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
                     semantic={"entity": "award", "key": "award_id", "fields": ["award_id"]})
     err = _rejects(raw, "purpose_limitation")
@@ -330,7 +331,7 @@ def test_purpose_limitation_rejects_an_entity_not_in_the_semantic_map():
 
 
 def test_purpose_limitation_rejects_a_field_not_declared_for_the_entity():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin", "award_id"]})
     err = _rejects(raw, "purpose_limitation")
@@ -339,7 +340,7 @@ def test_purpose_limitation_rejects_a_field_not_declared_for_the_entity():
 
 def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
     payload = _run(_payload(
-        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                    "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
         semantic={"entity": "enrolment", "key": "nin", "fields": ["nin", "status"]},
     ), fetch_spec=_fetch_fixture("clean.yaml"))
@@ -362,14 +363,24 @@ def test_lawful_basis_is_satisfied_by_a_providers_services_even_when_unset_on_re
     member_requirements."""
     payload = _run(_payload(
         member_requirements=_requirements(lawful_basis=None),
-        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                    "access": [], "sla": _sla()}],
     ), fetch_spec=_fetch_fixture("clean.yaml"))
     assert payload.member_requirements.lawful_basis is None
 
 
-def test_sla_required_rejects_a_published_service_with_no_sla():
+def test_lawful_basis_rejects_a_published_service_with_none_stated():
+    """The inverse of the case above: a provider's own service, not
+    member_requirements, is where the requirement now has to be met -- a
+    service with no lawful_basis at all is rejected, naming the service."""
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                               "access": [], "sla": _sla()}])
+    err = _rejects(raw, "lawful_basis")
+    assert "awards-api" in err.message
+
+
+def test_sla_required_rejects_a_published_service_with_no_sla():
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": []}])
     err = _rejects(raw, "sla_required")
     assert "awards-api" in err.message
@@ -384,7 +395,7 @@ def test_sla_required_accepts_a_consumer_only_member_with_no_services():
 
 
 def test_backend_reachability_rejects_an_unreachable_servers_url():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "backend_reachability", fetch_spec=_fetch_fixture("unreachable.yaml"))
@@ -395,7 +406,7 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
     def _boom(url):
         raise RuntimeError("connection refused")
 
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": [], "sla": _sla()}])
     _rejects(raw, "backend_reachability", fetch_spec=_boom)
 
@@ -404,7 +415,7 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
 
 
 def test_allowed_methods_rejects_a_delete_operation():
-    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+    raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "allowed_methods", fetch_spec=_fetch_fixture("has_delete.yaml"))
@@ -450,7 +461,7 @@ def test_identifier_characters_rejects_a_slash_in_subsystem():
 
 def test_identifier_characters_rejects_a_bad_service_code_last_after_9_10_11_pass():
     raw = _payload(services=[{"code": "awards api", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": [], "sla": _sla()}])
+                                "lawful_basis": "consent", "access": [], "sla": _sla()}])
     _rejects(raw, "identifier_characters", fetch_spec=_fetch_fixture("bad_service_code.yaml"))
 
 
@@ -464,7 +475,7 @@ def test_identifier_characters_accepts_a_dotted_service_code():
     ACCEPTANCE here, not rejection -- do not "fix" this back to a reject,
     that would resurrect the false-reject bug (G-01) corrected."""
     raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
-                                "access": [], "sla": _sla()}])
+                                "lawful_basis": "consent", "access": [], "sla": _sla()}])
     payload = _run(raw, fetch_spec=_fetch_fixture("bad_service_code.yaml"))
     assert payload.services[0].code == "awards.list"
 
@@ -529,3 +540,51 @@ def test_identifier_characters_accepts_allowlisted_subsystems(subsystem):
 @pytest.mark.parametrize("subsystem", _REJECTED_IDENTIFIERS)
 def test_identifier_characters_rejects_non_allowlisted_subsystems(subsystem):
     _rejects(_payload(subsystem=subsystem), "identifier_characters")
+
+
+# -- contract_fields() ---------------------------------------------------------
+
+
+def _load_fixture_spec(name: str) -> dict:
+    return yaml.safe_load((FIXTURES / name).read_text())
+
+
+def test_contract_fields_reads_declared_and_required_from_the_200_schema():
+    declared, required = contract_fields(_load_fixture_spec("with_contract.yaml"))
+    assert declared == frozenset({"id", "title", "note"})
+    assert required == frozenset({"id", "title"})
+
+
+def test_contract_fields_with_no_required_block_declares_nothing_required():
+    """A spec with no `required` block declares nothing required, not
+    everything -- the failure mode that would make every response 'missing'
+    fields it never promised."""
+    declared, required = contract_fields(_load_fixture_spec("no_required_block.yaml"))
+    assert declared == frozenset({"id", "title"})
+    assert required == frozenset()
+
+
+def test_contract_fields_with_no_response_schema_is_empty_not_an_error():
+    declared, required = contract_fields(_load_fixture_spec("clean.yaml"))
+    assert declared == frozenset()
+    assert required == frozenset()
+
+
+def test_a_real_validate_run_persists_contract_fields_on_the_context():
+    """Check 9 (_check_backend_reachability) populates ctx.contract_fields
+    alongside ctx.fetched_specs, for every published service -- this is what
+    app.py persists onto the SUBMITTED record for job.py's r1 step to read
+    later, with no second fetch of an applicant-controlled URL from the
+    post-approval job path."""
+    payload, ctx = validate(
+        _payload(
+            services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
+                       "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
+            semantic={"entity": "person", "key": "nin", "fields": ["nin", "region"]},
+        ),
+        manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS,
+        semantic_map=SEMANTIC_MAP, fetch_spec=_fetch_fixture("with_contract.yaml"),
+    )
+    declared, required = ctx.contract_fields["awards-api"]
+    assert declared == frozenset({"id", "title", "note"})
+    assert required == frozenset({"id", "title"})

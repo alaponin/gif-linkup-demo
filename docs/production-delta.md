@@ -37,6 +37,8 @@ ship the demo as production.
 | This pack is an instance of the onboarding path's §1 development track — synthetic data, Test CA, loopback bind — with the prohibition on real personal data enforced only by whoever writes the config (authorship) | A real development track enforces the same prohibition via the membership terms (onboarding path §1), not by who happens to be typing |
 | `POST /requests/{id}/approve` requires a `decision_reference` string and records it verbatim (`apps/join-api/app.py`) — the demo verifies only that it is non-empty, not that it refers to anything real | In production this is a minuted Steering Committee decision (Ref Model §5.3); the endpoint actuates that decision, it does not authorise one — an operator's bearer token was never the accountable party, and `decision_reference` is evidence of the real one, not a replacement for it |
 | `onboarding/<key>/00-gates.md` names four gates (Application/G0, Admission/G1, Certificates/G3, Go-live/G6) as **not implemented in this demo** rather than building a stub file for each — the onboarding path's §7 specifies all ten files; this pack builds the three Topic 5 teaches (5.2, 5.3, 5.4) and names the rest, following the principle that a named absence teaches as well as an implementation (D3: no curriculum change) | Each of the four is a real organisational or third-party act with no per-request field this pack could carry honestly: a signed membership agreement, a Steering Committee minute, a CA/TSA issuance record, a monitored go-live handover. **What would change the decision:** a later addition of a join subtopic to Topic 5 for one of these gates (matching how the join module already exceeds the curriculum) — until then, building the file would be the pack teaching a gate no video covers |
+| `Service.spec_url` (`apps/join-api/schema.py`) is a plain `str` with no scheme or host restriction, fetched from inside the `join-api` container at validation time (`validate.py`'s `_check_backend_reachability`) — a container that also holds `JOB_SECRETS` (admin user, admin password, token PIN) and can reach every admin API on `:4000`. The field-conformance check deliberately does **not** add a second fetch of this URL from the post-approval job path — the declared/required field sets are computed once, at validation, and persisted on the record instead — but the *first* fetch, from an applicant-controlled string, from a credential-holding container, is pre-existing and stays in scope here | Restrict `spec_url` to an allowed scheme and host set (or resolve it server-side, off a network segment with no path to the admin plane) before ever fetching an applicant-submitted URL from a container that holds federation admin credentials |
+| Manual approval is hard-wired: `configs/x-road-bus/federation-core.yaml`'s `policy.management_request_approval: explicit` is genuinely enforced by `hurl/generate.py`'s `check_policy()`, but nothing generates the alternative — the onboarding path's own §3 fact 1 (automatic/manual is an operator policy choice since 6.21.0) is modelled only on one side | A production federation choosing automatic approval needs the Central Server's `local.ini` auto-approve flags generated and mounted, plus the two templates that assume a `WAITING` status omitted rather than skipped — see `docs/superpowers/plans/2026-08-08-kp2-wave7-approval-policy-branch.md` for the mechanism and its cost, not started without a driver |
 
 ## The task the hardening list forgets
 
@@ -290,6 +292,40 @@ diffs byte-identical against `tests/golden/deployment/topology.json`, and
 `PASS 2.7.unjoin.topology`), discovered generically from the newest
 `RETIRED` record in `out/join/*.json` — there is no `lite`/`full` choice to
 make, so this is simply "byte-identical to the golden," full stop.
+
+## The field-conformance check's negative case, observed failing live
+
+A conformance check nobody has seen fail is the same category of artefact as
+the claim that started the 2026-08-08 review. Confirmed live, against the
+running federation:
+
+1. `apps/specs/pnia-identity.openapi.yaml`'s declared properties gained
+   `mother_name` (already a column in `apps/data/persons.csv`, already one of
+   the three fields PNIA's contract deliberately withholds).
+2. `docker compose restart app-pnia` — the mock reloads `DECLARED_FIELDS`
+   from the now-changed spec and starts returning `mother_name` for real.
+3. The spec file was reverted on disk **without** restarting `app-pnia`
+   again — the same timing gap a real, hand-coded backend would have (it
+   does not re-derive its own output from the contract on every request the
+   way this pack's mock does).
+4. `scripts/acceptance.sh --only 2.6.6` against that state:
+   ```
+   AssertionError: apps/specs/pnia-identity.openapi.yaml: undeclared=['mother_name'] missing=[]
+   FAIL 2.6.6 — field conformance — both responses carry exactly the fields their contract declares (G5.9)
+   ```
+   The failure names the field **NAME** only — no value (`Awa Jallow`, the
+   seeded `mother_name` for this NIN) appears anywhere in the check's own
+   output, confirming the purpose-limitation guarantee held under a real
+   failure, not just in the code that was supposed to guarantee it.
+5. `app-pnia` restarted once more (reloading the reverted spec) and
+   `2.6.6` passed clean again. `git status` showed no diff on
+   `apps/specs/` — the spec file itself was never left changed.
+
+This is the property that "holds by construction" only while the mock
+derives its own output from the same file `contract_fields()` reads — see
+the "`Service.spec_url`..." row above for the related, pre-existing fetch
+surface. The moment a real backend replaces the mock (KP4), this timing gap
+is not synthetic; it is the normal case.
 
 ## A real hosted join and un-join, end to end (`apps/join-api`)
 

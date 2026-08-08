@@ -246,6 +246,11 @@ def test_a_hosted_member_is_told_nothing_about_docker(client):
 def _stub_walk(monkeypatch, state="RETIRED"):
     def fake_unjoin(record, pack_dir, *, secrets, save, **kwargs):
         record["state"] = state
+        if state == "RETIRED":
+            # Matches real job.unjoin(): retired_at is set exactly when state
+            # becomes RETIRED (job.py's own "record['retired_at'] = _now()"
+            # right after "record['state'] = 'RETIRED'").
+            record["retired_at"] = "2026-08-08T00:00:00+00:00"
         save(record)
         return record
 
@@ -268,6 +273,16 @@ def test_a_completed_walk_delegates_the_config_half_to_member_sh(client, monkeyp
     assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
     manifest = (app_module.PACK_DIR / "manifest.yaml").read_text()
     assert "\n    ptsb:\n" not in manifest
+
+    # The onboarding folder survives config removal, and now carries
+    # 99-retirement.md, written by this endpoint (not by scripts/member.sh
+    # remove, which only ran the config half above).
+    onboarding = app_module.PACK_DIR / "onboarding" / "ptsb"
+    assert onboarding.is_dir()
+    retirement = (onboarding / "99-retirement.md").read_text()
+    assert "2026-08-08T00:00:00+00:00" in retirement
+    assert record["id"] in retirement
+    assert "REVERSAL_ORDER" in retirement
 
 
 def test_the_global_constraint_holds_after_the_round_trip(client, monkeypatch):

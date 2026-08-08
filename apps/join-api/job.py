@@ -611,7 +611,9 @@ def _default_run_hurl(
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _default_r1_call(url: str, client_header: str) -> tuple[bool, str]:
+def _default_r1_call(
+    url: str, client_header: str, declared: frozenset[str], required: frozenset[str]
+) -> tuple[bool, str, dict[str, list[str]] | None]:
     """The r1 reachability call, adapted from apps/console/xroad.py's
     exchange() -- a plain GET on the consumer's proxy (:8080) with an
     X-Road-Client header, verify=False for the same Test CA reason. Not
@@ -623,19 +625,37 @@ def _default_r1_call(url: str, client_header: str) -> tuple[bool, str]:
     (Server.ServerProxy.AccessDenied) is a fault -- it means the ACL step did
     not take -- and so is a proxy-level SSL failure, which is what OCSP
     staleness looks like from here.
+
+    On a non-fault response, also compares the response body's own field
+    names against `declared`/`required` (validate.py's contract_fields(),
+    persisted on the record at validation time -- never re-fetched here: the
+    post-approval job path must not add a second fetch of an
+    applicant-controlled URL). `returned - declared` is undeclared (the
+    serious case, purpose limitation failing silently) and
+    `required - returned` is missing. Returns that diff as a third element,
+    field NAMES only, never values -- a response body must never be logged,
+    persisted or returned whole -- None when there is nothing to report or
+    nothing to compare against.
     """
     try:
         resp = httpx.get(url, headers={"X-Road-Client": client_header}, verify=False, timeout=10.0)
     except httpx.HTTPError as exc:
-        return False, f"{url}: {exc}"
+        return False, f"{url}: {exc}", None
     try:
         body = resp.json()
     except ValueError:
-        return True, f"{url}: HTTP {resp.status_code}"
+        return True, f"{url}: HTTP {resp.status_code}", None
     fault = body.get("type") if isinstance(body, dict) else None
     if isinstance(fault, str) and (fault.startswith("Server.") or fault.startswith("Client.")):
-        return False, f"{url}: HTTP {resp.status_code} {fault} {body.get('message', '')}".strip()
-    return True, f"{url}: HTTP {resp.status_code}"
+        return False, f"{url}: HTTP {resp.status_code} {fault} {body.get('message', '')}".strip(), None
+    mismatch = None
+    if isinstance(body, dict) and (declared or required):
+        returned = frozenset(body.keys())
+        undeclared = sorted(returned - declared)
+        missing = sorted(required - returned)
+        if undeclared or missing:
+            mismatch = {"undeclared": undeclared, "missing": missing}
+    return True, f"{url}: HTTP {resp.status_code}", mismatch
 
 
 def _default_server_up(dns_name: str) -> bool:
@@ -839,7 +859,9 @@ def run(
     secrets: dict[str, str],
     save: Callable[[dict], None],
     run_hurl: Callable[[str, str, dict], dict] = _default_run_hurl,
-    r1_call: Callable[[str, str], tuple[bool, str]] = _default_r1_call,
+    r1_call: Callable[
+        [str, str, frozenset[str], frozenset[str]], tuple[bool, str, dict[str, list[str]] | None]
+    ] = _default_r1_call,
     server_up: Callable[[str], bool] = _default_server_up,
     retry_interval: float = RETRY_INTERVAL_SECONDS,
     blocked_poll_interval: float = BLOCKED_POLL_INTERVAL_SECONDS,
@@ -953,7 +975,9 @@ def run(
                         record["last_completed_step"] = step.id
                         save(record)
                         continue
-                _execute(step, variables, context, session, pack_dir, run_hurl, r1_call, record, retry_interval)
+                _execute(
+                    step, variables, context, session, pack_dir, run_hurl, r1_call, record, retry_interval, secrets
+                )
             except StepFailure as exc:
                 record["state"] = "FAILED"
                 record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
@@ -1002,6 +1026,7 @@ def _execute(
     r1_call,
     record: dict,
     retry_interval: float,
+    secrets: dict[str, str],
 ) -> None:
     # The r1 step's own budget, never the run's -- see R1_RETRY_BUDGET. Its
     # counter is local for the same reason: record["retry_budget_left"]
@@ -1012,10 +1037,27 @@ def _execute(
     budget = R1_RETRY_BUDGET if r1 else record.get("retry_budget_left", RETRY_BUDGET)
     while True:
         if r1:
-            ok, detail = r1_call(step.r1["url"], step.r1["client_header"])
+            contract = (record.get("contract_fields") or {}).get(step.r1["service"], {})
+            declared = frozenset(contract.get("declared", []))
+            required = frozenset(contract.get("required", []))
+            ok, detail, mismatch = r1_call(step.r1["url"], step.r1["client_header"], declared, required)
             if ok:
-                record["verified"] = True
-                record["verified_by"] = detail
+                if mismatch:
+                    # A route to something that does not match its contract --
+                    # not an X-Road fault, so not a reason to keep retrying.
+                    # The member is joined; its service does not conform --
+                    # two different facts, consistent with retry-budget
+                    # exhaustion below, which also leaves the member ACTIVE
+                    # with verified: false rather than failing the job.
+                    record["verified"] = False
+                    record["verified_by"] = scrub(
+                        f"{detail} -- response does not match its contract "
+                        f"(undeclared: {mismatch['undeclared']}, missing: {mismatch['missing']})",
+                        secrets,
+                    )
+                else:
+                    record["verified"] = True
+                    record["verified_by"] = detail
                 return
             failure = f"{OCSP_MARKER} -- {OCSP_HINT}\n\n{detail}" if OCSP_MARKER in detail else detail
         else:
@@ -1337,7 +1379,7 @@ def unjoin(
                 if step.must_rerun:
                     _execute(
                         step, {**constants, **context, **session}, context, session,
-                        pack_dir, run_hurl, None, record, retry_interval,
+                        pack_dir, run_hurl, None, record, retry_interval, secrets,
                     )
 
             for step in walk:
