@@ -1,10 +1,21 @@
 # KP2 build pack — alignment design
 
-**Status:** decision record. All decisions in §6 are taken and implemented;
-this document is kept as the reasoning behind them (§6) and the
-component-completeness reference against the onboarding path (§8), not as an
-open plan.
-**Closes:** the findings in `docs/onboarding-path-gap-analysis.md`.
+**Status:** decision record — frozen. Kept for the reasoning in §6, not as a
+statement of what the pack contains today.
+
+> **Correction (2026-08-08).** Parts of §3, §4.2, §5, §6a and §8 below describe a
+> data layer that the later reduction wave did not build. `configs/governance/governance.yaml`,
+> `configs/legal/lawful-basis.yaml` and `configs/x-road-bus/conventions.yaml` do
+> not exist, and `join-policy.yaml` carries no BB pattern register. Those passages
+> are annotated in place rather than rewritten — this is a decision record, the
+> decisions were genuinely taken here, and what changed afterwards is what was
+> built. **Current status lives in `docs/path-conformance.md`, generated from
+> `docs/path-conformance.yaml`, whose every cited evidence path is
+> existence-checked by `tests/test_path_conformance.py`. Where this document and
+> that one disagree, that one is right.**
+
+**Closes:** the findings in `docs/onboarding-path-gap-analysis.md` — with the
+exceptions the correction above names.
 **Decision record:** `docs/topology-profile-decision.md` (analysis and sources).
 **Scope:** how the pack gets from what is implemented today to a pack that
 demonstrates the member-onboarding workflow end to end, without growing into
@@ -123,13 +134,15 @@ finding on that basis.**
 manifest.yaml                       index: capability id → BB → config → prompt
                                     → acceptance, video_ref retained
 configs/
-  governance/governance.yaml        roles, RACI, which role owns which gate
-  legal/lawful-basis.yaml           the decree's basis per exchange
+  governance/governance.yaml        NOT BUILT -- see the correction at the top
+  legal/lawful-basis.yaml           NOT BUILT -- lawful_basis is a payload
+                                    field instead (schema.py:90, :144)
   semantic/semantic-map.yaml        entities + OneRoster/CEDS/11179 anchors
   x-road-bus/
-    federation.yaml                 was 2.1
+    federation.yaml                 shipped as federation-core.yaml
     once-only-exchange.yaml         was 2.6
-    join-policy.yaml                was 2.7  + BB pattern register
+    join-policy.yaml                was 2.7; BB pattern register NOT BUILT --
+                                    the file admits exactly four keys
   member-pnia/pnia.yaml             provider — identity      (own server)
   member-plr/plr.yaml               provider — enrolment     (own server)
   member-pnea/pnea.yaml             consumer; denied caller  (own server)
@@ -195,24 +208,39 @@ The three missing layers KP2 teaches and the pack did not carry. All are config
 plus one validator hook each (P1). Member-light, so doing them before the
 reduction cost nothing.
 
-- **`configs/governance/governance.yaml`** (**K-02, G-02**) — the RACI as data:
+- ~~**`configs/governance/governance.yaml`** (**K-02, G-02**) — the RACI as data:
   per gate, the accountable and responsible role. `POST /approve` then requires
   the role the RACI names accountable for admission, which is a second bearer
-  token, not a workflow engine.
-- **`configs/legal/lawful-basis.yaml`** (**K-02**) — the decree's basis per
-  exchange. Feeds 5.2's sixth requirement and G5's data-protection envelope.
+  token, not a workflow engine.~~
+  **NOT BUILT.** `POST /approve` (`apps/join-api/app.py:493`) requires the
+  single operator token plus a `decision_reference` checked only for
+  non-emptiness. There is no second role. K-02 and G-02 are **open**, and
+  §8.1's "G1 admission authority ✓" below is wrong.
+- ~~**`configs/legal/lawful-basis.yaml`** (**K-02**) — the decree's basis per
+  exchange. Feeds 5.2's sixth requirement and G5's data-protection envelope.~~
+  **NOT BUILT.** `lawful_basis` is a free-text field on `Service` and
+  `MemberRequirements` (`apps/join-api/schema.py:90, :144`), required only for
+  consumer-only members (`validate.py:349-366` returns early when
+  `payload.services` is non-empty) — so no provider states one.
 - **`configs/semantic/semantic-map.yaml`** (**K-03**) — the Module 4 map the two
   member configs already cite and that did not exist. `validate.py` check 8 goes
   from presence to conformance.
 - **BB pattern register** in `join-policy.yaml` + optional `pattern:` on
-  `schema.Semantic` (**G-04**) — classify the two live exchanges as
-  *Digital Registries* lookups; one line in `README.md` naming the pack as an
-  Information Mediator instance.
-- **`configs/x-road-bus/conventions.yaml`**, added following review of path
-  §0.5 and §1a — identifier charset, member code scheme, subsystem code
-  scheme, Security Server host naming, as data. `validate.py`'s identifier
-  charset fix reads its pattern from here rather than hardcoding it, turning a
-  constant into a published, testable convention.
+  `schema.Semantic` (**G-04**) — **half built.** The `ExchangePattern` enum
+  exists (`apps/join-api/schema.py:99-118`) and both providers set it, but the
+  **register was not added**: `join-policy.yaml` admits exactly four keys and
+  bans a fifth by design, and nothing validates `pattern:` against anything
+  (`apps/join-api/writer.py:146` — "never resolved against anything").
+- ~~**`configs/x-road-bus/conventions.yaml`** — identifier charset, member code
+  scheme, subsystem code scheme, Security Server host naming, as data.
+  `validate.py`'s identifier charset fix reads its pattern from here rather
+  than hardcoding it.~~
+  **NOT BUILT, and deliberately reversed.** The charset is a literal in
+  `apps/join-api/validate.py:448`, whose own comment argues for it: "this
+  constant is that page's cited source, not a copy of a value that lives
+  somewhere else. One rule, one place, no indirection (design decision 1)."
+  The four conventions are published as prose in `docs/conventions.md`; only
+  the charset is enforced.
 
 **Exit:** `--live` green. Topology unchanged, so goldens still match.
 
@@ -315,7 +343,7 @@ Stated so scope creep has something to bounce off.
 |---|---|---|
 | A service catalogue (collector, portal) | A generated `catalogue-entry.md` per service | Path §6 makes the catalogue an operator building block; the pack demonstrates the *entry* and the SLA attachment, which is the G5 gap |
 | A membership-agreement workflow | A reference and a stub in `onboarding/<key>/` | P2 — a signed instrument is not a demo artefact; the gate it creates is |
-| A Steering Committee as a running system | A role in `governance.yaml` + a second token on `/approve` | P1 — the finding is that admission has no accountable role, not that it has no UI |
+| A Steering Committee as a running system | ~~A role in `governance.yaml` + a second token on `/approve`~~ → **as built:** a `decision_reference` on `/approve`, checked for non-emptiness only | Revised: in both reference instantiations admission is decided outside any system (Estonia via RIHA, Finland by form to DVV), and path §4 says G0–G3 are "not automatable, and should not be". The enforceable artefact is the *reference to* the decision, not the committee |
 | Retention/archival machinery | Two sentences beside the teardown instruction | Demo teardown deleting a volume is fine; the silence about retention is not |
 | BB implementations | The `pattern:` classification only | KP3 |
 | Real backends | The Joget seam stays as-is | KP4 |
@@ -461,20 +489,22 @@ deferrals.**
 | 3 | Time-Stamping Authority | **✓ simulated, declared** | `ss.tsa_capture` / `ss.tsa_post` |
 | 4 | Member classes defined | **✓** | `cs.member_class`; `join.member_class: GOV` |
 | 5 | **Identifier and naming conventions published** | **✗ GAP** | See §8.3 |
-| 6 | Building-block pattern register | **✓** | `docs/conventions.md`, the data layers |
+| 6 | Building-block pattern register | **✗ GAP** | An unvalidated `ExchangePattern` enum only; no register — see §4.2 |
 
 **§6a — the semantic layer** (asked about directly)
 
 | Tier | Component | Status | Where |
 |---|---|---|---|
-| 1 | BB pattern classification | **✓** | `pattern:` on `schema.Semantic`, register in `join-policy.yaml` |
+| 1 | BB pattern classification | **~ classified, not registered** | `pattern:` on `schema.Semantic`; **no register in `join-policy.yaml`**, and nothing validates the value |
 | 2 | Sector entity + standards anchor | **✓** | `semantic-map.yaml` with OneRoster / CEDS / ISO 11179 |
 | 3 | Member instance | **✓ already present** | `semantic:` block in member config |
 
-**The semantic layer is complete**, and it is the cleanest of the three layers
-KP2 teaches — it goes from a free-text string citing a map that does not
-exist, to a three-tier structure with a published map and a validator that
-checks conformance rather than presence.
+**Tiers 2 and 3 are complete** — a free-text string citing a map that did not
+exist became a published map plus a validator that checks conformance rather
+than presence (`validate.py:310-346`). **Tier 1 is classified but not
+registered and not checked**, so cross-sector comparability is asserted in the
+member config and enforced nowhere. Neither tier reaches the onboarding record:
+`writer.render_onboarding_tree()` writes no semantic file.
 
 **§6 — the operator's own building blocks**
 
@@ -487,10 +517,19 @@ checks conformance rather than presence.
 
 **Gates**
 
-G1 admission authority ✓ (governance config). G2 hosting decision ✓ — but see
-the defect below. G3 ✓ simulated. G5 contract + semantic + ACL ✓, SLA ✓. GX ✓
-reversal + retention note; inbound-ACL revocation → KP3. Two-track shape ✓
-labelled.
+> **Superseded by `docs/path-conformance.md`.** This paragraph's ✓ marks
+> conflated "built", "simulated" and "labelled", which is how the G1 error below
+> survived review. The generated matrix uses four statuses and no ✓, and its
+> evidence is existence-checked.
+
+~~G1 admission authority ✓ (governance config).~~ **Wrong — G1 is open**; see
+§4.2. G2 hosting decision: the *structure* is checked (`validate.py:219-275`),
+the path's exit test (is the hosting choice compatible with the member's role?)
+is not. G3 simulated, declared. G5 contract + ACL + SLA built; semantic tier 1
+unchecked; field-conformance exit test absent. GX reversal + retention note;
+inbound-ACL revocation → KP3. Two-track shape **labelled, not built** — one
+Central Server, one CA/TSA, one anchor, so path §1's separation obligation is
+unmet by construction.
 
 ### 8.2 Defect in this design: the default profile violates G2
 
@@ -547,10 +586,13 @@ treats these as ecosystem decisions made once, before member #1:
 
 The path is blunt about why this matters: *"a convention retrofitted after fifty
 members is not retrofitted at all"* and *"certificates, DNS, firewall rules and
-monitoring all key off the host name."* `configs/x-road-bus/conventions.yaml`
-carries the four rules as data, with `validate.py`'s charset check reading its
-pattern from there rather than hardcoding it — a constant turned into a
-published, testable convention, closing §0.5 and §1a together.
+monitoring all key off the host name."*
+
+**This gap is still open.** `configs/x-road-bus/conventions.yaml` was never
+created; see §4.2. The four rules are published as prose in
+`docs/conventions.md`, and only the identifier charset is enforced
+(`validate.py:448`, a literal). §0.5 and §1a are therefore *published* but
+not *testable*, which is the weaker half of what this section claimed.
 
 ### 8.4 Conscious deferrals — complete list
 

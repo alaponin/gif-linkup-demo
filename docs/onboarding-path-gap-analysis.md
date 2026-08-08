@@ -1,8 +1,11 @@
 # KP2 build pack vs. the member onboarding path — gap analysis
 
-**Status: all findings closed** — `docs/onboarding-alignment-design.md`
-addressed every K-/G-/S- finding below; §4-6 gives the compact resolution
-table. Kept for: §1's reusable "is the step visible?" test, §2's toolkit-gap
+**Status: superseded as a status document — see `docs/path-conformance.md`.**
+An external review on 2026-08-08 found that three findings below are recorded
+as closed by files that do not exist (K-02, G-02, G-04; see §4-6). The
+resolution table is corrected in place and is no longer authoritative: current
+status is generated from `docs/path-conformance.yaml` and existence-checked by
+`tests/test_path_conformance.py`. Kept for: §1's reusable "is the step visible?" test, §2's toolkit-gap
 pattern, §7's KP3/KP4 handoffs, and §8's toolkit amendments — all still
 forward-looking, unlike the finding write-ups.
 **Analysed:** `10-Knowledge-Products/KP2-GIF/KP2-build-pack/`
@@ -121,22 +124,28 @@ amendment**, citing the pack as the demonstration. §7 lists these.
 
 ## 4-6. Resolution status
 
-**All findings below are closed.** They drove `docs/onboarding-alignment-design.md`'s
-implementation, which carries the actual decision reasoning and implementation
-detail; this table keeps only what each finding was and how it closed, for
-anyone tracing a current file back to the gap that produced it.
+**Most findings below are closed; three are not.** They drove
+`docs/onboarding-alignment-design.md`'s implementation, which carries the
+decision reasoning; this table keeps only what each finding was and how it
+closed, for anyone tracing a current file back to the gap that produced it.
+
+> **Corrected 2026-08-08.** K-02, G-02 and G-04 were recorded as closed by
+> `configs/governance/governance.yaml` and a BB pattern register in
+> `join-policy.yaml`. Neither file exists. The rows below now say what was
+> actually delivered. This is the failure mode `docs/path-conformance.yaml`
+> and its existence test were added to prevent.
 
 | ID | Was | Severity | Closed by |
 |---|---|---|---|
 | K-01 | Subtopics 5.2/5.3 (Member Requirements, SLA) had no build-pack artefact | High | `member_requirements`/`sla` on `JoinPayload`, rendered per member |
-| K-02 | Module 3's Governance Pack (RACI, admission role) did not exist in the pack | High | `configs/governance/governance.yaml`; `POST /approve` requires the accountable role |
+| K-02 | Module 3's Governance Pack (RACI, admission role) did not exist in the pack | High | **OPEN.** `configs/governance/governance.yaml` was never created. `POST /approve` requires the single operator token plus a non-empty `decision_reference` (`app.py:493`); there is no accountable role |
 | K-03 | The Module 4 semantic map (OneRoster/CEDS/ISO 11179) had no anchor | Medium | `configs/semantic/semantic-map.yaml`, checked by `validate.py` |
 | K-04 | `video_ref: "?"` for module 2.7 | Low | **Withdrawn**, not fixed — the pack correctly records a capability the curriculum does not yet teach (`docs/onboarding-alignment-design.md` §1) |
 | G-01 | Identifier validation was a denylist, not X-Road 7.3+'s allowlist | High | `_BAD_CHARS` replaced with the allowlist |
-| G-02 | No G0/G1 layer: no eligibility test, no membership agreement, no admission role | High | Governance config + the onboarding-record fields — G0/G1 remain named absences, not stubs, per P2 |
+| G-02 | No G0/G1 layer: no eligibility test, no membership agreement, no admission role | High | **PARTLY OPEN.** G0/G1 are named absences in `00-gates.md` (correct, per P2), but the governance config that was to carry the admission role does not exist, and `_check_lawful_basis` (`validate.py:349`) skips every provider — the applicant class G0 exists to catch |
 | G-03a | GX teardown deleted the message-log archive with no retention note | Low | Two sentences beside the teardown instruction |
 | G-03b | Inbound ACL revocation at GX | — | **Withdrawn as a KP2 defect** — unreachable until a joined member consumes another member's service; re-filed as a KP3/KP4 dependency, §7 below |
-| G-04 | No tier-1 BB pattern classification on a service | Medium | `pattern:` field on `schema.Semantic`, registered in `join-policy.yaml` |
+| G-04 | No tier-1 BB pattern classification on a service | Medium | **HALF CLOSED.** `pattern:` exists on `schema.Semantic` and both providers set it; the register in `join-policy.yaml` was never added (that file admits four keys by design) and nothing validates the value (`writer.py:146`) |
 | G-05 | No SLA artefact, no service-catalogue entry at G5 | Medium | SLA half closed by the onboarding record; catalogue half deferred — see design doc §8.4 |
 | G-06 | Monitoring add-ons not installed at G4 | Medium | Both add-ons confirmed running on every Security Server; collector remains a documented, deliberate gap |
 | G-07 | No per-member onboarding file; `out/join/*.json` is a job log, not a gate register | Medium | `onboarding/<key>/` covering the three gates Topic 5 teaches (5.2/5.3/5.4); seven path-backed gates named as absences, not stubbed (P2) |

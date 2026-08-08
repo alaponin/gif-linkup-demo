@@ -1,0 +1,878 @@
+# Conformance of this build pack against the member onboarding path.
+#
+# THIS FILE IS THE ONLY PLACE THE PACK STATES ITS STATUS AGAINST THE PATH.
+# docs/path-conformance.md is generated from it and must not be hand-edited.
+# Narrative documents (docs/onboarding-alignment-design.md,
+# docs/onboarding-path-gap-analysis.md, docs/production-delta.md) carry
+# reasoning; when they carry a status claim as well, the two drift, and on
+# 2026-08-08 an external review found three findings recorded as closed by
+# files that had never been created. That is the failure this file exists to
+# make impossible: tests/test_path_conformance.py asserts that every `path:`
+# below exists on disk and every `symbol:` is found in it, so a claim can no
+# longer outlive its evidence.
+#
+# Four statuses, and no tick mark -- "checked" is what let "labelled" pass as
+# "built":
+#
+#   implemented   A real artefact or check. If the pack broke it, something
+#                 would fail. Evidence is the check itself.
+#   simulated     Exercised for real, but the fidelity is faked (Test CA,
+#                 mock backends, synthetic data). Legitimate in a build pack.
+#                 Evidence must include where the simulation is declared.
+#   named-absence Not built, and the pack says so where a reader following it
+#                 will meet the absence. Evidence is that naming.
+#   out-of-scope  Deliberately not this pack's job. Requires `rationale`.
+#
+# A clause with no honest home in those four is a defect, not a fifth status.
+
+meta:
+  path_document: 08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md
+  path_version: v0.2 (rev. 4 Aug 2026)
+  reviewed: 2026-08-08
+  generated_output: docs/path-conformance.md
+  generator: scripts/render_path_conformance.py
+  test: tests/test_path_conformance.py
+
+clauses:
+
+# -- 0. Ecosystem prerequisites ----------------------------------------------
+
+- id: P0.1
+  section: "0"
+  clause: Central Server operating
+  status: implemented
+  evidence:
+    - {path: hurl/scenarios/00-cs-init.hurl}
+    - {path: docker-compose.yml, symbol: "central-server"}
+
+- id: P0.2
+  section: "0"
+  clause: Certification Authority
+  status: simulated
+  note: >-
+    A Test CA signs any CSR it is handed, with no identity vetting. Real for
+    the purpose of proving the certificate steps; not a trust service.
+  evidence:
+    - {path: hurl/scenarios/01-cs-trust-services.hurl}
+    - {path: docs/production-delta.md, symbol: "Test CA"}
+
+- id: P0.3
+  section: "0"
+  clause: Time-Stamping Authority
+  status: simulated
+  evidence:
+    - {path: hurl/templates/fragments/SS_TSA_POST.hurl.tmpl}
+    - {path: docs/production-delta.md, symbol: "Test CA"}
+
+- id: P0.4
+  section: "0"
+  clause: Member classes defined
+  status: implemented
+  note: >-
+    Single-class federation (GOV), asserted consistent between the join policy
+    and the manifest at generate time.
+  evidence:
+    - {path: configs/x-road-bus/join-policy.yaml, symbol: "member_class"}
+    - {path: hurl/generate.py, symbol: check_join_policy}
+
+- id: P0.5
+  section: "0"
+  clause: Identifier and naming conventions published
+  status: implemented
+  note: >-
+    Published as prose; only the identifier character set is enforced in code.
+    The conventions-as-data file this was once planned as was not built, and
+    was deliberately reversed (one rule, one place, no indirection).
+  evidence:
+    - {path: docs/conventions.md}
+    - {path: apps/join-api/validate.py, symbol: _check_identifier_characters}
+
+- id: P0.6
+  section: "0"
+  clause: Building-block pattern register
+  status: named-absence
+  note: >-
+    An ExchangePattern enum exists and both providers set a value, but there
+    is no register of recognised patterns and nothing validates the value.
+    Tier 1 of the semantic layer is therefore classification without a
+    vocabulary.
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: "never resolved"}
+    - {path: docs/onboarding-alignment-design.md, symbol: "BB pattern register"}
+
+# -- 1. The two-track shape --------------------------------------------------
+
+- id: P1.1
+  section: "1"
+  clause: A development track distinct from the production track
+  status: named-absence
+  note: >-
+    There is one track. The pack self-identifies as an instance of the
+    development track rather than implementing the distinction.
+  evidence:
+    - {path: docs/production-delta.md, symbol: "development track"}
+
+- id: P1.2
+  section: "1"
+  clause: >-
+    Operator obligation: the development environment is genuinely separate --
+    its own Central Server, CA/TSA and trust anchor
+  status: named-absence
+  note: >-
+    Unmet by construction: one Central Server, one CA, one TSA, one anchor.
+    The prohibition on real personal data is enforced by authorship, not by
+    membership terms.
+  evidence:
+    - {path: docs/production-delta.md, symbol: "development track"}
+    - {path: configs/x-road-bus/federation-core.yaml}
+
+- id: P1a.1
+  section: 1a
+  clause: Identifier character set (X-Road 7.3+ allowlist, XRDDEV-1960)
+  status: implemented
+  note: Positive allowlist match, rejection message names the permitted set.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: XRDDEV-1960}
+    - {path: docs/conventions.md}
+
+- id: P1a.2
+  section: 1a
+  clause: Member code scheme
+  status: implemented
+  note: Published; collision-checked against existing members at join time.
+  evidence:
+    - {path: docs/conventions.md}
+    - {path: apps/join-api/validate.py, symbol: _check_collision}
+
+- id: P1a.3
+  section: 1a
+  clause: Subsystem code scheme (one per system, not per service)
+  status: implemented
+  evidence:
+    - {path: docs/conventions.md}
+    - {path: apps/join-api/schema.py, symbol: subsystem}
+
+- id: P1a.4
+  section: 1a
+  clause: Security Server host naming convention
+  status: named-absence
+  note: >-
+    The pack applies ss-<key> consistently but does not check it, and the
+    convention encodes neither role nor environment nor sequence -- so it
+    cannot distinguish a development server from a production one, which is
+    what the path's example convention exists to do.
+  evidence:
+    - {path: docs/conventions.md}
+
+# -- G0 ----------------------------------------------------------------------
+
+- id: G0.1
+  section: G0
+  clause: Eligibility test against the ecosystem's admission policy
+  status: named-absence
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: "Application (G0)"}
+    - {path: onboarding/plr/00-gates.md, symbol: "not implemented in this demo"}
+
+- id: G0.2
+  section: G0
+  clause: Membership agreement signed by the member's senior representative
+  status: named-absence
+  note: >-
+    Named in every member's gate register. The path's separation of the
+    membership agreement from the Member Requirements is reflected: the
+    Requirements half is built.
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: "signed membership agreement"}
+    - {path: onboarding/plr/02-requirements.md}
+
+- id: G0.3
+  section: G0
+  clause: Member names a Technical Focal Point and, where personal data flows, a DPO
+  status: named-absence
+  note: >-
+    A free-text technical_contact is required and rendered. There is no DPO
+    field and no role semantics on the contact -- the absence is not currently
+    named anywhere a reader would meet it.
+  evidence:
+    - {path: apps/join-api/schema.py, symbol: technical_contact}
+    - {path: onboarding/plr/02-requirements.md}
+
+- id: G0.4
+  section: G0
+  clause: >-
+    Exit test -- does the applicant hold a legal mandate for data it proposes
+    to expose as authoritative?
+  status: named-absence
+  note: >-
+    Not testable. _check_lawful_basis returns early when the payload declares
+    services, so the requirement applies only to consumer-only members -- the
+    inverse of the applicant class the exit test exists to catch. Neither
+    canonical provider states a lawful basis for the data it publishes.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_lawful_basis}
+    - {path: configs/member-plr/plr.yaml, symbol: lawful_basis}
+
+# -- G1 ----------------------------------------------------------------------
+
+- id: G1.1
+  section: G1
+  clause: The Steering Committee decides admission; the Operating Authority recommends
+  status: out-of-scope
+  rationale: >-
+    In both reference instantiations the decision is taken outside any system
+    (Estonia: a RIHA registry record; Finland: a form to DVV), and path 4
+    states G0-G3 are "not automatable, and should not be". Building a
+    committee role would model a control no X-Road operator has. What is
+    in scope is the coupling -- a technical join that cannot complete without
+    a reference to the decision -- which is G1.2.
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "Steering Committee"}
+
+- id: G1.2
+  section: G1
+  clause: The technical join is coupled to the admission decision
+  status: implemented
+  note: >-
+    POST /approve refuses without a decision_reference and rejects the
+    applicant token outright. The reference is checked for non-emptiness only,
+    and is not yet written into a per-member admission record -- so the
+    coupling exists at the API boundary but leaves no gate-exit artefact.
+  evidence:
+    - {path: apps/join-api/app.py, symbol: decision_reference}
+    - {path: apps/join-api/app.py, symbol: require_operator}
+
+- id: G1.3
+  section: G1
+  clause: Exit test -- the allocated identity is unique and legal
+  status: implemented
+  note: >-
+    Both halves. Uniqueness across directory, manifest, DNS name and Security
+    Server code; legality against the 7.3+ allowlist.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_collision}
+    - {path: apps/join-api/validate.py, symbol: _bad_identifier}
+
+# -- G2 ----------------------------------------------------------------------
+
+- id: G2.1
+  section: G2
+  clause: Decide own Security Server vs hosted as a client on another's
+  status: implemented
+  note: >-
+    Both shapes are built and both have been run live. Hosting is the default
+    for a joined member; hosting chains are rejected.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_hosting}
+    - {path: configs/x-road-bus/join-policy.yaml, symbol: default_hosting}
+    - {path: apps/join-api/job.py, symbol: build_sequence}
+
+- id: G2.2
+  section: G2
+  clause: >-
+    The host's token holds the joined member's signing key -- a delegation
+    with no counterpart in the obligation set
+  status: implemented
+  note: >-
+    Implemented exactly as the path describes, including the consequence: the
+    SIGN key id must be correlated by certificate owner_id, never by label,
+    because a shared token carries one identically-labelled key per hosted
+    member. The delegation is not recorded in the member's onboarding record.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: _sign_key_id}
+    - {path: hurl/generate.py, symbol: build_hosted_client}
+
+- id: G2.3
+  section: G2
+  clause: >-
+    Exit test -- is the hosting choice compatible with the member's role? An
+    authoritative personal-data publisher is not hosted on a peer's server
+  status: named-absence
+  note: >-
+    Enforced nowhere. The reasoning exists as a design decision (it is why the
+    canonical topology gives every member its own server rather than hosting
+    the identity register on a peer), but a submitted payload that hosts an
+    authoritative provider on a peer validates today.
+  evidence:
+    - {path: docs/onboarding-alignment-design.md, symbol: "violates G2"}
+
+- id: G2.4
+  section: G2
+  clause: Publish minimum Security Server sizing so procurement is not a negotiation
+  status: named-absence
+  note: >-
+    The pack publishes measured demo figures (per-server RAM at steady state,
+    container counts) but no minimum production dimensioning of the kind the
+    path's Finland example gives.
+  evidence:
+    - {path: README.md, symbol: GiB}
+
+# -- G3 ----------------------------------------------------------------------
+
+- id: G3.1
+  section: G3
+  clause: The CA issues member-grade certificates; own-server gets auth and sign, hosted gets sign only
+  status: simulated
+  note: >-
+    The asymmetry is real -- a hosted member never generates an auth key. The
+    issuance is not: the Test CA signs any CSR presented.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: "ss.auth_key_csr"}
+    - {path: docs/production-delta.md, symbol: "Test CA"}
+
+- id: G3.2
+  section: G3
+  clause: Exit test -- the chain validates from the member's own environment
+  status: simulated
+  note: >-
+    Proxied rather than tested: an OCSP marker in the reachability call
+    detects stale Test-CA revocation state from the caller's side, which is
+    the same failure surface but not the same assertion.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: OCSP_MARKER}
+
+- id: G3.3
+  section: G3
+  clause: Trust services are a third party; their SLA sets G3's duration and belongs in the risk register
+  status: out-of-scope
+  rationale: >-
+    A demo cannot have a third-party trust-service dependency. The path's own
+    remedy is a risk-register row in TK-IO-13, which is a framework artefact,
+    not a pack artefact.
+  evidence:
+    - {path: docs/production-delta.md, symbol: "Test CA"}
+
+# -- G4 ----------------------------------------------------------------------
+
+- id: G4.1
+  section: G4
+  clause: >-
+    Install, register with the Central Server, obtain and activate
+    certificates, configure timestamping
+  status: implemented
+  note: Path steps 1-6, in order, driven over the admin API against a live server.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: build_sequence}
+    - {path: hurl/steps.py, symbol: REGISTRY}
+
+- id: G4.2
+  section: G4
+  clause: Network and firewall -- publish the ecosystem's message ports
+  status: implemented
+  evidence:
+    - {path: docs/production-delta.md, symbol: "5500"}
+
+- id: G4.3
+  section: G4
+  clause: Host naming per 1a
+  status: named-absence
+  note: See P1a.4 -- applied by convention, not checked, and carries no environment field.
+  evidence:
+    - {path: docs/conventions.md}
+
+- id: G4.4
+  section: G4
+  clause: Monitoring add-ons installed on the Security Server at G4
+  status: implemented
+  note: >-
+    Both add-ons run on every Security Server, and a regression test refuses
+    any server that resolves to a slim Sidecar image without them. This is the
+    asymmetric-cost item the path names: trivial at G4, a campaign later.
+  evidence:
+    - {path: tests/test_addons.py, symbol: test_every_security_server_uses_the_full_non_slim_sidecar_image}
+    - {path: acceptance/member.md, symbol: xroad-opmonitor}
+
+- id: G4.5
+  section: G4
+  clause: Configuration tooling rather than bespoke scripts
+  status: implemented
+  note: >-
+    Config-as-code over the sanctioned admin API rather than hand
+    configuration, which is the property the path's recommendation protects.
+    The pack generates its own scenarios rather than using the NIIS Security
+    Server Toolkit or the Ansible playbooks the path names.
+  evidence:
+    - {path: hurl/generate.py}
+    - {path: hurl/README.md}
+
+- id: G4.6
+  section: G4
+  clause: Exit test part 1 -- the server appears in global configuration as registered and active
+  status: implemented
+  evidence:
+    - {path: acceptance/join-member.md, symbol: "REGISTERED"}
+    - {path: apps/join-api/job.py, symbol: _probe_auth_cert_registered}
+
+- id: G4.7
+  section: G4
+  clause: Exit test part 2 -- the conformance suite passes without waivers
+  status: implemented
+  evidence:
+    - {path: scripts/acceptance.sh}
+    - {path: scripts/verify.sh}
+
+- id: G4.8
+  section: G4
+  clause: Exit test part 3 -- is its monitoring data arriving centrally?
+  status: named-absence
+  note: >-
+    Add-ons emit to no collector. Deliberate: an installed add-on with a
+    declared absent collector is the pack's counter-example for the path's own
+    point, and adding X-Road Metrics later closes it without a retrofit.
+  evidence:
+    - {path: docs/onboarding-alignment-design.md, symbol: "remains unmet"}
+
+# -- G5 ----------------------------------------------------------------------
+
+- id: G5.1
+  section: G5
+  clause: Artefact 1 -- the service contract (OpenAPI), submitted to the OA
+  status: implemented
+  note: >-
+    Fetched and parsed at validation time, not merely declared; operations are
+    screened against the join policy's allowed methods. The contract is
+    referenced by URL and is not copied into the onboarding record.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_backend_reachability}
+    - {path: apps/join-api/validate.py, symbol: _check_allowed_methods}
+
+- id: G5.2
+  section: G5
+  clause: Artefact 2 tier 1 -- which GovStack building-block pattern this exchange instantiates
+  status: named-absence
+  note: Classified on the payload, validated against nothing. See P0.6.
+  evidence:
+    - {path: apps/join-api/schema.py, symbol: ExchangePattern}
+    - {path: apps/join-api/writer.py, symbol: "never resolved"}
+
+- id: G5.3
+  section: G5
+  clause: Artefact 2 tier 2 -- the member's fields mapped onto the published sector vocabulary
+  status: implemented
+  note: >-
+    Conformance, not presence: the entity must be a key in the published map
+    and every declared field must be declared for that entity. The mapping is
+    not written into the onboarding record.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_purpose_limitation}
+    - {path: configs/semantic/semantic-map.yaml}
+
+- id: G5.4
+  section: G5
+  clause: Artefact 3 -- the SLA, signed
+  status: implemented
+  note: >-
+    A published service without an SLA is rejected; one signed record per
+    service is rendered into the member's onboarding folder. The values are
+    illustrative, and the record is attached to the member rather than
+    discoverable with the service.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_sla_required}
+    - {path: onboarding/plr/03-sla/enrolment-api.md}
+
+- id: G5.5
+  section: G5
+  clause: Artefact 4 -- the access-control list, exactly the subjects the policy names
+  status: implemented
+  note: Every subject resolved against the manifest; self-grants rejected; applied one entry per subject.
+  evidence:
+    - {path: apps/join-api/validate.py, symbol: _check_acl_sanity}
+    - {path: onboarding/plr/05-registration.md}
+
+- id: G5.6
+  section: G5
+  clause: Register -- publish the description, apply the ACL, create the service catalogue entry
+  status: named-absence
+  note: >-
+    Publication and ACL are implemented. There is no catalogue, so the SLA
+    lands on the member record rather than as catalogue metadata -- a smaller
+    version of the orphan-SLA problem the path's G5 addition sets out to fix.
+  evidence:
+    - {path: docs/onboarding-alignment-design.md, symbol: "Service catalogue entry"}
+
+- id: G5.7
+  section: G5
+  clause: Exit test part 1 -- an authorised consumer's call reaches the backend end to end
+  status: implemented
+  note: >-
+    Asserted per joined service at registration time, with its own retry
+    budget; any X-Road fault counts as unverified.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: _default_r1_call}
+    - {path: apps/join-api/job.py, symbol: R1_RETRY_BUDGET}
+
+- id: G5.8
+  section: G5
+  clause: >-
+    Exit test part 2 -- an unauthorised subsystem's identical call is denied by
+    the provider-side access control, not by a transport error
+  status: implemented
+  note: >-
+    The clause the path calls the one usually skipped, and the pack does not
+    skip it: the negative call is routed through the Security Server that
+    hosts the provider, so the denial cannot come from the caller's own server
+    rejecting an unknown client, and the specific X-Road access-denied fault
+    is required rather than any failure.
+  evidence:
+    - {path: scripts/acceptance.sh, symbol: check_264}
+    - {path: scripts/acceptance.sh, symbol: check_r1_denied}
+    - {path: configs/x-road-bus/once-only-exchange.yaml, symbol: unauthorised_client}
+
+- id: G5.9
+  section: G5
+  clause: Exit test part 3 -- the response carries exactly the fields the contract declares
+  status: named-absence
+  note: >-
+    OPEN DEFECT, not a deliberate deferral. Nothing compares a live response
+    against the OpenAPI contract. The property currently holds by construction
+    because the mock provider derives its own output from the same contract,
+    and the nearest assertion compares returned values to the seed row field
+    by field -- so a response that drops a required field, or that adds a
+    field the CSV carries and the contract withholds, passes silently. This is
+    the check that stops being free when a real backend replaces the mock.
+  evidence:
+    - {path: apps/mock-registry/app.py, symbol: DECLARED_FIELDS}
+    - {path: scripts/assert_record.py}
+
+- id: G5.10
+  section: G5
+  clause: Adapter service for a legacy backend that cannot expose a conformant interface
+  status: out-of-scope
+  rationale: >-
+    Every backend here is a mock built to the contract, so the pattern has
+    nothing to adapt. It gets its first real test when real applications
+    arrive behind the same contracts.
+  evidence:
+    - {path: docs/onboarding-path-gap-analysis.md, symbol: adapter}
+
+# -- G6 ----------------------------------------------------------------------
+
+- id: G6.1
+  section: G6
+  clause: Production go-live and handover; the member's monitoring sees what the OA's sees
+  status: named-absence
+  note: Depends on G4.8; a demo has no production go-live to hand over.
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: "Go-live (G6)"}
+    - {path: onboarding/plr/00-gates.md, symbol: "Go-live"}
+
+# -- GX ----------------------------------------------------------------------
+
+- id: GX.1
+  section: GX
+  clause: >-
+    Revoke ACLs, unregister services, unregister the subsystem, delete the
+    client, remove the member from the Central Server
+  status: implemented
+  note: >-
+    A reversal order established live rather than mirrored from the forward
+    sequence -- a naive mirror deletes the signing key before the client that
+    owns it. Every step is probed for absence first, with a per-step reading
+    of what absence looks like.
+  evidence:
+    - {path: hurl/steps.py, symbol: REVERSAL_ORDER}
+    - {path: apps/join-api/job.py, symbol: "def unjoin"}
+    - {path: acceptance/join-member.md, symbol: RETIRED}
+
+- id: GX.2
+  section: GX
+  clause: Revoke ACLs naming the departing member as a subject on another member's service
+  status: named-absence
+  note: >-
+    The reversal revokes the departing member's own service ACLs only.
+    Unreachable today because no joined member holds an inbound grant; it
+    becomes reachable the moment one consumes, and the gap is named beside the
+    reversal order so whoever adds the grant path finds it.
+  evidence:
+    - {path: hurl/steps.py, symbol: "AS A SUBJECT"}
+
+- id: GX.3
+  section: GX
+  clause: Revoke certificates; notify every consumer that held access; remove the catalogue entry
+  status: named-absence
+  note: >-
+    No CA revocation call exists, no consumer notification, and there is no
+    catalogue to remove an entry from. For an own-server member the cleanup is
+    handed to the operator as instructions rather than executed.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: retire_instruction}
+
+- id: GX.4
+  section: GX
+  clause: >-
+    Exit test -- the member is absent everywhere AND its message-log records
+    remain retrievable for the statutory retention period
+  status: named-absence
+  note: >-
+    The absence half is asserted, including from the shared host's token with
+    every other member's key still present. The retention half is inverted:
+    teardown deletes the archive volume, with the consequence stated in prose
+    beside the instruction rather than prevented.
+  evidence:
+    - {path: acceptance/join-member.md, symbol: RETIRED}
+    - {path: runbook.md, symbol: retention}
+
+# -- 3. The technical sequence -----------------------------------------------
+
+- id: S3.1
+  section: "3"
+  clause: Steps 1-6 (own-server) in the stated order, with the stated actors
+  status: implemented
+  note: >-
+    Actor attribution is preserved per step and drives a real wait state: an
+    own-server join blocks before the first member step until the member's
+    server answers.
+  evidence:
+    - {path: hurl/steps.py, symbol: REGISTRY}
+    - {path: apps/join-api/job.py, symbol: BLOCKED_POLL_ATTEMPTS}
+
+- id: S3.2
+  section: "3"
+  clause: >-
+    Steps 7-11 for both shapes, with client-add before signing-key generation
+    before registration
+  status: implemented
+  note: >-
+    The order the path calls load-bearing, and the code documents why: the
+    signer rejects a member id it does not yet recognise as a client.
+  evidence:
+    - {path: hurl/steps.py, symbol: client_not_found}
+    - {path: apps/join-api/job.py, symbol: build_sequence}
+
+- id: S3.3
+  section: "3"
+  clause: Step 12 -- verify authorised call reaches the backend, unauthorised call denied by the ACL
+  status: implemented
+  note: >-
+    Split across two places: the positive half runs inside the join, the
+    negative half in the acceptance suite. See G5.7 and G5.8; the field
+    conformance clause is G5.9 and is open.
+  evidence:
+    - {path: apps/join-api/job.py, symbol: _default_r1_call}
+    - {path: scripts/acceptance.sh, symbol: check_r1_denied}
+
+- id: S3.4
+  section: "3"
+  clause: >-
+    Version fact 1 -- approval of registration requests is an operator policy
+    choice, automatic or manual, since 6.21.0
+  status: named-absence
+  note: >-
+    Only the manual policy is implemented. The join policy declares
+    `approval: explicit` and the key is whitelisted, but its value is never
+    read -- setting it to automatic changes nothing. By the pack's own rule
+    that a key nothing applies is decoration, this key is decoration.
+  evidence:
+    - {path: configs/x-road-bus/join-policy.yaml, symbol: approval}
+    - {path: hurl/generate.py, symbol: JOIN_POLICY_KEYS}
+
+- id: S3.5
+  section: "3"
+  clause: Version fact 2 -- no complementary requests since 7.3.0
+  status: implemented
+  note: >-
+    Registration is submitted from the Security Server and approved on the
+    Central Server; no complementary request is created anywhere.
+  evidence:
+    - {path: hurl/steps.py, symbol: "ss.client_register"}
+    - {path: docs/xroad-770-notes.md, symbol: management-requests}
+
+- id: S3.6
+  section: "3"
+  clause: Version fact 3 -- the management API is the sanctioned integration point
+  status: implemented
+  note: Session-authenticated admin REST API throughout; no UI scripting anywhere.
+  evidence:
+    - {path: apps/console/xroad.py, symbol: "X-XSRF-TOKEN"}
+    - {path: PLAN.md, symbol: "/api/v1"}
+
+# -- 4. What can be automated ------------------------------------------------
+
+- id: S4.1
+  section: "4"
+  clause: G4-G5 technical work is fully automatable via the management APIs, in minutes
+  status: implemented
+  note: >-
+    The pack's central claim, and the one it demonstrably supports. Measured:
+    a hosted join reaches active and verified in well under two minutes; an
+    own-server join in roughly two to three minutes after its server is up,
+    plus a real blocked wait while it stands up.
+  evidence:
+    - {path: README.md, symbol: "two minutes"}
+    - {path: acceptance/join-member.md}
+
+- id: S4.2
+  section: "4"
+  clause: G0-G3 are organisational and should not be automated
+  status: out-of-scope
+  rationale: >-
+    Agreed with rather than worked around. The pack's G0-G3 absences are the
+    path's recommendation applied, not a shortfall -- with the exception of
+    G0.4, where the absence removes a test the path does want somewhere.
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "not implemented in this demo"}
+
+# -- 6. The operator's own building blocks -----------------------------------
+
+- id: S6.1
+  section: "6"
+  clause: Member management / service management portal
+  status: implemented
+  note: >-
+    Demo-grade, and the path says this is the one operator building block with
+    no open-source starting point -- so a demo-grade version is the honest
+    maximum here. A join API plus a one-page console, not a self-service
+    portal.
+  evidence:
+    - {path: apps/join-api/app.py}
+    - {path: apps/console/app.py}
+
+- id: S6.2
+  section: "6"
+  clause: Service catalogue
+  status: named-absence
+  evidence:
+    - {path: docs/onboarding-alignment-design.md, symbol: "Service catalogue"}
+
+- id: S6.3
+  section: "6"
+  clause: Reporting and metrics
+  status: named-absence
+  note: Add-on installed at G4, no collection layer. See G4.8.
+  evidence:
+    - {path: docs/onboarding-alignment-design.md, symbol: "remains unmet"}
+
+- id: S6.4
+  section: "6"
+  clause: Technical monitoring
+  status: named-absence
+  note: As S6.3 -- environmental-monitoring add-on installed, nothing collects from it.
+  evidence:
+    - {path: tests/test_addons.py, symbol: xroad-monitor}
+
+# -- 6a. Building blocks and the semantic layer ------------------------------
+
+- id: S6a.1
+  section: 6a
+  clause: Tier 1 -- BB pattern, cross-sector
+  status: named-absence
+  note: See P0.6 and G5.2.
+  evidence:
+    - {path: apps/join-api/schema.py, symbol: ExchangePattern}
+
+- id: S6a.2
+  section: 6a
+  clause: Tier 2 -- sector entity anchored in sector standards
+  status: implemented
+  evidence:
+    - {path: configs/semantic/semantic-map.yaml, symbol: OneRoster}
+    - {path: apps/join-api/validate.py, symbol: _check_purpose_limitation}
+
+- id: S6a.3
+  section: 6a
+  clause: Tier 3 -- the member's own contract, checked at G5
+  status: implemented
+  evidence:
+    - {path: configs/member-plr/plr.yaml, symbol: semantic}
+    - {path: apps/specs/plr-enrolment.openapi.yaml}
+
+- id: S6a.4
+  section: 6a
+  clause: The catalogue entry carries the tier-1 classification so services are discoverable by pattern
+  status: named-absence
+  note: Depends on S6.2. Neither tier reaches the onboarding record either.
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: render_onboarding_tree}
+
+# -- 7. The onboarding file --------------------------------------------------
+
+- id: S7.1
+  section: "7"
+  clause: "00-application.md -- G0 application and signed membership agreement"
+  status: named-absence
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "Application (G0)"}
+
+- id: S7.2
+  section: "7"
+  clause: "01-admission.md -- G1 admission decision and allocated identity"
+  status: named-absence
+  note: >-
+    The API holds everything this file needs at approve time -- request id,
+    decision reference, approving principal, timestamp -- and writes none of
+    it. The cheapest remaining gate artefact.
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "Admission (G1)"}
+    - {path: apps/join-api/app.py, symbol: decision_reference}
+
+- id: S7.3
+  section: "7"
+  clause: "02-topology.md -- G2 hosting decision, reason, trust note, sizing"
+  status: named-absence
+  note: >-
+    Not written, and not named in the gate register either -- the hosting
+    decision survives only as one row of the registration record.
+  evidence:
+    - {path: onboarding/plr/05-registration.md, symbol: Hosting}
+
+- id: S7.4
+  section: "7"
+  clause: "03-certificates.md -- G3 issuance record and member-side verification"
+  status: named-absence
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "Certificates (G3)"}
+
+- id: S7.5
+  section: "7"
+  clause: >-
+    04-platform-conformance.md -- G4 result, monitoring add-ons confirmed,
+    host name, firewall record, waivers
+  status: named-absence
+  note: Not written, and not named in the gate register.
+  evidence:
+    - {path: acceptance/member.md, symbol: xroad-opmonitor}
+
+- id: S7.6
+  section: "7"
+  clause: "05-services/<code>/ -- contract, semantic map, SLA, ACL, catalogue entry"
+  status: named-absence
+  note: >-
+    Two of five land, relocated: the SLA as 03-sla/<service>.md and the ACL
+    subjects as a row of 05-registration.md. The contract, the semantic map
+    and the catalogue entry are not written.
+  evidence:
+    - {path: onboarding/plr/03-sla/enrolment-api.md}
+    - {path: onboarding/plr/05-registration.md}
+
+- id: S7.7
+  section: "7"
+  clause: "06-golive.md -- G6 handover and first-transaction monitoring"
+  status: named-absence
+  evidence:
+    - {path: onboarding/plr/00-gates.md, symbol: "Go-live"}
+
+- id: S7.8
+  section: "7"
+  clause: "99-retirement.md -- written only at exit"
+  status: named-absence
+  note: >-
+    Not written, and not named in the gate register, although GX is the most
+    completely implemented gate in the pack -- and the record is deleted at
+    retirement rather than closed out.
+  evidence:
+    - {path: scripts/member.sh, symbol: onboarding}
+
+- id: S7.9
+  section: "7"
+  clause: >-
+    Every file corresponds to a gate exit; a folder missing a file has not
+    passed that gate
+  status: implemented
+  note: >-
+    The rule is stated at the top of every member's gate register and the
+    records are generated, never hand-maintained, so nothing backfills a
+    plausible-looking stub. The pack builds four files where the path
+    specifies ten, and the gate register names four of the six absences.
+  evidence:
+    - {path: apps/join-api/writer.py, symbol: render_onboarding_tree}
+    - {path: onboarding/plr/00-gates.md, symbol: "has not been passed"}

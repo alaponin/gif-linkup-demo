@@ -19,9 +19,18 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
   Progressa identifiers that are the KP3/KP4 join keys)
+- **Status against the onboarding path:** `docs/path-conformance.md` — the
+  only place the pack states what it does and does not implement of
+  `08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`.
+  Generated from `docs/path-conformance.yaml`; every cited evidence path is
+  existence-checked by `tests/test_path_conformance.py`, so a status claim
+  cannot outlive the file it cites. Four statuses and no tick mark. **Where a
+  narrative document disagrees with it, it wins** — that divergence is exactly
+  what produced the 2026-08-08 corrections in
+  `docs/onboarding-path-gap-analysis.md`.
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
-  `docs/onboarding-alignment-design.md` (current design record), `REVIEW.md`
-  (self-review, archival)
+  `docs/onboarding-alignment-design.md` (design record — frozen; reasoning,
+  not status), `REVIEW.md` (self-review, archival)
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,
