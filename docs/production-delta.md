@@ -504,3 +504,75 @@ ever reaches the file** — a defect in the diagnostic command, not in
 `apps/join-api`. No code change needed; recorded here because the wrong
 conclusion was reported first and the correction belongs next to it, not
 silently dropped.
+
+## What automatic approval actually costs — a control/experiment pair, measured
+
+Spike (`docs/decisions/superpowers/plans/2026-08-08-kp2-approval-policy-spike.md`,
+Task 2). Same identity (PTSB, hosted on `ss-plr`, one service) joined twice on
+the same running stack: once against the committed `explicit` configuration
+(control), once with all three `[center]` auto-approve flags set on the
+Central Server and its registration/management services restarted
+(experiment) — see `docs/decisions/xroad-770-notes.md` §12 for how those flags
+were found and why a restart was needed. PTSB was retired between the two
+runs (`DELETE /members/ptsb`), freeing the code for reuse.
+
+| | Control (`explicit`) | Experiment (`automatic`) |
+| --- | --- | --- |
+| `approved_at` → `ACTIVE` | 75.4s | 34.9s |
+| Shared retry budget spent | 0 of 12 | 1 of 12 |
+| CS management-request | id 9, `APPROVED`, `created_at` only | id 11, `APPROVED`, `created_at` only |
+| CS access-log line | 1 line, 1392 bytes, one origin IP | 1 line, 1393 bytes, same origin IP |
+
+**Question 2 — what it saves.** Both runs stayed inside a single shared retry
+budget (`RETRY_BUDGET = 12`, `RETRY_INTERVAL_SECONDS = 10.0`s,
+`apps/join-api/job.py`) — the control spent none of it, the experiment spent
+one retry (~10s) at the step that polls for a `WAITING` request. The 40s
+wall-clock gap between the two runs is smaller than one retry interval and
+is not a clean signal on its own (N=1, and the control's own earlier hosted
+run in this same document reports "well under two minutes" with normal
+variance) — **it does not support a claim that automatic approval is
+technically faster**. The path's "collapses days into seconds" framing was
+never about this call; the seconds are already spent under `explicit`, in
+this demo, because `join-api`'s own operator-approval call happens
+immediately after submission. Automatic approval collapses the *organisational*
+wait — a human available to click approve — which this demo has no way to
+measure because it never has one, exactly as the spike predicted before
+measuring anything.
+
+**Question 3 — what it costs in evidence, the most important comparison
+here.** Contrary to the onboarding path's §3 fact 3, the Central Server's own
+records carry **no origin-IP field and no approver field at all**, under
+either policy: `GET /api/v1/management-requests/{id}` returns only `id`,
+`type`, a categorical `origin` (`SECURITY_SERVER`/`CENTER`, not an address),
+`security_server_owner`, `status` and `created_at` — checked against the live
+API for both request 9 and request 11 above, byte-identical in shape. The
+origin IP the path's claim actually refers to lives one layer down, in the
+registration/management service's plain Apache-style access log
+(`centralserver-management-service-access.log`), and it is written
+identically either way: one `POST /managementservice/manage` line per join,
+carrying the Security Server's container IP and a timestamp, with no
+per-request correlation beyond matching the timestamp by eye. **Automatic
+approval costs nothing at the X-Road layer, because explicit approval was
+never providing anything there to lose.** What is genuinely lost is
+KP2-specific, not X-Road-specific: `join-api`'s own `decision_reference` —
+the only place an approver identity or a reason is recorded anywhere in this
+stack — exists only because a human called `POST /requests/{id}/approve`
+with one. An automatic policy has no equivalent call and so no equivalent
+field; the evidence gap the path should name is in the *pack's own* audit
+layer, not the Central Server's.
+
+**A defect found live, incidental to the question asked.**
+`writer.apply_real` (`apps/join-api/writer.py`) is not atomic: it writes
+`configs/<member>/` and `manifest.yaml` before calling
+`render_onboarding_tree`, which does a bare `onboarding_dir.mkdir(parents=True)`
+with no `exist_ok=True`. Re-joining a member whose `onboarding/<key>/`
+directory still exists (the normal state right after that member's own
+retirement — retirement does not delete it, by design, it *is* the
+retirement record) throws `FileExistsError`, returns an uncaught 500, and
+leaves `configs/` and `manifest.yaml` genuinely modified and uncommitted —
+which then blocks every subsequent join attempt via the same dirty-checkout
+guard (spec S9) that was supposed to prevent exactly this kind of half-done
+state. Worked around by hand for this spike (`git checkout -- manifest.yaml`,
+removing the untracked `configs/member-<key>/`) rather than fixed — out of
+scope for a spike that commits no code, but real and reproducible on the
+current `main`.
