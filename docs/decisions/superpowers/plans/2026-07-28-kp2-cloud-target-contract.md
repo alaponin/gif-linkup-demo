@@ -1,6 +1,6 @@
 # KP2 — Cloud Target Contract and Deployment Readiness
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements findings **D2–D7**, **S7** and the remainder of **S8** from `docs/reviews/2026-07-28-branch-review.md`. It **does not implement a DigitalOcean target** — that work is separate and should begin against the contract this plan writes.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements findings **D2–D7**, **S7** and the remainder of **S8** from `docs/notes/reviews/2026-07-28-branch-review.md`. It **does not implement a DigitalOcean target** — that work is separate and should begin against the contract this plan writes.
 
 **Goal:** Write down what a second deployment target must vary, and close the readiness gaps that belong to the pack rather than to the droplet. Today `generate.py` correctly refuses any `target` other than `docker-local`, so the seam exists — but nothing states what would have to change on the other side of it, which means the DigitalOcean work would start by rediscovering it.
 
@@ -29,7 +29,7 @@ The DigitalOcean implementation itself. S1/S2 (`2026-07-28-kp2-exposure-and-secr
 
 | Dimension | `docker-local` | What another target must decide |
 | --- | --- | --- |
-| **Hostnames** | Compose service names in `hurl/vars.env` (`cs`, `ss-pnia`) | Real DNS or addresses the moment components split across hosts. Upstream hit exactly this between 7.7.0 and `develop` — `docs/xroad-770-notes.md` §4 |
+| **Hostnames** | Compose service names in `hurl/vars.env` (`cs`, `ss-pnia`) | Real DNS or addresses the moment components split across hosts. Upstream hit exactly this between 7.7.0 and `develop` — `docs/decisions/xroad-770-notes.md` §4 |
 | **Bind address** | `network.bind: 127.0.0.1` | Which interface, and the `acknowledge_public_exposure` decision |
 | **TLS verification** | `False` (Test CA) | `True` with a real chain — see console-hardening Task 4 |
 | **Image provenance** | Tags, plus a digest-pinned testca | Digests for all three (Task 2) |
@@ -56,7 +56,7 @@ cover). Do not implement this task; see that plan instead.
 - [ ] **Step 1:** resolve the current digests from the images actually running: `docker image inspect --format '{{index .RepoDigests 0}}' <image>`. Take them from what has been tested, not from a fresh pull that might already differ.
 - [ ] **Step 2:** add `cs_digest` and `ss_digest` alongside the existing `xroad.*` keys, in the same `tag@sha256:...` style as `testca_tag`, with a comment recording the date they were resolved and that the tags are kept for readability.
 - [ ] **Step 3:** `teardown.sh --purge` → full redeploy → `scripts/acceptance.sh` green, proving the digests are the images the pack was verified against.
-- [ ] **Step 4:** note in `docs/deployment-targets.md` that bumping X-Road means bumping three digests together, and that `docs/xroad-770-notes.md` §4 explains why scenarios and images move together. Commit.
+- [ ] **Step 4:** note in `docs/deployment-targets.md` that bumping X-Road means bumping three digests together, and that `docs/decisions/xroad-770-notes.md` §4 explains why scenarios and images move together. Commit.
 
 ## Task 3: Sizing conclusions where a deployer will find them
 
@@ -67,7 +67,7 @@ cover). Do not implement this task; see that plan instead.
 
 ## Task 4 (investigation): Backup, restore and recovery time
 
-**Files:** `docs/deployment-targets.md`, `docs/xroad-770-notes.md`
+**Files:** `docs/deployment-targets.md`, `docs/decisions/xroad-770-notes.md`
 
 Named Docker volumes on a droplet with no snapshot policy means a lost federation is a full redeploy plus re-registration. X-Road ships its own backup mechanisms for both server types; whether they are usable from these containers is untested.
 
@@ -121,7 +121,7 @@ The stack pulls from Docker Hub and ghcr during deployment. A firewalled droplet
 ## Task 9: Close out
 
 - [ ] **Step 1:** `scripts/acceptance.sh` green on `docker-local`, both profiles.
-- [ ] **Step 2:** mark D2–D7, S7 and S8 resolved in `docs/reviews/2026-07-28-branch-review.md` with the date and, for the two investigations, what was actually found.
+- [ ] **Step 2:** mark D2–D7, S7 and S8 resolved in `docs/notes/reviews/2026-07-28-branch-review.md` with the date and, for the two investigations, what was actually found.
 - [ ] **Step 3:** commit.
 
 ---

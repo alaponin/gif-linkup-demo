@@ -1,10 +1,10 @@
 """The Linkup admin-API sequence as an ordered registry of named steps.
 
 hurl/generate.py renders this registry in order to build hurl/scenarios/ --
-same templates, same order, same bytes as before this module existed. Nothing
-consumes the registry per-step yet (Plan B does); see
-docs/superpowers/specs/2026-08-01-member-join-api-design.md #15 and
-docs/superpowers/plans/2026-08-01-kp2-join-a-step-registry.md.
+same templates, same order, same bytes as before this module existed.
+apps/join-api/job.py is the other consumer: it walks the registry one step
+at a time, driving each step's template against the live federation and
+threading its `provides` captures into the next step's `requires`.
 
 `requires`/`provides` are Hurl *runtime* identifiers: `{{var}}` names and
 `[Captures]` names respectively. They are NOT generate.py's `sub()` `@name@`
@@ -38,7 +38,7 @@ class Step:
     # "how do I undo this?" -- filename under hurl/templates/, or None.
     # Default None: most steps still do not have one, and that is correct --
     # only the six steps the join-c plan live-verified a working reversal
-    # for (docs/xroad-770-notes.md #11) carry one. Like `template`, this is a
+    # for (docs/decisions/xroad-770-notes.md #11) carry one. Like `template`, this is a
     # template filename, not a second Step: the reversal's own `requires` are
     # read straight off its .tmpl file (tests/test_steps.py's `_extract()`,
     # same as for `template`), never declared a second time here. Reversal
@@ -141,7 +141,7 @@ REGISTRY: tuple[Step, ...] = (
     # Rendered once per member, in a loop, in generate.py -- the registry
     # holds this step once (design decision 4 of the templates plan; the
     # join-a plan applies the same rule here).
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 6) -- sixth and LAST step in the reversal order
     # (REVERSAL_ORDER below): the member's identity leaves the Central
     # Server only after every SS-side call has undone the member's bus
@@ -221,7 +221,7 @@ REGISTRY: tuple[Step, ...] = (
         probe="fragments/PROBE_SS_AUTH_KEY.hurl.tmpl",
     ),
     # (c) Same reasoning as ss.auth_key_csr, for the SIGN key. Join-relevant.
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 5; "What happens to a hosted member's SIGN key") --
     # fifth step in the reversal order (REVERSAL_ORDER below), last of the
     # SS-side calls: the client goes before its key even backwards, so this
@@ -310,7 +310,7 @@ REGISTRY: tuple[Step, ...] = (
     # reintroduces that bug; see the join-a plan.
     # (b) POST /clients has a natural unique key (member_class+member_code+
     # subsystem_code) -- repeat conflicts.
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 4) -- fourth step in the reversal order (REVERSAL_ORDER
     # below), after ss.client_register's unregister and before
     # ss.sign_key_csr's key delete: the client goes before its key,
@@ -327,7 +327,7 @@ REGISTRY: tuple[Step, ...] = (
     # (c) Same partial-completion risk as ss.bringup_register (PUT
     # .../register then GET-pending-then-approve). Join-relevant -- every
     # member's own bring-up AND every hosted client runs this.
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 3) -- third step in the reversal order
     # (REVERSAL_ORDER below), and the one whose ordering is NOT the mirror
     # of the forward client_add -> sign_key_csr -> client_register sequence
@@ -350,7 +350,7 @@ REGISTRY: tuple[Step, ...] = (
     # (rest_service_code per client) -- repeat conflicts; the separate PUT
     # .../enable on an already-enabled description is a state-transition
     # X-Road is expected to 409 on repeat, per Section 5.3's default.
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 2) -- second step in the reversal order (REVERSAL_ORDER
     # below), after service.acl's revoke and before ss.client_register's
     # unregister.
@@ -366,7 +366,7 @@ REGISTRY: tuple[Step, ...] = (
     # (b) proven live: 409 on an already-granted access right is treated as
     # success (PLAN.md Section 11, apps/console/xroad.py's 409 handling) --
     # the one step in this registry with confirmed, not inferred, evidence.
-    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
     # #11, table row 1) -- first step in the reversal order (REVERSAL_ORDER
     # below): revoke the grant before the service description it grants
     # access to is deleted.
@@ -384,7 +384,7 @@ REGISTRY: tuple[Step, ...] = (
 BY_ID: dict[str, Step] = {step.id: step for step in REGISTRY}
 
 # The reversal order (join-c plan), for a hosted client's six
-# reversal calls -- established LIVE (docs/xroad-770-notes.md #11 finding 5,
+# reversal calls -- established LIVE (docs/decisions/xroad-770-notes.md #11 finding 5,
 # apps/join-api/tests/fixtures/xroad/unjoin.*.json), NOT `reversed(REGISTRY)`
 # and NOT simply build_hosted_client()'s own forward sequence
 # (ss.client_add -> ss.sign_key_csr -> ss.client_register) mirrored end to

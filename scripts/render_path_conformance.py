@@ -77,8 +77,8 @@ HEADER = """\
 This is the only place the pack states its status against the path. Narrative
 documents carry reasoning; where one of them also carries a status claim, treat
 this file as authoritative — that divergence is what produced the corrections
-dated 2026-08-08 in `docs/onboarding-alignment-design.md` and
-`docs/onboarding-path-gap-analysis.md`.
+dated 2026-08-08 in `docs/decisions/onboarding-alignment-design.md` and
+`docs/decisions/onboarding-path-gap-analysis.md`.
 
 **There is no tick mark here, deliberately.** A ✓ that meant "built" in one row
 and "labelled" in the next is how a status table stops being readable. Four

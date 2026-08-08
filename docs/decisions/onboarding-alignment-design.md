@@ -14,9 +14,9 @@ statement of what the pack contains today.
 > existence-checked by `tests/test_path_conformance.py`. Where this document and
 > that one disagree, that one is right.**
 
-**Closes:** the findings in `docs/onboarding-path-gap-analysis.md` — with the
+**Closes:** the findings in `docs/decisions/onboarding-path-gap-analysis.md` — with the
 exceptions the correction above names.
-**Decision record:** `docs/topology-profile-decision.md` (analysis and sources).
+**Decision record:** `docs/decisions/topology-profile-decision.md` (analysis and sources).
 **Scope:** how the pack gets from what is implemented today to a pack that
 demonstrates the member-onboarding workflow end to end, without growing into
 something unteachable.
@@ -388,7 +388,7 @@ the concept.
 
 ### What D5 decided, and why the earlier answer was wrong
 
-Full analysis and sources in `docs/topology-profile-decision.md`. In brief:
+Full analysis and sources in `docs/decisions/topology-profile-decision.md`. In brief:
 
 **The floor is three members and four servers.** `ss-pdga` is load-bearing —
 `steps.py` records it as "PDGA-only: nominates the management Security Server as
@@ -480,56 +480,12 @@ deferrals.**
 
 ### 8.1 Component-by-component
 
-**§0 — ecosystem prerequisites**
-
-| # | Component | Status | Where |
-|---|---|---|---|
-| 1 | Central Server operating | **✓** | 8 CS steps (`cs.init` → `cs.anchor`), PDGA as owner, `ss-pdga` management server |
-| 2 | Certification Authority | **✓ simulated, declared** | Test CA; `production-delta.md` row 1 |
-| 3 | Time-Stamping Authority | **✓ simulated, declared** | `ss.tsa_capture` / `ss.tsa_post` |
-| 4 | Member classes defined | **✓** | `cs.member_class`; `join.member_class: GOV` |
-| 5 | **Identifier and naming conventions published** | **✗ GAP** | See §8.3 |
-| 6 | Building-block pattern register | **✗ GAP** | An unvalidated `ExchangePattern` enum only; no register — see §4.2 |
-
-**§6a — the semantic layer** (asked about directly)
-
-| Tier | Component | Status | Where |
-|---|---|---|---|
-| 1 | BB pattern classification | **~ classified, not registered** | `pattern:` on `schema.Semantic`; **no register in `join-policy.yaml`**, and nothing validates the value |
-| 2 | Sector entity + standards anchor | **✓** | `semantic-map.yaml` with OneRoster / CEDS / ISO 11179 |
-| 3 | Member instance | **✓ already present** | `semantic:` block in member config |
-
-**Tiers 2 and 3 are complete** — a free-text string citing a map that did not
-exist became a published map plus a validator that checks conformance rather
-than presence (`validate.py:310-346`). **Tier 1 is classified but not
-registered and not checked**, so cross-sector comparability is asserted in the
-member config and enforced nowhere. Neither tier reaches the onboarding record:
-`writer.render_onboarding_tree()` writes no semantic file.
-
-**§6 — the operator's own building blocks**
-
-| Component | Status | Note |
-|---|---|---|
-| Member / service management portal | **✓ partial** | `apps/console` + `apps/join-api`; path says this is the one with no OSS starting point, so a demo-grade version is the honest maximum |
-| Service catalogue | **✗ deferred** | See §8.4 |
-| Reporting and metrics | **~ add-on only** | Add-ons installed; no collector — see §8.4 |
-| Technical monitoring | **~ add-on only** | Same |
-
-**Gates**
-
-> **Superseded by `docs/path-conformance.md`.** This paragraph's ✓ marks
-> conflated "built", "simulated" and "labelled", which is how the G1 error below
-> survived review. The generated matrix uses four statuses and no ✓, and its
-> evidence is existence-checked.
-
-~~G1 admission authority ✓ (governance config).~~ **Wrong — G1 is open**; see
-§4.2. G2 hosting decision: the *structure* is checked (`validate.py:219-275`),
-the path's exit test (is the hosting choice compatible with the member's role?)
-is not. G3 simulated, declared. G5 contract + ACL + SLA built; semantic tier 1
-unchecked; field-conformance exit test absent. GX reversal + retention note;
-inbound-ACL revocation → KP3. Two-track shape **labelled, not built** — one
-Central Server, one CA/TSA, one anchor, so path §1's separation obligation is
-unmet by construction.
+**Superseded by `docs/path-conformance.md`.** This section's tables and ✓
+marks conflated "built", "simulated" and "labelled", which is how the G1
+error below survived review. The generated matrix uses four statuses and no
+✓, and its evidence is existence-checked — see it for current status on the
+ecosystem prerequisites, the semantic layer's three tiers, the operator's own
+building blocks, and every gate.
 
 ### 8.2 Defect in this design: the default profile violates G2
 
@@ -619,7 +575,7 @@ to surface as a one-line note in PNEA's record.
 
 ### 8.6 Testing after D5 — nothing cheap was lost
 
-Full working in `docs/topology-profile-decision.md` §5.
+Full working in `docs/decisions/topology-profile-decision.md` §5.
 
 **The cheap tiers were untouched, because profiles never made them cheap.**
 `--fast` has "no running containers, no network, no federation" — there was no
@@ -648,7 +604,7 @@ deploy time, no contributor-facing choice.
 cycles *plus* a mandatory full-profile proof; after the reduction it pays N
 single-topology cycles, and for the 1–3 cycle range most plans actually run,
 that is faster end to end. See `docs/production-delta.md` and
-`docs/topology-profile-decision.md` §5.3 for the current arithmetic and
+`docs/decisions/topology-profile-decision.md` §5.3 for the current arithmetic and
 measured figures.
 
 **A reliability gain worth more than the seconds.** `production-delta.md`

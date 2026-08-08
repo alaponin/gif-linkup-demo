@@ -30,7 +30,7 @@ host, and run the once-only exchange that proves it. Demo only — see
 1. `scripts/gen-secrets.sh` — writes a real `.env` with a random token PIN
    and admin password (mode `600`). `.env.example` ships placeholders that
    cannot work, on purpose — do not copy it by hand
-   (`docs/reviews/2026-07-28-branch-review.md`, finding S2).
+   (`docs/notes/reviews/2026-07-28-branch-review.md`, finding S2).
 2. **Deploy** — `scripts/deploy.sh` (a wrapper over `hurl/run-linkup.sh`)
    Brings up the containers and drives the full stand-up over the admin REST APIs:
    CS init (instance `PROGRESSA`, class `GOV`, configuration signing keys) → Test CA /
@@ -44,7 +44,7 @@ host, and run the once-only exchange that proves it. Demo only — see
 
    The sequence is a Progressa retargeting of `development/hurl/scenarios/setup.hurl`
    at X-Road tag **7.7.0**. The scenarios live in `hurl/`, generated from `configs/` —
-   see `hurl/README.md` to run or retarget them, and `docs/xroad-770-notes.md` for
+   see `hurl/README.md` to run or retarget them, and `docs/decisions/xroad-770-notes.md` for
    what reading the reference corrected.
 3. **Seed** — `scripts/seed.sh`
    Regenerates the Progressa demonstration data (Gambia-grounded, Progressa-named)
@@ -253,7 +253,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   It walks that member's completed steps **backwards** — revoke the ACL,
   delete the service description, unregister the client, delete the client,
   delete its SIGN key, delete the member on the Central Server (six calls,
-  the order established live: `docs/xroad-770-notes.md` §11) — then runs
+  the order established live: `docs/decisions/xroad-770-notes.md` §11) — then runs
   `scripts/member.sh remove <key>` for you. States go `ACTIVE` → `RETIRING`
   → `RETIRED`; poll `GET /requests/{id}` or watch the console's join tab,
   which renders both.
@@ -281,7 +281,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     pack implements no archival step; it only names the gap.
   - **A hosted member leaves a SIGN key behind** on somebody else's Security
     Server — `REGISTERED`, active, good OCSP, and nothing in X-Road's admin
-    API ever collects it (`docs/xroad-770-notes.md` §11). Deleting it is part
+    API ever collects it (`docs/decisions/xroad-770-notes.md` §11). Deleting it is part
     of the walk, not optional cleanup: without it a host accumulates one
     orphaned signing key per member that ever left.
   - **Interrupted halfway?** Re-issue the same `DELETE`. Every reversal is

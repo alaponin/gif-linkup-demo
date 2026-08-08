@@ -1,6 +1,6 @@
 # KP2 — Network Exposure and Secrets Hygiene
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements findings **S1** and **S2** of `docs/reviews/2026-07-28-branch-review.md`. It is a prerequisite for any DigitalOcean work and should land before the join-interface plans.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements findings **S1** and **S2** of `docs/notes/reviews/2026-07-28-branch-review.md`. It is a prerequisite for any DigitalOcean work and should land before the join-interface plans.
 
 **Goal:** Make the demonstration stack safe by default on a host that is not a laptop. Two changes: every published port binds to loopback unless someone explicitly and deliberately says otherwise, and no working credential ships in the repository.
 
@@ -244,11 +244,11 @@ and `scripts/acceptance.sh` both re-confirmed clean/GREEN after the fix.
 
 ## Task 6: A changed PIN fails loudly, not confusingly
 
-**Files:** `scripts/lib.sh`, `hurl/run-linkup.sh`, `docs/xroad-770-notes.md`
+**Files:** `scripts/lib.sh`, `hurl/run-linkup.sh`, `docs/decisions/xroad-770-notes.md`
 
 - [x] **Step 1:** on a successful deploy, record a fingerprint of the PIN actually used — `printf '%s' "$XROAD_TOKEN_PIN" | shasum -a 256` — into `out/.token-fingerprint` (mode `600`, never the value itself).
 - [x] **Step 2:** on subsequent runs, if the fingerprint exists, disagrees with the current `.env`, and federation volumes still exist, fail with: the software token was initialised with a different PIN; either restore the old value or `scripts/teardown.sh --purge` and redeploy.
-- [x] **Step 3:** confirm live that this is the real behaviour — deploy, change the PIN in `.env`, redeploy, and record what X-Road actually does (which error, at which step, and whether the sidecar's autologin or the admin API fails first) in `docs/xroad-770-notes.md`. If it turns out to be benign, say so and downgrade the check to a warning; do not assert a failure mode nobody observed.
+- [x] **Step 3:** confirm live that this is the real behaviour — deploy, change the PIN in `.env`, redeploy, and record what X-Road actually does (which error, at which step, and whether the sidecar's autologin or the admin API fails first) in `docs/decisions/xroad-770-notes.md`. If it turns out to be benign, say so and downgrade the check to a warning; do not assert a failure mode nobody observed.
 - [x] **Step 4:** commit.
 
 **Verified live (2026-07-28):** Step 3 happened first, and from a real
@@ -266,7 +266,7 @@ endpoint), and a real cross-server call instead sees
 certificate"` — a certificate-shaped error for a PIN problem, with the
 certificate itself confirmed valid (`ocsp_status: OCSP_RESPONSE_GOOD`)
 throughout. Not benign — the hard-failure check stands as designed, not
-downgraded to a warning. Full findings in `docs/xroad-770-notes.md` §9.
+downgraded to a warning. Full findings in `docs/decisions/xroad-770-notes.md` §9.
 Steps 1-2 were then written and tested against this same live federation:
 matching fingerprint sources clean; a deliberately mismatched `.env` with
 the real `kp2-cs-db` volume present refuses with the exact message; the
@@ -279,7 +279,7 @@ confirmed working end to end before any of Task 6's own testing began.
 
 ## Task 7: Documentation and verification
 
-**Files:** `docs/production-delta.md`, `runbook.md`, `README.md`, `docs/reviews/2026-07-28-branch-review.md`
+**Files:** `docs/production-delta.md`, `runbook.md`, `README.md`, `docs/notes/reviews/2026-07-28-branch-review.md`
 
 - [x] **Step 1:** `production-delta.md` gains rows for what remains demo-only after this plan: loopback binding as the *only* network control (production needs network segmentation, a reverse proxy with real TLS, and authenticated admin access), and the Central Server's unrotatable fixed credentials. While in the file, correct the stale row that still lists auto-approve as a demo shortcut — it was replaced by `management_request_approval: explicit` (review finding C5, one line, and leaving it wrong undermines the rows that are right).
 - [x] **Step 2:** `runbook.md` gains a short "Reaching the stack from another machine" note: SSH local port forwarding, not a bind change.
@@ -287,7 +287,7 @@ confirmed working end to end before any of Task 6's own testing began.
 - [x] **Step 4: full verification on a clean machine.** `scripts/gen-secrets.sh` → `hurl/run-linkup.sh` → `scripts/seed.sh` → `scripts/acceptance.sh` green → `scripts/console.sh up` and all three tabs work → `scripts/check-exposure.sh` green. Then, from a second machine on the same network, confirm every port is refused. Commit.
 
 **Verified live (2026-07-28):** discovered while committing Step 3 that
-`docs/reviews/2026-07-28-branch-review.md` — the document this whole plan
+`docs/notes/reviews/2026-07-28-branch-review.md` — the document this whole plan
 cites in its own header as the basis for S1/S2 — had itself never been
 `git add`ed, the same class of gap as C6 (untracked files the pack needs).
 Committed it along with the resolution notes. The "stale auto-approve row"

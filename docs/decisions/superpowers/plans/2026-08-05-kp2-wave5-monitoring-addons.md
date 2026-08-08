@@ -1,6 +1,6 @@
 # KP2 — Wave 5: the monitoring add-ons
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 5** of `docs/onboarding-alignment-design.md` §4. **Prerequisites: Wave 3 complete (four servers, one topology). Wave 4 is not a prerequisite.**
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 5** of `docs/decisions/onboarding-alignment-design.md` §4. **Prerequisites: Wave 3 complete (four servers, one topology). Wave 4 is not a prerequisite.**
 
 **Goal:** install the operational- and environmental-monitoring add-ons during
 Security Server bring-up, so the pack demonstrates the one G4 step whose cost is

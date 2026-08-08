@@ -1,8 +1,7 @@
-# The join policy. Written by hand for join-b Task 2, before
-# prompts/join-member.md existed -- this file is what that prompt would have
-# produced, not what running it produced (join-b Task 5 added the prompt
-# after the fact, in the same curriculum register as every other module).
-# Spec: docs/superpowers/specs/2026-08-01-member-join-api-design.md §8.
+# The join policy. Written by hand, before prompts/join-member.md existed --
+# this file is what that prompt would have produced, not what running it
+# produced (the prompt was added after the fact, in the same curriculum
+# register as every other module).
 #
 # Exactly three keys. Do not add a fourth: an earlier draft invented
 # max_services, require_semantic_for_provenance and backend_auth and all

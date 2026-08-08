@@ -991,7 +991,7 @@ def test_a_half_registered_auth_cert_is_not_read_as_done():
 
 # -- the reversal walk --------------------------------------------------------
 # job.unjoin() drives the six live-verified reversal calls
-# (docs/xroad-770-notes.md #11) in hurl/steps.py's REVERSAL_ORDER, each guarded
+# (docs/decisions/xroad-770-notes.md #11) in hurl/steps.py's REVERSAL_ORDER, each guarded
 # by its own probe. The fake below replays the REAL recorded un-join exchanges
 # in fixtures/xroad/unjoin.*.json -- unlike the forward fixtures those are raw
 # HTTP captures rather than Hurl report elements, so they are shaped into

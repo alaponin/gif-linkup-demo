@@ -16,7 +16,7 @@ FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "xroad"
 def _fixture(name: str) -> dict:
     """A real recorded response (status + headers + body), not a
     hand-written guess -- testing-strategy plan. See the fixture's own
-    "context" field and docs/xroad-770-notes.md for what each one documents."""
+    "context" field and docs/decisions/xroad-770-notes.md for what each one documents."""
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
@@ -76,7 +76,7 @@ def test_read_acl_returns_empty_list_on_404_not_raises():
     {"status":404,"error":{"code":"service_client_not_found"}} -- a hand-
     written {"detail": "not found"} would have passed this test just as
     well without ever matching what X-Road actually sends. See
-    docs/xroad-770-notes.md §10."""
+    docs/decisions/xroad-770-notes.md §10."""
     fx = _fixture("read_acl_404")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -107,7 +107,7 @@ def test_grant_already_granted_409_is_success_not_failure():
     {"status":409,"error":{"code":"duplicate_accessright"}} -- the earlier
     hand-written {"error": "already granted"} exercised the same code path
     but never matched what X-Road actually sends. See
-    docs/xroad-770-notes.md §10."""
+    docs/decisions/xroad-770-notes.md §10."""
     fx = _fixture("grant_409_duplicate")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -124,7 +124,7 @@ def test_revoke_already_revoked_409_is_success_not_failure():
     already-revoked right returns 409 accessright_not_found -- the target
     state already holds, so this must not raise (load-bearing for
     reset()'s crash-recovery replay). See
-    docs/xroad-770-notes.md §10."""
+    docs/decisions/xroad-770-notes.md §10."""
     fx = _fixture("revoke_409_not_found")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -181,7 +181,7 @@ def test_exchange_denied_parses_exact_fault_shape():
     "SERVICE:..." suffix on message and the "detail" field entirely; a
     parser that happened to read only .type would never have caught that
     it was checking against an incomplete shape. See
-    docs/xroad-770-notes.md §10."""
+    docs/decisions/xroad-770-notes.md §10."""
     fx = _fixture("exchange_access_denied")
 
     def handler(request: httpx.Request) -> httpx.Response:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Check that this host has what the pack needs before an expensive deploy
-# starts (D11, docs/reviews/2026-08-01-branch-review.md). A minimal Ubuntu
+# starts (D11, docs/notes/reviews/2026-08-01-branch-review.md). A minimal Ubuntu
 # cloud image lacks jq, a SHA-256 tool under the name run-linkup.sh expects,
 # a python3 with PyYAML, and docker compose as a v2 plugin unless it came
 # from a Docker-ready marketplace image -- each of those used to fail

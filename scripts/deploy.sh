@@ -10,7 +10,7 @@
 # The bespoke admin-API bash that used to live here is superseded: it carried
 # seven [confirm P0] markers, and the reference resolves every one of them (the
 # API-key bootstrap, in particular, was never going to work -- the admin APIs
-# authenticate by session login and XSRF token). See docs/xroad-770-notes.md
+# authenticate by session login and XSRF token). See docs/decisions/xroad-770-notes.md
 # and PLAN.md decision 3.
 #
 #   scripts/deploy.sh            # stand the federation up

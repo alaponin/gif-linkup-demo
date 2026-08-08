@@ -89,7 +89,7 @@ printed both live secret values into its own failure message whenever
 `vars.env` and `.env` disagreed. Task 6 adds a fingerprint check so a
 changed PIN fails at deploy time with a clear message instead of the
 certificate-shaped error it actually produces (confirmed live,
-`docs/xroad-770-notes.md` §9).
+`docs/decisions/xroad-770-notes.md` §9).
 
 ## 🟠 S3 — `nin` reaches URL construction unvalidated
 
@@ -136,7 +136,7 @@ path is a config change rather than a code change.
 Resolved by `docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md` Task 2: `ss` and
 `cs` are now digest-pinned (`ss_digest`/`cs_digest` in `deployment.yaml`), alongside `hurl`
 and `python:3.12-slim`, which S7 did not name but the same reproducibility gap covered
-(see C13 in `docs/reviews/2026-08-01-branch-review.md`).
+(see C13 in `docs/notes/reviews/2026-08-01-branch-review.md`).
 
 `testca` is digest-pinned (good, and deliberate). `niis/xroad-security-server-sidecar:7.7.0`
 and `niis/xroad-central-server:noble-7.7.0` are not. A cloud deployment should digest-pin
@@ -160,7 +160,7 @@ apps/specs/                    the three OpenAPI contracts X-Road publishes from
 configs/x-road-bus/2.6.yaml    the exchange definition truth.py and acceptance.sh read
 scripts/teardown.sh            referenced by runbook.md
 apps/data/                     seed CSVs (regenerable, but read directly by the console)
-docs/xroad-8-delta.md          referenced by PLAN.md §7 P6
+docs/decisions/xroad-8-delta.md          referenced by PLAN.md §7 P6
 REVIEW.md
 ```
 
@@ -240,7 +240,7 @@ What does not exist is a statement of what a second target must vary:
 
 - **hostnames** — `vars.env` currently uses Compose service names, which is fine on one
   droplet and wrong the moment components split across hosts (upstream hit exactly this
-  between 7.7.0 and `develop`; `docs/xroad-770-notes.md` §4 already tells the story)
+  between 7.7.0 and `develop`; `docs/decisions/xroad-770-notes.md` §4 already tells the story)
 - **bind addresses** (D1) · **TLS verification** (S6) · **image digests** (S7)
 - **the CA** (D6) · **secrets provisioning** (S2, S8)
 

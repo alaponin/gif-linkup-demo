@@ -1,7 +1,7 @@
 # GENERATED -- do not hand-edit. Regenerate by re-freezing:
 #   docker exec join-api pip freeze
 # then re-resolving hashes for the pinned version set (same process as
-# apps/console/requirements.txt, docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md Task 1).
+# apps/console/requirements.txt).
 # Resolved 2026-08-01 against the same python:3.12-slim digest as apps/console.
 #
 # httpx/pyyaml (+ their transitive deps certifi/httpcore) added join-b Task 2

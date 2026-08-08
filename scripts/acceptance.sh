@@ -503,7 +503,7 @@ done
 
 # ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
 # acceptance/2.7.md's un-join clause: five assertions, which are exactly
-# docs/xroad-770-notes.md #11's closing claims. Discovered the same generic,
+# docs/decisions/xroad-770-notes.md #11's closing claims. Discovered the same generic,
 # vacuous-by-default way the r1 rows above are: the newest RETIRED
 # out/join/*.json record per member code. A federation nobody has un-joined
 # produces zero rows and this section does not run at all.
@@ -748,7 +748,7 @@ PY
 
     # Clause 1. Absence on the CS is an EMPTY LIST, not a 404 -- there is no
     # GET /subsystems/{id} on the Central Server at all (405), so this read
-    # is the only viable one (docs/xroad-770-notes.md #11 finding 4).
+    # is the only viable one (docs/decisions/xroad-770-notes.md #11 finding 4).
     check_unjoin_cs() {
       api GET ${XROAD_BIND}:4000 "$CS_KEY" "/clients?q=${code}" | jq -e '.clients == []' >/dev/null
     }
@@ -759,7 +759,7 @@ PY
     # several keys ALL labelled "Sign key", so "this member's key is gone" is only
     # half the assertion -- every other hosted member's must still be there,
     # or a reversal that matched on the label deleted the wrong agency's
-    # signing key (docs/xroad-770-notes.md #11, "What happens to a hosted
+    # signing key (docs/decisions/xroad-770-notes.md #11, "What happens to a hosted
     # member's SIGN key").
     check_unjoin_host() {
       [ "$host_dns" != "-" ] || return 0   # own-server: its server is gone with it

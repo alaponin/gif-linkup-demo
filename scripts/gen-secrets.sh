@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate a real .env for KP2 -- a random token PIN and admin password.
 # .env.example ships placeholders that cannot work on purpose
-# (docs/reviews/2026-07-28-branch-review.md finding S2); this is the only
+# (docs/notes/reviews/2026-07-28-branch-review.md finding S2); this is the only
 # thing that should ever write a working .env.
 #
 #   scripts/gen-secrets.sh          # refuses if .env already exists, UNLESS
@@ -75,7 +75,7 @@ if [ -f "$ENV_FILE" ]; then
   echo "If a federation is already deployed, its software token was initialised" >&2
   echo "with the CURRENT pin. Changing it here does not change it on the token:" >&2
   echo "the mismatch produces X-Road errors that look like certificate faults," >&2
-  echo "not PIN errors (docs/xroad-770-notes.md). If a federation is up, run" >&2
+  echo "not PIN errors (docs/decisions/xroad-770-notes.md). If a federation is up, run" >&2
   echo "scripts/teardown.sh --purge and redeploy AFTER this, not before." >&2
 fi
 

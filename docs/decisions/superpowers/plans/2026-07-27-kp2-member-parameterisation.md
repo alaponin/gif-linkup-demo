@@ -294,12 +294,12 @@ Teardown and Known traps).
 
 ## Task 9: End-to-end proof, and the two investigations
 
-**Files:** `docs/superpowers/plans/…` (this file's checkboxes), `docs/production-delta.md`, `docs/xroad-770-notes.md`
+**Files:** `docs/superpowers/plans/…` (this file's checkboxes), `docs/production-delta.md`, `docs/decisions/xroad-770-notes.md`
 
 - [x] **Step 1:** **the acceptance criterion for this whole plan.** With the stack up, add a throwaway sixth member — a health ministry publishing one service, `hosted_on: ss-plr`, granting access to `PNEA:EXAMS` — by running `prompts/member.md`. Regenerate, redeploy, and confirm: its subsystem registers, its service publishes, its ACL is exact, and a live call from PNEA resolves.
 - [x] **Step 2:** `scripts/member.sh remove` it, regenerate, and confirm the generated artefacts return **byte-identical** to the Task 1 baselines for both profiles. If they do not, the allocation is not stable and this task is not done.
 - [x] **Step 3:** repeat Step 1 with a member that owns its own Security Server, to exercise the compose overlay and port allocation. Record the RAM cost, and record in `README.md` that `hosted_on` is the recommended default for joined members on a single host.
-- [x] **Step 4:** **investigation** — whether `DELETE /clients/{id}` and member deletion on the Central Server can retire a member from a running federation, or whether `teardown.sh --purge` really is the only path. Record the finding in `docs/xroad-770-notes.md` either way; it decides whether a demonstration join can be undone on camera.
+- [x] **Step 4:** **investigation** — whether `DELETE /clients/{id}` and member deletion on the Central Server can retire a member from a running federation, or whether `teardown.sh --purge` really is the only path. Record the finding in `docs/decisions/xroad-770-notes.md` either way; it decides whether a demonstration join can be undone on camera.
 - [x] **Step 5:** **investigation** — what a joined member costs when it owns a server (RAM, boot time, and whether the `retries: 120` healthcheck budget still covers a six-server start from persisted volumes). Record in `docs/production-delta.md`.
 - [x] **Step 6:** commit.
 
@@ -344,7 +344,7 @@ squatting the port — the exact same hazard class already known for port
 `range`, since the two bad ports aren't contiguous). While diagnosing this,
 found and fixed two more real, live-discovered gaps in the same generated
 Compose block: it was missing the `xroad-demo-local.ini` bind mount (5s vs
-60s auth-cache — `docs/xroad-770-notes.md` §6) and the `healthcheck` block
+60s auth-cache — `docs/decisions/xroad-770-notes.md` §6) and the `healthcheck` block
 (`retries: 120`) every canonical server gets from the hand-written
 `hurl/compose.hurl.yml` — a joined member's own server had neither, so
 nothing ever waited for it to become ready. Also found and fixed a smaller,
@@ -375,7 +375,7 @@ from the Central Server (`DELETE /subsystems/{id}` then `DELETE
 /members/{id}`, both plain synchronous `204`s) and confirmed `GET
 /clients?q=PHIB` on the CS returns empty. **Answer: yes, undoable live,
 in four calls, over a few real minutes** — recorded in full in
-`docs/xroad-770-notes.md` §7, including a second live-found gotcha
+`docs/decisions/xroad-770-notes.md` §7, including a second live-found gotcha
 (removing a member's config before purging orphans its own-server container
 and volumes, since `compose.members.yml` no longer references them —
 `ss-phib` and its three `kp2-phib-*` volumes had to be cleaned up by hand).
@@ -395,7 +395,7 @@ the last throwaway member happened to need. GREEN (one retry needed on the
 first run — the same pre-existing, documented, cold-deploy
 `assert_record.py` `JSONDecodeError` flakiness seen throughout this whole
 session, not a regression). `hurl/generate.py` (the three fixes),
-`docs/xroad-770-notes.md`, `docs/production-delta.md` and `README.md`
+`docs/decisions/xroad-770-notes.md`, `docs/production-delta.md` and `README.md`
 committed together as Task 9's code/docs commit.
 
 ---

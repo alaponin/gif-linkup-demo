@@ -73,7 +73,7 @@ never touches Docker.
    `POST /management-requests/{id}/approval` against it returns `403`.
    There is no approval gate and nothing to wait for. The pleasing symmetry
    was wrong; the un-join is synchronous and considerably cheaper than this
-   decision assumed. See `docs/xroad-770-notes.md` §11, finding 1. (§7 of
+   decision assumed. See `docs/decisions/xroad-770-notes.md` §11, finding 1. (§7 of
    the same file had already found this for an own-server member; the spike
    confirms it for a hosted one, so it holds in both topologies.)
 4. **`reverse` is added per step, in reversal order, with a test.** Not a
@@ -103,7 +103,7 @@ Changing an existing member. Removing a canonical member — ever.
 
 ## Task 1: Spike — establish the de-registration sequence against a live stack
 
-**Files:** `docs/xroad-770-notes.md`, `apps/join-api/tests/fixtures/xroad/`, this plan
+**Files:** `docs/decisions/xroad-770-notes.md`, `apps/join-api/tests/fixtures/xroad/`, this plan
 
 No production code. The output is knowledge and fixtures, and the plan's
 remaining shape depends on them.
@@ -137,12 +137,12 @@ remaining shape depends on them.
       directory, because the forward path is driven by Hurl and the reversal
       was driven by curl. Fixtures are what let Tasks 2–4 be tested in
       `--fast` instead of requiring a live stack per iteration.
-- [ ] **Step 6:** write the findings into `docs/xroad-770-notes.md` alongside
+- [ ] **Step 6:** write the findings into `docs/decisions/xroad-770-notes.md` alongside
       the seven corrections that file already records, and **revise Tasks 2–5
       of this plan** against what was actually found. Commit the spike before
       writing any implementation.
 
-**Done, 2026-08-02.** Findings: `docs/xroad-770-notes.md` §11. Fixtures:
+**Done, 2026-08-02.** Findings: `docs/decisions/xroad-770-notes.md` §11. Fixtures:
 `apps/join-api/tests/fixtures/xroad/unjoin.*.json` (16). Design decision 3 is
 refuted and struck through above; Tasks 2, 3, 4, 5 and the Sequencing section
 are revised against what was found. Clean live de-registration **is**
@@ -157,7 +157,7 @@ adds them, informed by Task 1 rather than guessed.
 
 **Task 1's answer, in one place.** Six calls, five registry steps, no approval
 round, nothing retried — every call returned its `204` first attempt. Full
-evidence in `docs/xroad-770-notes.md` §11; the recorded exchanges are
+evidence in `docs/decisions/xroad-770-notes.md` §11; the recorded exchanges are
 `apps/join-api/tests/fixtures/xroad/unjoin.*.json`. One open question rides on
 call 4 (`DELETE /clients/{id}`): §11 finding 3 records that no `409` window was
 observed but that its size is **not** established — Step 3 of Task 4 is written
@@ -300,7 +300,7 @@ join-b review finding, so relaxing it needs its own argument.
       a `200` and an empty collection rather than a 404 (Task 2 Step 3), so a
       guard written as "probe 404s ⇒ already gone" is wrong for half the walk.
 - [ ] **Step 3:** ~~handle the CS approval gate~~ **there is no approval gate**
-      (Task 1; `docs/xroad-770-notes.md` §11 findings 1 and 3). Do not build an
+      (Task 1; `docs/decisions/xroad-770-notes.md` §11 findings 1 and 3). Do not build an
       approval round and do not poll `?status=WAITING` — the deletion request
       carries no `status` at all, so that filter cannot match it, and approving
       it returns `403`. What this step becomes instead: make `DELETE
@@ -329,7 +329,7 @@ join-b review finding, so relaxing it needs its own argument.
       no container and no volumes, but it does leave a **SIGN key and
       certificate on somebody else's Security Server**, fully intact
       (`REGISTERED`, `active`, good OCSP) after its client is deleted —
-      `docs/xroad-770-notes.md` §11. Nothing in the admin API collects it. So
+      `docs/decisions/xroad-770-notes.md` §11. Nothing in the admin API collects it. So
       the SIGN-key reversal is not optional cleanup for a hosted member, it is
       the only thing standing between a demo federation and one orphaned
       SIGNING key per member that ever left. Assert it in Step 9's test:
@@ -359,7 +359,7 @@ join-b review finding, so relaxing it needs its own argument.
       live demonstration. One input from Task 1 that cuts *against* (a) and
       should be weighed rather than ignored: a hosted un-join turned out to be
       six calls with no approval round and nothing retried — not the
-      minutes-of-dead-air `docs/xroad-770-notes.md` §7 budgeted. `RETIRING`
+      minutes-of-dead-air `docs/decisions/xroad-770-notes.md` §7 budgeted. `RETIRING`
       may barely be
       observable, which makes a console button cheap to demonstrate and makes
       "narrate through the dead air" a non-argument. It does not change the
@@ -395,7 +395,7 @@ join-b review finding, so relaxing it needs its own argument.
       inherit its cost; the **hosted un-join** is not — Task 1 established it
       as six calls with no approval round and nothing retried, so it costs
       `--live` little and belongs there alongside the hosted join 2.7 already
-      asserts. Assert the whole of `docs/xroad-770-notes.md` §11's closing
+      asserts. Assert the whole of `docs/decisions/xroad-770-notes.md` §11's closing
       claims, since they are what "un-joined" actually means: the member is
       absent from the CS (`GET /clients?q=` empty), absent from the hosting
       Security Server's client list, absent from its **token** (no key with
@@ -413,7 +413,7 @@ join-b review finding, so relaxing it needs its own argument.
       `tests/golden/lite/topology.json` both times, with `acceptance.sh` green
       after. Two things Task 1 could not test and this step must: whether
       `DELETE /clients/{id}` needs the `409 action_not_possible` retry on an
-      own-server member (`docs/xroad-770-notes.md` §7 vs §11 finding 3), and
+      own-server member (`docs/decisions/xroad-770-notes.md` §7 vs §11 finding 3), and
       whether the own-server AUTH cert needs its own reversal
       (`PUT /token-certificates/{hash}/unregister`) before the server's
       containers and volumes go — a hosted member has no AUTH key of its own,
@@ -543,7 +543,7 @@ three tasks deep with half an implementation written against a wrong guess.
 
 ~~**If Task 1 reveals that clean live de-registration is not achievable on
 7.7.0**~~ — **it is achievable, and this branch does not apply** (Task 1,
-2026-08-02; `docs/xroad-770-notes.md` §11). Six admin-API calls across two
+2026-08-02; `docs/decisions/xroad-770-notes.md` §11). Six admin-API calls across two
 servers, all `204` on the first attempt, no approval round, nothing retried,
 no global-configuration residue, no restart. `acceptance.sh` green afterward
 and `hurl/topology.json` byte-identical, twice. Plan C is not reduced to Task

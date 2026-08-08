@@ -53,7 +53,7 @@ CS_USER, CS_PASS = "xrd", "secret"
 
 # The Test CA's FiVRK certificate profile validates the country code; setup.hurl
 # uses FI and so must we. This is an artefact of the demo trust anchor, not a
-# statement about Progressa -- see docs/xroad-770-notes.md.
+# statement about Progressa -- see docs/decisions/xroad-770-notes.md.
 CSR_COUNTRY = "FI"
 
 # Host-mapped ports from docker-compose.yml's `ports:` lines -- mirrors
@@ -172,11 +172,10 @@ def allocate_ports(owner_keys: list) -> dict:
         used_rest.add(rest)
     return result
 
-# The canonical five's Security Server scenario numbers -- never renumbered
-# (docs/superpowers/plans/2026-07-27-kp2-member-parameterisation.md, Global
-# Constraints). A member absent from this table sorts after every pinned one,
-# alphabetically by key; that plan adds fresh-range allocation for
-# such a member instead of leaving it unordered.
+# The canonical five's Security Server scenario numbers -- never renumbered,
+# so an existing member's scenario files keep their names as others join or
+# leave. A member absent from this table sorts after every pinned one,
+# alphabetically by key.
 PINNED_SCENARIO_NO = {"pnia": "20", "plr": "21", "moeys": "22", "pnea": "23"}
 
 
@@ -306,7 +305,7 @@ def read_env() -> dict[str, str]:
         raise SystemExit(
             "generate.py: .env does not exist -- run scripts/gen-secrets.sh first. "
             ".env.example ships placeholders that cannot work "
-            "(docs/reviews/2026-07-28-branch-review.md finding S2); falling back to "
+            "(docs/notes/reviews/2026-07-28-branch-review.md finding S2); falling back to "
             "it here would generate a vars.env full of CHANGEME and fail deep "
             "inside a Hurl run, the worst place to discover it."
         )
@@ -338,7 +337,7 @@ def check_policy(core: dict) -> None:
             "but the scenarios approve management requests explicitly over the admin "
             "API and never write /etc/xroad/conf.d/local.ini. Either implement the "
             "flags here or set policy.management_request_approval: explicit. "
-            "See docs/xroad-770-notes.md §1."
+            "See docs/decisions/xroad-770-notes.md §1."
         )
     approval = policy.get("management_request_approval")
     if approval != "explicit":

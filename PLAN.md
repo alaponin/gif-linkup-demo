@@ -10,7 +10,7 @@ exchange on the Linkup (X-Road) federation across the Progressa institutions.
 | Proving slice | PNEA issues a credential, pre-filling identity from PNIA and enrolment from PLR over the bus — the learner asked once (Module 5.6) |
 | Verification gate | `kp-solution-verify` — static (`check_pack.py --ready`) + live acceptance suite |
 | Source modules | KP2 Module 5 (5.4–5.7); Module 4 (semantic map, service contracts); 08-Interoperability Method Steps 5–8 |
-| X-Road doc basis | NIIS KB (topology, publishing) + **`nordic-institute/X-Road` @ tag `7.7.0`, `development/hurl/scenarios/setup.hurl`** as the verified call sequence — see §10 and `docs/xroad-770-notes.md` |
+| X-Road doc basis | NIIS KB (topology, publishing) + **`nordic-institute/X-Road` @ tag `7.7.0`, `development/hurl/scenarios/setup.hurl`** as the verified call sequence — see §10 and `docs/decisions/xroad-770-notes.md` |
 
 ## 1. Decisions taken
 
@@ -23,7 +23,7 @@ exchange on the Linkup (X-Road) federation across the Progressa institutions.
    (§9); no assumptions about that environment are baked in.
 3. **Release images + upstream's Hurl sequence, retargeted to Progressa.**
    *(Revised at v0.3; supersedes "release images + our own bash automation".
-   Rationale and the seven corrections it forced: `docs/xroad-770-notes.md`.)*
+   Rationale and the seven corrections it forced: `docs/decisions/xroad-770-notes.md`.)*
    `xrd-dev-stack` itself is still not adopted — `xrddev-*` development images,
    hard-coded `DEV:COM` identifiers, no persistent volumes, wrong topology. But
    its `development/hurl/scenarios/setup.hurl` **is** the reference implementation
@@ -260,7 +260,7 @@ was too short for a restart-from-persisted-volumes boot (60→120 retries);
 5100); and `acceptance.sh`'s registration-status checks were single-shot
 against an asynchronous propagation window (now retried, like everywhere else
 this asynchrony shows up). See
-`docs/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full build
+`docs/decisions/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full build
 log. P6 (deltas) below.
 
 ## 8. Known traps
@@ -268,7 +268,7 @@ log. P6 (deltas) below.
 Global-conf propagation delays (retry, don't fail); the CSR is generated in DER but
 must be **downloaded as PEM** and posted to the test CA with a filename; FiVRK
 certificate profile fields differ from other profiles and it validates the country
-code (`C=FI`, an artefact of the demo CA — see `docs/xroad-770-notes.md` §3); services
+code (`C=FI`, an artefact of the demo CA — see `docs/decisions/xroad-770-notes.md` §3); services
 are disabled after they are added until explicitly enabled; consumer default connection
 type HTTPS breaks the demo call unless set to HTTP or a client cert is uploaded;
 concurrent admin-UI sessions in one browser log each other out; CS test image admin
@@ -291,7 +291,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
 ## 9. Parked / open items
 
 - Module 2.7, the join API (`apps/join-api/`, design spec
-  `docs/superpowers/specs/2026-08-01-member-join-api-design.md`), is a
+  `docs/decisions/superpowers/specs/2026-08-01-member-join-api-design.md`), is a
   hosted-only member join from a submitted payload through validation,
   operator approval, real config generation, and the live X-Road admin-API
   sequence to `ACTIVE`. The console has a fourth tab (pending queue + diff,
@@ -344,7 +344,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   design decision 5). Two ordering bugs found and fixed at the time in
   X-Road's admin API sequence for a hosted member remain relevant: client-add
   must precede its SIGN-key generation, which must precede its registration
-  — see `docs/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
+  — see `docs/decisions/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
   These findings are unaffected by the profile split's removal — they hold
   for any hosted member under `security_server.hosted_on`, which is how a
   hosted member is expressed now.
@@ -385,7 +385,7 @@ and `vars.env` (the verified admin-API sequence, retargeted in `hurl/`),
 `development/hurl/Dockerfile`, `Docker/xrd-dev-stack/{compose.yaml,compose.dev.yaml,local-dev-run.sh}`
 (runner pattern, healthcheck gating, retry settings), `test-proxy-rest.hurl` (the `r1`
 call format used in the acceptance check). The stack's dev images and `DEV:COM`
-identifiers are not reused — see `docs/xroad-770-notes.md` §5. Admin API definitions:
+identifiers are not reused — see `docs/decisions/xroad-770-notes.md` §5. Admin API definitions:
 `src/{central,security}-server/openapi-model/.../openapi-definition.yaml`.
 docs.x-road.global manuals (CS/SS user guides) for anything the scenario does not cover.
 
@@ -400,7 +400,7 @@ really mutates the `identity-api` ACL live for its permissions tab — every
 mutation is journalled and reversed (`journal.py`), with reset on demand, on
 container start, and on a 120s no-heartbeat watchdog, and
 `scripts/acceptance.sh` itself refuses to run while that journal is dirty.
-See `docs/superpowers/plans/2026-07-26-kp2-demo-console.md` for the full
+See `docs/decisions/superpowers/plans/2026-07-26-kp2-demo-console.md` for the full
 build record, including two live-confirmed X-Road behaviours worth knowing
 about elsewhere in this pack: revoking/granting access-rights is instant in
 the **admin API's own read**, but the **proxy's actual authorization

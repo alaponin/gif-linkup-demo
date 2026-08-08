@@ -28,8 +28,7 @@ identifiers:
 # Rich identity — names, subsystem descriptions — that configs/*.yaml used to
 # duplicate by hand. identifiers: above stays the flat cross-pack contract,
 # untouched; this is what hurl/generate.py actually reads. The two must agree
-# -- hurl/check_scenarios.py checks that (Task 4 of
-# docs/superpowers/plans/2026-07-26-agency-identity-rename-support.md).
+# -- hurl/check_scenarios.py checks that.
 identity:
   instance: PROGRESSA
   member_class: GOV

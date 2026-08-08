@@ -55,7 +55,7 @@ class AdminSession:
         )
 
     # -- ACL operations -- all four verified against the running stack, not
-    # just the OpenAPI model. See docs/superpowers/plans/2026-07-26-kp2-demo-console.md.
+    # just the OpenAPI model.
 
     def read_subjects(self, client_id: str) -> list[str]:
         """Every subject granted ANY access on this client."""

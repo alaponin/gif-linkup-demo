@@ -106,7 +106,7 @@ work, not the operator's. That is the whole of what this case adds:
 `DELETE /members/{key}` walks the six steps of `hurl/steps.py`'s
 `REVERSAL_ORDER` backwards and then runs `scripts/member.sh remove <key>`.
 "Un-joined" is not one assertion but five, and they are exactly
-`docs/xroad-770-notes.md` §11's closing claims — the section that established
+`docs/decisions/xroad-770-notes.md` §11's closing claims — the section that established
 the sequence live in the first place. Anything less than all five would let a
 member look gone from wherever you happened to look.
 

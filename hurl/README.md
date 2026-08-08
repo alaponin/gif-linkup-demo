@@ -95,8 +95,7 @@ which moving f-string Hurl blocks into templates touches.
 ## Step registry (`hurl/steps.py`)
 
 The admin-API sequence the templates above encode is also expressed as an
-ordered registry of named `Step`s — `hurl/steps.py`, added by
-`docs/superpowers/plans/2026-08-01-kp2-join-a-step-registry.md` ("Plan A").
+ordered registry of named `Step`s — `hurl/steps.py`.
 `generate.py` renders the registry in order to build `hurl/scenarios/`; the
 bytes are identical to what a direct `render()` call would have produced —
 nothing about cold deploy changed. What the registry adds is that the
@@ -296,4 +295,4 @@ rather than clicking the UIs.
   `hurlfmt --check hurl/.build/setup.hurl` at P0 before trusting the syntax.
 - Everything here is demo-grade: Test CA as trust anchor, fixed credentials,
   plain HTTP between the Security Servers and the mock providers, one host. See
-  `docs/production-delta.md` and `docs/xroad-770-notes.md`.
+  `docs/production-delta.md` and `docs/decisions/xroad-770-notes.md`.

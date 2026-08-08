@@ -14,7 +14,7 @@
 [ -f "$PACK_DIR/.env" ] && set -a && . "$PACK_DIR/.env" && set +a
 
 # Refuse a .env that is missing, still a placeholder, or still one of the
-# values this repo used to publish (docs/reviews/2026-07-28-branch-review.md
+# values this repo used to publish (docs/notes/reviews/2026-07-28-branch-review.md
 # finding S2) -- the Central Server's own fixed xrd/secret is a separate,
 # unrotatable credential baked into the release image, never read from
 # .env, and is not touched by this check.
@@ -48,7 +48,8 @@ export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
 # Digest pins -- docker-compose.yml prefers these over XROAD_CS_TAG/
-# XROAD_VERSION when set (C13, docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md).
+# XROAD_VERSION when set: an image tag can move to a different image later,
+# a digest cannot, which is what a reproducible deploy needs.
 export XROAD_CS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.cs_digest)
 export XROAD_SS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.ss_digest)
 export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
@@ -127,7 +128,7 @@ COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl
 # form params, keep the cookie jar, and send the XSRF-TOKEN cookie back as an
 # X-XSRF-TOKEN header on every call. Verified against
 # development/hurl/scenarios/setup.hurl at X-Road 7.7.0 — see
-# docs/xroad-770-notes.md §1. (An earlier draft here used POST /api/v1/api-keys
+# docs/decisions/xroad-770-notes.md §1. (An earlier draft here used POST /api/v1/api-keys
 # with basic auth. That was wrong and would have failed on the first call.)
 
 # api_key <host:port> <user> <pass>  -> prints the path to a logged-in cookie jar.

@@ -66,7 +66,7 @@ COMPOSE_HURL=("${COMPOSE[@]}" -f "$PACK_DIR/hurl/compose.hurl.yml")
 # software token was initialised with whatever PIN was in .env the last
 # time this script actually deployed (recorded below, as a fingerprint,
 # never the value, in out/.token-fingerprint). Changing .env afterwards does
-# not change the token -- confirmed live (docs/xroad-770-notes.md §9) that
+# not change the token -- confirmed live (docs/decisions/xroad-770-notes.md §9) that
 # the mismatch surfaces as Server.ClientProxy.SslAuthenticationFailed, which
 # reads like a certificate problem, not a PIN one. Only refuse while the
 # federation's own volumes still exist: teardown.sh --purge deletes them but
@@ -88,7 +88,7 @@ check_token_fingerprint() {
       echo "run-linkup.sh: .env's XROAD_TOKEN_PIN does not match the PIN this
 federation's software token was initialised with. Changing .env alone does
 not change the token -- the mismatch surfaces as X-Road errors that look
-like certificate faults, not PIN errors (docs/xroad-770-notes.md §9).
+like certificate faults, not PIN errors (docs/decisions/xroad-770-notes.md §9).
 Restore the original .env, or scripts/teardown.sh --purge and redeploy with
 the new one." >&2
       exit 1
@@ -147,7 +147,7 @@ HURL_END=$(date +%s)
 # Fingerprint, never the PIN itself: the software token on every server is
 # now initialised with this value. check_token_fingerprint() above refuses a
 # later run whose .env disagrees with this fingerprint while the volumes
-# still exist -- changing .env alone does not change the token (docs/xroad-770-notes.md
+# still exist -- changing .env alone does not change the token (docs/decisions/xroad-770-notes.md
 # §9), and this is what lets that be caught here instead of 20 minutes into
 # a confusing SslAuthenticationFailed.
 mkdir -p "$PACK_DIR/out"

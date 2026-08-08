@@ -2,8 +2,8 @@
 #
 # THIS FILE IS THE ONLY PLACE THE PACK STATES ITS STATUS AGAINST THE PATH.
 # docs/path-conformance.md is generated from it and must not be hand-edited.
-# Narrative documents (docs/onboarding-alignment-design.md,
-# docs/onboarding-path-gap-analysis.md, docs/production-delta.md) carry
+# Narrative documents (docs/decisions/onboarding-alignment-design.md,
+# docs/decisions/onboarding-path-gap-analysis.md, docs/production-delta.md) carry
 # reasoning; when they carry a status claim as well, the two drift, and on
 # 2026-08-08 an external review found three findings recorded as closed by
 # files that had never been created. That is the failure this file exists to
@@ -99,7 +99,7 @@ clauses:
     vocabulary.
   evidence:
     - {path: apps/join-api/writer.py, symbol: "never resolved"}
-    - {path: docs/onboarding-alignment-design.md, symbol: "BB pattern register"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "BB pattern register"}
 
 # -- 1. The two-track shape --------------------------------------------------
 
@@ -305,7 +305,7 @@ clauses:
     the identity register on a peer), but a submitted payload that hosts an
     authoritative provider on a peer validates today.
   evidence:
-    - {path: docs/onboarding-alignment-design.md, symbol: "violates G2"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "violates G2"}
 
 - id: G2.4
   section: G2
@@ -431,7 +431,7 @@ clauses:
     declared absent collector is the pack's counter-example for the path's own
     point, and adding X-Road Metrics later closes it without a retrofit.
   evidence:
-    - {path: docs/onboarding-alignment-design.md, symbol: "remains unmet"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "remains unmet"}
 
 # -- G5 ----------------------------------------------------------------------
 
@@ -499,7 +499,7 @@ clauses:
     lands on the member record rather than as catalogue metadata -- a smaller
     version of the orphan-SLA problem the path's G5 addition sets out to fix.
   evidence:
-    - {path: docs/onboarding-alignment-design.md, symbol: "Service catalogue entry"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "Service catalogue entry"}
 
 - id: G5.7
   section: G5
@@ -560,7 +560,7 @@ clauses:
     nothing to adapt. It gets its first real test when real applications
     arrive behind the same contracts.
   evidence:
-    - {path: docs/onboarding-path-gap-analysis.md, symbol: adapter}
+    - {path: docs/decisions/onboarding-path-gap-analysis.md, symbol: adapter}
 
 # -- G6 ----------------------------------------------------------------------
 
@@ -699,7 +699,7 @@ clauses:
     Central Server; no complementary request is created anywhere.
   evidence:
     - {path: hurl/steps.py, symbol: "ss.client_register"}
-    - {path: docs/xroad-770-notes.md, symbol: management-requests}
+    - {path: docs/decisions/xroad-770-notes.md, symbol: management-requests}
 
 - id: S3.6
   section: "3"
@@ -756,7 +756,7 @@ clauses:
   clause: Service catalogue
   status: named-absence
   evidence:
-    - {path: docs/onboarding-alignment-design.md, symbol: "Service catalogue"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "Service catalogue"}
 
 - id: S6.3
   section: "6"
@@ -764,7 +764,7 @@ clauses:
   status: named-absence
   note: Add-on installed at G4, no collection layer. See G4.8.
   evidence:
-    - {path: docs/onboarding-alignment-design.md, symbol: "remains unmet"}
+    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "remains unmet"}
 
 - id: S6.4
   section: "6"

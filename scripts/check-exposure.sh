@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assert every published port in the rendered Compose configuration binds to
 # loopback -- the tested form of scripts/lib-stack.sh's own deploy-time refusal.
-# S1 (docs/reviews/2026-07-28-branch-review.md) was a one-line-per-service
+# S1 (docs/notes/reviews/2026-07-28-branch-review.md) was a one-line-per-service
 # mistake; without this, it is a one-line-per-service mistake again the next
 # time a service is added. Reads the RENDERED config, not deployment.yaml's
 # stated intent, so a bare, unbound `ports:` entry on a new service is

@@ -1,7 +1,7 @@
 # Code review (third pass) — `itu-presentation-skills-files`
 
 Scope: `10-Knowledge-Products/KP2-GIF/KP2-build-pack`, working tree as of 2026-08-01,
-continuing `docs/reviews/2026-07-29-branch-review.md`. Focus as requested:
+continuing `docs/notes/reviews/2026-07-29-branch-review.md`. Focus as requested:
 **simplification**, **cloud groundwork (DigitalOcean)**, **testing**, **cyber security**.
 
 Findings continue the existing numbering. **S** = security · **C** = complexity ·

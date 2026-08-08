@@ -124,35 +124,13 @@ amendment**, citing the pack as the demonstration. §7 lists these.
 
 ## 4-6. Resolution status
 
-**Most findings below are closed; three are not.** They drove
-`docs/onboarding-alignment-design.md`'s implementation, which carries the
-decision reasoning; this table keeps only what each finding was and how it
-closed, for anyone tracing a current file back to the gap that produced it.
-
-> **Corrected 2026-08-08.** K-02, G-02 and G-04 were recorded as closed by
-> `configs/governance/governance.yaml` and a BB pattern register in
-> `join-policy.yaml`. Neither file exists. The rows below now say what was
-> actually delivered. This is the failure mode `docs/path-conformance.yaml`
-> and its existence test were added to prevent.
-
-| ID | Was | Severity | Closed by |
-|---|---|---|---|
-| K-01 | Subtopics 5.2/5.3 (Member Requirements, SLA) had no build-pack artefact | High | `member_requirements`/`sla` on `JoinPayload`, rendered per member |
-| K-02 | Module 3's Governance Pack (RACI, admission role) did not exist in the pack | High | **OPEN.** `configs/governance/governance.yaml` was never created. `POST /approve` requires the single operator token plus a non-empty `decision_reference` (`app.py:493`); there is no accountable role |
-| K-03 | The Module 4 semantic map (OneRoster/CEDS/ISO 11179) had no anchor | Medium | `configs/semantic/semantic-map.yaml`, checked by `validate.py` |
-| K-04 | `video_ref: "?"` for module 2.7 | Low | **Withdrawn**, not fixed — the pack correctly records a capability the curriculum does not yet teach (`docs/onboarding-alignment-design.md` §1) |
-| G-01 | Identifier validation was a denylist, not X-Road 7.3+'s allowlist | High | `_BAD_CHARS` replaced with the allowlist |
-| G-02 | No G0/G1 layer: no eligibility test, no membership agreement, no admission role | High | **PARTLY OPEN.** G0/G1 are named absences in `00-gates.md` (correct, per P2), but the governance config that was to carry the admission role does not exist, and `_check_lawful_basis` (`validate.py:349`) skips every provider — the applicant class G0 exists to catch |
-| G-03a | GX teardown deleted the message-log archive with no retention note | Low | Two sentences beside the teardown instruction |
-| G-03b | Inbound ACL revocation at GX | — | **Withdrawn as a KP2 defect** — unreachable until a joined member consumes another member's service; re-filed as a KP3/KP4 dependency, §7 below |
-| G-04 | No tier-1 BB pattern classification on a service | Medium | **HALF CLOSED.** `pattern:` exists on `schema.Semantic` and both providers set it; the register in `join-policy.yaml` was never added (that file admits four keys by design) and nothing validates the value (`writer.py:146`) |
-| G-05 | No SLA artefact, no service-catalogue entry at G5 | Medium | SLA half closed by the onboarding record; catalogue half deferred — see design doc §8.4 |
-| G-06 | Monitoring add-ons not installed at G4 | Medium | Both add-ons confirmed running on every Security Server; collector remains a documented, deliberate gap |
-| G-07 | No per-member onboarding file; `out/join/*.json` is a job log, not a gate register | Medium | `onboarding/<key>/` covering the three gates Topic 5 teaches (5.2/5.3/5.4); seven path-backed gates named as absences, not stubbed (P2) |
-| G-08 | Ports 5500/5577 documented only in a brainstorm doc | Low | Fixed — see `docs/production-delta.md`'s gap table |
-| G-10 | `acceptance/2.7.md` recorded a defect `job.py` had already fixed | Low | Reconciled — `R1_RETRY_BUDGET = 54` re-verified live, `docs/production-delta.md` |
-| S-01 | Registration taught four times (modules 2.2-2.5, one video subtopic) | High | Collapsed to one `register-member` module; MoEYS retired, negative check reassigned to `PLR:ENROLMENT`; three members, one topology |
-| S-02 | Numbered filenames collided with the curriculum topic numbers they pointed at | Medium | Renamed to capability-based names (`federation-core.*`, `register-member.*`, `once-only-exchange.*`, `join-member.*`), landed with S-01 in one re-baselining pass |
+**Superseded by `docs/path-conformance.md`.** The resolution table that used
+to live here drifted from what was actually delivered (the 2026-08-08 review
+finding that started this correction), which is the failure mode
+`docs/path-conformance.yaml` and its existence test now exist to prevent.
+Each finding above (§3's register) drove `docs/decisions/onboarding-alignment-design.md`'s
+implementation, which carries the decision reasoning; current status per path
+clause is in the generated matrix.
 
 ---
 
@@ -223,7 +201,7 @@ Two further notes for the path document itself:
 
 ## 9. Recommended sequence
 
-> **Superseded — see `docs/onboarding-alignment-design.md`.** This section's
+> **Superseded — see `docs/decisions/onboarding-alignment-design.md`.** This section's
 > ordering was rebuilt on a different rule (one re-baselining event;
 > member-light work before it, member-heavy after), and two findings were
 > withdrawn there: **K-04**, because `video_ref: "?"` is the pack correctly
@@ -240,8 +218,8 @@ Two further notes for the path document itself:
 `REVIEW.md`, `configs/x-road-bus/2.7.yaml`, `configs/member-*/`,
 `apps/join-api/{schema,validate,job,app}.py`, `hurl/steps.py`,
 `acceptance/2.7.md`, `acceptance/member.md`, `prompts/2.2–2.5.md`,
-`prompts/member.md`, `docs/production-delta.md`, `docs/xroad-770-notes.md`,
-`docs/do-terraform-brainstorm.md`, `out/join/*.json`.
+`prompts/member.md`, `docs/production-delta.md`, `docs/decisions/xroad-770-notes.md`,
+`docs/notes/do-terraform-brainstorm.md`, `out/join/*.json`.
 
 **Curriculum:** `KP2-GIF/gitbook/KP2_Module{1..6}_Script_Bundle_v0.1.md` —
 scope statements, Module 5 subtopic table, subtopic 5.2 and 5.3 scripts,

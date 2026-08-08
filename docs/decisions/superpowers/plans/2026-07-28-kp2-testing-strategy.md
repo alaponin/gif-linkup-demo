@@ -147,7 +147,7 @@ reached its restart step, and it failed with `Server.ClientProxy.
 SslAuthenticationFailed: "no valid authentication certificate"` — the
 token itself reporting `status: OK`, ruling out the exposure-and-secrets
 plan's PIN-mismatch failure mode and pointing instead at the pack's
-already-documented ~10-hour OCSP-freshness window (`docs/xroad-770-notes.md`).
+already-documented ~10-hour OCSP-freshness window (`docs/decisions/xroad-770-notes.md`).
 It did not self-heal after several minutes of retries, unlike this pack's
 normal propagation-lag pattern. Recorded honestly in
 `docs/production-delta.md` and the script's own header: the true multi-day
@@ -228,14 +228,14 @@ moving on.
 
 ## Task 6: Turn live-discovered behaviours into fixtures
 
-**Files:** `apps/console/tests/`, `docs/xroad-770-notes.md`
+**Files:** `apps/console/tests/`, `docs/decisions/xroad-770-notes.md`
 
 Four X-Road behaviours cost a live federation to discover and currently cost one to re-confirm: the 409 on `grant`/`revoke`, `read_acl`'s 404-instead-of-`[]`, the `Server.ServerProxy.AccessDenied` fault shape, and the auth-cache lag.
 
 - [x] **Step 1:** capture the real responses for each — status, headers, body — from the running stack, into `apps/console/tests/fixtures/xroad/`.
 - [x] **Step 2:** back the existing stubbed tests with these recordings rather than with hand-written approximations, so the tests fail if the parsing stops matching what X-Road really sends.
 - [x] **Step 3:** guard against silent rot: a `--full` run re-captures the fixtures into a temp dir and diffs them, failing if X-Road's behaviour has moved. Recorded fixtures that nobody re-records eventually describe a server that no longer exists.
-- [x] **Step 4:** cross-reference each fixture with the paragraph in `docs/xroad-770-notes.md` that documents it. Commit.
+- [x] **Step 4:** cross-reference each fixture with the paragraph in `docs/decisions/xroad-770-notes.md` that documents it. Commit.
 
 **Verified live (2026-07-29):** three of the four hand-written stubs this
 replaced turned out to be wrong in ways a passing test never caught —
@@ -256,7 +256,7 @@ UUID's constant churn is not mistaken for drift). The fourth item the plan
 named, the auth-cache lag, has no distinct response shape of its own to
 capture — documented as such rather than forcing an artificial fixture,
 and cross-referenced against the timing measurement that already existed
-for it (`docs/xroad-770-notes.md` §6) alongside the three real fixtures in
+for it (`docs/decisions/xroad-770-notes.md` §6) alongside the three real fixtures in
 a new §10, linked back from each test's own docstring. `pytest tests
 apps/console/tests` (27 passed) and `scripts/acceptance.sh` both
 re-confirmed green after every fixture round-trip.

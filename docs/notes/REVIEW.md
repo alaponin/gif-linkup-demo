@@ -9,7 +9,7 @@ open structural item (`check_pack.py`'s `[confirm:` scan exempting `prompts/`)
 has since been resolved.
 
 Kept as the record that a real review happened early on, not as an active
-checklist — `docs/reviews/2026-07-28-branch-review.md` and
+checklist — `docs/notes/reviews/2026-07-28-branch-review.md` and
 `2026-08-01-branch-review.md` are the reviews that matter for the pack's
 current state, and `docs/production-delta.md` carries the ongoing
 demo-vs-production gap this review's §1 already anticipated ("the demo/

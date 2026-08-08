@@ -210,7 +210,7 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
 - [x] **Step 2:** investigate whether it is configurable: `docker exec ss-pnia grep -rn "cache-period\|cache" /etc/xroad/ /usr/share/xroad/conf.d/ 2>/dev/null`, and check the Security Server user guide's system-parameter annex. `proxy.ini` at 7.7.0 does **not** list a server-conf cache period, so if one exists it is a `SystemProperties` default rather than a documented default — confirm before relying on it.
 - [x] **Step 3:** if it is configurable, set it low for the demo stack only, in the `demo` profile, and record it in `docs/production-delta.md` as a demo-only tuning.
 - [x] **Step 4:** if it is not, design for it: an explicit countdown with the reason stated (*the provider caches its authorisation list; waiting for it to expire — 23s*), and a documented presenter workaround of arming the revoke before the camera rolls.
-- [x] **Step 5:** write the finding into `docs/xroad-770-notes.md`; commit.
+- [x] **Step 5:** write the finding into `docs/decisions/xroad-770-notes.md`; commit.
 
   **Verified live (2026-07-27):** measured 5 runs at the documented default
   (`server-conf-cache-period`, X-Road System Parameters User Guide, 60s) --
@@ -221,7 +221,7 @@ The existing ACL write is the trust device — revoking `identity-api`'s grant m
   (`docker-compose.yml`) at `server-conf-cache-period = 5`. Re-measured
   under the override: 4.5s-5.6s. Shrunk `app.js`'s poll budget from ~40s
   (8x5s) to ~10s (10x1s) to match. Documented in both
-  `docs/xroad-770-notes.md` §6 and `docs/production-delta.md`.
+  `docs/decisions/xroad-770-notes.md` §6 and `docs/production-delta.md`.
 
   **Two real bugs found and fixed during verification, independent of the
   cache-period tuning itself:** (1) `app.py`'s `_mutate_acl` inferred

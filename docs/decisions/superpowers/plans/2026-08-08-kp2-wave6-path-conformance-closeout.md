@@ -8,7 +8,9 @@
 > `PLAN.md` split is out of scope (Task 7). Three security constraints added as
 > design decisions 10–12: field **names** only, never values; no second fetch of
 > an applicant-controlled URL from the post-approval path; every new message
-> into a persisted record goes through `job.scrub()`.
+> into a persisted record goes through `job.scrub()`. A **comment guardrail** was
+> added to the global constraints: comments carry the reason, not a citation of
+> where it was decided.
 
 **Goal:** close the remaining points from the 2026-08-08 external review — the
 one open defect, the two cheapest missing gate artefacts, the lawful-basis gap
@@ -67,7 +69,46 @@ housekeeping.
   `jsonschema`, it has grown past its clause.
 - **No new outbound fetch.** This wave adds no HTTP call that the pack does not
   already make. See design decision 11.
+- **Comments state the reason, not its provenance** — see below.
 - Commit after every task.
+
+### Comment guardrail (applies to every task in this wave)
+
+A comment explains why the code is the way it is, **in the code's own terms**. It
+does not cite where the decision was recorded. Provenance belongs in git history
+and in `docs/decisions/`; a reader of `validate.py` should not have to open a
+plan to understand a check.
+
+**Do not write, in any code file:**
+
+- a path to `docs/superpowers/**`, or any plan or wave name;
+- `spec S<n>`, `design decision <n>`, `decision <n>`, `join-<x> plan`, `P<n>`,
+  or any other pointer to a numbered item in a planning document — including
+  the numbered decisions in *this* plan.
+
+**Do write:** the reason itself; a path to a **Reference** document
+(`docs/production-delta.md`, `docs/conventions.md`) when the reader genuinely
+needs it; an upstream ticket or version (`XRDDEV-1960`, `7.7.0`); a sibling
+source file the reader must open anyway.
+
+**The test:** if the cited document were deleted, would the comment still be
+useful? If not, the reason is in the wrong place — inline it. **And:** if a
+comment is longer than the code it explains, the explanation belongs in a
+Reference document and the comment should be one sentence plus a pointer.
+
+**Why this is a constraint and not a preference.** There are already ~230
+provenance citations across `apps/`, `hurl/`, `scripts/` and `tests/` — 102
+`spec S<n>`, 49 `decision <n>`, 45 `join-<x> plan`, and six full plan paths.
+One of the six, `docs/superpowers/plans/2026-08-01-kp2-reproducible-builds.md`
+in `scripts/lib-stack.sh`, **cites a plan that does not exist**. That is the same
+failure this whole wave exists to close, one layer down: a citation nothing
+checks, outliving the thing it cites. Task 7 moves the plans directory, which
+would break the other five.
+
+**Scope:** new and modified code only. **Do not sweep the existing ~230** — that
+is a separate mechanical change, and folding it into a feature wave makes every
+diff in this plan unreviewable. Task 7 Step 4 fixes only the six that its own
+move breaks.
 
 ---
 
@@ -487,7 +528,7 @@ Four kinds, and a document may only be one:
 | **Reference** — true right now | No history, no dates, no status tables | `README.md`, `runbook.md`, `docs/conventions.md`, `docs/production-delta.md`, `manifest.yaml`, `deployment.yaml`, `hurl/README.md`, `PLAN.md` |
 | **Decisions** — frozen once written | Dated; superseded, never edited to look current | → `docs/decisions/`: the `superpowers/plans/`, the `superpowers/specs/`, `topology-profile-decision.md`, `xroad-770-notes.md`, `xroad-8-delta.md`, `onboarding-alignment-design.md`, `onboarding-path-gap-analysis.md` |
 | **Generated** — never hand-written | A test regenerates and diffs | `onboarding/*`, `docs/path-conformance.md` |
-| **Notes** — deletable without loss | Excluded from any status claim | → `docs/notes/`: `do-terraform-brainstorm.md`, `docs/reviews/*`, `REVIEW.md` |
+| **Notes** — deletable without loss | Excluded from any status claim | → `docs/notes/`: `do-terraform-brainstorm.md`, `docs/notes/reviews/*`, `REVIEW.md` |
 
 - [ ] **Step 1:** `git mv` per the table. Keep the path document and the v0.3
       amendment note where they are — they are the *subject*, not a pack
@@ -501,9 +542,20 @@ Four kinds, and a document may only be one:
 - [ ] **Step 3:** add a four-line `docs/README.md` stating the four kinds and
       the rule that a document may only be one. Without it the categories decay
       back into a folder of markdown within two waves.
-- [ ] **Step 4:** run `--fast`. `tests/test_path_conformance.py` will fail on
-      every moved citation; fix `docs/path-conformance.yaml`, re-render, repeat
-      until green. Commit.
+- [ ] **Step 4 — the six in-code plan paths this move breaks.** `git mv` of
+      `superpowers/` invalidates five live citations (`apps/join-api/app.py`,
+      `apps/console/xroad.py`, `hurl/steps.py` ×2, `hurl/generate.py`) and a
+      sixth, in `scripts/lib-stack.sh`, is **already dangling**. Per the comment
+      guardrail, **do not repoint them — replace each with the reason it was
+      standing in for**, in one sentence. If the reason is not recoverable from
+      the plan, that is the finding: say what the code does and drop the
+      citation. Six sites, mechanical, and it is this task's own breakage rather
+      than scope creep. Verify with:
+      `grep -rn "docs/superpowers" apps hurl scripts tests --include=*.py --include=*.sh`
+      returning nothing.
+- [ ] **Step 5:** run `--fast`. `tests/test_path_conformance.py` will fail on
+      every moved citation in the matrix; fix `docs/path-conformance.yaml`,
+      re-render, repeat until green. Commit.
 
 ---
 
@@ -538,4 +590,7 @@ of Tasks 2, 3, 4 and 5 (each changes what a real join or retirement does); one
 - No configuration key in `configs/` is unread by code.
 - Every document in the pack is exactly one of the four kinds, and
   `docs/path-conformance.md` is the only place status is stated.
+- No code file cites a plan, a spec, a wave or a numbered decision — including
+  the ones in this plan — and `grep -rn "docs/superpowers" apps hurl scripts
+  tests` returns nothing.
 - `tests/golden/` byte-identical to its pre-wave state; `--full` green.

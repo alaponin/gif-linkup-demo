@@ -1,6 +1,6 @@
 # KP2 — Wave 2: the missing layers
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 2** of `docs/onboarding-alignment-design.md` §4. **Prerequisite: Wave 1 complete and committed.**
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 2** of `docs/decisions/onboarding-alignment-design.md` §4. **Prerequisite: Wave 1 complete and committed.**
 
 **Goal:** make good on three references the pack already makes and cannot honour —
 the Module 4 semantic map, the admission decision, and the conventions — using

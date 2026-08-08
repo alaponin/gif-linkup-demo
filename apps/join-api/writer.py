@@ -250,7 +250,7 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
 _GATES_TABLE = """\
 # Onboarding gates
 
-Every row is a gate exit (`docs/onboarding-alignment-design.md`'s P2: a named
+Every row is a gate exit (`docs/decisions/onboarding-alignment-design.md`'s P2: a named
 absence teaches as well as an implementation). A missing file means the gate
 has not been passed, whatever the calendar says.
 

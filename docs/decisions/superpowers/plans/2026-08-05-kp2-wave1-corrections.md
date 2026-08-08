@@ -1,6 +1,6 @@
 # KP2 — Wave 1: corrections
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 1** of `docs/onboarding-alignment-design.md` §4.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 1** of `docs/decisions/onboarding-alignment-design.md` §4.
 
 **Goal:** fix the one place the pack gives a wrong answer, and close four
 documentation absences. No topology change, no regenerate, no golden touched.
@@ -123,7 +123,7 @@ failure.
 Each is one row or two sentences. None is an implementation.
 
 - [ ] **Step 1 — ports (G-08).** TCP **5500** (message exchange) and **5577**
-      (OCSP) appear only in `docs/do-terraform-brainstorm.md`, under a caveat to
+      (OCSP) appear only in `docs/notes/do-terraform-brainstorm.md`, under a caveat to
       verify before use. Add a `production-delta.md` row: the demo is
       single-host on a loopback bind so it never needs them; a real member's
       Security Server needs both reachable, and a ministry firewall change takes

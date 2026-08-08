@@ -286,7 +286,7 @@ def test_a_completed_walk_delegates_the_config_half_to_member_sh(client, monkeyp
 
 
 def test_the_global_constraint_holds_after_the_round_trip(client, monkeypatch):
-    """docs/xroad-770-notes.md #11's own closing finding, asserted rather than
+    """docs/decisions/xroad-770-notes.md #11's own closing finding, asserted rather than
     trusted: a join followed by an un-join leaves hurl/topology.json
     byte-identical to what it was before -- same member set, same allocation,
     always. Compared against the pre-join bytes rather than a golden file so
@@ -347,7 +347,7 @@ def test_a_member_sh_failure_leaves_the_record_retiring_and_says_so(client, monk
 
 def test_member_sh_is_never_run_when_the_walk_did_not_finish(client, monkeypatch):
     """Removing the config while the federation still holds the member is the
-    orphan trap docs/xroad-770-notes.md #7 records."""
+    orphan trap docs/decisions/xroad-770-notes.md #7 records."""
     record = _joined(client)
     _stub_walk(monkeypatch, state="RETIRING")
     client.request("DELETE", "/members/ptsb", headers=OPERATOR)

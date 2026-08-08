@@ -27,9 +27,9 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   cannot outlive the file it cites. Four statuses and no tick mark. **Where a
   narrative document disagrees with it, it wins** — that divergence is exactly
   what produced the 2026-08-08 corrections in
-  `docs/onboarding-path-gap-analysis.md`.
+  `docs/decisions/onboarding-path-gap-analysis.md`.
 - **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence),
-  `docs/onboarding-alignment-design.md` (design record — frozen; reasoning,
+  `docs/decisions/onboarding-alignment-design.md` (design record — frozen; reasoning,
   not status), `REVIEW.md` (self-review, archival)
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,

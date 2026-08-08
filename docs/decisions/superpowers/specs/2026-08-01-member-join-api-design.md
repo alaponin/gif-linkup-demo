@@ -1300,7 +1300,7 @@ happens to author.
   keeping — there was no artefact to review, so there is no record to preserve,
   only a better design or a worse one.
 - **§2 is design, not a review.** It began as a separate review document
-  (`docs/reviews/2026-08-01-join-api-joget-review.md`, now merged and deleted)
+  (`docs/notes/reviews/2026-08-01-join-api-joget-review.md`, now merged and deleted)
   written by testing this design against a third-party-backend scenario before
   approval. Nothing in it was implemented, so there was no artefact to review
   and no reason to keep two documents that must be read together. Its findings

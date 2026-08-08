@@ -1,6 +1,6 @@
 # KP2 — Wave 3: the reduction and the single topology
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 3** of `docs/onboarding-alignment-design.md` §4, and decisions **D1, D2, D5**. **Prerequisites: Waves 1 and 2 complete, committed, and `--live` green.**
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 3** of `docs/decisions/onboarding-alignment-design.md` §4, and decisions **D1, D2, D5**. **Prerequisites: Waves 1 and 2 complete, committed, and `--live` green.**
 
 **Goal:** four Security Servers, three members, one topology, one registration
 module, capability-based filenames. One golden regeneration, at the end.
@@ -66,7 +66,7 @@ canonical member is hosted; hosting is demonstrated by the join API, whose
    three-server option was withdrawn: "consumer-only bodies are hosted" is the
    onboarding path's own inference rather than sourced practice, and the
    real-world host is a commercial third party, not the operator. See
-   `docs/topology-profile-decision.md` §2.3.
+   `docs/decisions/topology-profile-decision.md` §2.3.
 3. **The hosted golden is generated from a fixture *config*, not a profile
    flag.** This refines design §8.6. `resolve_hosted_on_map()` already handles an
    explicit `security_server.hosted_on` — the path every joined member uses — so
@@ -209,7 +209,7 @@ The pack already voted: `configs/member-ptsb/ptsb.yaml` (written by
       the console's entire model of the federation and Task 4 Step 5 rewrites it
       again.
 - [ ] **Step 4 (D2):** leave one line in `10-Knowledge-Products/KP3-DPI/KP3-build-pack/README.md`
-      pointing at `docs/onboarding-alignment-design.md` for the naming
+      pointing at `docs/decisions/onboarding-alignment-design.md` for the naming
       convention. **Do not rename KP3's scaffolding.**
 - [ ] **Step 5:** `--fast` green. Commit.
 
@@ -323,7 +323,7 @@ templates ("one invocation per step, not one per run").
       and RAM. The design's ~670s / ~11 GB are estimates extrapolated from two
       measured points — replace them with real figures in
       `production-delta.md` and `README.md`, and correct
-      `docs/topology-profile-decision.md` §5.3's per-plan arithmetic if the
+      `docs/decisions/topology-profile-decision.md` §5.3's per-plan arithmetic if the
       measurement moves it.
 - [ ] **Step 5:** confirm the un-join byte-identity clause passes against the
       single golden. Commit.

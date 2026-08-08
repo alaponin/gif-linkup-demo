@@ -104,7 +104,7 @@ R1_RETRY_BUDGET = 54
 BLOCKED_POLL_ATTEMPTS = 15
 BLOCKED_POLL_INTERVAL_SECONDS = 2.0
 
-# Confirmed live (PLAN.md S8, docs/xroad-770-notes.md S9): a federation left
+# Confirmed live (PLAN.md S8, docs/decisions/xroad-770-notes.md S9): a federation left
 # idle overnight fails every cross-server call with this, which reads like a
 # certificate fault and is not one.
 OCSP_MARKER = "Server.ClientProxy.SslAuthenticationFailed"
@@ -765,7 +765,7 @@ def _token_keys(step: JobStep, captures: dict) -> list | None:
     direction: "this token carries no key for this member" is proof of
     absence, "I could not read this token" is not, and collapsing the two
     would skip the SIGN-key delete and leave exactly the orphan
-    docs/xroad-770-notes.md #11 found."""
+    docs/decisions/xroad-770-notes.md #11 found."""
     raw = captures.get(f"{step.tokens['CAP_P']}_token")
     if not raw:
         return None
@@ -1126,7 +1126,7 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
 # own engine:
 #
 #   1. **The order is not `reversed(completed_steps)`.** hurl/steps.py's
-#      REVERSAL_ORDER is what was established LIVE (docs/xroad-770-notes.md
+#      REVERSAL_ORDER is what was established LIVE (docs/decisions/xroad-770-notes.md
 #      #11 finding 5): ss.client_register -> ss.client_add -> ss.sign_key_csr,
 #      i.e. the client goes before its key backwards just as forwards. The
 #      strict mirror (key before client) was never tried live.
@@ -1159,7 +1159,7 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
 _HURL_VAR_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 
 # The reversal analogue of _succeeded()'s 409-as-success (spec S5.3). Repeating
-# any of the six is safe and distinguishable (docs/xroad-770-notes.md #11):
+# any of the six is safe and distinguishable (docs/decisions/xroad-770-notes.md #11):
 # 1 -> 409 accessright_not_found, 2 -> 404 service_description_not_found,
 # 4 -> 404 client_not_found, 5 -> 404, 6 -> 404 member_not_found. So a 404 or
 # 409 on a reversal means "already gone" -- which is what makes a probe that
@@ -1352,7 +1352,7 @@ def unjoin(
             # on volumes retire_instruction() tells the operator to remove --
             # it does not outlive the un-join. Only a hosted member leaves a
             # key behind on somebody else's still-running Security Server,
-            # which is the orphan docs/xroad-770-notes.md #11 found.
+            # which is the orphan docs/decisions/xroad-770-notes.md #11 found.
             continue
         if not steps.BY_ID[base].reverse:
             continue

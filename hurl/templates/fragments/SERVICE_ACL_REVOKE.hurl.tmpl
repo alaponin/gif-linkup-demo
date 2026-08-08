@@ -3,7 +3,7 @@
 # SERVICE_ACL.hurl.tmpl (join-c plan Task 2). Same body shape as the grant
 # (apps/console/xroad.py's revoke(), confirmed live). CONFIRMED LIVE
 # (apps/join-api/tests/fixtures/xroad/unjoin.acl_revoke.json,
-# docs/xroad-770-notes.md #11): 204 on the first attempt, no retry.
+# docs/decisions/xroad-770-notes.md #11): 204 on the first attempt, no retry.
 # Repeating this call is safe: apps/console/tests/fixtures/xroad/
 # revoke_409_not_found.json records 409 accessright_not_found on an
 # already-revoked right.

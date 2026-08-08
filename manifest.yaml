@@ -29,8 +29,7 @@ identifiers:
 # Rich identity — names, subsystem descriptions — that configs/*.yaml used to
 # duplicate by hand. identifiers: above stays the flat cross-pack contract,
 # untouched; this is what hurl/generate.py actually reads. The two must agree
-# -- hurl/check_scenarios.py checks that (see
-# docs/superpowers/plans/2026-07-26-agency-identity-rename-support.md).
+# -- hurl/check_scenarios.py checks that.
 identity:
   instance: PROGRESSA
   member_class: GOV
@@ -39,11 +38,10 @@ identity:
     name: Progressa Digital Government Authority
     management_subsystem: MANAGEMENT
   # origin: canonical | joined, default canonical (hurl/generate.py already
-  # reads it this way -- see docs/superpowers/plans/
-  # 2026-07-27-kp2-member-parameterisation.md). Only a canonical member may
-  # appear in identifiers.members above -- that block is the frozen
-  # KP3/KP4 cross-pack contract, and a joined member entering it silently
-  # would mean a demonstration join changing what other packs build against.
+  # reads it this way). Only a canonical member may appear in
+  # identifiers.members above -- that block is the frozen KP3/KP4
+  # cross-pack contract, and a joined member entering it silently would
+  # mean a demonstration join changing what other packs build against.
   members:
     pnea:
       code: PNEA

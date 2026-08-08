@@ -1,6 +1,6 @@
 # KP2 — Wave 4: the onboarding record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 4** of `docs/onboarding-alignment-design.md` §4, trimmed per decision **D3**. **Prerequisites: Wave 3 complete, committed, `--full` green, and the new topology measured.**
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan implements **Wave 4** of `docs/decisions/onboarding-alignment-design.md` §4, trimmed per decision **D3**. **Prerequisites: Wave 3 complete, committed, `--full` green, and the new topology measured.**
 
 **Goal:** the two artefacts Topic 5 teaches and the pack does not carry — the
 Member Requirements checklist (5.2) and the SLA (5.3) — plus a per-member
