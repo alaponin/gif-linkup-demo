@@ -136,7 +136,7 @@ def test_truncated_file_raises_runtime_error_naming_the_path(tmp_path):
 
 def test_missing_and_empty_file_both_read_as_empty_list(tmp_path):
     """Existing behaviour, now explicitly pinned -- neither case is the
-    corruption Task 1 refuses."""
+    corruption Journal.entries() refuses."""
     missing = Journal(tmp_path / "does-not-exist.json")
     assert missing.entries() == []
 
@@ -158,7 +158,7 @@ def test_no_tmp_file_remains_after_append_pending(tmp_path):
 
 def test_pre_existing_journal_from_old_code_path_reads_identically(tmp_path):
     """Format compatibility: a journal written by plain write_text (the
-    pre-Task-1 code path, no .tmp/rename involved) must still read the
+    old code path, no .tmp/rename involved) must still read the
     same as one written by the new atomic _write."""
     path = tmp_path / "journal.json"
     entry = JournalEntry(

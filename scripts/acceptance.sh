@@ -11,7 +11,7 @@
 # Ids today are 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
 # 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>),
 # 2.7.deny(<member>.<service>), 2.7.unjoin(<member>) and 2.7.unjoin.topology
-# (member-parameterisation Task 7 generalised what used to be
+# (member-parameterisation generalised what used to be
 # discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
 # literal "2.4" id to select; --only/--from match against what actually
 # runs today, not the pre-generalisation module numbers).
@@ -83,7 +83,7 @@ check() { local id=$1 desc=$2 fn=$3
 
 # ---- 2.1 federation core -----------------------------------------------------
 CS_KEY=$(api_key localhost:4000 xrd secret)
-check_21() {  # paths confirmed live at P0 2026-07-25
+check_21() {  # paths confirmed live at P0
   api GET localhost:4000 "$CS_KEY" /initialization/status \
     | jq -e '.instance_identifier=="PROGRESSA"' >/dev/null &&
   api GET localhost:4000 "$CS_KEY" /member-classes \
@@ -91,7 +91,7 @@ check_21() {  # paths confirmed live at P0 2026-07-25
 }
 check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
 
-# ---- add-ons: operational + environmental monitoring (Wave 5, G-06) ---------
+# ---- add-ons: operational + environmental monitoring (G-06) ---------
 # Server-level, not client-level -- xroad-monitor (environmental) and
 # xroad-opmonitor (operational) ship pre-installed and supervisord-managed on
 # the full (non-slim) Sidecar image every Security Server in this pack already
@@ -119,7 +119,7 @@ done
 # ---- 2.2–2.5 member registrations & services --------------------------------
 # Every subsystem HOST_SS names, REGISTERED on the SS that hosts it -- covers
 # whatever member set is actually deployed (hurl/topology.sh, member-
-# parameterisation Task 4), not a fixed list of four. PDGA:MANAGEMENT is
+# parameterisation), not a fixed list of four. PDGA:MANAGEMENT is
 # HOST_SS's one non-member entry (the federation owner's own management
 # subsystem, added by a different flow during 10-ss-pdga.hurl) -- excluded
 # here, same scope as before this generalisation.
@@ -130,7 +130,7 @@ check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
 # Registration status is global-conf propagation, same asynchrony as the Hurl
-# runner itself -- confirmed at P5 (2025-07-25): a cold reproducibility run hit
+# runner itself -- confirmed at P5: a cold reproducibility run hit
 # PNEA:EXAMS still short of REGISTERED the instant acceptance.sh started right
 # after deploy, though it settled seconds later. Retry, don't fail (lib-core.sh's
 # retry(), same as everywhere else this asynchrony shows up in this pack).
@@ -142,19 +142,19 @@ done
 
 # ACL exactness (generalised over every service every member config declares,
 # not two bespoke checks for enrolment-api/identity-api): confirmed live at
-# P0 2026-07-25 -- GET /clients/{id}/service-clients lists every subject
+# P0 -- GET /clients/{id}/service-clients lists every subject
 # granted ANY access on that client; GET .../service-clients/{subject}/
 # access-rights lists which service codes that subject holds. Exactness needs
 # both, for EVERY service -- including a service with an EMPTY access: list,
 # which must have NO subjects at all (pemis-api was this pack's example of
-# one, until MoEYS was retired in Wave 3 Task 1; no canonical service is
+# one, until MoEYS was retired; no canonical service is
 # empty today, but a future joined member's could be). That case was
 # previously unchecked entirely; this loop covers it as a natural consequence
 # of being generic rather than as a bespoke third check.
 #
 # The dataset comes from hurl/topology.json, not a second read of
 # configs/member-*/*.yaml -- topology.json already carries each subsystem's
-# hosted_on and each service's code+access (member-parameterisation Task 3),
+# hosted_on and each service's code+access (member-parameterisation),
 # so this is the one place that data is read for this purpose.
 check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service code, $4 = expected subjects (JSON array)
   local ss=$1 client_id=$2 svc=$3 want_json=$4
@@ -234,13 +234,13 @@ ID_URL="$PNEA_REST${ID_PATH_TMPL%/\{nin\}}"
 EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
 
 # Same asynchronous-propagation risk as the registration-status checks above
-# (retry, don't fail): confirmed live at P5 (2026-07-26) -- a fresh deploy's
+# (retry, don't fail): confirmed live at P5 -- a fresh deploy's
 # first exchange call can hit a transient failure moments before it settles.
 # retry() itself only reports success/failure and discards stdout, so capture
 # the body with a small inline retry instead.
 #
 # The success criterion is "the body parses as JSON", NOT curl's exit code
-# (join-c plan Task 5). curl -sf exits 0 on an X-Road REST response that is
+# (join-c plan). curl -sf exits 0 on an X-Road REST response that is
 # 200 with an empty or not-yet-valid body, which a fresh deploy really does
 # return for a few seconds -- docs/production-delta.md's "Lite profile's full
 # cycle, measured" recorded it happening on 2 of 3 fresh deploys and left it
@@ -300,7 +300,7 @@ check 2.6.3 "asked once — NIN is the only citizen field; bus pre-fills exactly
 
 check_264() {  # denial must come from the provider ACL, observed as an X-Road error —
                # not a transport failure. Happy path (2.6.1) already proved the bus is up.
-               # Exact fault confirmed live at P0 (2026-07-25):
+               # Exact fault confirmed live at P0:
                # {"type":"Server.ServerProxy.AccessDenied","message":"Request is not
                # allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api",...}, HTTP 500.
   curl -sk -H "$BADCLIENT" "$BAD_REST${ID_PATH_TMPL/\{nin\}/$NIN}" \
@@ -376,7 +376,7 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # that, including a backend 404"). This section originally preferred a
 # parameter-free path from out/join/<id>.json's endpoint_baseline, falling
 # back to an UNSUBSTITUTED "{param}" path segment otherwise -- found live,
-# join-b Task 6's own first real join (PTSB): every service this pack
+# join-b's own first real join (PTSB): every service this pack
 # publishes, canonical or joined, is GET-by-key shaped, so there is never a
 # parameter-free path to prefer, and the fallback path can never return 2xx
 # against any real backend. Fixed by asking the same question job.py already
@@ -453,7 +453,7 @@ PY
 # 2.7.deny(...) pair per row above. Built before deciding whether to run, so
 # _selection_touches_27() can test each one with _id_matches() itself (the
 # file's own hierarchical-prefix rule, ~line 27) instead of a parallel,
-# narrower `case` pattern -- found in review: the earlier version only
+# narrower `case` pattern -- the earlier version only
 # recognised a SELECT_ARG that itself started with "2.7", so a coarser
 # `--only 2` (which _id_matches() says SHOULD match every id under module 2,
 # same as it already does for 2.1/2.6) silently skipped this whole section
@@ -464,7 +464,7 @@ for _row in "${_27_ROWS[@]}"; do
   _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})")
 done
 
-# ---- 2.7.unjoin -- the un-join transition (join-c plan Task 5) ---------------
+# ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
 # acceptance/2.7.md's un-join clause: five assertions, which are exactly
 # docs/xroad-770-notes.md #11's closing claims. Discovered the same generic,
 # vacuous-by-default way the r1 rows above are: the newest RETIRED
@@ -719,7 +719,7 @@ PY
     # SKIP, not a vacuous PASS. With a member still joined, the golden
     # canonical topology is the wrong thing to compare against -- but
     # reporting PASS for a check that asserted nothing is how a green summary
-    # comes to mean less than it looks like it does (review finding).
+    # comes to mean less than it looks like it does.
     if python3 -c 'import json,sys; sys.exit(0 if any(s.get("origin")=="joined" for s in json.load(open(sys.argv[1]))["subsystems"]) else 1)' "$PACK_DIR/hurl/topology.json"; then
       log "SKIP 2.7.unjoin.topology -- a member is still joined, so byte-identical to the canonical golden is the wrong expectation (not a failure)"
     else

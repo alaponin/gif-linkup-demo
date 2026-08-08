@@ -1,15 +1,14 @@
 # Topology and profiles — decision analysis
 
 **Status: DECIDED and implemented.** T1 (4 servers, all own-server, no profile
-split) was chosen on the evidence in §2.3/§6 below and built in Wave 3 Task 4
-(2026-08-06). `deployment.yaml` has no `profile:` key; one topology exists.
-Wave 3 Task 6 (2026-08-07) then replaced this document's `--full` estimate
-with a real measurement — `docs/production-delta.md` carries the current
-figures. This document is kept as the decision record: why T1 over T2, and
-why dropping the profile split was worth it independent of server count.
+split) was chosen on the evidence in §2.3/§6 below. `deployment.yaml` has no
+`profile:` key; one topology exists. This document is kept as the decision
+record: why T1 over T2, and why dropping the profile split was worth it
+independent of server count. Current measured figures live in
+`docs/production-delta.md`.
 **Question analysed:** can we cut Security Servers further, and drop the
 `full` / `lite` profile split entirely?
-**Feeds:** `docs/onboarding-alignment-design.md` Wave 3 and §8.2.
+**Feeds:** `docs/onboarding-alignment-design.md` §4.3 and §8.2.
 
 **Short answer:** the floor is **3 Security Servers**, not fewer; profiles can go,
 and dropping them is worth more than the server count is. The two questions are
@@ -32,8 +31,8 @@ has to live on a Security Server. The only ways to remove `ss-pdga` are to host
 services on a member's infrastructure, which inverts the governance separation
 Module 3 teaches — or to skip management services entirely, which is not X-Road.
 
-**`ss-pdga` stays.** It is also the reason `profile: lite` never drops below
-three: PDGA is in both profiles.
+**`ss-pdga` stays.** It is also the reason a reduced topology never drops below
+three servers: PDGA is load-bearing in every configuration.
 
 ### 1.2 Three members is the floor, for reasons already established
 
@@ -61,25 +60,20 @@ the realistic alternative is 4 with PNEA on its own.
 
 ## 2. The options
 
-Timings were originally **estimates** derived from two measured points — full
-(5 own-server) at ~872s / ~13 GB and lite (3 own-server + 2 hosted clients) at
-~466s / ~8.9 GB, giving roughly ~200s per own-server bring-up. **T1 is what
-got built (design decision 5, Wave 3 Task 4), and Wave 3 Task 6 (2026-08-07)
-replaced its estimate with a real cold `scripts/verify.sh --full` run: ~763s
-(~12.7 min) wall-clock, ~10.9 GiB RAM (`docker stats --no-stream`, steady
-state).** The `--full` estimate ran about 14% (~93s) low; the RAM estimate
-held, within noise. T2 was never built, so its column is still the original
-estimate.
+**T1 (4 servers, all own-server) is what got built** — see §6. T2 was never
+built, so its figures below are estimates derived from two earlier measured
+points (a five-own-server topology and a three-own-server-plus-two-hosted-clients
+topology), giving roughly 200s per own-server bring-up.
 
-| | **T1 — 4 servers** | **T2 — 3 servers** | Today (full) |
-|---|---|---|---|
-| Servers | pdga, pnia, plr, pnea | pdga, pnia, plr | 5 |
-| Hosted | none | PNEA | none (lite: PNIA + MoEYS) |
-| `--full` cycle | **~763s (~12.7 min), measured** | ~490s (~8 min), est. | ~872s (~14.5 min), historical |
-| RAM | **~10.9 GiB, measured** | ~9 GB, est. | ~13 GB, historical |
-| G2 compliant | ✓ | ✓ | ✓ (lite: ✗) |
-| Both exchange legs cross-server | ✓ | depends on host — §2.1 | ✓ |
-| Hosted path in cold deploy | ✗ | ✓ | ✗ (lite: ✓) |
+| | **T1 — 4 servers** | **T2 — 3 servers** |
+|---|---|---|
+| Servers | pdga, pnia, plr, pnea | pdga, pnia, plr |
+| Hosted | none | PNEA |
+| `--full` cycle | **~13 min, measured** — see `docs/production-delta.md` | ~8 min, estimate |
+| RAM | **~11 GiB, measured** | ~9 GiB, estimate |
+| G2 compliant | ✓ | ✓ |
+| Both exchange legs cross-server | ✓ | depends on host — §2.1 |
+| Hosted path in cold deploy | ✗ | ✓ |
 
 ### 2.1 T2's one complication: where PNEA is hosted
 
@@ -113,7 +107,7 @@ this document, and it is not about cost.
 ### 2.3 What the literature and practice actually say — checked, and it flips §5
 
 The §2.2 argument rested on "consumer-only bodies are hosted" being established
-practice. It is not, or not in the form I used it. Checked against X-Road
+practice. It is not, or not in the form used there. Checked against X-Road
 documentation and the two reference instantiations:
 
 **Confirmed — hosting itself is first-class.**
@@ -132,9 +126,9 @@ documentation and the two reference instantiations:
 Estonia this is a live market: Telia sells an X-tee turvaserver as a managed
 shared service (through Riigipilv, the state cloud), with HSM-backed keys, and
 subscribers authorise Telia to manage their certificate. turvaserver.ee and Almic
-offer comparable services. **RIA — the operator — is not the host.** My T2
-variant put PNEA on `ss-pdga`, the operator's server. That model has no support
-in the practice I can find.
+offer comparable services. **RIA — the operator — is not the host.** A T2
+variant that put PNEA on `ss-pdga`, the operator's server, has no support in the
+practice found here.
 
 **Not confirmed — "consumer-only" as the hosting criterion.** Nothing ties
 hosting to the consumer-versus-provider distinction. X-Road's own definition of a
@@ -145,10 +139,10 @@ is what the commercial services sell.
 
 The consumer-only rule is the **onboarding path's own inference**, and a
 defensible one: it follows from the signing-key delegation argument in G2. But it
-is the path's reasoning, not sourced practice, and this document treated it as
-established. **Worth flagging back to the path author** — G2's exit test would be
-stronger citing the commercial-host model, where the delegation is handled by
-contract and HSM rather than avoided.
+is the path's reasoning, not sourced practice, and this document originally
+treated it as established. **Worth flagging back to the path author** — G2's
+exit test would be stronger citing the commercial-host model, where the
+delegation is handled by contract and HSM rather than avoided.
 
 **Finland answers "small organisation" differently, and the pack already
 implements its answer.** Rather than hosting, DVV points small organisations at
@@ -166,21 +160,20 @@ and would not be on physical hosts.
 
 - **2 servers** — needs one provider, which kills once-only, or hosts an
   authoritative publisher on a peer, which violates G2.
-- **Current `lite` as the single profile** — hosts PNIA on `ss-plr`. Already
-  rejected in the design's §8.2: it models a peer holding the national identity
-  authority's signing key.
+- **A single hosted-PNIA profile** — hosts PNIA on `ss-plr`, i.e. models a peer
+  holding the national identity authority's signing key. Already rejected on the
+  same G2 grounds (`docs/onboarding-alignment-design.md` §8.2).
 
 ---
 
 ## 3. Dropping the profiles — the work
 
-**Done, Wave 3 Task 4 (2026-08-06).** This section originally scoped ten
-changes across `generate.py`, `deployment.yaml`, `docker-compose.yml`, the
-golden corpus, `acceptance/*.md`, `README.md`, `runbook.md`,
-`docs/production-delta.md` and the console test fixtures — all landed in one
-pass with a single golden regeneration, per §4.4's recommendation below. Two
-workarounds it removed are worth remembering as *why* this was worth doing,
-not just cheaper config — see §4.1.
+Ten changes landed across `generate.py`, `deployment.yaml`,
+`docker-compose.yml`, the golden corpus, `acceptance/*.md`, `README.md`,
+`runbook.md`, `docs/production-delta.md` and the console test fixtures — all
+in one pass with a single golden regeneration, per §4.4's recommendation
+below. Two workarounds it removed are worth remembering as *why* this was
+worth doing, not just cheaper config — see §4.1.
 
 ---
 
@@ -206,36 +199,38 @@ resolving" — files that exist to satisfy a checker rather than to run. Also go
 
 ### 4.2 The test matrix collapses
 
-Today: 3 tiers × 2 profiles, with README guidance on which combination to run
+Before: 3 tiers × 2 profiles, with README guidance on which combination to run
 when ("develop against lite… run one `--full` under full profile before closing
 out a plan"). After: 3 tiers. One golden, one topology, one story for a learner
 to hold.
 
-**The profile split was optimising the tier that runs least.** `--fast` (~49s)
-and `--live` (~78s) are the day-to-day tiers; `--full` runs "once before the plan
-is closed out, not a per-task ritual." Profiles existed because `--full` at
-~14.5 min was painful — but at T1's ~11 min or T2's ~8 min, run once per plan,
-the pain is gone.
+**The profile split was optimising the tier that runs least.** `--fast` and
+`--live` are the day-to-day tiers, both under a couple of minutes; `--full` runs
+"once before the plan is closed out, not a per-task ritual." Profiles existed
+because `--full` at the largest historical topology was painful — but run once
+per plan, at the current ~13-minute figure, the pain is gone.
 
 ### 4.3 What is genuinely lost
 
-- **A documented cheap cycle**, if the single topology is slow. T2 (~8 min) is
-  already at today's lite speed, so nothing is lost. T1 (~11 min) is a real
-  regression against lite for anyone who redeploys often.
+- **A documented cheap cycle**, if the single topology is slow. T2 (~8 min,
+  estimate) is close to the historical lite speed, so little is lost there. T1
+  (~13 min, measured) is a real regression against lite for anyone who
+  redeploys often.
 - **Scale demonstration.** Showing the federation at two sizes goes away. Minor —
   the join API demonstrates growth better, and live.
 - **Cold-deploy hosted coverage**, under T1 only. See §2.2.
 
 ### 4.4 Risk
 
-The main one is **Wave 3 concentration.** It already carries the member
-reduction, the rename, the frozen-contract amendment and one golden
-regeneration. Adding profile removal makes it the largest plan in the programme.
+The main one is **concentration.** Removing profiles landed alongside the
+member reduction, the rename and the frozen-contract amendment, in the same
+piece of work — the largest in the programme.
 
-Splitting it is worse: profile removal changes topology, so doing it separately
-buys a second re-baselining event and breaks P3. Recommend keeping it in Wave 3
-but structuring that plan as sequenced steps with a single regeneration at the
-end, and its own `--full` proof.
+Splitting it would have been worse: profile removal changes topology, so doing
+it separately buys a second re-baselining event and breaks the "one
+re-baselining event" rule (`docs/onboarding-alignment-design.md` §1.1).
+Structuring that work as sequenced steps with a single regeneration at the
+end, and its own `--full` proof, kept it to one pass.
 
 ---
 
@@ -243,24 +238,24 @@ end, and its own `--full` proof.
 
 Short version: **the cheap tiers are untouched, the golden corpus does not
 shrink, and for a normal plan the total verification time goes *down* despite
-`--full` being slower than lite.**
+`--full` being slower than lite was.**
 
 ### 5.1 Profiles never made the cheap tiers cheap
 
-| Tier | Cost | Touches topology? | Effect of this change |
-|---|---|---|---|
-| `--fast` | ~49s, 291 tests | **No** — "no running containers, no network, no federation" | Essentially none; marginally simpler |
-| `--live` | ~78s | Needs a running stack, **never deploys one** | None in kind |
-| `--full` | ~872s / ~466s | Yes — purge, deploy, seed, acceptance | ~670s estimated, **~763s measured** (§2, §5.3) — single number either way |
+| Tier | Touches topology? | Effect of this change |
+|---|---|---|
+| `--fast` | **No** — "no running containers, no network, no federation" | Essentially none; marginally simpler |
+| `--live` | Needs a running stack, **never deploys one** | None in kind |
+| `--full` | Yes — purge, deploy, seed, acceptance | Single number now, not a profile-dependent pair — see `docs/production-delta.md` |
 
 `--fast` is the tier that runs after every step, and it never had a federation to
 be a profile of. `--live` runs once per task and refuses to deploy — it uses
-whatever stack is already up. **Neither gets more expensive.** The profile split
+whatever stack is already up. **Neither got more expensive.** The profile split
 was only ever discounting `--full`, the tier the README itself says is "not a
 per-task ritual."
 
 So the answer to "is there still a cheap way to run checks": yes, the same two
-ways as today, at the same cost.
+ways as before, at the same cost.
 
 ### 5.2 Golden files stay — and can keep covering the hosted path
 
@@ -269,21 +264,16 @@ profile split blurred:
 
 - `deployment.yaml`'s `profile:` — **a deployment choice**: which topology gets
   stood up in Docker.
-- `generate.py --profile` — **a generator input**: which topology gets rendered.
+- `generate.py --topology-fixture` — **a generator input**: which topology gets
+  rendered.
 
-`test_golden.py` already uses the second, not the first:
-
-```
-generate.py --out <tmp> --profile <p> --env tests/golden/env.fixture
-```
-
-then diffs the tree against `tests/golden/<p>/`. It never deploys anything.
+`test_golden.py` uses the second, not the first, and never deploys anything.
 **Removing the deployable profile does not require removing the generator
 fixture.**
 
-So the recommended shape:
+So the shape landed as:
 
-| | Today | After |
+| | Before | After |
 |---|---|---|
 | Deployable topologies | 2 (`full`, `lite`) | **1** |
 | Golden fixtures | 2, tied to the profiles | **2, decoupled** — one matching the real deployment, one hosted-rendering fixture that is never deployed |
@@ -299,41 +289,31 @@ Cost of keeping it: a directory of YAML inputs and a generated tree. No
 containers, no RAM, no deploy time, no README guidance — it is a test fixture,
 not a configuration a contributor has to choose between.
 
-**Rename the generator flag** (`--topology-fixture`, or similar) so that nothing
-in the pack is called "profile" once the deployment key is gone. Sharing the word
+The generator flag is named `--topology-fixture`, not `--profile`, so nothing in
+the pack is called "profile" once the deployment key is gone — sharing the word
 is what made these look like one concept.
 
 ### 5.3 The `--full` arithmetic improves for a normal plan
 
-The current workflow is "develop against lite for the cheap full cycle, run one
-`--full` under full profile before closing out a plan." So a plan pays **N lite
-cycles plus one full-profile cycle**:
+The old workflow was "develop against lite for the cheap full cycle, run one
+`--full` under full profile before closing out a plan." So a plan used to pay
+**N lite cycles plus one full-profile cycle**, against the single-topology
+figure now:
 
-**Corrected with Wave 3 Task 6's real measurement (763s, not the ~670s
-estimate this table originally used — see §2):**
+| Full cycles in a plan | Old two-profile total | Now (single topology) |
+|---|---|---|
+| 1 | Highest relative cost | **Lowest** — clearly faster |
+| 2 | | Still faster |
+| 3 | | Roughly a wash |
+| 4+ | | Slower |
 
-| Full cycles in a plan | Today (N×466 + 872) | After (N×763) | |
-|---|---|---|---|
-| 1 | 1338s | **763s** | −43% |
-| 2 | 1804s | **1526s** | −15% |
-| 3 | 2270s | **2289s** | ≈ even (+1%) |
-| 4 | 2736s | 3052s | +12% slower |
-| 5+ | 3202s | 3815s | +19% slower |
-
-Crossover moves from the originally-estimated **N ≈ 4** down to **N ≈ 2.9** —
-solving `466N + 872 = 763N` for the exact break-even. **The qualitative call
-still holds but is weaker than estimated:** dropping the profile is clearly
-faster for a plan with 1–2 `--full` cycles, roughly a wash at 3 (not clearly
-faster, as the original estimate had it), and slower at 4+. Because `--full`
-is explicitly not a per-task ritual, most plans still sit at 1–2, where this
-is a real, if smaller, win — the lite discount was partly illusory: it was
-paid back in full at the end of every plan by the mandatory full-profile
-proof. A plan that runs `--full` three or more times before closing out no
-longer gets a clear win from this change alone.
-
-(Originally estimates, per §2 — confirmed against one real measured `--full`
-run, Wave 3 Task 6, 2026-08-07: `docs/production-delta.md` and `README.md`
-carry the underlying figure.)
+Because `--full` is explicitly not a per-task ritual, most plans sit at 1–2
+cycles, where dropping the profile is a real, if modest, win — the lite
+discount was partly illusory: it was paid back in full at the end of every
+plan by the mandatory full-profile proof. A plan that runs `--full` three or
+more times before closing out gets no clear win from this change alone. See
+`docs/production-delta.md` for the current absolute figures behind this
+comparison.
 
 ### 5.4 A reliability gain that is worth more than the seconds
 
@@ -344,40 +324,35 @@ clock leap detected" warning.
 
 Server counts in the `--full` path, including an own-server join:
 
-| | Canonical | With own-server join | |
-|---|---|---|---|
-| Today (`full`) | 5 | **6** | the count that produced the failure |
-| After (T1) | 4 | **5** | one clear of it |
+| | Canonical | With own-server join |
+|---|---|---|
+| Before (full profile) | 5 | **6** — the count that produced the failure |
+| After (T1) | 4 | **5** — one clear of it |
 
 A flaky verification tier costs far more than a slow one, because it burns a
-14-minute run *and* the time spent deciding whether the failure was real.
+full deploy cycle *and* the time spent deciding whether the failure was real.
 
 ### 5.5 What to watch
 
 - **`--full` is now the only deploy path**, so a regression in it has no cheaper
   sibling to bisect against. Mitigated by `--fast` and `--live` being untouched,
   and by the hosted fixture keeping the generator honest.
-- **The un-join byte-identity clause** (`acceptance/2.7.md` clause 5) currently
-  reads "byte-identical to the golden file **for this deployment's profile**."
-  That phrase simplifies to a single golden — one of the small cleanups Wave 3
-  should not miss.
-- **`--fast` keeps growing** (~8s → ~16s → ~29s → ~49s → ~53s across recent
-  plans), and `--full` runs it inside `hurl/run-linkup.sh`, so it compounds.
-  Unrelated to this decision, but §5.3's arithmetic is only as current as the
-  `--full` figure it uses — resolved by Task 6's real measurement (763s,
-  §2), superseding the ~670s estimate this note originally caveated.
+- **`--fast` keeps growing** as tests are added across plans, and `--full` runs
+  it inside `hurl/run-linkup.sh`, so it compounds. Unrelated to this decision,
+  but §5.3's arithmetic is only as current as `--full`'s own figure, which
+  `docs/production-delta.md` keeps up to date.
 
 ---
 
-## 6. Recommendation — revised after §2.3
+## 6. Recommendation
 
 **Drop the profiles — yes, clearly, and this is unaffected by the topology
 choice.** The win is not disk or RAM; it is one topology, one golden, one story,
-two workarounds removed, and ~40 lines of README that stop asking a contributor
+two workarounds removed, and a README that stops asking a contributor
 to choose a profile before they can run a test.
 
-**Topology — T1 (4 servers, all own-server).** This reverses the earlier
-recommendation in this document, on the evidence in §2.3:
+**Topology — T1 (4 servers, all own-server).** This reverses an earlier
+recommendation, on the evidence in §2.3:
 
 1. **T2's headline argument does not survive the check.** It was that T2 teaches
    the G2 hosting decision by construction. But the criterion it would teach —
@@ -394,18 +369,17 @@ recommendation in this document, on the evidence in §2.3:
    model is member-hosts-member, which is exactly X-Road's defined *security
    server host* — "a member who provides security server hosting services to
    third parties and other members." The pack already models the sourced pattern
-   in the right place; only my canonical-set proposal was inventing one.
+   in the right place; only the canonical-set proposal in §2.2 was inventing one.
 4. It has no subtleties a reviewer has to re-derive: every call is cross-server,
    every member owns its keys, and there is no delegation to explain.
 
-**Cost of the reversal:** ~2 GB and ~3 minutes against T2's estimate (T1
-measured 763s vs T2's still-estimated ~490s — T2 was never built).
-`--full` runs once per plan, so ~12.7 minutes is acceptable, and it is still
-~1.8 minutes better than today's historical ~872s.
+**Cost of the choice:** roughly 2 GiB and a few minutes more than T2's estimate.
+`--full` runs once per plan, so ~13 minutes is acceptable, and it remains
+comfortably better than the historical two-profile baseline.
 
 **The one thing T1 gives up** is cold-deploy coverage of
-`build_hosted_client()` — it would be exercised only through the join path. That
-is a testing concern with a testing answer (a join in the `--full` cycle, which
+`build_hosted_client()` — it is exercised only through the join path. That is a
+testing concern with a testing answer (a join in the `--full` cycle, which
 already happens), not a reason to model an unsourced topology in the canonical
 set.
 
@@ -420,18 +394,19 @@ as the path's own reasoning rather than reference practice.
 
 ---
 
-## 7. What this changes in the design document
+## 7. What this changed in the design document
 
-| Section | Change if recommendation is accepted |
+| Section | Change |
 |---|---|
-| Wave 3 | Add profile removal; default topology is 4 servers, all own-server |
+| §4.3 (the reduction) | Added profile removal; default topology is 4 servers, all own-server |
 | §8.1 | Unchanged — component coverage is topology-independent |
 | §8.2 | **Confirmed, not superseded.** Its "4 servers, all own-server" correction stands, now with sourced backing rather than only the G2 argument |
-| §7 Risks | Wave 3 grows; note the single-regeneration structure |
+| §7 (Risks) | The reduction's scope grew; noted the single-regeneration structure |
 | Target shape (§3) | Unchanged — no `hosted_on` in any canonical member config |
 
-Nothing in Waves 1, 2, 4 or 5 is affected. The conventions register, governance
-config, semantic map and onboarding record are all topology-independent.
+Nothing in the data layers, onboarding record or monitoring add-ons work was
+affected. The conventions register, governance config, semantic map and
+onboarding record are all topology-independent.
 
 ---
 

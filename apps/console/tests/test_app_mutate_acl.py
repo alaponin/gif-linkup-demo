@@ -1,4 +1,4 @@
-"""Regression test for a bug found live while investigating UX plan Task 8:
+"""Regression test for a bug found while investigating the UX plan:
 _mutate_acl() used to infer prior_state as "the opposite of the requested
 action" instead of reading the actual live state. Calling grant() when
 already granted (idempotent-safe at the X-Road layer, xroad.py's 409
@@ -139,7 +139,7 @@ def test_health_answers_while_a_reset_is_in_progress(monkeypatch, tmp_path):
     asyncio.to_thread was called tests the fix, not the behaviour.
 
     Elapsed wall-clock time, not a cooperative asyncio timeout, is what
-    catches a starved loop here -- confirmed live while writing this test:
+    catches a starved loop here:
     asyncio.wait_for's own timeout callback is scheduled on the SAME loop
     it would need to detect as stuck, so it cannot fire while the loop is
     starved; it only resolves once the rogue synchronous call finally
@@ -147,9 +147,8 @@ def test_health_answers_while_a_reset_is_in_progress(monkeypatch, tmp_path):
     "successfully" regardless of how long the loop was actually stuck.
     Measuring total elapsed time from before the reset starts is what
     actually distinguishes a live loop from a starved one that just
-    happened to unstick before an unbounded wait gave up. Confirmed this
-    test fails on the pre-fix inline call (15s elapsed, not under 1s)
-    before keeping it."""
+    happened to unstick before an unbounded wait gave up. This test fails
+    on the pre-fix inline call (15s elapsed, not under 1s)."""
     app.JOURNAL = app.journal_mod.Journal(tmp_path / "journal.json")
     release = threading.Event()
 
@@ -198,8 +197,8 @@ def test_lifespan_shutdown_does_not_hang_with_a_dirty_journal(monkeypatch, tmp_p
     before returning, including one it could not actually cancel (a
     concurrent.futures.Future already running cannot be cancelled, so the
     wrapped asyncio future just waits for it) -- an Event that needed
-    releasing from outside would deadlock against that cleanup, found
-    live while writing this test (it hung for 15s -- 5s per expected_acl
+    releasing from outside would deadlock against that cleanup
+    (it hung for 15s -- 5s per expected_acl
     service -- before this fix)."""
     app.JOURNAL = app.journal_mod.Journal(tmp_path / "journal.json")
     app.JOURNAL.append_pending(app.journal_mod.JournalEntry(

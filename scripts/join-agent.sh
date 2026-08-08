@@ -66,7 +66,7 @@ log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server ima
 # via that dependency -- and because their merged config differs (no
 # healthcheck) from the COMPOSE_HURL view run-linkup.sh originally started
 # them with, Compose sees a config drift and recreates them, silently
-# stripping the healthcheck they had (found live, Wave 3 Task 6: cs/ca
+# stripping the healthcheck they had (found live: cs/ca
 # reported no Config.Healthcheck at all after a join-agent.sh run).
 # COMPOSE_ALL already includes hurl/compose.hurl.yml (lib-stack.sh), so this
 # invocation's view of cs/ca matches what is already running -- no drift,

@@ -1,4 +1,4 @@
-"""Tests for apps/join-api/job.py (join-b Task 4).
+"""Tests for apps/join-api/job.py.
 
 No containers and no network: the executor takes its "run this rendered file,
 give me the report" function as an argument (spec S12's --fast row: the step
@@ -159,7 +159,7 @@ def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, se
     )
 
 
-# -- the sequence (Task 4 Step 1) ---------------------------------------------
+# -- the sequence --------------------------------------------------------------
 
 
 def test_hosted_join_runs_the_documented_sequence_in_order():
@@ -170,8 +170,7 @@ def test_hosted_join_runs_the_documented_sequence_in_order():
 def test_every_step_of_a_hosted_join_is_the_operators():
     """hurl/steps.py defaults ss.client_add/ss.sign_key_csr/service.publish to
     actor="member" -- that default is for a member bringing up its own server.
-    Under hosted_on there is no member-side infrastructure at all (join-a plan
-    Task 3 Step 4)."""
+    Under hosted_on there is no member-side infrastructure at all."""
     assert {s.actor for s in job.build_sequence(REAL_PACK_DIR, _payload())} == {"operator"}
 
 
@@ -206,8 +205,7 @@ def test_every_steps_requires_is_satisfied_by_an_earlier_provides_or_a_constant(
 
 def test_each_service_is_published_against_its_own_spec_url():
     """Nothing caps services[], and one shared <member>_spec_url variable
-    would publish both services against whichever URL won the name (found in
-    review, 2026-08-02)."""
+    would publish both services against whichever URL won the name."""
     payload = _payload(
         services=[
             {"code": "awards-api", "spec_url": "http://app-ptsb:8000/awards.yaml", "access": []},
@@ -243,7 +241,7 @@ def test_r1_target_is_the_consumers_own_security_server():
 
 
 def test_r1_target_raises_loud_not_silent_when_topology_has_drifted_from_manifest(tmp_path):
-    """Review finding (2026-08-02): an ACL subject that check 7 (ACL sanity,
+    """An ACL subject that check 7 (ACL sanity,
     validate.py) already proved exists in manifest.yaml but is missing from
     hurl/topology.json at job-run time -- the two files disagreeing is
     exactly what job.py's own module docstring (S12) calls "registry-perfect
@@ -267,7 +265,7 @@ def test_r1_target_raises_loud_not_silent_when_topology_has_drifted_from_manifes
     assert "topology.json" in exc_info.value.message
 
 
-# -- executing (Task 4 Step 2) -------------------------------------------------
+# -- executing -------------------------------------------------------------
 
 
 def test_a_hosted_join_runs_to_active_and_verified():
@@ -311,7 +309,7 @@ def test_409_on_a_repeat_counts_as_success():
     assert record["state"] == "ACTIVE"
 
 
-# -- the retry budget (Task 4 Step 4) -----------------------------------------
+# -- the retry budget --------------------------------------------------------
 
 _FAILED = {"success": False, "entries": [], "_stderr": "HTTP 500 from the Security Server"}
 
@@ -337,7 +335,7 @@ def test_the_retry_budget_is_one_for_the_run_not_one_per_step():
 
 
 def test_the_r1_check_gets_its_own_budget_however_little_the_run_has_left():
-    """The own-server defect the final review found: ss.client_register's
+    """The own-server defect: ss.client_register's
     CS-propagation wait ate 95-107s of the 120s run budget before the sequence
     reached join.r1_verify, so the r1 step got 13-25s against a reachability
     window measured live at 45s-8min -- verified: true was unreachable and
@@ -388,11 +386,11 @@ def test_a_failed_reachability_call_is_active_unverified_not_failed():
     assert record["verified"] is False
 
 
-# -- resume (Task 4 Steps 3 and 6) --------------------------------------------
+# -- resume ------------------------------------------------------------------
 
 
 def test_a_job_killed_mid_run_resumes_to_completion_without_rerunning_completed_steps():
-    """Task 4 Step 6's first headline test. The kill is simulated the way a
+    """The headline resume test. The kill is simulated the way a
     real one lands: a record on disk whose last_completed_step names a step in
     the middle of the sequence."""
     first = FakeHurl({"ss.sign_key_csr": _FAILED})
@@ -418,7 +416,7 @@ def test_last_completed_step_never_regresses_while_a_resume_re_runs_session_step
     """The marker is persisted after every step, so it is not enough for the
     FINAL value to be right: a session step re-run on resume must not move it
     backwards, or a second kill in that window would make the next resume
-    re-run steps this one skipped (found in review, 2026-08-02)."""
+    re-run steps this one skipped."""
     record = _run(_record(), FakeHurl({"ss.sign_key_csr": _FAILED}))
     assert record["last_completed_step"] == "ss.client_add"
 
@@ -443,7 +441,7 @@ def test_resume_reinjects_the_captures_the_first_run_persisted():
 
 
 def test_resume_probes_an_ambiguous_step_and_skips_it_when_it_already_happened():
-    """Probes only on the steps join-a plan Task 5 classified as ambiguous,
+    """Probes only on the steps classified as ambiguous,
     and only on resume (spec S5.3: resume does not need probes for the steps
     the job context already accounts for)."""
     record = _run(_record(), FakeHurl({"ss.client_register": _FAILED}))
@@ -458,7 +456,7 @@ def test_resume_probes_an_ambiguous_step_and_skips_it_when_it_already_happened()
 
 
 def test_resume_refuses_to_cross_a_step_flagged_unsafe_to_repeat(monkeypatch):
-    """Class (d) of the join-a Task 5 audit is empty today and
+    """Class (d) of the probe-classification audit is empty today and
     tests/test_steps.py keeps it that way -- this asserts the runner would
     refuse rather than silently re-run if that ever changed."""
     record = _run(_record(), FakeHurl({"ss.client_register": _FAILED}))
@@ -481,11 +479,11 @@ def test_resume_refuses_a_last_completed_step_that_is_not_in_this_sequence():
         _run(_record(last_completed_step="ss.mgmt_register"), FakeHurl())
 
 
-# -- credentials (Task 4 Step 6) ----------------------------------------------
+# -- credentials --------------------------------------------------------------
 
 
 def test_the_serialised_job_context_of_a_completed_job_carries_no_credential(tmp_path):
-    """Task 4 Step 6's second headline test, and spec S5.4's explicit ask:
+    """A headline test for spec S5.4's explicit ask:
     asserted over the real serialised file against the real values in the
     environment, not by reading the code. The values below are the ones
     app.py hands job.run() (XROAD_ADMIN_PASSWORD, XROAD_TOKEN_PIN) plus both
@@ -518,7 +516,7 @@ def test_the_serialised_job_context_of_a_completed_job_carries_no_credential(tmp
 
 
 def test_scrub_redacts_credentials_but_leaves_the_non_secret_admin_username():
-    """Review finding (2026-08-02): ss_admin_user ("xrd") is a short, publicly
+    """ss_admin_user ("xrd") is a short, publicly
     documented test/dev username, not a secret -- redacting it bought
     nothing and, being short, risked stripping legitimate diagnostic text
     that happened to contain "xrd" as a substring."""
@@ -546,8 +544,8 @@ def test_a_failure_message_is_scrubbed_of_every_credential(tmp_path):
     assert SECRETS["token_pin"] not in path.read_text()
 
 
-# -- the shared cookie jar (Task 6 review finding, 2026-08-02) ----------------
-# The live proof's own second real bug: job.py runs one Hurl PROCESS per
+# -- the shared cookie jar -----------------------------------------------------
+# job.py runs one Hurl PROCESS per
 # step, so nothing carried cs.init's JSESSIONID cookie to the next step's
 # authenticated call -- confirmed live with plain curl (a bare X-XSRF-TOKEN
 # header without the matching session cookie is a 401, not a 403). Fixed
@@ -666,8 +664,8 @@ def test_the_bundled_hurl_binary_actually_runs_and_writes_a_parseable_report():
     """Proves the Dockerfile's multi-stage copy produced a working binary and
     that _default_run_hurl can drive it THROUGH ITS OWN subprocess call -- the
     env= it passes carries no PATH, so this is what catches a binary that a
-    shell with a normal PATH would find and this code would not (it did:
-    review, 2026-08-02). No live server: the request is to a closed port, so
+    shell with a normal PATH would find and this code would not.
+    No live server: the request is to a closed port, so
     the run fails and the assertion is on the report, which Hurl still writes.
 
     Skipped on a dev host, where nothing bundles Hurl. RUN IT IN THE IMAGE
@@ -704,11 +702,11 @@ def test_the_dockerfile_bundles_the_same_hurl_image_the_compose_overlay_pins():
     # A `docker build` + `hurl --version` proof of the multi-stage copy is
     # deliberately NOT a test here: --fast is a ~16s no-container tier and one
     # image build would double it. It was run by hand when the Dockerfile was
-    # written (task-4 report) and is covered continuously by --full, which
+    # written and is covered continuously by --full, which
     # builds this image anyway.
 
 
-# -- own-server joins (join-c plan Task 3) ------------------------------------
+# -- own-server joins ---------------------------------------------------------
 # The other half of spec S6: the joining member brings up its OWN Security
 # Server, so the sequence is cold deploy's build_ss_file() rather than
 # build_hosted_client()'s, the registry's per-step `actor` is read as declared
@@ -762,7 +760,7 @@ class OwnServerHurl(FakeHurl):
     ENGINE -- ordering, actor, requires/provides threading, BLOCKED -- and a
     success element carrying each step's declared captures is the right
     stand-in for that: it comes from the registry, not from this file's
-    imagination. Task 5 owns the live proof that the real responses match."""
+    imagination. The live proof that the real responses match lives elsewhere."""
 
     def __call__(self, label: str, body: str, variables: dict) -> dict:
         if label in self.overrides:
@@ -834,7 +832,7 @@ def test_an_own_server_join_runs_to_active_when_the_members_server_is_up():
     assert hurl.calls == OWN_SERVER_IDS[:-1]
 
 
-# -- BLOCKED (join-c plan Task 3 Steps 1, 2 and 7) ----------------------------
+# -- BLOCKED -------------------------------------------------------------------
 
 
 def test_a_job_whose_members_server_is_absent_goes_blocked_not_failed():
@@ -952,7 +950,7 @@ def test_a_half_registered_auth_cert_is_not_read_as_done():
     assert job._probe_auth_cert_registered(step, {}) is False
 
 
-# -- the reversal walk (join-c plan Task 4) -----------------------------------
+# -- the reversal walk --------------------------------------------------------
 # job.unjoin() drives the six live-verified reversal calls
 # (docs/xroad-770-notes.md #11) in hurl/steps.py's REVERSAL_ORDER, each guarded
 # by its own probe. The fake below replays the REAL recorded un-join exchanges
@@ -1209,7 +1207,7 @@ def test_an_unanswerable_probe_reads_as_still_present_never_as_absent():
 
 
 def test_a_probe_that_answered_with_the_wrong_shape_is_not_read_as_absence_either():
-    """Review finding (2026-08-02): the rule above has to hold for a probe that
+    """The rule above has to hold for a probe that
     SUCCEEDED and returned something unexpected, not only for one that failed.
     A body of the wrong type is unreadable, not empty -- and reading it as
     empty is reading it as "already gone", which silently skips the reversal.
@@ -1293,7 +1291,7 @@ def test_a_hosted_members_sign_key_is_gone_afterwards_and_every_other_members_is
 
     Asserted over the token the WALK leaves behind, derived from the key the
     walk actually asked X-Road to delete -- not over a hand-built constant,
-    which asserts nothing about the walk at all (review finding, 2026-08-02)."""
+    which asserts nothing about the walk at all."""
     hurl = ReverseHurl()
     _unjoin(_active(), hurl)
     deleted = hurl.variables[hurl.calls.index("ss.sign_key_csr#reverse")]["ss_ptsb_sign_key_id"]
@@ -1370,7 +1368,7 @@ def test_a_hosted_member_gets_no_docker_instruction():
 
 
 def test_a_walk_killed_halfway_resumes_without_re_attempting_what_the_probes_report_gone():
-    """Task 4 Step 9's headline test. The kill is simulated the way a real one
+    """The headline resumability test. The kill is simulated the way a real one
     lands: the walk stops mid-way, and the SAME federation state (three
     reversals done) is what the resume's probes read."""
     stalled = _element(False, statuses=[500])

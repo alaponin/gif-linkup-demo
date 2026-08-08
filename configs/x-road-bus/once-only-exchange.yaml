@@ -31,7 +31,7 @@ exchange:
   headers:
     X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS
   negative_check:
-    # Wave 3 Task 1 (D1): moved off the now-retired MOEYS/PEMIS onto
+    # D1: moved off the now-retired MOEYS/PEMIS onto
     # PLR:ENROLMENT -- already a bus member, already a provider, and already
     # holding no grant on PNIA's identity-api. Denial confirms the same
     # point: being on the bus is not permission to call everything.

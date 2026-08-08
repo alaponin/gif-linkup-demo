@@ -84,16 +84,13 @@ same PACK-not-HURL_DIR distinction already documented at line 32 for
 The golden corpus (below) is what makes editing a template safe: every
 change is checked against a byte-exact baseline before it can be trusted.
 
-**Measured result** (docs/reviews/2026-08-01-branch-review.md finding C14):
-`generate.py` went from 1639 to 1085 lines (-34%); `main()` from 706 to 521
-lines (-26%). `grep -n '{{{{' hurl/generate.py` returns nothing — no
-quadrupled-brace Hurl block survives. 16 `.hurl.tmpl` files exist: 5 scenario
-templates plus 11 single-purpose fragments under `hurl/templates/fragments/`.
-`main()`'s reduction is smaller than the finding's "~700 lines" framing might
-suggest, because most of what remains in `main()` after this plan is not
-Hurl emission at all — it's the member/service loops, and the
-`topology.json`/`topology.sh`/`compose.members.yml` generation, none of
-which this plan's scope (moving f-string Hurl blocks) touches.
+`generate.py` is 1085 lines; `main()` is 521 lines. `grep -n '{{{{' hurl/generate.py`
+returns nothing — no quadrupled-brace Hurl block survives. 16 `.hurl.tmpl`
+files exist: 5 scenario templates plus 11 single-purpose fragments under
+`hurl/templates/fragments/`. Most of what remains in `main()` is not Hurl
+emission at all — it's the member/service loops, and the
+`topology.json`/`topology.sh`/`compose.members.yml` generation, neither of
+which moving f-string Hurl blocks into templates touches.
 
 ## Step registry (`hurl/steps.py`)
 
@@ -141,9 +138,8 @@ captures do not cross file boundaries).
 - **`probe`** (a template path, or `None`) is set only where a step's 409
   behaviour on repeat is ambiguous — most of the registry is not: a repeat
   either conflicts cleanly (`409`, this pack's proven default — `PLAN.md`
-  Section 11) or is naturally idempotent. Audited counts (Task 5 of the
-  join-a plan, 2026-08-01): 3 read-only, 10 `409`-safe, 8 ambiguous (probed),
-  0 unsafe to repeat. The 8 probes were written, then run live against a real
+  Section 11) or is naturally idempotent. Audited counts: 3 read-only, 10
+  `409`-safe, 8 ambiguous (probed), 0 unsafe to repeat. The 8 probes were written, then run live against a real
   deployed federation (`docker run` the pinned `hurl` image directly against
   a real Central Server and Security Server, not just re-derived from the
   OpenAPI spec) — one endpoint guess turned out wrong
@@ -186,7 +182,7 @@ here instead.
 `check_pack.py` executes any `<pack>/<tool>/check_*.py` it finds, so a scenario set
 with an undefined variable or a drifted credential cannot pass `--ready`.
 
-## Host Python runtime (two-decisions plan Task 3/C10)
+## Host Python runtime
 
 Host-run scripts (`hurl/generate.py`, `hurl/check_scenarios.py`,
 `scripts/gen_seed_data.py`, `scripts/assert_record.py`,
@@ -195,7 +191,7 @@ whatever `python3` resolves to on the operator's machine — not a container,
 which is why they used to avoid 3.9+ idioms (`str.removeprefix`, etc.):
 `generate.py` had a comment claiming "host runs system python3.7.9".
 
-**That comment was wrong about *why*.** Investigated live (2026-08-01): the
+**That comment was wrong about *why*.** Investigated live: the
 actual Apple-shipped `python3` (`/usr/bin/python3`, the Xcode Command Line
 Tools stub) is **3.9.6**, not 3.7. The 3.7.9 came from a stray Homebrew
 install at `/usr/local/bin/python3` shadowing it earlier in `PATH` — an
@@ -211,8 +207,8 @@ host-vs-container idiom rule (C8 in the simplification plan) — both sides
 now support `removeprefix`/`removesuffix` — and CI's `python-version` moves
 off an EOL 3.7 pin (`.github/workflows/kp2-fast.yml`) that would eventually
 stop being satisfiable on hosted runner images at all. The
-`scripts/check-python-floor.sh` lint queued in the simplification plan's
-Task 5 is withdrawn: there is no longer a restriction for it to enforce.
+`scripts/check-python-floor.sh` lint queued in the simplification plan
+is withdrawn: there is no longer a restriction for it to enforce.
 Cost, paid honestly: an operator on a stock Mac whose `python3` still
 resolves to something older than 3.9 needs to fix that — but they need a
 non-ancient interpreter to install PyYAML cleanly anyway, so this is not a
@@ -220,9 +216,9 @@ new burden, it is naming one that already existed.
 
 ## Golden corpus
 
-`generate.py` lost the profile concept in Wave 3 Task 4 (one topology, D5),
-and Wave 3 Task 5 collapsed the golden corpus to match: two directories, not
-a `{full,lite}/` pair that generated the identical tree twice.
+`generate.py` has one topology, not a profile concept (D5), and the golden
+corpus matches: two directories, not a `{full,lite}/` pair that generated
+the identical tree twice.
 
 `tests/golden/deployment/` is a committed fixture of exactly what
 `generate.py` emits from the real `configs/` today — `scenarios/`,
@@ -292,7 +288,7 @@ rather than clicking the UIs.
   full stand-up sequence; if the Central Server volume already has a
   `PROGRESSA` instance (a plain `teardown.sh` without `--purge`, then a rerun),
   `POST /initialization` returns `409 init_already_initialized` and the run
-  fails immediately (confirmed at P0, 2026-07-25). Resuming a stopped-but-not-
+  fails immediately (confirmed at P0). Resuming a stopped-but-not-
   purged federation is `docker compose ... up -d` directly — see runbook.md
   "Teardown" — not a rerun of `run-linkup.sh`, which is the from-zero path only.
 - The scenarios have not yet been parsed by `hurl` or `hurlfmt` — the sandbox

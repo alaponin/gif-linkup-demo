@@ -1,12 +1,12 @@
-"""join-b Task 6: the console's join tab is a thin server-to-server proxy
+"""The console's join tab is a thin server-to-server proxy
 onto the REAL apps/join-api/app.py -- these tests cover the two things
-Task 6 Steps 2/3 specifically call out: the request-boundary guard applies
+that matter most: the request-boundary guard applies
 to every new endpoint (same as every existing console endpoint, S13), and
 the operator token never leaves this process. No network, no Docker, no
 running join-api -- _join_api is monkeypatched, same pattern
 test_app_csrf.py and test_app_mutate_acl.py already use for _admin_session.
 
-Static coverage at the bottom for the escaping requirement (Task 6 Step 3):
+Static coverage at the bottom for the escaping requirement:
 this pack's console is vanilla JS with no build step and no JS test
 runner (see app.js's own top-of-file comment), so there is nothing to
 execute app.js's esc() calls against -- the check instead greps the
@@ -57,7 +57,7 @@ def _patch_join_api(monkeypatch, status_code=200, body=None):
     return calls
 
 
-# -- request-boundary guard (Task 6 Step 2/S13) --------------------------------
+# -- request-boundary guard (S13) --------------------------------
 
 
 def test_join_requests_endpoint_requires_the_console_header(monkeypatch):
@@ -96,9 +96,9 @@ def test_join_requests_with_foreign_origin_is_refused(monkeypatch):
 
 
 def test_join_requests_proxies_to_the_real_unprefixed_join_api_path(monkeypatch):
-    """Task 6's own brief: join-api's real routes have no "/api/join"
+    """join-api's real routes have no "/api/join"
     prefix, despite design spec §7's stated-but-inaccurate base path
-    (a discrepancy Tasks 1/3/4/5 already found)."""
+    (a discrepancy already found and left alone)."""
     calls = _patch_join_api(monkeypatch, body={"requests": [{"id": "r1", "state": "SUBMITTED"}]})
     resp = _client().get("/api/join/requests", headers={HEADER: "1"})
     assert resp.status_code == 200
@@ -176,7 +176,7 @@ def test_join_api_error_response_is_surfaced_not_swallowed(monkeypatch):
     assert resp.json() == {"error": "already APPROVED"}
 
 
-# -- escaping (Task 6 Step 3): static source check, no JS runtime here --------
+# -- escaping: static source check, no JS runtime here --------
 
 
 def test_join_render_paths_escape_every_payload_derived_field():
@@ -204,7 +204,7 @@ def test_join_render_paths_escape_every_payload_derived_field():
         assert expected in src, f"expected {expected!r} in app.js's join render path"
 
 
-# -- the BLOCKED card (join-c plan Task 3 Steps 5 and 7) ----------------------
+# -- the BLOCKED card (join-c plan, Steps 5 and 7) ----------------------
 # Same static-source discipline as the escaping check above: no JS runtime
 # here, so these read the committed source for the two things Step 5 asks for.
 
@@ -235,7 +235,7 @@ def test_the_blocked_state_has_its_own_style_like_every_other_state():
     assert ".join-blocked-command" in css
 
 
-# -- un-joining (join-c plan Task 4 Steps 6-8) --------------------------------
+# -- un-joining (join-c plan, Steps 6-8) --------------------------------
 # Step 6 chose option (a): the states render, there is no delete control. Two
 # reasons, in the order they decided it. First, the audience -- the join tab
 # shows an agency arriving, and a destructive control is a different act for a

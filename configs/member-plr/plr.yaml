@@ -4,18 +4,18 @@ module: "plr"
 building_block: member-plr
 # member/subsystem identity comes from manifest.yaml's identity.members.plr
 # now -- restating it here was a second, driftable copy of the same values.
-# Dogfooded 2026-07-26.
+# Dogfooded.
 security_server:
   code: SS-PLR
   dns_name: ss-plr
 services:
   # type/forwarding URL/enabled/tls_verify: not config fields, see 2.2.yaml's
-  # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
+  # comment -- hurl/generate.py never reads them. Dogfooded.
   - code: enrolment-api
     spec_url: http://app-plr:8000/spec.yaml
     access:                    # deliberate: PNEA only (negative check 2.6 now tests PNIA's identity-api, not this service)
       - PROGRESSA/GOV/PNEA/EXAMS
-    sla:                       # Module 5.3's template — Wave 4 Task 3 Step 2:
+    sla:                       # Module 5.3's template —
                                 # illustrative demo values, not a real signed target.
       availability: "99.5% monthly uptime"
       response_time: "4 business hours; 1 hour for a P1 incident"
@@ -28,7 +28,7 @@ semantic:                      # from configs/semantic/semantic-map.yaml — 'en
   key: nin
   fields: [nin, school, level, enrolment_year, status]
   pattern: digital_registries_lookup
-member_requirements:           # Module 5.2's checklist — Wave 4 Task 1 (K-01).
+member_requirements:           # Module 5.2's checklist (K-01).
   has_security_server: true
   has_registered_identity: true
   standards_portfolio_adopted: true

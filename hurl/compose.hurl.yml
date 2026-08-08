@@ -15,8 +15,7 @@ services:
   ca:
     volumes:
       # The xrddev-testca image writes the demo trust anchor here. Confirmed at
-      # P0 (2026-07-25): ca.pem/ocsp.pem/tsa.pem land in /home/ca/certs exactly
-      # as assumed.
+      # P0: ca.pem/ocsp.pem/tsa.pem land in /home/ca/certs exactly as assumed.
       - ca-certs:/home/ca/certs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8888/testca/certs"]
@@ -29,14 +28,13 @@ services:
       interval: 5s
       retries: 120
 
-  # retries: 120 (10 min budget, doubled from an initial 60/5min at P0 2026-07-25):
+  # retries: 120 (10 min budget, doubled from an initial 60/5min at P0):
   # a from-zero boot passes well within 5 min, but a restart from persisted
   # volumes (docker compose down without --purge, then up again) can take a
   # Security Server longer to re-establish its signer/proxy state than a fresh
   # init -- `docker compose run --rm hurl`'s dependency wait treats an
   # already-unhealthy container as a hard failure rather than continuing to
   # poll, so the budget has to cover the slower path, not just the common one.
-  # Found via Task 7 of docs/superpowers/plans/2026-07-25-kp2-verified-pack.md.
   ss-pdga:
     healthcheck: &ss-health
       test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
@@ -53,8 +51,8 @@ services:
     # Pinned inline, not via a deployment.yaml key (C13): hurl is a build/test
     # tool this pack depends on, not part of the federation it deploys, so it
     # does not move in lockstep with an X-Road version bump the way
-    # cs/ss/testca do. Resolved 2026-08-01 from the image this pack was last
-    # deployed with (docker image inspect --format
+    # cs/ss/testca do. Resolved from the image this pack was last deployed
+    # with (docker image inspect --format
     # '{{index .RepoDigests 0}}' ghcr.io/orange-opensource/hurl:latest).
     image: ghcr.io/orange-opensource/hurl:latest@sha256:d7727dcc0166de8aea88916e73ea435ee09bfecb8ba0c281200206b6cf37cf64
     container_name: hurl
@@ -66,9 +64,9 @@ services:
       - ./hurl:/hurl-src:ro
       - ca-certs:/hurl-files/ca:ro
       # Read-write, unlike the two above: hurl/run-linkup.sh's --report-json
-      # goes here (testing-strategy plan Task 5) -- /hurl-src is read-only on
-      # purpose (generated files are never written back into hurl/ from a
-      # container), so the report needs its own mount.
+      # goes here -- /hurl-src is read-only on purpose (generated files are
+      # never written back into hurl/ from a container), so the report needs
+      # its own mount.
       - ./out:/hurl-out
     depends_on:
       cs:

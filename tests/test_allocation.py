@@ -1,4 +1,4 @@
-"""Unit tests for hurl/generate.py's port and scenario-number allocators (T5.4).
+"""Unit tests for hurl/generate.py's port and scenario-number allocators.
 
 allocate_ports() and FORBIDDEN_PORT_RANGE exist because of two live incidents,
 both documented at length in docs/production-delta.md: port 5000 and port
@@ -121,7 +121,7 @@ def test_allocate_numbers_is_deterministic():
     )
 
 
-# -- the bind guard on a joined member's own Security Server (join-c Task 5) --
+# -- the bind guard on a joined member's own Security Server (join-c) --
 # The only own-server compose block the golden corpus contains is the empty
 # `services: {}` variant (no canonical member owns a joined server), so
 # tests/test_golden.py never renders this branch at all -- which is exactly

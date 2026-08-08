@@ -1,4 +1,4 @@
-"""join-b Task 4: POST /requests/{id}/approve and /resume through FastAPI's
+"""POST /requests/{id}/approve and /resume through FastAPI's
 TestClient. The pack is a temp copy inside a throwaway git repo, three levels
 down, because writer.apply_real() runs `git status --porcelain` against the
 enclosing checkout (spec S9) and app.py lets it default repo_root the way
@@ -42,7 +42,7 @@ CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
 
-# Wave 2 Task 2: every approve call now needs a decision_reference -- the
+# Every approve call now needs a decision_reference -- the
 # minute identifier and date the demo cannot supply a real one for, in the
 # pack's own [confirm: ...] register.
 DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
@@ -121,7 +121,7 @@ def test_approve_writes_the_config_for_real_and_starts_the_job(client):
 
 
 def test_approve_without_a_decision_reference_is_rejected(client):
-    """Wave 2 Task 2, Step 1/3: the admission gate is the field, not a second
+    """The admission gate is the field, not a second
     login. Missing entirely -- no body at all."""
     record = _submit(client)
     resp = client.post(f"/requests/{record['id']}/approve", headers=OPERATOR)
@@ -162,7 +162,7 @@ def test_approving_twice_is_a_conflict_not_a_second_write(client):
 
 
 def test_approve_reports_queued_when_another_job_holds_the_lock(client):
-    """Task 4 Step 5: one active job, others queue, and the API says so."""
+    """One active job, others queue, and the API says so."""
     record = _submit(client)
     app_module._JOB_LOCK.acquire()
     try:
@@ -187,7 +187,7 @@ def test_resume_is_only_possible_from_failed(client):
 
 
 def test_resume_is_also_the_exit_from_blocked(client):
-    """join-c plan Task 3 Step 6: BLOCKED leaves through this same endpoint --
+    """BLOCKED leaves through this same endpoint --
     no callback route, no work-order endpoint (spec S6.1). The operator runs
     scripts/join-agent.sh, then resumes, and job.run() polls the server it
     just stood up."""
@@ -204,7 +204,7 @@ def test_resume_is_also_the_exit_from_blocked(client):
 def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(client, monkeypatch):
     """apply_real's generate.py subprocess reads .env, so its stderr can
     carry a credential -- and this one string goes into both the response and
-    out/join/<id>.json (found in review, 2026-08-02)."""
+    out/join/<id>.json."""
     record = _submit(client)
     pin = app_module.TOKEN_PIN
 
@@ -220,7 +220,7 @@ def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(clien
 
 
 def test_a_git_check_failure_is_a_409_not_a_500(client, monkeypatch):
-    """Review finding (2026-08-02): writer._git_status_dirty used to let a
+    """writer._git_status_dirty used to let a
     structural git failure escape as a raw, unhandled exception -- a 500.
     apply_real now raises writer.GitCheckFailure for that case, and
     approve_request maps it to the same clear 409 shape as a genuinely
@@ -238,7 +238,7 @@ def test_a_git_check_failure_is_a_409_not_a_500(client, monkeypatch):
 
 
 def test_a_member_directory_collision_is_a_409_not_a_500(client, monkeypatch):
-    """Review finding (2026-08-02): _write_member's FileExistsError (the
+    """_write_member's FileExistsError (the
     validated-key-collides-anyway race) used to escape apply_real as a raw,
     unhandled exception -- a 500. approve_request now maps
     writer.MemberCollisionError to a clear 409."""

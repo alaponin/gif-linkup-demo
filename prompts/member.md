@@ -11,8 +11,8 @@ descriptions; access rights (ACL)
 ## Problem
 
 The canonical four (PDGA, PNEA, PLR, PNIA) are Progressa's curriculum —
-modules 2.1–2.6, frozen for KP3/KP4 (MoEYS was a fifth, retired in Wave 3
-Task 1; see `docs/production-delta.md`). Everything past those four is this pack's
+modules 2.1–2.6, frozen for KP3/KP4 (MoEYS was a fifth, since retired; see
+`docs/production-delta.md`). Everything past those four is this pack's
 other claim: that joining the bus is a property of configuration, not of
 `generate.py`'s source code. This prompt is that join. Unlike the module-
 specific prompts (2.2–2.5), which only ever produce a config file — the

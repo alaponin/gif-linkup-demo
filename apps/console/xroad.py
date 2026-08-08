@@ -23,8 +23,8 @@ import httpx
 class AdminSession:
     """Session-login client for one Security Server's admin API (:4000).
 
-    Confirmed live (2026-07-25/26): the admin API authenticates by session
-    login and XSRF token, not API key -- POST /login with form params, then
+    The admin API authenticates by session login and XSRF token, not API
+    key -- POST /login with form params, then
     send the XSRF-TOKEN cookie back as X-XSRF-TOKEN on every call. Same
     mechanics as scripts/lib-stack.sh's api_key()/api().
     """
@@ -54,9 +54,8 @@ class AdminSession:
             headers={"X-XSRF-TOKEN": self._xsrf},
         )
 
-    # -- ACL operations -- all four confirmed live against the running stack
-    # (2026-07-26), not just the OpenAPI model. See docs/superpowers/plans/
-    # 2026-07-26-kp2-demo-console.md Task 3 Step 3.
+    # -- ACL operations -- all four verified against the running stack, not
+    # just the OpenAPI model. See docs/superpowers/plans/2026-07-26-kp2-demo-console.md.
 
     def read_subjects(self, client_id: str) -> list[str]:
         """Every subject granted ANY access on this client."""
@@ -67,7 +66,7 @@ class AdminSession:
     def read_acl(self, client_id: str, subject_id: str) -> list[str]:
         """Which service codes this subject holds on this client.
 
-        Confirmed live (2026-07-27): a subject with zero access rights is
+        A subject with zero access rights is
         not a "service client" of this client at all, so the admin API
         404s here rather than returning []  -- the asymmetry with
         read_subjects() (which naturally omits such a subject from its
@@ -96,7 +95,7 @@ class AdminSession:
             json_body={"items": [{"service_code": service_code}]},
         )
         if resp.status_code == 409:
-            return  # already revoked (confirmed live: 409 accessright_not_found) --
+            return  # already revoked (409 accessright_not_found) --
             # the target state (no grant) already holds, so this is success, same
             # reasoning as grant()'s 409 handling. Load-bearing for reset(): a
             # crash-mid-write can replay an entry whose live call already
@@ -128,7 +127,7 @@ def exchange(
     """Issue every call in 2.6.yaml's exchange.calls against one entrypoint.
 
     A genuine transport failure (connection refused, timeout) is captured in
-    .error and never reported as .denied -- confirmed live: a real denial is
+    .error and never reported as .denied -- a real denial is
     HTTP 500 with body {"type": "Server.ServerProxy.AccessDenied", ...}; a
     transport failure never reaches that far and must not be presented as a
     permission decision.

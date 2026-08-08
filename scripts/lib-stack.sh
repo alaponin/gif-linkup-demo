@@ -119,7 +119,7 @@ COMPOSE=(docker compose -f "$PACK_DIR/docker-compose.yml")
 # /home/ca/certs, a subpath of the base file's ca-data:/home/ca mount.
 # Omitting it here left `down -v` unable to remove ca-certs, so a "purged"
 # reset still handed a fresh CA container stale certs from the previous run
-# (found at P0, 2026-07-25).
+# (found at P0).
 COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl/compose.hurl.yml")
 [ -f "$COMPOSE_MEMBERS_YML" ] && COMPOSE_ALL+=(-f "$COMPOSE_MEMBERS_YML")
 

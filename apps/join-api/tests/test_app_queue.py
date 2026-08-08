@@ -1,6 +1,6 @@
-"""join-b Task 6: GET /requests (the operator queue) and
+"""GET /requests (the operator queue) and
 POST /requests/{id}/reject -- both in spec S7's original API surface but
-never built by Task 3/4, and both genuinely needed by the console's join
+never built alongside submit/approve, and both genuinely needed by the console's join
 tab (the pending queue, and reject-with-a-reason). Same fixture pattern as
 test_app_approve.py: a temp copy of the pack inside a throwaway git repo,
 because _record_view's uncommitted flag runs `git status --porcelain`."""
@@ -36,7 +36,7 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
-# Wave 2 Task 2: approve now requires a decision_reference (test_app_approve.py).
+# approve now requires a decision_reference (test_app_approve.py).
 DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
 
@@ -173,12 +173,12 @@ def test_active_record_carries_the_uncommitted_flag(client):
 
 
 def test_uncommitted_check_failure_reads_as_unknown_not_committed(client, monkeypatch):
-    """Review finding, 2026-08-02: _live_uncommitted used to return False --
+    """_live_uncommitted used to return False --
     "not dirty" -- on ANY git failure (missing binary, permission error,
     unexpected layout), which is exactly the value that suppresses the
     console's warning box. That would have silently swallowed the precise
     failure this check exists to catch (git missing from the image -- the
-    real bug this same task's live proof found and fixed in the
+    same bug found live and fixed in the
     Dockerfile). None means "could not tell" and must never collapse to
     False. Faked as a subprocess raising, not a real missing git, so this
     test needs no image build and runs in --fast."""

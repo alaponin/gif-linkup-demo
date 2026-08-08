@@ -1,15 +1,10 @@
 # KP2 build pack — alignment design
 
-**Status:** v0.3 design, 2026-08-05. **All five waves (§4) are now implemented
-(Wave 5 closed 2026-08-08)** — this document is kept as the decision record
-(§6) and the component-completeness reference (§8), not an open plan.
-**All five decisions are now taken (§6) — no open questions block planning.**
-**v0.2:** folded in the topology and profile decision (**D5**) — four Security
-Servers all own-server, `full`/`lite` split removed. Affects §3, Wave 3, §6, §7,
-§8.2; adds §8.6 on testing.
-**v0.3:** **D2** — KP2 only, KP3 untouched (§1.3, Wave 3); **D4** —
-`onboarding/<key>/`, lowercase key (§3, §6).
-**Closes:** the findings in `docs/onboarding-path-gap-analysis.md` v3.
+**Status:** decision record. All decisions in §6 are taken and implemented;
+this document is kept as the reasoning behind them (§6) and the
+component-completeness reference against the onboarding path (§8), not as an
+open plan.
+**Closes:** the findings in `docs/onboarding-path-gap-analysis.md`.
 **Decision record:** `docs/topology-profile-decision.md` (analysis and sources).
 **Scope:** how the pack gets from what is implemented today to a pack that
 demonstrates the member-onboarding workflow end to end, without growing into
@@ -19,17 +14,17 @@ something unteachable.
 
 ## 1. Three pushbacks, including one on my own recommendation
 
-### 1.1 My v3 sequencing was wrong
+### 1.1 Sequencing by re-baselining cost, not by "reductions first"
 
-The gap analysis §9 says "the structural reductions go first — every later item is
-cheaper against a smaller pack." That is half right and I stated it too
-confidently.
+An earlier framing of the gap analysis argued "the structural reductions go
+first — every later item is cheaper against a smaller pack." That is half
+right.
 
 The cost that actually dominates is **re-baselining**, not authoring.
-`tests/golden/{lite,full}/topology.json` are byte-identical assertions, un-join
-clause 5 asserts byte-identity against them, and the reproducibility proof is
-~872s full / ~466s lite. Anything that changes topology forces a regenerate and a
-full proof.
+`tests/golden/{lite,full}/topology.json` were byte-identical assertions, the
+un-join clause asserted byte-identity against them, and a full reproducibility
+proof ran to several minutes. Anything that changes topology forces a
+regenerate and a full proof.
 
 So the right rule is not "reductions first." It is:
 
@@ -42,19 +37,19 @@ That splits the work differently and better:
   config files and change no topology. They go *before* the reduction and cost
   nothing extra for being done at five members.
 - The onboarding record, the SLA fields and the monitoring add-ons are
-  **member-heavy or server-heavy**. They go *after*, and get the ×3-not-×5
-  benefit that argument was actually reaching for.
+  **member-heavy or server-heavy**. They go *after*, and get the benefit of
+  running against a smaller member set that argument was actually reaching
+  for.
 
-Design below follows this, not §9's order. §9 should be treated as superseded.
+The design below follows this rule, not a reductions-first order.
 
 ### 1.2 Retiring MoEYS breaks a contract the pack calls frozen — but the contract is stale
 
-The gap analysis recommended retiring MoEYS and treated it as a local change. It
-is not. `manifest.yaml`'s `identifiers:` block is labelled *"Frozen identifiers —
-cross-pack join keys for KP3/KP4"* and lists `PROGRESSA/GOV/MOEYS:PEMIS`.
-`hurl/check_scenarios.py` enforces that every entry there resolves to an
-`identity.members` entry, so dropping MoEYS from the demo **requires amending the
-frozen contract**.
+Retiring MoEYS is not a local change. `manifest.yaml`'s `identifiers:` block is
+labelled *"Frozen identifiers — cross-pack join keys for KP3/KP4"* and lists
+`PROGRESSA/GOV/MOEYS:PEMIS`. `hurl/check_scenarios.py` enforces that every
+entry there resolves to an `identity.members` entry, so dropping MoEYS from
+the demo **requires amending the frozen contract**.
 
 That would normally be a reason to keep MoEYS. Checking the actual downstream
 consumer says otherwise:
@@ -66,8 +61,7 @@ consumer says otherwise:
 
 So the frozen contract is over-specified relative to its only consumer. The
 recommendation stands, but the change is **governed, not local**: amend
-`identifiers:` in the same wave, with KP3/KP4 sign-off, while KP3 is still
-scaffolding.
+`identifiers:` with KP3/KP4 sign-off, while KP3 is still scaffolding.
 
 ### 1.3 The naming decision reaches beyond KP2 — but KP2 goes first anyway
 
@@ -78,7 +72,7 @@ today.
 
 > **Resolved by D2: KP2 only; KP3 is not touched.** KP3 is not being worked on,
 > and a scaffolding pack is not worth opening for a convention change on its own.
-> The consequence is accepted and named: **KP2 and KP3 will use different naming
+> The consequence is accepted and named: **KP2 and KP3 use different naming
 > until KP3 is built.** The cost is that KP3's eventual conversion is no longer
 > free — it will have content by then. See §6 for the note that has to reach
 > whoever picks KP3 up.
@@ -112,13 +106,14 @@ is the "second, driftable copy" the pack's own config comments reject four times
 this true in code. The four near-identical registration modules are the residue.
 
 **P6 · The pack may exceed the curriculum; it must label the surplus.**
-(Added after D3 — see §6.) The build pack is allowed to demonstrate capabilities
-no video teaches, because a runnable artefact outlives a video cut and the video
-bundles are contracted deliverables with fixed subtopic counts and runtimes.
-What it must not do is let that surplus drive its own centre of gravity, or leave
-it unmarked. `manifest.yaml`'s `video_ref: "?"` on the join module is the correct
-behaviour, not a defect — it is the pack saying, accurately, "this exceeds the
-curriculum." **K-04 is withdrawn as a finding on that basis.**
+(Added following D3 — see §6.) The build pack is allowed to demonstrate
+capabilities no video teaches, because a runnable artefact outlives a video
+cut and the video bundles are contracted deliverables with fixed subtopic
+counts and runtimes. What it must not do is let that surplus drive its own
+centre of gravity, or leave it unmarked. `manifest.yaml`'s `video_ref: "?"` on
+the join module is the correct behaviour, not a defect — it is the pack
+saying, accurately, "this exceeds the curriculum." **K-04 is withdrawn as a
+finding on that basis.**
 
 ---
 
@@ -128,9 +123,9 @@ curriculum." **K-04 is withdrawn as a finding on that basis.**
 manifest.yaml                       index: capability id → BB → config → prompt
                                     → acceptance, video_ref retained
 configs/
-  governance/governance.yaml        NEW  roles, RACI, which role owns which gate
-  legal/lawful-basis.yaml           NEW  the decree's basis per exchange
-  semantic/semantic-map.yaml        NEW  entities + OneRoster/CEDS/11179 anchors
+  governance/governance.yaml        roles, RACI, which role owns which gate
+  legal/lawful-basis.yaml           the decree's basis per exchange
+  semantic/semantic-map.yaml        entities + OneRoster/CEDS/11179 anchors
   x-road-bus/
     federation.yaml                 was 2.1
     once-only-exchange.yaml         was 2.6
@@ -138,7 +133,7 @@ configs/
   member-pnia/pnia.yaml             provider — identity      (own server)
   member-plr/plr.yaml               provider — enrolment     (own server)
   member-pnea/pnea.yaml             consumer; denied caller  (own server)
-onboarding/<key>/                   NEW  the gate record, one file per gate exit
+onboarding/<key>/                   the gate record, one file per gate exit
                                     same lowercase key as configs/member-<key>/
 prompts/
   federation-core.md
@@ -149,7 +144,7 @@ acceptance/
   <same names>.md + member.md
 tests/golden/
   deployment/                       the real topology, byte-identical
-  hosted-fixture/                   NEW  generator-only; never deployed (§8.6)
+  hosted-fixture/                   generator-only; never deployed (§8.6)
 deployment.yaml                     no `profile:` key — one topology
 ```
 
@@ -174,13 +169,14 @@ back to the path document rather than working around it.
 
 ---
 
-## 4. Migration — five waves
+## 4. What changed, by area
 
-Each wave leaves the pack green. Only Wave 3 regenerates goldens.
+Each area below landed leaving the pack green. Only the reduction (§4.3)
+regenerated the golden corpus.
 
-### Wave 1 · Corrections — no topology change
+### 4.1 Corrections — no topology change
 
-The bug and the paperwork. Isolated, hours to a day, golden files untouched.
+The bug and the paperwork. Isolated, golden files untouched.
 
 - `_BAD_CHARS` → the X-Road 7.3+ allowlist (**G-01** — the only finding where the
   pack produces a wrong answer rather than an absence)
@@ -193,11 +189,11 @@ The bug and the paperwork. Isolated, hours to a day, golden files untouched.
 
 **Exit:** `verify.sh --fast` green, no regenerate.
 
-### Wave 2 · The data layers — no topology change
+### 4.2 The data layers — no topology change
 
-The three missing layers KP2 teaches and the pack does not carry. All are config
+The three missing layers KP2 teaches and the pack did not carry. All are config
 plus one validator hook each (P1). Member-light, so doing them before the
-reduction costs nothing.
+reduction cost nothing.
 
 - **`configs/governance/governance.yaml`** (**K-02, G-02**) — the RACI as data:
   per gate, the accountable and responsible role. `POST /approve` then requires
@@ -206,27 +202,26 @@ reduction costs nothing.
 - **`configs/legal/lawful-basis.yaml`** (**K-02**) — the decree's basis per
   exchange. Feeds 5.2's sixth requirement and G5's data-protection envelope.
 - **`configs/semantic/semantic-map.yaml`** (**K-03**) — the Module 4 map the two
-  member configs already cite and that does not exist. `validate.py` check 8 goes
+  member configs already cite and that did not exist. `validate.py` check 8 goes
   from presence to conformance.
 - **BB pattern register** in `join-policy.yaml` + optional `pattern:` on
   `schema.Semantic` (**G-04**) — classify the two live exchanges as
   *Digital Registries* lookups; one line in `README.md` naming the pack as an
   Information Mediator instance.
-- **`configs/x-road-bus/conventions.yaml`** (**added after the §8 review** —
-  path §0.5 and §1a) — identifier charset, member code scheme, subsystem code
-  scheme, Security Server host naming, as data. `validate.py`'s Wave 1 charset
-  fix reads its pattern from here rather than hardcoding it, turning a constant
-  into a published, testable convention.
+- **`configs/x-road-bus/conventions.yaml`**, added following review of path
+  §0.5 and §1a — identifier charset, member code scheme, subsystem code
+  scheme, Security Server host naming, as data. `validate.py`'s identifier
+  charset fix reads its pattern from here rather than hardcoding it, turning a
+  constant into a published, testable convention.
 
 **Exit:** `--live` green. Topology unchanged, so goldens still match.
 
-### Wave 3 · The reduction — the single re-baseline
+### 4.3 The reduction — the single re-baseline
 
-**S-01 and S-02 land together, in one pass, or the rename is done twice.**
-
-**S-01, S-02 and D5 all land together, in one pass, or the rename and the
-regeneration are done twice.** This is the largest plan in the programme and the
-only one that touches topology — see §7.
+**The rename and the profile removal landed together, in one pass** — doing
+them separately would have meant regenerating the golden corpus twice. This
+was the largest and only topology-touching piece of work in the programme —
+see §7.
 
 **(a) Reduce and rename**
 
@@ -236,9 +231,9 @@ only one that touches topology — see §7.
 - Retire MoEYS; amend `identifiers:` with KP3/KP4 sign-off (§1.2)
 - Reassign 2.6's negative check to `PLR:ENROLMENT` calling PNIA's `identity-api`
 - Rename everything to capability names; `manifest.yaml` keeps `video_ref`
-- **KP3 is not touched** (D2). Record the convention where KP3's eventual build
-  plan will find it — one line in KP3's `README.md` or `manifest.yaml` pointing
-  at this design, not a rename of its scaffolding
+- **KP3 is not touched** (D2). The convention is recorded where KP3's eventual
+  build plan will find it — one line in KP3's `README.md` or `manifest.yaml`
+  pointing at this design, not a rename of its scaffolding
 
 **(b) Remove the profiles (D5)** — topology becomes four servers, all own-server
 
@@ -258,8 +253,8 @@ only one that touches topology — see §7.
 - `acceptance/2.2.md`, `2.5.md`, `2.7.md`, `member.md`: remove lite caveats
 - `acceptance/join-member.md` clause 5: "byte-identical to the golden file for
   this deployment's profile" → the single deployment golden
-- `README.md`: delete the tier×profile guidance (~40 lines — the biggest
-  readability win in the wave); `runbook.md` and `production-delta.md` likewise
+- `README.md`: delete the tier×profile guidance; `runbook.md` and
+  `production-delta.md` likewise
 - `apps/console/tests/fixtures/{full,lite}/` → one (keep `inconsistent/`)
 
 **(c) Re-baseline — once, at the end**
@@ -267,21 +262,20 @@ only one that touches topology — see §7.
 - Regenerate both goldens; **one** `--full` proof
 
 **Exit:** `--full` green on the new baseline, one regeneration, one topology, one
-story. Est. ~670s vs today's ~872s, and ~50% less total verification per plan
-(§8.6).
+story, and a large cut in total verification time per plan (§8.6).
 
-### Wave 4 · The onboarding record — on the new baseline, trimmed per D3
+### 4.4 The onboarding record — on the new baseline, trimmed per D3
 
-Member-heavy, so it lands after the reduction and is written three times, not
-five. **Trimmed from the original design following D3 (no curriculum change):**
-the record covers the gates KP2 actually teaches, not the path's full seven.
+Member-heavy, so it landed after the reduction and was written three times, not
+five. **Trimmed following D3 (no curriculum change):** the record covers the
+gates KP2 actually teaches, not the path's full seven.
 
 **In scope — curriculum-backed:**
 
 - `member_requirements` (5.2's six items) and `sla` (5.3's five numbers) on
-  `JoinPayload`, rendered into the member's record (**K-01**). Unaffected by D3 —
-  5.2 and 5.3 are existing subtopics teaching exactly these as templates, and
-  this is the wave's whole justification.
+  `JoinPayload`, rendered into the member's record (**K-01**). Unaffected by
+  D3 — 5.2 and 5.3 are existing subtopics teaching exactly these as templates,
+  and this is the whole justification for this piece of work.
 - `onboarding/<key>/` covering **three** gate exits, not ten: requirements
   (5.2), SLA (5.3), registration (5.4). Generated, three-line stubs under P2.
 - One `sla.md` per service — 5.3's own "reuse the same template for every service
@@ -293,23 +287,23 @@ the record covers the gates KP2 actually teaches, not the path's full seven.
   entry, go-live, retirement). These are path-backed only, and with the
   curriculum unchanged they would be the pack teaching gates no video covers —
   P6's failure mode. Recorded in `production-delta.md` as named absences instead.
-- `catalogue-entry.md` (**G-05b**) — drops out of this wave. The SLA half is
+- `catalogue-entry.md` (**G-05b**) — out of scope. The SLA half is
   curriculum-backed and stays as `sla.md`; the catalogue metadata half waits for
   a curriculum or framework driver.
 
 **Exit:** three members each carrying a requirements record, an SLA per service,
 and a registration record — the three things Topic 5 teaches before the bus call.
 
-### Wave 5 · Monitoring add-ons
+### 4.5 Monitoring add-ons
 
 - Operational and environmental monitoring add-ons installed during Security
   Server bring-up (**G-06**)
 
-Last because it changes bring-up for every server and adds time to every
-subsequent cycle — but **scheduled, not deferred**. It is the path's one
-asymmetric-cost item ("trivial at G4, a campaign afterwards"), it completes G4's
-three-part exit test, and Module 6.2 teaches bus monitoring. Three servers rather
-than five makes this the right moment.
+This landed last because it changes bring-up for every server and adds time to
+every subsequent cycle — but it was **scheduled, not deferred**. It is the
+path's one asymmetric-cost item ("trivial at G4, a campaign afterwards"), it
+completes G4's three-part exit test, and Module 6.2 teaches bus monitoring.
+Three servers rather than five made this a cheap moment to do it.
 
 ---
 
@@ -322,7 +316,7 @@ Stated so scope creep has something to bounce off.
 | A service catalogue (collector, portal) | A generated `catalogue-entry.md` per service | Path §6 makes the catalogue an operator building block; the pack demonstrates the *entry* and the SLA attachment, which is the G5 gap |
 | A membership-agreement workflow | A reference and a stub in `onboarding/<key>/` | P2 — a signed instrument is not a demo artefact; the gate it creates is |
 | A Steering Committee as a running system | A role in `governance.yaml` + a second token on `/approve` | P1 — the finding is that admission has no accountable role, not that it has no UI |
-| Retention/archival machinery | Two sentences beside the teardown instruction | G-03a was over-graded in v1; demo teardown deleting a volume is fine, the silence about retention is not |
+| Retention/archival machinery | Two sentences beside the teardown instruction | Demo teardown deleting a volume is fine; the silence about retention is not |
 | BB implementations | The `pattern:` classification only | KP3 |
 | Real backends | The Joget seam stays as-is | KP4 |
 
@@ -332,11 +326,11 @@ Stated so scope creep has something to bounce off.
 
 | # | Decision | Outcome | Affects |
 |---|---|---|---|
-| **D1** | Retire MoEYS and amend the frozen `identifiers:` contract? | **DECIDED — retire, amend now.** Three members; deny-check moves to `PLR:ENROLMENT` → PNIA `identity-api`. Amendment needs explicit KP3/KP4 sign-off in the same wave, while KP3 is scaffolding. | Wave 3 |
-| **D3** | Does the curriculum gain a subtopic covering the join workflow? | **DECIDED — no curriculum change.** Wave 4 trimmed accordingly; P6 added. | Wave 4 |
-| **D5** | Topology size, and keep or drop the `full`/`lite` profiles? | **DECIDED — T1 + drop profiles.** Four servers, all own-server; single topology. Reverses an earlier T2 recommendation on sourced evidence — see below. | Wave 3 |
-| **D2** | Is capability-based naming applied to KP3 too? | **DECIDED — no. KP2 only; KP3 untouched.** Accepted consequence: the two packs diverge until KP3 is built, and KP3's conversion stops being free. Mitigation: leave a pointer, not a rename (Wave 3). | Wave 3 |
-| **D4** | `onboarding/<key>/` vs the path's `members/<code>/` | **DECIDED — `onboarding/<key>/`.** Reasoning below. | Wave 4 |
+| **D1** | Retire MoEYS and amend the frozen `identifiers:` contract? | **DECIDED — retire, amend now.** Three members; deny-check moves to `PLR:ENROLMENT` → PNIA `identity-api`. Amendment needs explicit KP3/KP4 sign-off, while KP3 is scaffolding. | The reduction |
+| **D3** | Does the curriculum gain a subtopic covering the join workflow? | **DECIDED — no curriculum change.** The onboarding-record work trimmed accordingly; P6 added. | The onboarding record |
+| **D5** | Topology size, and keep or drop the `full`/`lite` profiles? | **DECIDED — T1 + drop profiles.** Four servers, all own-server; single topology. Reverses an earlier T2 recommendation on sourced evidence — see below. | The reduction |
+| **D2** | Is capability-based naming applied to KP3 too? | **DECIDED — no. KP2 only; KP3 untouched.** Accepted consequence: the two packs diverge until KP3 is built, and KP3's conversion stops being free. Mitigation: leave a pointer, not a rename. | The reduction |
+| **D4** | `onboarding/<key>/` vs the path's `members/<code>/` | **DECIDED — `onboarding/<key>/`.** Reasoning below. | The onboarding record |
 
 ### What D4 settled
 
@@ -394,7 +388,7 @@ worse than teaching it in prose. **Finland's documented answer for small
 organisations is the containerised Sidecar, not hosting** — and
 `docker-compose.yml` already runs `niis/xroad-security-server-sidecar` at ~2.1 GiB
 per server. The pack is already implementing that answer; T1 is consistent with
-it, at ~2 GB and ~3 minutes more than T2.
+it, at roughly 2 GB and a few minutes more than T2.
 
 **Feed back to the path document:** G2's hosting table frames hosting as a
 delegation to avoid, where practice treats it as a service to buy with the
@@ -409,9 +403,9 @@ approximately 33 minutes." Adding one is a scope change to an ITU contract, so
 "no curriculum change" is not only a preference but the cheap answer. Three
 consequences, all now folded in:
 
-1. **Wave 4 shrinks** to the three gates Topic 5 teaches — requirements, SLA,
-   registration. The other seven §7 files become named absences in
-   `production-delta.md` rather than stubs in the tree.
+1. **The onboarding record shrinks** to the three gates Topic 5 teaches —
+   requirements, SLA, registration. The other seven §7 files become named
+   absences in `production-delta.md` rather than stubs in the tree.
 2. **The join API stays a labelled surplus** (P6). It remains fully built,
    live-verified and demonstrable; it does not become the pack's organising
    principle, and the earlier "join module as centre of gravity" framing is
@@ -426,23 +420,24 @@ point 5.2 → 5.3 → join → 5.4 is the sequence that was on the table.
 
 ## 7. Risks
 
-- **Wave 3 is the only genuinely risky wave, and D5 made it bigger.** It now
-  carries the member reduction, the rename, the frozen-contract amendment, the
-  profile removal and one golden regeneration. Splitting it is worse: profile
-  removal changes topology, so doing it separately buys a *second* re-baselining
-  event and breaks P3. Keep it as one plan, structured as sequenced steps
-  (a) reduce and rename → (b) remove profiles → (c) regenerate once, with its own
-  `--full` proof at the end.
-- **After Wave 3, `--full` is the only deploy path** — a regression in it has no
-  cheaper sibling to bisect against. Mitigated by `--fast` and `--live` being
-  untouched (§8.6) and by the hosted fixture keeping the generator honest.
-- **Wave 5 slows every cycle after it.** Lite is already ~466s. Worth measuring
-  the add-on cost before committing, and worth accepting — invisible members are
+- **The reduction was the only genuinely risky piece of work, and D5 made it
+  bigger.** It carried the member reduction, the rename, the frozen-contract
+  amendment, the profile removal and one golden regeneration. Splitting it
+  would have been worse: profile removal changes topology, so doing it
+  separately buys a *second* re-baselining event and breaks P3. It stayed as
+  one plan, structured as sequenced steps: (a) reduce and rename → (b) remove
+  profiles → (c) regenerate once, with its own `--full` proof at the end.
+- **After the reduction, `--full` is the only deploy path** — a regression in
+  it has no cheaper sibling to bisect against. Mitigated by `--fast` and
+  `--live` being untouched (§8.6) and by the hosted fixture keeping the
+  generator honest.
+- **The monitoring add-ons slow every cycle after them.** Worth measuring the
+  add-on cost before committing, and worth accepting — invisible members are
   the more expensive outcome.
-- **P1 will be under pressure in Wave 2.** "The RACI should really be enforced
-  per gate" is how a config file becomes a workflow engine. The test: can it be
-  set to another value, and does something observably change? — the pack's own
-  rule from `configs/x-road-bus/2.7.yaml`.
+- **P1 is under pressure from the data layers.** "The RACI should really be
+  enforced per gate" is how a config file becomes a workflow engine. The test:
+  can it be set to another value, and does something observably change? — the
+  pack's own rule from `configs/x-road-bus/2.7.yaml`.
 - **The frozen-contract amendment needs a real sign-off**, not a commit. It is
   the one change here that another pack could be building against.
 
@@ -450,77 +445,79 @@ point 5.2 → 5.3 → join → 5.4 is the sequence that was on the table.
 
 ## 8. Component completeness review
 
-Does the pack, after all five waves, hold every component the onboarding path
-needs? Checked against the path's own component lists rather than its gates.
-**Mostly yes — one defect in this design, one real gap it does not close, and
-three conscious deferrals.**
+Does the pack hold every component the onboarding path needs? Checked against
+the path's own component lists rather than its gates. **Mostly yes — one
+defect in this design, one real gap it does not close, and three conscious
+deferrals.**
 
 ### 8.1 Component-by-component
 
 **§0 — ecosystem prerequisites**
 
-| # | Component | After Wave 5 | Where |
+| # | Component | Status | Where |
 |---|---|---|---|
 | 1 | Central Server operating | **✓** | 8 CS steps (`cs.init` → `cs.anchor`), PDGA as owner, `ss-pdga` management server |
 | 2 | Certification Authority | **✓ simulated, declared** | Test CA; `production-delta.md` row 1 |
 | 3 | Time-Stamping Authority | **✓ simulated, declared** | `ss.tsa_capture` / `ss.tsa_post` |
 | 4 | Member classes defined | **✓** | `cs.member_class`; `join.member_class: GOV` |
 | 5 | **Identifier and naming conventions published** | **✗ GAP** | See §8.3 |
-| 6 | Building-block pattern register | **✓** | Wave 2 |
+| 6 | Building-block pattern register | **✓** | `docs/conventions.md`, the data layers |
 
 **§6a — the semantic layer** (asked about directly)
 
-| Tier | Component | After Wave 5 | Where |
+| Tier | Component | Status | Where |
 |---|---|---|---|
-| 1 | BB pattern classification | **✓** | Wave 2 — `pattern:` on `schema.Semantic`, register in `join-policy.yaml` |
-| 2 | Sector entity + standards anchor | **✓** | Wave 2 — `semantic-map.yaml` with OneRoster / CEDS / ISO 11179 |
+| 1 | BB pattern classification | **✓** | `pattern:` on `schema.Semantic`, register in `join-policy.yaml` |
+| 2 | Sector entity + standards anchor | **✓** | `semantic-map.yaml` with OneRoster / CEDS / ISO 11179 |
 | 3 | Member instance | **✓ already present** | `semantic:` block in member config |
 
-**The semantic layer is complete after Wave 2**, and it is the cleanest of the
-three layers KP2 teaches — it goes from a free-text string citing a map that does
-not exist, to a three-tier structure with a published map and a validator that
+**The semantic layer is complete**, and it is the cleanest of the three layers
+KP2 teaches — it goes from a free-text string citing a map that does not
+exist, to a three-tier structure with a published map and a validator that
 checks conformance rather than presence.
 
 **§6 — the operator's own building blocks**
 
-| Component | After Wave 5 | Note |
+| Component | Status | Note |
 |---|---|---|
 | Member / service management portal | **✓ partial** | `apps/console` + `apps/join-api`; path says this is the one with no OSS starting point, so a demo-grade version is the honest maximum |
-| Service catalogue | **✗ deferred** | Dropped from Wave 4 by D3 — see §8.4 |
-| Reporting and metrics | **~ add-on only** | Wave 5 installs it; no collector — see §8.4 |
+| Service catalogue | **✗ deferred** | See §8.4 |
+| Reporting and metrics | **~ add-on only** | Add-ons installed; no collector — see §8.4 |
 | Technical monitoring | **~ add-on only** | Same |
 
 **Gates**
 
-G1 admission authority ✓ (Wave 2 governance). G2 hosting decision ✓ — but see the
-defect below. G3 ✓ simulated. G5 contract + semantic + ACL ✓, SLA ✓ (Wave 4).
-GX ✓ reversal + retention note; inbound-ACL revocation → KP3. Two-track shape ✓
-labelled (Wave 1).
+G1 admission authority ✓ (governance config). G2 hosting decision ✓ — but see
+the defect below. G3 ✓ simulated. G5 contract + semantic + ACL ✓, SLA ✓. GX ✓
+reversal + retention note; inbound-ACL revocation → KP3. Two-track shape ✓
+labelled.
 
 ### 8.2 Defect in this design: the default profile violates G2
 
-**Withdrawing my own Wave 3 recommendation.** The design said "make three members
-and `profile: lite` the default." Checking what lite actually is:
+**An earlier recommendation in this design was withdrawn.** It had proposed
+three members and `profile: lite` as the default. Checking what lite actually
+was:
 
 > "Lite profile hosts PNIA and MoEYS on `ss-plr`. Their SIGN key/cert and client
 > registration are generated as fragments appended into `21-ss-plr.hurl`"
 > — `hurl/README.md`, Known limits
 
-So lite hosts **PNIA — the authoritative person identity register** — as a client
-on PLR's Security Server. The path's G2 exit test:
+So lite hosted **PNIA — the authoritative person identity register** — as a
+client on PLR's Security Server. The path's G2 exit test:
 
 > "A body publishing authoritative personal data should not be hosted on a peer's
 > server, because the host's token then holds its signing key — a delegation with
 > no counterpart in the obligation set."
 
 PNIA publishes `nin`, `given_name`, `family_name`, `date_of_birth`, `sex`,
-`region`. Making lite the default would put the pack's **headline configuration
-in direct violation of G2 using its most sensitive member**, and would model
-PLR's operator being able to sign as the national identity authority.
+`region`. Making lite the default would have put the pack's **headline
+configuration in direct violation of G2 using its most sensitive member**, and
+would have modelled PLR's operator being able to sign as the national identity
+authority.
 
 **Corrected target: four Security Servers, all own-server** — PDGA, PNIA, PLR,
-PNEA. Costs roughly 2 GB more than lite (~10.9 GB vs ~8.9 GB) and some cycle
-time. Worth it: the alternative teaches a delegation the framework forbids.
+PNEA. Costs roughly 2 GB more than lite and some cycle time. Worth it: the
+alternative teaches a delegation the framework forbids.
 
 **Hosting is still demonstrated, and in the right place** — the join API's
 `default_hosting: hosted_on` makes every joined member hosted by default. That is
@@ -534,44 +531,41 @@ sourced pattern.
 > have justified hosting anyone in the canonical set is unsourced, and Finland's
 > documented answer for small organisations is the containerised Sidecar the pack
 > already runs. **Lite does not survive as a development convenience either** —
-> it is removed with the profile split, and §8.6 shows why nothing cheap is lost.
+> it was removed with the profile split, and §8.6 shows why nothing cheap was lost.
 
 ### 8.3 The real gap this design does not close: the conventions register
 
-**§0 prerequisite 5 and the whole of §1a are unaddressed by any wave.** The path
+**§0 prerequisite 5 and the whole of §1a were unaddressed for a while.** The path
 treats these as ecosystem decisions made once, before member #1:
 
-| Convention | Status after Wave 5 |
+| Convention | Status |
 |---|---|
-| Identifier character set | Wave 1 **enforces** it in `validate.py`; nothing **publishes** it |
-| Member code scheme | Absent |
-| Subsystem code scheme | Absent |
-| Security Server host naming | `ss-<key>` by convention, written down nowhere |
+| Identifier character set | **Enforced** in `validate.py`; **published** in `docs/conventions.md` |
+| Member code scheme | Published in `docs/conventions.md` |
+| Subsystem code scheme | Published in `docs/conventions.md` |
+| Security Server host naming | `ss-<key>` by convention, published in `docs/conventions.md` |
 
 The path is blunt about why this matters: *"a convention retrofitted after fifty
 members is not retrofitted at all"* and *"certificates, DNS, firewall rules and
-monitoring all key off the host name."*
-
-This is a genuine miss and it is cheap to fix — one config file, no code, fully
-inside P1. **Recommend adding `configs/x-road-bus/conventions.yaml` to Wave 2**,
-carrying the four rules as data, with `validate.py`'s charset check reading its
-pattern from there rather than hardcoding it. That converts Wave 1's fix from a
-constant into a published, testable convention and closes §0.5 and §1a together.
+monitoring all key off the host name."* `configs/x-road-bus/conventions.yaml`
+carries the four rules as data, with `validate.py`'s charset check reading its
+pattern from there rather than hardcoding it — a constant turned into a
+published, testable convention, closing §0.5 and §1a together.
 
 ### 8.4 Conscious deferrals — complete list
 
 | Deferred | By | Consequence to accept |
 |---|---|---|
-| Service catalogue entry | D3 | The SLA lands as `sla.md` on the member record rather than as catalogue metadata. Better than today's nothing, but a smaller version of the path's orphan-SLA problem survives — the SLA is attached to the member, not discoverable with the service. |
-| Monitoring collection layer | Wave 5 scope | Add-ons installed at G4 emitting to no collector, so **G4's third exit test — "is its monitoring data arriving centrally?" — remains unmet.** Defensible under P2: the lesson G-06 carries is *install the add-on at G4 or run a retrofit campaign*, and an installed add-on with a documented absent collector teaches exactly that. Adding `xroad-metrics` (NIIS, OSS) later closes it properly. |
+| Service catalogue entry | D3 | The SLA lands as `sla.md` on the member record rather than as catalogue metadata. Better than having nothing, but a smaller version of the path's orphan-SLA problem survives — the SLA is attached to the member, not discoverable with the service. |
+| Monitoring collection layer | Scope of the monitoring-add-ons work | Add-ons installed at G4 emitting to no collector, so **G4's third exit test — "is its monitoring data arriving centrally?" — remains unmet.** Defensible under P2: the lesson G-06 carries is *install the add-on at G4 or run a retrofit campaign*, and an installed add-on with a documented absent collector teaches exactly that. Adding `xroad-metrics` (NIIS, OSS) later closes it properly. |
 | Membership agreement, admission record, certificates record, go-live record | D3 | Four of the seven §7 gate files become named absences in `production-delta.md`. |
 | Inbound ACL revocation at GX | KP3 | Unreachable today; comment left in `steps.py`. |
 | BB implementations | KP3 | Pattern classification only. |
 
-### 8.5 One question the pack will now pose rather than answer
+### 8.5 One question the pack now poses rather than answers
 
-After Wave 4, PNEA is a consumer-only member with no `services:` block — so it
-gets no `sla.md`. That is the path's §8 open question 5 appearing concretely:
+PNEA is a consumer-only member with no `services:` block — so it gets no
+`sla.md`. That is the path's §8 open question 5 appearing concretely:
 
 > "Does a consumer-only member need an SLA? TK-IO-09 is written for providers; a
 > consumer's obligations (rate, purpose limitation, log cooperation) have no
@@ -581,23 +575,22 @@ Worth leaving visible rather than papering over. A pack that makes a framework's
 open question *concrete and observable* is doing its job — and this one is cheap
 to surface as a one-line note in PNEA's record.
 
-### 8.6 Testing after D5 — nothing cheap is lost
+### 8.6 Testing after D5 — nothing cheap was lost
 
 Full working in `docs/topology-profile-decision.md` §5.
 
-**The cheap tiers are untouched, because profiles never made them cheap.**
-`--fast` (~49s, 291 tests) has "no running containers, no network, no
-federation" — there was no topology for it to have a profile of. `--live` (~78s)
-needs a running stack but explicitly refuses to deploy one. The profile split
-only ever discounted `--full`, which the README itself calls "not a per-task
-ritual."
+**The cheap tiers were untouched, because profiles never made them cheap.**
+`--fast` has "no running containers, no network, no federation" — there was no
+topology for it to have a profile of. `--live` needs a running stack but
+explicitly refuses to deploy one. The profile split only ever discounted
+`--full`, which the README itself calls "not a per-task ritual."
 
-**The golden corpus does not shrink**, because `profile` was two things sharing a
+**The golden corpus did not shrink**, because `profile` was two things sharing a
 word: `deployment.yaml`'s `profile:` (what gets stood up) and `generate.py
---profile` (what gets rendered). `test_golden.py` already uses the second and
-never deploys anything. So:
+--profile` (what gets rendered). `test_golden.py` already used the second and
+never deployed anything. So:
 
-| | Today | After |
+| | Before | After |
 |---|---|---|
 | Deployable topologies | 2 | **1** |
 | Golden fixtures | 2, tied to profiles | **2, decoupled** — `deployment/` and `hosted-fixture/` |
@@ -609,27 +602,16 @@ explicit that the job engine differs from what `run-linkup.sh` does with the sam
 templates. Cost: a directory of YAML and a generated tree. No containers, no
 deploy time, no contributor-facing choice.
 
-**Total verification time per plan goes down.** Today a plan pays N lite cycles
-*plus* a mandatory full-profile proof:
+**Total verification time per plan went down.** A plan used to pay N lite
+cycles *plus* a mandatory full-profile proof; after the reduction it pays N
+single-topology cycles, and for the 1–3 cycle range most plans actually run,
+that is faster end to end. See `docs/production-delta.md` and
+`docs/topology-profile-decision.md` §5.3 for the current arithmetic and
+measured figures.
 
-| Full cycles per plan | Today (N×466 + 872) | After (N×670) |
-|---|---|---|
-| 1 | 1338s | **670s** (−50%) |
-| 2 | 1804s | **1340s** (−26%) |
-| 3 | 2270s | **2010s** (−11%) |
-| 4+ | 2736s | ≈ even, then slower |
-
-Most plans sit at 1–3, so removing the profile is faster end to end, not a trade.
-The lite discount was partly illusory — repaid at every plan close.
-
-**A reliability gain worth more than the seconds.** `production-delta.md` records
-a reproducible contention failure at six concurrent Security Server JVMs (Hikari
-"thread starvation or clock leap detected", admin API hanging mid-handshake).
-Today's `--full` with an own-server join runs 5 canonical + 1 = **6**, exactly
-that count. After: 4 + 1 = **5**, one clear of it. A flaky verification tier costs
-more than a slow one.
-
-**Watch:** `--fast` has grown ~8s → ~16s → ~29s → ~49s across recent plans and
-`--full` runs it inside `run-linkup.sh`, so it compounds — the ~670s estimate
-assumes it stays near ~49s. All timings here are estimates from two measured
-points and should be confirmed by one measured run before Wave 3 closes.
+**A reliability gain worth more than the seconds.** `production-delta.md`
+records a reproducible contention failure at six concurrent Security Server
+JVMs (Hikari "thread starvation or clock leap detected", admin API hanging
+mid-handshake). A `--full` run with an own-server join used to run 5 canonical
++ 1 = 6 servers, exactly that count; after the reduction it runs 4 + 1 = 5,
+one clear of it. A flaky verification tier costs more than a slow one.

@@ -32,7 +32,7 @@ import steps as steps_module
 
 PACK = pathlib.Path(__file__).resolve().parent.parent
 # HURL_DIR/OUT/ENV_PATH are reassigned in main() when --out/--env are passed
-# (tests/test_golden.py only -- see testing-strategy plan Task 1). Every
+# (tests/test_golden.py only -- see the testing-strategy plan). Every
 # other read (manifest.yaml, deployment.yaml, configs/) always goes through
 # PACK itself and is never redirected: a golden-corpus run must read the
 # real, committed member configuration, only write its output elsewhere.
@@ -68,12 +68,12 @@ CSR_COUNTRY = "FI"
 #
 # PNIA is 5100/5180, not 5000/5080: port 5000 collides with macOS's
 # AirPlay Receiver (ControlCenter), which hangs the connection instead of
-# refusing it. See docker-compose.yml's ss-pnia comment. Confirmed at P0,
-# 2026-07-25 -- this is the one reason FORBIDDEN_PORT_RANGE below exists.
+# refusing it. See docker-compose.yml's ss-pnia comment. Confirmed at P0 --
+# this is the one reason FORBIDDEN_PORT_RANGE below exists.
 PINNED_PORTS = {
     "pdga": (1000, 1080), "pnea": (2000, 2080), "plr": (3000, 3080),
     "pnia": (5100, 5180),
-    # "moeys" stays RESERVED here even though MoEYS is retired (Wave 3 Task 1,
+    # "moeys" stays RESERVED here even though MoEYS is retired (see
     # docs/production-delta.md) and discover_members() will never produce a
     # "moeys" key again: this table only matters when a key IS present, and
     # keeping the entry costs nothing while documenting that 6000/6080 must
@@ -100,7 +100,7 @@ FRESH_PORT_START = 7000
 # AND 7000 (RAOP audio) by default, and on both it hangs the TCP connection
 # mid-TLS-handshake instead of refusing it outright -- see docker-compose.yml's
 # ss-pnia comment for 5000. 7000 is exactly FRESH_PORT_START's own default and
-# was found live (member-parameterisation plan Task 9): a joined member's own
+# was found live (member-parameterisation plan): a joined member's own
 # Security Server got this port, registered fine during initial bring-up, then
 # its admin API became unreachable from the host with no error -- `docker
 # restart` did not fix it, `lsof -i :7000` on the host found ControlCenter, not
@@ -114,7 +114,7 @@ def _allocate_numbers(keys: list, pinned: dict, start: int) -> dict:
     """Pinned-then-allocated: every key in `pinned` keeps its number;
     everything else gets the next unused number from `start` upward, in
     `keys`' own (already-deterministic) order. Same member set -> same
-    allocation, always -- the property Task 9's byte-identical-after-
+    allocation, always -- the property the byte-identical-after-
     remove check depends on."""
     result: dict = {}
     used: set = set()
@@ -175,7 +175,7 @@ def allocate_ports(owner_keys: list) -> dict:
 # The canonical five's Security Server scenario numbers -- never renumbered
 # (docs/superpowers/plans/2026-07-27-kp2-member-parameterisation.md, Global
 # Constraints). A member absent from this table sorts after every pinned one,
-# alphabetically by key; Task 3 of that plan adds fresh-range allocation for
+# alphabetically by key; that plan adds fresh-range allocation for
 # such a member instead of leaving it unordered.
 PINNED_SCENARIO_NO = {"pnia": "20", "plr": "21", "moeys": "22", "pnea": "23"}
 
@@ -194,9 +194,8 @@ def discover_members(pack: pathlib.Path, identity: dict) -> dict[str, dict]:
     on disk. Each directory must hold exactly one config file, whose key
     (the directory's "member-" suffix) must have a matching, code-consistent
     identity.members entry; every identity.members entry must have a
-    directory. Fails loudly on any of the four disagreements, per this
-    plan's Task 1 -- a silently-skipped or silently-invented member is worse
-    than a crash.
+    directory. Fails loudly on any of the four disagreements -- a
+    silently-skipped or silently-invented member is worse than a crash.
     """
     configs_dir = pack / "configs"
     found: dict[str, pathlib.Path] = {}
@@ -372,9 +371,9 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
     operator-misconfiguration check -- Progressa is a single-member_class
     federation by design, so nothing about a submitted join payload could
     ever make this comparison come out differently. It moved here from
-    validate.py's per-request check 5 (join-b Task 2 review finding 2):
-    a check two static config files disagree on is a generate-time
-    consistency failure, not a fact about any particular join request.
+    validate.py's per-request check 5: a check two static config files
+    disagree on is a generate-time consistency failure, not a fact about
+    any particular join request.
     """
     join = join_config.get("join") or {}
     extra = set(join) - JOIN_POLICY_KEYS
@@ -422,7 +421,7 @@ def render(name: str, **kw) -> str:
 def dn_escape(value: str) -> str:
     """Escape a comma for RFC 2253 DN embedding in a subject_field_values value.
 
-    Confirmed necessary at P0 (2026-07-25): the Security Server's admin API
+    Confirmed necessary at P0: the Security Server's admin API
     joins subject_field_values into a single DN string server-side without
     escaping, then parses it with BouncyCastle. MoEYS's member_name ("...
     Education, Youth and Sport") contains a literal comma, which BouncyCastle
@@ -458,7 +457,7 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     prefix = ss_prefix(ss["dns_name"])
     conn = member.get("client", {}).get("connection_type", "HTTP")
     # SS_BRINGUP_INIT was split at the AUTH-key/CSR boundary so ca_name
-    # capture (management-server-only, join-a plan Task 2) could become its
+    # capture (management-server-only, join-a plan) could become its
     # own registry step -- see hurl/steps.py "ss.bringup_init" /
     # "ss.ca_name_capture" / "ss.auth_key_csr". capture_ca_name is always
     # False for a member's own bring-up today (only 10-ss-pdga passes it).
@@ -537,11 +536,11 @@ def build_service_file(member: dict, host_var: str, sess_p: str | None = None) -
                 SESS_P=sess_p,
                 CAP_P=cap_p,
                 ACL_SUBJECT=subject.replace("/", ":"),
-                # The 2.6 negative check's unauthorised caller (Wave 3 Task 1:
-                # moved off the now-retired MoEYS/PEMIS, onto PLR:ENROLMENT --
+                # The 2.6 negative check's unauthorised caller (moved off the
+                # now-retired MoEYS/PEMIS, onto PLR:ENROLMENT --
                 # configs/x-road-bus/once-only-exchange.yaml's negative_check.unauthorised_client
                 # is the source of truth; this is the same value restated for
-                # the generated comment below.
+                # the generated comment below).
                 NEGATIVE="PROGRESSA:GOV:PLR:ENROLMENT",
             )
     return out
@@ -565,7 +564,7 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     SIGN key is valid because /initialization set owner_member_code, but a
     hosted member has no such relationship -- the signer rejects a member_id
     it doesn't yet recognize as a client with 400 client_not_found (confirmed
-    live at P0 for the lite profile, 2026-07-26, when this was its only use).
+    live at P0 for the lite profile, when this was its only use).
     """
     m, sub_cfg = member["member"], member["subsystem"]
     conn = member.get("client", {}).get("connection_type", "HTTP")
@@ -626,13 +625,13 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     """One joined member's own Security Server, as a compose.members.yml
     service block. A module-level function purely so tests/test_allocation.py
     can assert on it without a manifest carrying a joined member: nothing but
-    main() calls it (join-c plan Task 5).
+    main() calls it (join-c plan).
 
     `${XROAD_BIND:-127.0.0.1}` on both mappings is NOT decoration -- every
     `ports:` line in the hand-written docker-compose.yml carries it, and
     without it here a joined member's own Security Server published its admin
     UI AND its unauthenticated X-Road proxy port on 0.0.0.0, ignoring
-    deployment.yaml's network.bind entirely. Found live (join-c plan Task 5,
+    deployment.yaml's network.bind entirely. Found live (join-c plan,
     the first own-server join this pack ever ran): the very next
     scripts/acceptance.sh hard-failed in check-exposure.sh with
     "ss-pvtb: 0.0.0.0:7100 -> 4000/tcp". A Compose file generated for a
@@ -644,7 +643,7 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     to answer on :4000 before driving admin APIs at it. That file stays
     hand-written and scoped to the canonical five (design decision 5); a
     joined member's own server gets it here instead, so it is never a
-    container nothing waits for. Found live (member-parameterisation Task 9):
+    container nothing waits for. Found live (member-parameterisation plan):
     without it, Compose waits only for the process to start, not for its
     Tomcat/TLS listener, and a caller can hang indefinitely on a handshake
     that never completes.
@@ -692,7 +691,7 @@ def main() -> None:
     check_join_policy(load("configs/x-road-bus/join-policy.yaml"), manifest)
     env = read_env()
     members = discover_members(PACK, identity)
-    # member:/subsystem: no longer live in configs/*.yaml (removed 2026-07-26,
+    # member:/subsystem: no longer live in configs/*.yaml (removed --
     # manifest.yaml's identity.members is the source now) -- inject them into
     # the same dict shape so build_ss_file/build_service_file/
     # build_hosted_client and the "02 members" loop below need zero changes.
@@ -713,8 +712,8 @@ def main() -> None:
     # Clear before writing: a removed member's scenario file must not
     # linger as a stray -- check_scenarios.py would (correctly) flag it as
     # unclaimed, but "regenerated fresh every run" (hurl/README.md) should
-    # mean fresh, not merely overwritten. Found live while verifying Task 5
-    # of the member-parameterisation plan (removing a throwaway member left
+    # mean fresh, not merely overwritten. Found live while verifying the
+    # member-parameterisation plan (removing a throwaway member left
     # its scenario file behind).
     if OUT.exists():
         for stale in OUT.glob("*.hurl"):
@@ -758,8 +757,8 @@ def main() -> None:
 
     # -- 00 Central Server initialisation ----------------------------------
     # instance init, member class, software token login, INTERNAL/EXTERNAL
-    # signing keys -- four steps in the registry, one file here (join-a plan
-    # Task 2 Step 1). The init response is 200, not 201 (PLAN.md #8) -- the
+    # signing keys -- four steps in the registry, one file here (join-a
+    # plan). The init response is 200, not 201 (PLAN.md #8) -- the
     # assertion lives in fragments/CS_INIT.hurl.tmpl, unchanged.
     body = render(steps_module.BY_ID["cs.init"].template)
     body += render(
@@ -789,7 +788,7 @@ def main() -> None:
         MGMT_SUBSYSTEM=owner["management_subsystem"],
     )
     members_member_step = steps_module.BY_ID["cs.members_member"]
-    # "moeys" dropped from this historical-order tuple (Wave 3 Task 1): it is
+    # "moeys" dropped from this historical-order tuple: it is
     # retired and discover_members() never returns it, so `members["moeys"]`
     # would KeyError. Order for the rest is unchanged -- this literal tuple
     # is not `members.keys()`'s own order.
@@ -935,7 +934,7 @@ def main() -> None:
     # (regenerated fresh every run, never staged; see hurl/README.md).
     # Port allocation order: "pdga" (the owner, not a discovered member)
     # plus every SS-owning (unhosted) member, sorted alphabetically by key --
-    # the fresh-allocation order this plan's Task 3 specifies. Pinned ports
+    # the fresh-allocation order this plan specifies. Pinned ports
     # win regardless of position, so this ordering only ever affects a
     # member nothing pins.
     owner_keys = ["pdga"] + sorted(k for k in members if k not in hosted_on_map)

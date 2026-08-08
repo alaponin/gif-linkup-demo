@@ -125,7 +125,7 @@ response this lag eventually produces is recorded as a fixture in §10.
 
 ## 7. Retiring a member from a running federation, without `teardown.sh --purge`
 
-Investigated live (member-parameterisation plan, Task 9) with a throwaway
+Investigated live with a throwaway
 joined member (`PHIB:CLAIMS`, its own Security Server): **yes, a member can
 be retired from a running federation without a full purge** — but it takes
 four admin-API calls across two servers, in a specific order, taking a few
@@ -194,7 +194,7 @@ in a production build.
 
 ## 9. Changing `.env`'s PIN after a deployment already exists
 
-Investigated live (exposure-and-secrets plan, Task 6), using a real
+Investigated live, using a real
 occurrence rather than a manufactured one: `scripts/gen-secrets.sh --force`
 against an already-deployed federation, containers recreated (no purge) so
 their persisted `/etc/xroad` state — including the software token, still
@@ -227,7 +227,7 @@ the operator can log into the admin UI, and only a call that actually needs
 the signer (a real cross-server exchange, or an explicit `/tokens` check)
 reveals anything is wrong. This is not benign: it is exactly the confusing
 failure mode the plan set out to catch before it wastes someone's afternoon,
-which is why Task 6's fingerprint check is a hard failure at deploy time,
+which is why the fingerprint check is a hard failure at deploy time,
 not a warning.
 
 ## 10. The console's ACL-mutation error shapes, recorded not guessed
@@ -235,8 +235,8 @@ not a warning.
 Four behaviours the demo console (`apps/console/`) depends on cost a live
 federation to discover the first time, and used to cost hand-written
 approximations to re-confirm. Real, live-recorded fixtures now back the
-tests that exercise each one (`apps/console/tests/fixtures/xroad/`,
-testing-strategy plan Task 6), and `scripts/capture-xroad-fixtures.sh
+tests that exercise each one (`apps/console/tests/fixtures/xroad/`),
+and `scripts/capture-xroad-fixtures.sh
 --check` re-captures and diffs them so drift is caught rather than assumed
 away:
 
@@ -253,9 +253,8 @@ away:
 - **`revoke_409_not_found.json`** — revoking a right already revoked
   returns `409` with `{"status":409,"error":{"code":"accessright_not_found"}}`
   — the one fixture of the four whose hand-written predecessor already
-  matched reality (it was itself written from a live observation, dated
-  2026-07-26); re-recording confirmed that rather than assuming it still
-  held.
+  matched reality (it was itself written from a live observation);
+  re-recording confirmed that rather than assuming it still held.
 - **`exchange_access_denied.json`** — a denied r1 call's real body is
   `{"type":"Server.ServerProxy.AccessDenied","message":"Request is not
   allowed: SERVICE:<the exact service id>","detail":"<a random per-request
@@ -273,13 +272,12 @@ lag, is §6 above — a timing property, not a distinct response shape (the
 ## 11. Un-joining a *hosted* member: the reverse sequence, measured
 
 §7 above established that a member can be retired from a running federation
-at all, using a member with its **own** Security Server. This section is the
-join-c plan's Task 1 spike, and its subject is the case Plan B's topology
-makes normal and §7 never covered: a **hosted** member, whose subsystem lives
-as one client among several on a Security Server somebody else owns and keeps
-running. Established live, twice, against `profile: lite` from cold — PTSB:
-SCHOLARSHIP joined onto `ss-plr` through the join API (`ACTIVE, verified:
-true`), then taken apart by hand with `curl`. Every exchange below is
+at all, using a member with its **own** Security Server. This section covers
+the case Plan B's topology makes normal and §7 never covered: a **hosted**
+member, whose subsystem lives as one client among several on a Security
+Server somebody else owns and keeps running. Established live, twice, from
+cold — PTSB:SCHOLARSHIP joined onto `ss-plr` through the join API (`ACTIVE,
+verified: true`), then taken apart by hand with `curl`. Every exchange below is
 recorded in `apps/join-api/tests/fixtures/xroad/unjoin.*.json`.
 
 **The working sequence is six calls, and nothing in it had to be retried or
@@ -392,10 +390,9 @@ hosting server keeps running and accumulates one orphaned SIGNING key per
 member that ever left.
 
 So the SIGN-key delete is a **required, explicit step**, and it must
-correlate the key by `keys[].certificates[].owner_id` — `ss-plr` under
-`profile: lite` carries four keys all labelled `"Sign key"` (PNIA, PLR,
-MOEYS and the joined member), so a label match would delete a *different*
-agency's key. This is the same correlation
+correlate the key by `keys[].certificates[].owner_id` — a hosting server
+carries one `"Sign key"`-labelled key per client it hosts, plus its own, so a
+label match would delete a *different* agency's key. This is the same correlation
 `hurl/templates/fragments/PROBE_SS_SIGN_KEY.hurl.tmpl` already documents for
 the forward path; the reversal needs it for a much less forgiving reason.
 
@@ -408,7 +405,7 @@ green afterward.
 ### The round trip closes
 
 Both cycles ended with `scripts/member.sh remove ptsb`, and both left
-`hurl/topology.json` **byte-identical** to `tests/golden/lite/topology.json`,
+`hurl/topology.json` **byte-identical** to `tests/golden/deployment/topology.json`,
 with the regenerated `hurl/scenarios/` tree identical too. A real call from
 an authorised consumer to the departed member's service fails cleanly and
 specifically — `Server.ClientProxy.UnknownMember`, `"Could not find addresses

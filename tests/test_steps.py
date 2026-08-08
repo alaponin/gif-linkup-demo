@@ -1,14 +1,14 @@
-"""hurl/steps.py's registry contract -- join-a-step-registry plan Tasks 1/4.
+"""hurl/steps.py's registry contract -- see the join-a-step-registry plan.
 
 A declared requires/provides contract nobody verifies is documentation that
-rots (Task 4's own framing). This module makes it mechanically true by
-parsing each step's raw .tmpl source -- never the rendered hurl/scenarios/
-output, which only exists for one already-chosen member set (generate.py
-lost the profile concept in Wave 3 Task 4, D5: one topology) and would hide
-the registry's per-id, cross-member contract.
+rots. This module makes it mechanically true by parsing each step's raw
+.tmpl source -- never the rendered hurl/scenarios/ output, which only
+exists for one already-chosen member set (generate.py lost the profile
+concept; D5: one topology) and would hide the registry's per-id,
+cross-member contract.
 
-Regex is sufficient (Task 4 Step 1): these are generated files with a fixed
-shape. Two regimes appear in the templates:
+Regex is sufficient: these are generated files with a fixed shape. Two
+regimes appear in the templates:
 
   - CS-only steps (cs.*) have no per-member parameterisation: their
     {{var}}/[Captures] names are already concrete Hurl runtime identifiers,
@@ -28,8 +28,7 @@ shape. Two regimes appear in the templates:
     into literal JSON string values instead -- so this parser excludes them
     by construction, with no special-casing needed.
 
-Task 4 Step 4 (cross-registry ordering) additionally needs one
-normalisation: @SESS_P@_xsrf_token and @CAP_P@_client_id and @P@_xsrf_token
+Cross-registry ordering additionally needs one normalisation: @SESS_P@_xsrf_token and @CAP_P@_client_id and @P@_xsrf_token
 name the same *kind* of per-member identifier under three different
 sub()-parameter names (which prefix is in scope depends on the call site --
 a member's own session vs. a hosting member's session vs. where a capture
@@ -139,7 +138,7 @@ def test_every_template_reference_is_accounted_for():
 
 
 def test_no_step_is_unsafe_to_repeat():
-    """join-a plan Task 5 Step 3: class (d) (not safe to repeat at all) is
+    """join-a plan: class (d) (not safe to repeat at all) is
     empty today. If a future step ever sets unsafe_to_repeat=True, this test
     starts failing loudly instead of Plan B silently resuming across it."""
     unsafe = [step.id for step in steps_module.REGISTRY if step.unsafe_to_repeat]
@@ -148,7 +147,7 @@ def test_no_step_is_unsafe_to_repeat():
 
 def test_ambiguous_steps_have_a_probe():
     """A step this audit classified as 409-ambiguous is only actually
-    covered if it carries a probe (join-a plan Task 5 Step 2) -- the
+    covered if it carries a probe (join-a plan) -- the
     classification comment above each Step in hurl/steps.py is not itself
     checked by anything, so this at least proves every declared probe path
     exists on disk."""
@@ -165,7 +164,7 @@ def test_requires_satisfied_by_an_earlier_step_or_a_global():
     """Walk the registry in order -- the sequence Plan B will eventually
     resume through one step at a time. A requires not yet available is
     exactly the ordering bug 2026-07-26-deployment-spec-and-lite-profile.md
-    found live in build_hosted_client() (join-a plan Task 3 Step 2)."""
+    found live in build_hosted_client() (join-a plan)."""
     available = {_canon(g) for g in GLOBALS}
     violations = []
     for step in steps_module.REGISTRY:
@@ -177,10 +176,10 @@ def test_requires_satisfied_by_an_earlier_step_or_a_global():
     assert not violations, "\n".join(violations)
 
 
-# -- join-c plan Task 2 Step 4: Step.reverse -----------------------------
+# -- join-c plan: Step.reverse --------------------------------------------
 #
 # The id sequence apps/join-api/job.py's build_sequence() actually renders
-# for a hosted join (join-b plan Task 4's own add() calls), NOT the full
+# for a hosted join (join-b plan's own add() calls), NOT the full
 # cold-deploy REGISTRY above: a hosted join never touches
 # cs.signing_keys/cs.trust_services/ss.auth_key_csr/ss.bringup_register/
 # ss.mgmt_register/ss.activate/ss.tsa_capture/ss.tsa_post at all, so those
@@ -203,7 +202,7 @@ HOSTED_JOIN_FORWARD_SEQUENCE: tuple[str, ...] = (
 
 
 def test_every_reversal_has_a_probe():
-    """join-c plan Task 2 Step 3: reversal is the case probes exist for --
+    """join-c plan: reversal is the case probes exist for --
     every step with a `reverse` must carry a `probe` (job.py has no other
     way to tell, on resume, whether a reversal call already ran)."""
     missing = [step.id for step in steps_module.REGISTRY if step.reverse and not step.probe]
@@ -215,7 +214,7 @@ def test_reversal_order_names_exactly_the_steps_that_declare_a_reverse():
     of the same set, and apps/join-api/job.py's unjoin() walks the FIRST one.
     A step that gains a `reverse` but no REVERSAL_ORDER entry is silently
     never walked -- the un-join reports fewer reversals and still reports
-    RETIRED (final review finding 1)."""
+    RETIRED."""
     assert {s.id for s in steps_module.REGISTRY if s.reverse} == set(steps_module.REVERSAL_ORDER)
 
 
@@ -232,7 +231,7 @@ def test_reversal_templates_exist():
 
 
 def test_reversal_requires_satisfiable_from_a_completed_forward_run():
-    """join-c plan Task 2 Step 4's headline check: a reversal template that
+    """join-c plan's headline check: a reversal template that
     reads a Hurl {{var}} name no forward step of a hosted join ever
     `provides` is the most likely defect in this task -- it would only
     surface at runtime, on the first live reversal attempt.
@@ -247,8 +246,8 @@ def test_reversal_requires_satisfiable_from_a_completed_forward_run():
     capture happens to be walked in here: JobStep.must_rerun guarantees
     job.py re-establishes a fresh session token every run/resume, which is
     a different, already-covered guarantee than "was this ever captured at
-    all" -- the thing this test exists to catch, per the concrete instance
-    Task 1 surfaced: @CAP_P@_@SC@_description_id (service.publish) and
+    all" -- the thing this test exists to catch, illustrated by the concrete
+    instance: @CAP_P@_@SC@_description_id (service.publish) and
     @CAP_P@_sign_key_id (ss.sign_key_csr) are both forward [Captures], so a
     reversal reading them back is legitimate -- they are not orphaned
     references to something no forward step ever ran.

@@ -1,4 +1,4 @@
-"""Unit tests for apps/join-api/schema.py (join-b Task 2). The one property
+"""Unit tests for apps/join-api/schema.py. The one property
 that matters most: JoinPayload has no origin field at all, and extra="forbid"
 means a payload that tries to smuggle one in fails to parse rather than
 having it silently discarded."""
@@ -87,7 +87,7 @@ def test_backend_auth_enum_has_exactly_the_three_spec_values():
 
 
 def test_semantic_pattern_defaults_to_none():
-    """Optional (Wave 2 Task 1 Step 3, G-04) -- required would reject every
+    """Optional (G-04) -- required would reject every
     existing config until all are classified against ExchangePattern."""
     payload = JoinPayload(**_consume_only(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
@@ -125,7 +125,7 @@ def test_hosted_on_defaults_to_none():
 
 
 def test_lawful_basis_defaults_to_none():
-    """Optional (Wave 2 Task 3, K-02) -- no config file and no resolution
+    """Optional (K-02) -- no config file and no resolution
     check, so a service that omits it must still parse (docs/conventions.md
     does not gate the join payload; this field is recorded, not enforced)."""
     payload = JoinPayload(**_consume_only(
@@ -142,7 +142,7 @@ def test_lawful_basis_accepts_free_text():
     assert payload.services[0].lawful_basis == "[confirm: cite the decree article]"
 
 
-# -- member_requirements (Wave 4 Task 1, K-01) ---------------------------------
+# -- member_requirements (K-01) -------------------------------------------------
 
 
 def test_member_requirements_is_required():
@@ -166,7 +166,7 @@ def test_member_requirements_lawful_basis_defaults_to_none():
     assert payload.member_requirements.lawful_basis is None
 
 
-# -- sla (Wave 4 Task 1, K-01) --------------------------------------------------
+# -- sla (K-01) -------------------------------------------------------------------
 
 
 def _sla(**overrides) -> dict:

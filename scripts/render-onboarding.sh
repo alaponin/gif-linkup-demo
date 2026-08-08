@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Renders onboarding/{pnia,plr,pnea}/ for the three canonical members
-# through the same writer.py code path a real join uses (Wave 4 Task 3,
-# K-01) -- see scripts/render_onboarding.py's own docstring for how. Not
+# through the same writer.py code path a real join uses (K-01) -- see
+# scripts/render_onboarding.py's own docstring for how. Not
 # hand-authored, and not run automatically by hurl/generate.py: this reads
 # each canonical member's member_requirements/sla fields off
 # configs/member-<key>/<key>.yaml (added by hand, prompts/register-

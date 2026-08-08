@@ -1,4 +1,4 @@
-"""apps/join-api/schema.py -- the join payload's shape (join-b Task 2, spec
+"""apps/join-api/schema.py -- the join payload's shape (spec
 S3/S9). Mirrors what prompts/member.md already produces by hand into
 configs/member-<key>/<key>.yaml (see configs/member-pnia/2.5.yaml for the
 committed shape this typed model is standing in for): member identity, a
@@ -60,7 +60,7 @@ class SecurityServer(_Strict):
 
 
 class SLA(_Strict):
-    """Wave 4 Task 1 (K-01): Module 5.3's five terms, "reuse the same
+    """Module 5.3's five terms (K-01), "reuse the same
     template for every service on the bus" -- hence one SLA per Service, not
     per member (design decision 2). Free text like `lawful_basis` above:
     this pack has no numeric target registry to check these against, and a
@@ -81,24 +81,24 @@ class Service(_Strict):
     # Consumer subsystems this service's ACL grants, PROGRESSA/GOV/<CODE>/
     # <SUBSYSTEM> form -- configs/member-pnia/2.5.yaml's own access: shape.
     access: list[str] = Field(default_factory=list)
-    # Wave 2 Task 3 (K-02): the decree article this exchange relies on, or
-    # "consent" -- free text, "[confirm: cite the decree article]" where a
-    # demo has no real one to cite. Recorded and surfaced, never resolved
-    # against anything: Module 2's decree is not in this pack, so there is
-    # nothing to check it against, and a resolution check against a file we
-    # also wrote would prove nothing (wave 2 plan, "what was cut and why").
+    # The decree article this exchange relies on, or "consent" (K-02) --
+    # free text, "[confirm: cite the decree article]" where a demo has no
+    # real one to cite. Recorded and surfaced, never resolved against
+    # anything: Module 2's decree is not in this pack, so there is nothing
+    # to check it against, and a resolution check against a file we also
+    # wrote would prove nothing.
     lawful_basis: str | None = None
     # Optional at the schema level, enforced at validate.py instead (spec
     # S8-style: a missing SLA on a published service is a REJECTED request
-    # naming the check, not a parse failure) -- Wave 4 Task 1 Step 4: required
-    # for a provider, optional for a consumer-only member (who has no
-    # services to attach one to in the first place).
+    # naming the check, not a parse failure) -- required for a provider,
+    # optional for a consumer-only member (who has no services to attach
+    # one to in the first place).
     sla: SLA | None = None
 
 
 class ExchangePattern(str, Enum):
-    """Wave 2 Task 1 Step 3 (G-04): the contract shape a semantic exchange
-    takes. The enum -- not a configs/x-road-bus/2.7.yaml policy key -- is
+    """The contract shape a semantic exchange takes (G-04). The enum -- not
+    a configs/x-road-bus/2.7.yaml policy key -- is
     deliberate (spec S8: "the permissible values of a field are a schema
     concern"), the same rule BackendAuth above already follows."""
 
@@ -114,7 +114,7 @@ class Semantic(_Strict):
     key: str
     fields: list[str]
     # Optional: making it required would reject every existing config until
-    # all are classified against ExchangePattern (Wave 2 Task 1 Step 3).
+    # all are classified against ExchangePattern.
     pattern: ExchangePattern | None = None
 
 
@@ -123,16 +123,16 @@ class Backend(_Strict):
 
 
 class MemberRequirements(_Strict):
-    """Wave 4 Task 1 (K-01): Module 5.2's six-item checklist -- "states, up
+    """Module 5.2's six-item checklist (K-01) -- "states, up
     front, exactly what an agency must have in place before it can join."
     Required on every JoinPayload, provider or consumer: 5.2 precedes
     registration for everyone, not only for a member that publishes a
     service. All six as stated fields, not a mix of asserted and
-    API-derived ones (simplification pass, 2026-08-05) -- the teaching
+    API-derived ones -- the teaching
     value is that the applicant answers the checklist.
 
     `lawful_basis` is the one item that reuses a field rather than
-    declaring a second copy of it: Service.lawful_basis (Wave 2 Task 3)
+    declaring a second copy of it: Service.lawful_basis
     already carries this for a provider's services, so a provider can leave
     this None and rely on those; a consumer-only member, which has no
     services to attach one to, states it here instead."""

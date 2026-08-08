@@ -83,7 +83,7 @@ def main() -> None:
             # Never print the values themselves -- both are live credentials
             # (token PIN, admin password), and this is a secret-leakage path
             # a plain diff-style message would otherwise open (found live,
-            # exposure-and-secrets plan Task 5).
+            # exposure-and-secrets plan).
             note(
                 f"vars.env's {var} disagrees with {env_path.name}'s {env_key} "
                 "-- the scenarios would authenticate with a value the "
@@ -191,7 +191,7 @@ def main() -> None:
 
     # A spec that would publish the stack outside this host, without saying
     # so twice, should not pass the ship gate quietly -- same rule scripts/
-    # lib-stack.sh enforces at deploy time (member-parameterisation Task 2), pinned
+    # lib-stack.sh enforces at deploy time (member-parameterisation plan), pinned
     # here too so a bad deployment.yaml is caught by --ready as well.
     network = deployment.get("network") or {}
     bind = network.get("bind", "127.0.0.1")

@@ -1,4 +1,4 @@
-"""Request-boundary plan Task 1 (S12): a path parameter went straight into a
+"""Request-boundary plan (S12): a path parameter went straight into a
 URL that addresses an X-Road service (get_exchange, get_exchange_negative)
 or the mock registry directly (_identity_held_fields). No network, no
 Docker -- PACK_DIR points at the existing test fixtures; rejected requests

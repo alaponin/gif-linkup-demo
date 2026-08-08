@@ -4,7 +4,7 @@
 # S8 check 8): semantic.entity must be a key below, and every semantic.fields
 # entry must be declared for that entity.
 #
-# Entity -> source anchor -> field list only (Wave 2 design decision 4): no
+# Entity -> source anchor -> field list only (design decision 4): no
 # per-field element descriptions here -- the anchor is where those live.
 person:
   anchor: CEDS

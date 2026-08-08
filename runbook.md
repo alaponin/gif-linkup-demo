@@ -15,14 +15,12 @@ host, and run the once-only exchange that proves it. Demo only — see
   first is what turns a mid-deploy failure into a pre-deploy one.
 - Docker ≥ 24 with Docker Compose ≥ 2.24.
 - **~10.9–11.1 GiB RAM in steady state**, measured live for the current
-  4-Security-Server topology (Wave 3 Task 6, 2026-08-07 and Wave 5,
-  2026-08-08 — `docker stats --no-stream`: four Security Servers ~2.2–2.3 GiB
-  each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB, two mock providers ~32
-  MiB each). Fits comfortably in 16 GB. This supersedes the original P0
-  2026-07-25 figure (~13 GB), which measured the now-retired 5-server
-  topology including MoEYS (retired Wave 3 Task 1). There is one topology
-  now (Wave 3 Task 4, design decision 5): no smaller alternative to opt
-  into.
+  4-Security-Server topology (`docker stats --no-stream`: four Security
+  Servers ~2.2–2.3 GiB each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB,
+  two mock providers ~32 MiB each). Fits comfortably in 16 GB. There is one
+  topology (design decision 5): no smaller alternative to opt into — an
+  earlier 5-server topology including MoEYS measured ~13 GB before MoEYS was
+  retired.
 - `curl`, `jq`, `python3` on the workstation.
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
@@ -32,7 +30,7 @@ host, and run the once-only exchange that proves it. Demo only — see
 1. `scripts/gen-secrets.sh` — writes a real `.env` with a random token PIN
    and admin password (mode `600`). `.env.example` ships placeholders that
    cannot work, on purpose — do not copy it by hand
-   (docs/reviews/2026-07-28-branch-review.md finding S2).
+   (`docs/reviews/2026-07-28-branch-review.md`, finding S2).
 2. **Deploy** — `scripts/deploy.sh` (a wrapper over `hurl/run-linkup.sh`)
    Brings up the containers and drives the full stand-up over the admin REST APIs:
    CS init (instance `PROGRESSA`, class `GOV`, configuration signing keys) → Test CA /
@@ -41,11 +39,8 @@ host, and run the once-only exchange that proves it. Demo only — see
    auth-cert registration and its explicit approval on the CS, subsystem) → service
    publishing (OpenAPI3) → ACLs. Global-conf propagation is asynchronous, so a stretch
    of HTTP errors and retries partway through is expected, not a failure. Measured
-   live for the current 4-server topology (Wave 5, 2026-08-08,
-   `out/deploy-timings.txt`): **~156s containers-healthy + ~395s Hurl run ≈
-   9.2 minutes end to end** — within noise of the original P0 2026-07-25
-   figure (~9–10 minutes) despite one fewer Security Server since (MoEYS
-   retired, Wave 3 Task 1).
+   live for the current 4-server topology (`out/deploy-timings.txt`):
+   **~156s containers-healthy + ~395s Hurl run ≈ 9.2 minutes end to end**.
 
    The sequence is a Progressa retargeting of `development/hurl/scenarios/setup.hurl`
    at X-Road tag **7.7.0**. The scenarios live in `hurl/`, generated from `configs/` —
@@ -94,9 +89,9 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   federation's configuration persists across restarts. **To resume, do not
   rerun `deploy.sh`/`hurl/run-linkup.sh`** — the Hurl scenario set always runs
   the full stand-up sequence and is not idempotent against already-configured
-  state (confirmed at P0 2026-07-25: `POST /api/v1/initialization` returns
-  `409 init_already_initialized` on a persisted CS, and every later
-  registration call would fail the same way). Resume with the containers
+  state: `POST /api/v1/initialization` returns `409 init_already_initialized`
+  on a persisted CS, and every later registration call would fail the same
+  way. Resume with the containers
   directly: `docker compose -f docker-compose.yml -f hurl/compose.hurl.yml
   up -d` — the persisted `/etc/xroad` state in each volume is everything the
   federation needs; nothing else has to run.
@@ -149,10 +144,10 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   server-side so neither token ever reaches the browser. Poll
   `GET /requests/{id}` (or watch the tab; it polls itself) until `state` is
   `ACTIVE` — a hosted join with one published service and one ACL grant
-  measured **~93s** end to end (approve to `ACTIVE, verified: true`,
-  join-b Task 6's live proof), well under the ~2-minute threshold past
-  which `--live` would stop being cheap enough to run routinely (see
-  README.md's `--live` tier note).
+  takes on the order of a minute end to end (approve to `ACTIVE, verified:
+  true`), comfortably under the ~2-minute threshold past which `--live`
+  would stop being cheap enough to run routinely (see README.md's `--live`
+  tier note).
   - **Recovering a `FAILED` job:** the record's `error` names the step and
     the last thing observed. Fix the underlying cause (a real federation
     problem, not usually this API's own code — see the OCSP trap below),
@@ -185,19 +180,19 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     up: it costs zero extra containers, and is the only shape that fits
     alongside a third-party backend on a 16 GB host.
     - **An own-server join ends at `ACTIVE` with `verified: false`, and
-      that is a known defect, not a broken join** (join-c Task 5, reproduced
-      on both live cycles). The bring-up's own global-configuration
-      propagation wait spends the job's whole 120s retry budget before
-      `join.r1_verify` runs, so the reachability call gets what is left
-      (~20s) and the federation needs 45s–8min. Nothing is wrong with the
-      member: `scripts/acceptance.sh`'s `2.7.r1(<code>.<service>)` passes
-      against it a minute later, which is the same fact `verified` was meant
-      to record. There is no way to flip the flag afterwards —
+      that is a known defect, not a broken join** (reproduced on repeated
+      live runs). The bring-up's own global-configuration propagation wait
+      spends the job's whole 120s retry budget before `join.r1_verify` runs,
+      so the reachability call gets what is left (~20s) and the federation
+      needs 45s–8min. Nothing is wrong with the member:
+      `scripts/acceptance.sh`'s `2.7.r1(<code>.<service>)` passes against it
+      a minute later, which is the same fact `verified` was meant to record.
+      There is no way to flip the flag afterwards —
       `POST /requests/{id}/resume` refuses on an `ACTIVE` record, and
       `join.r1_verify` is already `last_completed_step` so a resume would
       skip it. If you are demonstrating this, say so before the badge
-      appears. A **hosted** join is unaffected: measured `ACTIVE, verified:
-      true` in 64s with half the budget unspent.
+      appears. A **hosted** join is unaffected: it reaches `ACTIVE,
+      verified: true` with half the retry budget unspent.
     - **A busy host port is a failure, not a re-allocation.**
       `scripts/join-agent.sh` checks the two ports `hurl/generate.py`
       allocated to that server (`lsof`) before starting anything, and refuses
@@ -323,19 +318,19 @@ added until enabled; the consumer subsystem's connection type must be HTTP for t
 demo call (default HTTPS expects a client TLS certificate); the admin APIs
 authenticate by session login and XSRF token, not by API key.
 
-A security server's Test CA-issued OCSP response has a bounded freshness window;
-confirmed live (2026-07-27) that after roughly ten hours idle, the signer starts
-rejecting the server's own authentication certificate (`IncorrectValidationInfo:
-OCSP response is too old`), which then fails every cross-server call through it
-with `Server.ClientProxy.SslAuthenticationFailed` — not an access-control problem,
+A security server's Test CA-issued OCSP response has a bounded freshness window:
+after roughly ten hours idle, the signer starts rejecting the server's own
+authentication certificate (`IncorrectValidationInfo: OCSP response is too old`),
+which then fails every cross-server call through it with
+`Server.ClientProxy.SslAuthenticationFailed` — not an access-control problem,
 and not specific to the demo console. If a federation has been sitting up for
 hours before a demo, redeploy fresh (`scripts/teardown.sh --purge` then step 2)
 rather than trusting a stale stack.
 
 macOS hosts: port 5000 is not used for any admin UI here (ss-pnia is 5100) because
 macOS's AirPlay Receiver listens on 5000 by default and silently hangs the
-connection rather than refusing it — confirmed at P0 (2026-07-25) as a genuinely
-confusing failure mode (containers report healthy; the admin API call just hangs).
+connection rather than refusing it — a genuinely confusing failure mode
+(containers report healthy; the admin API call just hangs).
 
 Pin discipline: the scenarios are written against X-Road **7.7.0** and the compose
 images are pinned to it. `Docker/xrd-dev-stack` does not exist before 7.5.0 and is

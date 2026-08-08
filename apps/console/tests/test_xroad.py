@@ -15,9 +15,8 @@ FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "xroad"
 
 def _fixture(name: str) -> dict:
     """A real recorded response (status + headers + body), not a
-    hand-written guess -- testing-strategy plan Task 6. Recorded live
-    2026-07-29; see the fixture's own "context" field and
-    docs/xroad-770-notes.md for what each one documents."""
+    hand-written guess -- testing-strategy plan. See the fixture's own
+    "context" field and docs/xroad-770-notes.md for what each one documents."""
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
@@ -68,9 +67,9 @@ def test_read_subjects_and_read_acl():
 
 
 def test_read_acl_returns_empty_list_on_404_not_raises():
-    """Confirmed live (2026-07-27, re-recorded 2026-07-29): a subject with
+    """A subject with
     zero access rights isn't a service-client at all, so the admin API
-    404s here rather than returning []. Found because app.py's
+    404s here rather than returning []. app.py's
     _mutate_acl reads this to determine prior_state before mutating -- the
     fully-revoked case must read as [], or the caller can never observe
     "nothing currently granted". The real body is
@@ -104,7 +103,7 @@ def test_grant_success():
 
 
 def test_grant_already_granted_409_is_success_not_failure():
-    """Real body (recorded 2026-07-29):
+    """Real body:
     {"status":409,"error":{"code":"duplicate_accessright"}} -- the earlier
     hand-written {"error": "already granted"} exercised the same code path
     but never matched what X-Road actually sends. See
@@ -121,12 +120,10 @@ def test_grant_already_granted_409_is_success_not_failure():
 
 
 def test_revoke_already_revoked_409_is_success_not_failure():
-    """Confirmed live 2026-07-26, re-recorded 2026-07-29: revoking an
+    """Revoking an
     already-revoked right returns 409 accessright_not_found -- the target
     state already holds, so this must not raise (load-bearing for
-    reset()'s crash-recovery replay). The hand-written version of this
-    fixture already matched reality when it was written; re-recording it
-    confirmed that, rather than assuming it still did. See
+    reset()'s crash-recovery replay). See
     docs/xroad-770-notes.md §10."""
     fx = _fixture("revoke_409_not_found")
 
@@ -177,7 +174,7 @@ def test_exchange_happy_path():
 
 
 def test_exchange_denied_parses_exact_fault_shape():
-    """Real body (recorded 2026-07-29 from a live denied r1 call):
+    """Real body from a live denied r1 call:
     {"type":"Server.ServerProxy.AccessDenied","message":"Request is not
     allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api","detail":
     "<uuid>"} -- the earlier hand-written version was missing both the

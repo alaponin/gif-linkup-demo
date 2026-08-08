@@ -1,15 +1,14 @@
-"""apps/join-api/app.py -- the KP2 member-join API. Task 1 (this file's
-first commit) is the skeleton: liveness, the credentials this service will
-drive the admin API with, and the same request-boundary guard
-apps/console/app.py uses. Task 3 added POST /requests and GET /requests/{id}
--- validation (validate.py) and config-diff computation (writer.py's dry-run
-mode) run synchronously at submission. Task 4 (this commit) adds the operator
-side: POST /requests/{id}/approve writes the config for real
+"""apps/join-api/app.py -- the KP2 member-join API: liveness, the
+credentials this service drives the admin API with, and the same
+request-boundary guard apps/console/app.py uses. POST /requests and GET
+/requests/{id} run validation (validate.py) and config-diff computation
+(writer.py's dry-run mode) synchronously at submission. On the operator
+side, POST /requests/{id}/approve writes the config for real
 (writer.apply_real) and starts the job (job.py) on a background thread, one
 at a time; POST /requests/{id}/resume re-runs a FAILED one from its
-last_completed_step. join-c plan Task 4 added the other direction: DELETE
-/members/{key} walks a completed job backwards (job.unjoin) and then
-delegates the config half to scripts/member.sh remove. See
+last_completed_step. DELETE /members/{key} is the other direction: it walks
+a completed job backwards (job.unjoin) and then delegates the config half
+to scripts/member.sh remove. See
 docs/superpowers/specs/2026-08-01-member-join-api-design.md.
 
 Credentials come from the environment (.env via Docker Compose), read here
@@ -150,12 +149,11 @@ def health():
 # -- request persistence (spec S5.4) -----------------------------------------
 # out/join/<request-id>.json, the same OUT_DIR convention apps/console/
 # journal.py already uses for out/console-acl-journal.json. One file per
-# request, carrying every state it has been through (spec S4's seven -- join-c
-# Task 3 made the seventh, BLOCKED, reachable: an own-server join waits in it
-# for the member's own Security Server) and, since Task 4, the job's own
-# record: last_completed_step, the non-secret captures (context), verified,
-# queued, retry_budget_left, {step, message} on FAILED, and
-# {step, server, message} on BLOCKED.
+# request, carrying every state it has been through (spec S4's seven,
+# including BLOCKED: an own-server join waits in it for the member's own
+# Security Server) and the job's own record: last_completed_step, the
+# non-secret captures (context), verified, queued, retry_budget_left,
+# {step, message} on FAILED, and {step, server, message} on BLOCKED.
 
 _REQUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -199,7 +197,7 @@ def _recover_interrupted_jobs() -> None:
     otherwise
     unrecoverable through this API except by hand-editing out/join/<id>.json.
 
-    Run once, at import time (review finding, 2026-08-02): this process is,
+    Run once, at import time: this process is,
     by construction, not the one that was running that job -- if it were
     still running, this module would not be re-executing from the top. Every
     record still marked RUNNING therefore belongs to a run that died with
@@ -242,7 +240,7 @@ def submit_request(
     _role: str = Depends(require_applicant),
 ) -> dict:
     """Validate synchronously (spec S8's eleven per-request checks plus
-    lawful_basis and sla_required, Wave 4's additions beyond the spec --
+    lawful_basis and sla_required, additions beyond the spec --
     validate.py's own module docstring: check 5 moved to generate-time),
     then either persist
     a REJECTED record or -- on success -- write the candidate config to a
@@ -283,7 +281,7 @@ def submit_request(
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
         # record, never a bare 500, per spec S7's "submission always
-        # returns 201" (task-3 brief step 3: stderr passed through verbatim).
+        # returns 201" -- stderr is passed through verbatim.
         record = {
             "id": request_id,
             "state": "REJECTED",
@@ -329,12 +327,12 @@ def get_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
 ) -> dict:
-    """The whole record, which since Task 4 also carries last_completed_step,
-    the job context's captures, verified, and the failing step + last error
-    when FAILED (spec S7's row for this endpoint). Deliberately the RAW
-    record, unchanged since Task 3/4 (test_app_requests.py asserts GET
-    round-trips POST's response byte-for-byte) -- the derived, operator-only
-    view (_record_view below) lives on GET /requests instead, not here."""
+    """The whole record, which also carries last_completed_step, the job
+    context's captures, verified, and the failing step + last error when
+    FAILED (spec S7's row for this endpoint). Deliberately the RAW record
+    (test_app_requests.py asserts GET round-trips POST's response
+    byte-for-byte) -- the derived, operator-only view (_record_view below)
+    lives on GET /requests instead, not here."""
     record = _load_request(request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
@@ -343,17 +341,17 @@ def get_request(
 
 # -- the operator queue (spec S7: "GET /requests -- the queue, filterable by
 # state. Each entry carries the config diff ... computed at submission.")
-# Task 3/4 built submit/read/approve/resume but never this listing endpoint
-# or reject below -- both are genuinely needed by Task 6's console tab (the
-# pending queue, and reject-with-a-reason) and are pure additions to the
-# API surface spec S7 already specifies, not a change to any existing route.
+# This listing endpoint and reject below are both genuinely needed by the
+# console's operator tab (the pending queue, and reject-with-a-reason) and
+# are pure additions to the API surface spec S7 already specifies, not a
+# change to any existing route.
 
 
 def _step_summary(pack_dir: pathlib.Path, payload: schema.JoinPayload) -> list[dict] | None:
     """The ordered step sequence (id + actor + kind) for this payload's join
     -- job.py builds this from the payload at RUN time and never persists it
     (there is nothing on disk to read), so the console's progress list
-    (Task 6 Step 1: "coloured by its actor") recomputes it here instead.
+    (the console's progress list, "coloured by its actor") recomputes it here instead.
     Cheap: yaml reads and string rendering, no network, no subprocess. None
     on failure (e.g. a REJECTED request's payload didn't survive schema
     validation) -- the console renders no step list rather than erroring."""
@@ -376,17 +374,15 @@ def _live_uncommitted(key: str) -> bool | None:
     computed here, not there. Same git-status shape as writer._git_status_dirty,
     scoped to this one member rather than the whole configs/ tree.
 
-    Best-effort, but fails toward SHOWING the warning, not hiding it (review
-    finding, 2026-08-02): the previous version returned False -- "not
-    dirty" -- on any exception, which is exactly the value that suppresses
-    the console's "Live but uncommitted" box. That silently swallowed the
-    precise failure this function exists to catch: if `git` were ever
-    missing from this image again (the real bug this same task already
-    found and fixed in the Dockerfile), the one warning that should tell an
-    operator the safety check itself is broken would instead just not
-    render. None means "could not check" and is truthy-adjacent in the
-    console (renders its own, honestly-worded box) -- never coerced to
-    False."""
+    Best-effort, but fails toward SHOWING the warning, not hiding it:
+    returning False ("not dirty") on any exception would be exactly the
+    value that suppresses the console's "Live but uncommitted" box, silently
+    swallowing the precise failure this function exists to catch -- if
+    `git` were ever missing from this image again (the bug that was also
+    fixed in the Dockerfile), the one warning that should tell an operator
+    the safety check itself is broken would instead just not render. None
+    means "could not check" and is truthy-adjacent in the console (renders
+    its own, honestly-worded box) -- never coerced to False."""
     try:
         repo_root = PACK_DIR.resolve().parents[2]
         rel = PACK_DIR.resolve().relative_to(repo_root)
@@ -481,12 +477,12 @@ def approve_request(
     before any live mutation), then start the job. 202, not 200: the job runs
     past this response and the applicant polls GET /requests/{id}.
 
-    Wave 2 Task 2 (K-02, G-02): `configs/x-road-bus/join-policy.yaml`'s
-    `approval: explicit` puts one operator's bearer token where Ref Model
-    §5.3 puts the Steering Committee -- a RACI mismatch the onboarding
-    path's own gap analysis names. The fix is not a second login (a
-    committee doesn't hold an API token); it's requiring the call to name
-    the decision it is actuating. `decision_reference` is untyped like
+    `configs/x-road-bus/join-policy.yaml`'s `approval: explicit` puts one
+    operator's bearer token where Ref Model §5.3 puts the Steering
+    Committee -- a RACI mismatch the onboarding path's own gap analysis
+    names (K-02, G-02). The fix is not a second login (a committee doesn't
+    hold an API token); it's requiring the call to name the decision it is
+    actuating. `decision_reference` is untyped like
     reject_request's `body`, not a schema.py model -- this is evidence, not
     another auth layer, so a required non-empty string is the whole check."""
     record = _load_request(request_id)
@@ -513,13 +509,12 @@ def approve_request(
     except writer.GitCheckFailure as exc:
         # Could not tell whether the checkout is clean -- refuse the same as
         # if it were dirty (writer.GitCheckFailure's own docstring), a clear
-        # 409 rather than the raw 500 this used to surface as (review
-        # finding, 2026-08-02).
+        # 409 rather than a raw 500.
         raise HTTPException(409, str(exc)) from exc
     except writer.MemberCollisionError as exc:
         # A member directory for this key appeared between validation and
         # approval (a race, however unlikely) -- also a clear 409, not a
-        # raw 500 (review finding, 2026-08-02).
+        # raw 500.
         raise HTTPException(409, str(exc)) from exc
     except writer.GenerateFailure as exc:
         # The config was written but generate.py refused it -- the working
@@ -527,7 +522,7 @@ def approve_request(
         # Scrubbed, like every other error path here: apply_real's generate.py
         # subprocess reads .env, so a traceback out of it could carry the
         # admin password or the token PIN, and this string is both persisted
-        # and returned (found in review, 2026-08-02).
+        # and returned.
         stderr = job.scrub(exc.stderr, JOB_SECRETS)
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": stderr}
@@ -577,7 +572,7 @@ def reject_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
 ) -> dict:
-    """Operator rejection with a reason (spec S7, Task 6's console tab).
+    """Operator rejection with a reason (spec S7, the console's operator tab).
     Only from SUBMITTED -- once a request is APPROVED the config is already
     written and a job may be running or done; rejecting at that point isn't
     "this join should not happen", it's un-joining, which is DELETE
@@ -595,7 +590,7 @@ def reject_request(
     return record
 
 
-# -- un-joining (spec S10, join-c plan Task 4) --------------------------------
+# -- un-joining (spec S10) ----------------------------------------------------
 # The reverse of everything above: DELETE /members/{key} walks the member's
 # completed steps backwards (job.unjoin), then delegates the config-and-manifest
 # half to scripts/member.sh remove.
@@ -657,10 +652,10 @@ def _run_unjoin(request_id: str) -> None:
             # remove is NOT idempotent -- it exits non-zero on a member whose
             # directory is already gone -- so re-running it here would rewrite
             # a completed retirement back to RETIRING with a config.remove
-            # error (review finding, 2026-08-02). Reachable whenever a second
-            # DELETE is issued, which runbook.md explicitly invites: two
-            # queue on _JOB_LOCK, and the second one's walk is a clean no-op
-            # over probes that all report absence.
+            # error. Reachable whenever a second DELETE is issued, which
+            # runbook.md explicitly invites: two queue on _JOB_LOCK, and the
+            # second one's walk is a clean no-op over probes that all
+            # report absence.
             return
 
         # Step 5: the config-and-manifest half, delegated rather than

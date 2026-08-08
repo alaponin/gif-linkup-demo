@@ -1,5 +1,5 @@
 """Mechanically enforce the fast tier's contract -- lib-split-and-tier-honesty
-plan Task 4 (T1). Three documents (README.md's "Verify a change", the CI
+plan (T1). Three documents (README.md's "Verify a change", the CI
 workflow header, testing-strategy's Global Constraints) used to claim
 `scripts/verify.sh --fast` "needs no Docker" -- false: `check-exposure.sh`
 runs `docker compose ... config` to read the *rendered* Compose config
@@ -13,7 +13,7 @@ that check. What's actually true is narrower and was measured, not assumed:
     parses the compose files, resolves `${VAR}` interpolation and profiles,
     does not call the daemon at all.
 
-That last point was confirmed for real on 2026-07-31 by stopping the local
+That last point was confirmed for real by stopping the local
 Docker daemon outright (`colima stop`, not just `docker compose down`) and
 running `scripts/verify.sh --fast` against it: green, ~5s, 27 pytest passes
 included.
@@ -95,17 +95,17 @@ def test_check_exposure_succeeds_with_docker_daemon_unreachable():
 
 
 def test_check_exposure_fails_on_unacknowledged_public_bind(tmp_path):
-    """Regression test for lib-split-and-tier-honesty's final review finding
-    2: check-exposure.sh duplicates lib-stack.sh's XROAD_BIND/XROAD_VERSION/
-    XROAD_CS_TAG/TESTCA_TAG exports (deliberately -- see check-exposure.sh's
-    own comment for why it can't just source lib-stack.sh). If a new
-    `${VAR}` substitution were ever added to docker-compose.yml's `ports:`
-    and exported from lib-stack.sh only, check-exposure.sh would silently
-    render it via Compose's own fallback default and pass a config that is
-    actually publicly exposed -- the exact class of bug a prior task-level
-    review caught once, by hand, with no automated guard against it
-    recurring. This exercises the check end-to-end (via check-exposure.sh's
-    KP2_DEPLOY_SPEC override, added for this test) against a deployment.yaml
+    """Regression test: check-exposure.sh duplicates lib-stack.sh's
+    XROAD_BIND/XROAD_VERSION/XROAD_CS_TAG/TESTCA_TAG exports (deliberately --
+    see check-exposure.sh's own comment for why it can't just source
+    lib-stack.sh). If a new `${VAR}` substitution were ever added to
+    docker-compose.yml's `ports:` and exported from lib-stack.sh only,
+    check-exposure.sh would silently render it via Compose's own fallback
+    default and pass a config that is actually publicly exposed -- a class
+    of bug that previously had no automated guard against it recurring,
+    caught only once, by hand. This exercises the check end-to-end (via
+    check-exposure.sh's KP2_DEPLOY_SPEC override, added for this test)
+    against a deployment.yaml
     with network.bind: 0.0.0.0 and no acknowledge_public_exposure: it must
     fail, non-zero, and name the exposed ports."""
     text = (PACK / "deployment.yaml").read_text()

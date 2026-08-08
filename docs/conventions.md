@@ -5,17 +5,17 @@
 ecosystem-level decisions made once, before member #1, and its §1a gives the
 reason: *"the naming convention is not cosmetic: certificates, DNS, firewall
 rules and monitoring all key off the host name, and a convention retrofitted
-after fifty members is not retrofitted at all."* This pack has enforced one of
-§1a's four conventions since Wave 1 (`apps/join-api/validate.py`'s identifier
-allowlist) without ever stating it as a convention. This page is that
-statement — for each of the four, what §1a says a production ecosystem should
-publish, and what this pack actually enforces, in code, today.
+after fifty members is not retrofitted at all."* This pack enforces one of
+§1a's four conventions (`apps/join-api/validate.py`'s identifier allowlist)
+without ever stating it as a convention. This page is that statement — for
+each of the four, what §1a says a production ecosystem should publish, and
+what this pack actually enforces, in code, today.
 
-Per the wave 2 plan's design decision 1 (*"publish conventions as
-documentation, enforce only what code reads"*): this page does not move
-anything into a config file. The identifier charset stays the constant Wave 1
-made it; this page is now its stated source, cited from the comment above
-`_bad_identifier` in `validate.py`. One rule, one place, no indirection.
+Design principle: publish conventions as documentation, enforce only what
+code reads. This page does not move anything into a config file. The
+identifier charset stays a constant; this page is now its stated source,
+cited from the comment above `_bad_identifier` in `validate.py`. One rule,
+one place, no indirection.
 
 ## Identifier character set
 
@@ -47,7 +47,7 @@ identifier character set above. Second, `code.lower()` becomes both the
 `configs/member-<key>/` directory name and the `manifest.yaml
 identity.members.<key>` map key, so it must additionally satisfy the
 narrower `[a-z0-9]+` — no uppercase, no punctuation at all —
-(`_check_key_derivation`, spec S8 check 2). A code that is a perfectly valid
+(`_check_key_derivation`, check S8-2). A code that is a perfectly valid
 X-Road identifier can still fail this second, stricter check; that is
 deliberate, not a bug, and the two checks stay separate because they enforce
 different things (`validate.py`'s comment on the point: "not a contradiction,
@@ -87,8 +87,7 @@ which one" without a lookup.
 `security_server.dns_name: ss-pnia` are both this pattern; `hurl/generate.py`
 derives every Security Server's DNS name and container name from the member
 key the same way. There is deliberately no validator check that a derived
-value matches the pattern it was derived from (wave 2's "what was cut and
-why": a check that a derived value matches its own derivation tests the code
-against itself, not the data) — this convention is real and consistently
-applied, just not independently checked at request time the way the other
-three are.
+value matches the pattern it was derived from — a check that a derived value
+matches its own derivation tests the code against itself, not the data — this
+convention is real and consistently applied, just not independently checked
+at request time the way the other three are.

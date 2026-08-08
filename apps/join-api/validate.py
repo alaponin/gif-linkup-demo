@@ -1,6 +1,6 @@
 """apps/join-api/validate.py -- eleven of the twelve checks spec S8 requires
-before a join request can be approved (join-b Task 2), plus two more Wave 4
-adds beyond the spec (lawful_basis and sla_required, K-01) -- thirteen
+before a join request can be approved, plus two more that go
+beyond the spec (lawful_basis and sla_required, K-01) -- thirteen
 per-request checks in total. Check 5 (member class) moved to
 hurl/generate.py's check_join_policy() -- a generate-time structural check,
 not a per-request one -- see the comment above where _check_member_class
@@ -8,7 +8,7 @@ used to be; this module runs the other eleven of S8's own list, plus
 lawful_basis and sla_required. Pure functions over a payload, the manifest,
 the join policy and a fetched OpenAPI document -- no X-Road, no containers,
 no job. S8's checks run in the exact order spec S8 lists them (1 schema ..
-12 identifier characters, minus 5); the two Wave 4 checks run alongside them
+12 identifier characters, minus 5); the two additional checks run alongside them
 (see _CHECKS below for where), and the first failure of any of them raises
 RejectionError(check, message) naming the check, which is what a REJECTED
 request carries (spec S4).
@@ -65,7 +65,7 @@ def load_existing_security_servers(pack_dir: str | pathlib.Path) -> dict[str, di
     return result
 
 
-# The Module 4 semantic map (Wave 2 Task 1 Step 1): entity -> {anchor,
+# The Module 4 semantic map: entity -> {anchor,
 # fields}. Loaded the same inline way as the security-server scan above --
 # one small function, no shared YAML-loading utility for a single file.
 def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
@@ -81,7 +81,7 @@ def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
 # separate rather than one URL-dispatched callable because production fetches
 # spec_url over the network too (a third-party spec, spec S2.2) -- only the
 # *test* fixtures short-circuit that half; the reachability half must always
-# be a real attempt (spec S8 check 9, task-2 brief point 6).
+# be a real attempt (spec S8 check 9).
 
 
 def _default_fetch_spec(url: str) -> str:
@@ -184,7 +184,7 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
     manifest.yaml, not hardcoded: every identity.members entry whose origin
     is canonical (default, if absent) PLUS identity.owner.code -- the
     Central Server's owner, PDGA, which is not itself an identity.members
-    entry (task-2 brief point 4)."""
+    entry."""
     identity = ctx.manifest["identity"]
     canonical = {identity["owner"]["code"]}
     for member in identity["members"].values():
@@ -200,8 +200,8 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
 
 
 # Spec S8 check 5 ("member class -- matches the policy") has no per-request
-# implementation here, on purpose (join-b Task 2 review finding 2). The
-# payload schema (schema.py) carries no member_class field of its own --
+# implementation here, on purpose. The payload schema (schema.py) carries
+# no member_class field of its own --
 # Progressa is a single-member_class federation by design (spec S9's
 # "Explicitly out of scope" excludes multi-federation joins) -- so there is
 # currently nothing about a *submitted request* for a check 5 to compare.
@@ -281,7 +281,7 @@ def _check_acl_sanity(ctx: ValidationContext) -> str | None:
     <instance>/<member_class>/<CODE>/<SUBSYSTEM> form (spec S8 check 7).
     The subsystem this join is itself creating is not yet in that set and is
     not a valid target either -- a member cannot grant or request access to
-    itself (task-2 brief point 4)."""
+    itself."""
     identity = ctx.manifest["identity"]
     prefix = f"{identity['instance']}/{identity['member_class']}"
     valid_subsystems = {
@@ -309,7 +309,7 @@ def _check_acl_sanity(ctx: ValidationContext) -> str | None:
 
 def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
     """Conformance check against configs/semantic/semantic-map.yaml (spec S8
-    check 8, Wave 2 Task 1 Step 2 -- closes K-03). Publishing a service AND
+    check 8 -- closes K-03). Publishing a service AND
     granting another subsystem access to it is an exchange -- this pack's
     own convention for one (configs/member-pnia/2.5.yaml's semantic: block)
     is to document it, and now to declare a real entity from the Module 4
@@ -347,9 +347,9 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
 
 
 def _check_lawful_basis(ctx: ValidationContext) -> str | None:
-    """Wave 4 Task 1 Step 3 (K-01): 5.2's sixth checklist item (a lawful
-    basis for its exchanges) is satisfied by a provider's own services
-    (Service.lawful_basis, Wave 2 Task 3) -- never re-checked here, exactly
+    """5.2's sixth checklist item (a lawful
+    basis for its exchanges, K-01) is satisfied by a provider's own services
+    (Service.lawful_basis) -- never re-checked here, exactly
     like check 8's own "recorded and surfaced, never resolved" treatment of
     that field. A consumer-only member has no services to carry it, so it
     must be on member_requirements.lawful_basis instead; a payload that sets
@@ -367,12 +367,12 @@ def _check_lawful_basis(ctx: ValidationContext) -> str | None:
 
 
 def _check_sla_required(ctx: ValidationContext) -> str | None:
-    """Wave 4 Task 1 Step 4 (K-01): every published service needs an SLA --
+    """Every published service needs an SLA (K-01) --
     Module 5.3's own "reuse the same template for every service on the bus"
     (design decision 2, schema.SLA lives on Service, not on JoinPayload). A
     consumer-only member (no services) has nothing to check here and is
-    unaffected. Not one of spec S8's numbered twelve -- Wave 4 adds it, in
-    the same style: the first service missing one fails, naming it."""
+    unaffected. Not one of spec S8's numbered twelve -- an additional check,
+    in the same style: the first service missing one fails, naming it."""
     for svc in ctx.payload.services:
         if svc.sla is None:
             return (
@@ -427,24 +427,23 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
 # anything else, regardless of what this check lets through. This used to
 # be a denylist instead (reject '/', ':', ';', '%', '.', whitespace and
 # control characters), built from a guess at which separator characters
-# might collide with X-Road's own REST message protocol -- join-b Task 2
-# review finding 1 added '.' to that denylist after "awards.list" (a
-# service code copied from a third-party tool's human-facing API name,
-# hurl/generate.py's dn_escape() docstring tells the same "a comma in
-# member_name broke DN construction" story) slipped through every other
-# check. That guess disagreed with X-Road's actual allowlist in both
-# directions: it accepted characters ('_', '&', '#', '@', '$', '~', '*',
-# '!', '"', '\', '<', '[', '{') X-Road >=7.3.0 rejects outright, and it
-# rejected '.', which X-Road's allowlist permits -- so "awards.list" was a
-# valid X-Road identifier all along, and the finding that banned dots was
-# solving the wrong problem. A positive match against X-Road's own
-# published set replaces the denylist rather than patching it further.
-# Empty and whitespace-only values need no separate check: they match
-# nothing in this pattern and fall out of fullmatch() on their own.
-# Published as the pack's stated convention in docs/conventions.md -- this
-# constant is that page's cited source, not a copy of a value that lives
-# somewhere else. One rule, one place, no indirection (wave 2 design
-# decision 1).
+# might collide with X-Road's own REST message protocol -- '.' was added
+# to that denylist after "awards.list" (a service code copied from a
+# third-party tool's human-facing API name, hurl/generate.py's
+# dn_escape() docstring tells the same "a comma in member_name broke DN
+# construction" story) slipped through every other check. That guess
+# disagreed with X-Road's actual allowlist in both directions: it accepted
+# characters ('_', '&', '#', '@', '$', '~', '*', '!', '"', '\', '<', '[',
+# '{') X-Road >=7.3.0 rejects outright, and it rejected '.', which
+# X-Road's allowlist permits -- so "awards.list" was a valid X-Road
+# identifier all along, and banning dots was solving the wrong problem. A
+# positive match against X-Road's own published set replaces the denylist
+# rather than patching it further. Empty and whitespace-only values need
+# no separate check: they match nothing in this pattern and fall out of
+# fullmatch() on their own. Published as the pack's stated convention in
+# docs/conventions.md -- this constant is that page's cited source, not a
+# copy of a value that lives somewhere else. One rule, one place, no
+# indirection (design decision 1).
 def _bad_identifier(value: str) -> bool:
     return not re.fullmatch(r"[a-zA-Z0-9'()+,\-.=?]+", value)
 
@@ -511,7 +510,7 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 # Checks run in this exact order -- spec S8's own numbered list, verbatim,
 # minus check 5 (member_class), which has no per-request implementation --
 # see the comment above where _check_member_class used to be -- plus
-# lawful_basis and sla_required (Wave 4, K-01), neither one of S8's twelve,
+# lawful_basis and sla_required (K-01), neither one of S8's twelve,
 # inserted after purpose_limitation since all three inspect payload.services.
 # Check 1 (schema) happens in validate() itself, before a ValidationContext
 # can even be built.
@@ -552,7 +551,7 @@ def validate(
     (as this function used to) meant the only place that data existed was
     gone by the time app.py persisted the SUBMITTED record. Raises
     RejectionError(check, message) naming the first failing check on
-    failure -- the caller (a later task's endpoint) catches it to set the
+    failure -- the caller (app.py's endpoint) catches it to set the
     request REJECTED with that check name (spec S4)."""
     try:
         payload = JoinPayload(**raw)

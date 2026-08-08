@@ -22,7 +22,7 @@ def compare(label, expected, actual):
     """Every field the API actually returned must match the seed -- not
     every column the seed CSV carries. PNIA's identity-api withholds fields
     the credential purpose doesn't need (purpose limitation, proved by
-    absence -- UX plan Task 5); this check must not demand their echo back."""
+    absence); this check must not demand their echo back."""
     if not actual:
         sys.exit(f"MISMATCH in {label}: empty response, expected fields from the seeded record")
     diffs = [f"  {k}: seeded={expected.get(k)!r} returned={v!r}"

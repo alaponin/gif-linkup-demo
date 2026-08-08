@@ -1,5 +1,5 @@
 """apps/join-api/writer.py -- turning a validated JoinPayload into files on
-disk that hurl/generate.py accepts (join-b Task 3, design spec S9). Nothing
+disk that hurl/generate.py accepts (design spec S9). Nothing
 here talks to X-Road; nothing here decides whether a payload is admissible
 (that is validate.py's job, already run before either function below is
 called).
@@ -23,10 +23,10 @@ _run_generate):
                      uncommitted work of unclear provenance). Called by
                      app.py's POST /requests/{id}/approve, before the job
                      (job.py) starts. Once generate.py accepts the result,
-                     also renders onboarding/<key>/ (Wave 4 Task 2, G-07) --
+                     also renders onboarding/<key>/ (G-07) --
                      render_onboarding_tree() is the same function
                      scripts/render-onboarding.sh calls for the three
-                     canonical members (Wave 4 Task 3).
+                     canonical members.
 
 Design spec S9 is explicit that config-writing happens "on APPROVED, before
 any live mutation" -- that governs apply_real only. dry_run_diff runs at
@@ -61,8 +61,8 @@ class GenerateFailure(Exception):
     """python3 hurl/generate.py exited non-zero. generate.py's own failure
     modes are `raise SystemExit(str)` -- loud and specific by design
     (discover_members, check_join_policy, resolve_hosted_on_map, ...) --
-    so stderr is carried verbatim, not re-wrapped (task-3 brief step 3:
-    "passing them through verbatim is more useful than wrapping them")."""
+    so stderr is carried verbatim, not re-wrapped -- "passing them through
+    verbatim is more useful than wrapping them"."""
 
     def __init__(self, stderr: str, returncode: int):
         super().__init__(stderr)
@@ -84,9 +84,8 @@ class GitCheckFailure(Exception):
     "could not tell", not "and the answer is yes". Refusing here is the safe
     default either way -- apps/join-api/app.py's `_live_uncommitted` already
     treats this same class of git failure as "assume the worst", not
-    "assume clean" (review finding, 2026-08-02: this function used to let
-    subprocess.CalledProcessError escape uncaught, surfacing as a raw 500
-    instead of a clear refusal)."""
+    "assume clean" -- a subprocess.CalledProcessError here must not escape
+    uncaught and surface as a raw 500 instead of a clear refusal."""
 
 
 class MemberCollisionError(Exception):
@@ -96,9 +95,8 @@ class MemberCollisionError(Exception):
     validate.py's collision check (S8 check 3) already refused any request
     whose key collided with an existing configs/member-<key>/ at submission
     time; this catches the (unlikely) case where a second request for the
-    same key was approved in between (review finding, 2026-08-02: this
-    escaped apply_real uncaught, surfacing as a raw 500 instead of a clear
-    refusal)."""
+    same key was approved in between -- this must not escape apply_real
+    uncaught and surface as a raw 500 instead of a clear refusal."""
 
 
 def _copy_pack(pack_dir: pathlib.Path, dest: pathlib.Path) -> None:
@@ -119,8 +117,8 @@ def _copy_pack(pack_dir: pathlib.Path, dest: pathlib.Path) -> None:
 def render_member_config(key: str, payload: JoinPayload) -> str:
     """configs/member-<key>/<key>.yaml, in the shape prompts/member.md
     produces (see configs/member-pnia/2.5.yaml for the committed precedent),
-    plus the backend:, member_requirements: and requested_access: blocks S2
-    and Wave 4 add. Deliberately omits type, forwarding URL, enabled,
+    plus the backend:, member_requirements: and requested_access: blocks.
+    Deliberately omits type, forwarding URL, enabled,
     tls_verify -- generate.py never reads them and a copy here would drift
     (2.5.yaml's own comment)."""
     today = datetime.date.today().isoformat()
@@ -144,14 +142,14 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
                 "code": svc.code,
                 "spec_url": svc.spec_url,
                 **({"access": list(svc.access)} if svc.access else {}),
-                # Wave 2 Task 3 (K-02): recorded and surfaced only, same
-                # treatment as access above and semantic.pattern below --
-                # never resolved against anything; there is no lawful-basis
-                # registry in this pack to check it against.
+                # Recorded and surfaced only (K-02), same treatment as
+                # access above and semantic.pattern below -- never resolved
+                # against anything; there is no lawful-basis registry in
+                # this pack to check it against.
                 **({"lawful_basis": svc.lawful_basis} if svc.lawful_basis else {}),
-                # Wave 4 Task 1 (K-01): validate.py's sla_required check
-                # already guarantees this is set for a provider's service by
-                # the time apply_real writes this file.
+                # validate.py's sla_required check (K-01) already guarantees
+                # this is set for a provider's service by the time
+                # apply_real writes this file.
                 **({"sla": svc.sla.model_dump()} if svc.sla else {}),
             }
             for svc in payload.services
@@ -165,8 +163,8 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
         if payload.semantic.pattern:
             body["semantic"]["pattern"] = payload.semantic.pattern.value
     body["backend"] = {"auth": payload.backend.auth.value}
-    # Wave 4 Task 1 (K-01): Module 5.2's checklist, required on every payload
-    # -- rendered unconditionally, unlike the optional blocks above.
+    # Module 5.2's checklist (K-01), required on every payload -- rendered
+    # unconditionally, unlike the optional blocks above.
     body["member_requirements"] = payload.member_requirements.model_dump(exclude_none=True)
     if payload.requested_access:
         body["requested_access"] = list(payload.requested_access)
@@ -242,7 +240,7 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
     return "".join(lines[:end] + entry_block.splitlines(keepends=True) + lines[end:])
 
 
-# -- onboarding/<key>/ (Wave 4 Task 2, G-07) -----------------------------------
+# -- onboarding/<key>/ (G-07) --------------------------------------------------
 #
 # Four generated files per member -- not the onboarding path's ten (D3: no
 # curriculum change). Never hand-maintained (P2, design decision 3): an
@@ -269,9 +267,8 @@ has not been passed, whatever the calendar says.
 
 
 def render_gates_table(has_services: bool) -> str:
-    """00-gates.md -- one table, not four near-identical stub files
-    (simplification pass, 2026-08-05): every gate KP2 teaches or exceeds,
-    with the file that proves it or a named absence pointing at
+    """00-gates.md -- one table, not four near-identical stub files: every
+    gate KP2 teaches or exceeds, with the file that proves it or a named absence pointing at
     production-delta.md. Identical for every member except the SLA row,
     which depends on whether this member published anything to sign one
     for."""
@@ -289,10 +286,10 @@ def render_gates_table(has_services: bool) -> str:
 
 def render_requirements_record(requirements: MemberRequirements) -> str:
     """02-requirements.md -- Module 5.2's six-item checklist, stated by the
-    applicant, not derived (Wave 4 design decision 1)."""
+    applicant, not derived (design decision 1)."""
     lawful_basis = requirements.lawful_basis or (
         "satisfied by this member's published services (each service's own "
-        "`lawful_basis`, Wave 2 Task 3) -- see `03-sla/`"
+        "`lawful_basis`) -- see `03-sla/`"
     )
     return (
         "# Member Requirements -- Module 5.2\n\n"
@@ -313,7 +310,7 @@ def render_sla_record(service: Service) -> str:
     """03-sla/<service-code>.md -- Module 5.3's five-term template, "reuse
     the same template for every service on the bus" (design decision 2).
     Caller guarantees service.sla is set (validate.py's sla_required check,
-    or Task 3's canonical configs)."""
+    or the canonical configs, which already have it set)."""
     sla = service.sla
     assert sla is not None, f"render_sla_record called for {service.code!r} with no sla block"
     return (
@@ -372,7 +369,7 @@ def render_onboarding_tree(
 ) -> None:
     """Writes onboarding/<key>/'s four files under target_dir. Shared by
     apply_real() (a real join) and scripts/render-onboarding.sh (the three
-    canonical members, Wave 4 Task 3) -- "the same writer.py code path a
+    canonical members) -- "the same writer.py code path a
     join uses" for both, so there is exactly one place that decides what an
     onboarding record looks like."""
     onboarding_dir = target_dir / "onboarding" / key
@@ -420,8 +417,8 @@ def _run_generate(generate_py: pathlib.Path) -> subprocess.CompletedProcess:
     """python3 <generate_py>. cwd is the pack root the invoked file itself
     sits under -- matches `cd "$PACK_DIR" && python3 hurl/generate.py`, the
     pack's own invocation convention (scripts/member.sh). generate.py's own
-    PACK resolution is `Path(__file__).resolve().parent.parent` (task-3
-    brief point 4: --out only redirects where scenarios/ etc. get WRITTEN),
+    PACK resolution is `Path(__file__).resolve().parent.parent` (--out only
+    redirects where scenarios/ etc. get WRITTEN),
     so cwd does not actually change what it reads -- this just avoids
     depending on ambient process state for something that doesn't need it.
     No env= is passed: generate.py reads its own .env from disk (read_env()),
@@ -479,11 +476,10 @@ def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
     try:
         rel = pack_dir.relative_to(repo_root)
         proc = subprocess.run(
-            # Wave 4 Task 2 Step 4 (G-07): the live-but-uncommitted window
-            # production-delta.md already documents now covers a third tree --
-            # apply_real() writes onboarding/<key>/ too, so the refusal-when-
-            # dirty check must watch it exactly like configs/ and
-            # manifest.yaml, not just the two trees that predate this wave.
+            # The live-but-uncommitted window production-delta.md documents
+            # covers a third tree (G-07): apply_real() writes onboarding/<key>/
+            # too, so the refusal-when-dirty check must watch it exactly
+            # like configs/ and manifest.yaml, not just the other two trees.
             ["git", "-C", str(repo_root), "status", "--porcelain",
              str(rel / "configs"), str(rel / "manifest.yaml"), str(rel / "onboarding")],
             capture_output=True,
@@ -495,7 +491,7 @@ def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
         # repo_root is not a git repo (or some other structural git failure).
         # OSError: git itself is missing. None of these mean "clean" --
         # apply_real must refuse exactly as it would for a genuinely dirty
-        # checkout, not silently proceed (found in review, 2026-08-02).
+        # checkout, not silently proceed.
         raise GitCheckFailure(f"could not check whether {pack_dir} is a clean checkout: {exc}") from exc
     return proc.stdout
 

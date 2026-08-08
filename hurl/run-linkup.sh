@@ -59,7 +59,7 @@ COMPOSE_HURL=("${COMPOSE[@]}" -f "$PACK_DIR/hurl/compose.hurl.yml")
 
 # Fail fast: the --fast tier (static checks, the ship gate, exposure,
 # pytest) runs before any container starts -- a typo used to cost fifteen
-# minutes to discover; now it costs seconds (testing-strategy plan Task 2).
+# minutes to discover; now it costs seconds.
 "$PACK_DIR/scripts/verify.sh" --fast
 
 # A correctly-formatted PIN can still be the WRONG one: every server's
@@ -97,7 +97,7 @@ the new one." >&2
 }
 check_token_fingerprint
 
-# Phase timings (testing-strategy plan Task 5) -- nobody knew which part of
+# Phase timings -- nobody knew which part of
 # the ~918s deploy dominates: container boot, global-conf propagation, or
 # the certificate sequences. Three timestamps, not more: "containers
 # healthy" and "Hurl run start" bracket boot; "Hurl run end" brackets

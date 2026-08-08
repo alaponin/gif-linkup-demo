@@ -1,4 +1,4 @@
-"""Wave 5 (monitoring add-ons) regression guard.
+"""Monitoring add-ons regression guard.
 
 The NIIS Sidecar image ships two tags per version: a "-slim" tag (bare
 packages only) and a plain tag ("full") that additionally bundles message
@@ -66,5 +66,5 @@ def test_every_security_server_uses_the_full_non_slim_sidecar_image():
     assert not slim, (
         "the following Security Servers resolve to a -slim Sidecar image, which "
         "does not ship operational/environmental monitoring "
-        f"(Wave 5, G-06): {slim}"
+        f"(G-06): {slim}"
     )

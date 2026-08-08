@@ -7,8 +7,7 @@ never re-derives topology or exchange semantics -- it renders what this
 module loads, and this module never invents a value the files don't already
 state.
 
-Two things confirmed live before writing this (2026-07-26), both load-bearing
-here:
+Two things are load-bearing here:
   - the four layer_* strings are split two-and-two across
     once-only-exchange.yaml's two calls (identity-api: technical+legal;
     enrolment-api: organisational+semantic) -- neither call carries all
@@ -19,9 +18,9 @@ here:
     hosted_on instead, the same mechanism the consumer entrypoint above
     uses. This mattered under the old lite profile, where the negative
     check's unauthorised caller could be hosted rather than self-standing
-    (MoEYS, before it was retired in Wave 3 Task 1) -- a literal
-    "http://ss-moeys:8080" would have been wrong there. With one topology
-    (Wave 3 Task 4, design decision 5) every canonical member is
+    (MoEYS, before it was retired) -- a literal
+    "http://ss-moeys:8080" would have been wrong there. With one topology,
+    every canonical member is
     self-hosted, but resolving from topology.json rather than
     special-casing per member is still what a future hosted (joined)
     member's entrypoint depends on, so the mechanism stays.
@@ -74,7 +73,7 @@ class Truth:
     consumer_entrypoint: str
     negative_check_entrypoint: str
     identity_mock_base_url: str  # PNIA's mock backend, off the bus entirely --
-    # for the legal pane's "held" query only (UX plan Task 5, Step 3)
+    # for the legal pane's "held" query only
 
 
 def _member_code(xroad_id: str) -> str:
@@ -162,7 +161,7 @@ def load_truth(pack_dir: str | pathlib.Path) -> Truth:
         for f in field_order
     ]
 
-    # -- layers: aggregated across all calls. Confirmed live: no single call
+    # -- layers: aggregated across all calls. No single call
     # carries all four -- identity-api has technical+legal, enrolment-api has
     # organisational+semantic.
     layers: dict[str, str] = {}

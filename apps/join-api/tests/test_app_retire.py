@@ -1,4 +1,4 @@
-"""join-c plan Task 4: DELETE /members/{key} through FastAPI's TestClient.
+"""DELETE /members/{key} through FastAPI's TestClient.
 
 Same throwaway-git-repo pack fixture as test_app_approve.py, and for the same
 reason (writer.apply_real runs `git status --porcelain` against the enclosing
@@ -41,7 +41,7 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
-# Wave 2 Task 2: approve now requires a decision_reference (test_app_approve.py).
+# approve now requires a decision_reference (test_app_approve.py).
 DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
 started: list[str] = []
@@ -226,7 +226,7 @@ def test_the_forward_resume_endpoint_will_not_touch_a_retiring_record(client):
 
 def test_an_own_server_member_is_told_about_its_container_and_volumes_immediately(client):
     """Not only in the final record: an operator who never comes back for it
-    would otherwise leave three named volumes behind (Task 4 Step 8)."""
+    would otherwise leave three named volumes behind."""
     _joined(client, security_server={"code": "SS-PTSB", "dns_name": "ss-ptsb", "own_server": True})
     body = client.request("DELETE", "/members/ptsb", headers=OPERATOR).json()
     instruction = body["retire_instruction"]
@@ -293,8 +293,7 @@ def test_a_second_delete_does_not_re_run_member_sh_on_a_completed_retirement(cli
     clean no-op over probes that all report absence -- so without a guard the
     second run would rewrite a finished retirement back to RETIRING with a
     config.remove error, and the console would show a fully un-joined member
-    as stuck. runbook.md explicitly invites the re-issue (review finding,
-    2026-08-02)."""
+    as stuck. runbook.md explicitly invites the re-issue."""
     record = _joined(client)
     _stub_walk(monkeypatch)
     client.request("DELETE", "/members/ptsb", headers=OPERATOR)

@@ -4,7 +4,7 @@ module: "pnea"
 building_block: member-pnea
 # member/subsystem identity comes from manifest.yaml's identity.members.pnea
 # now -- restating it here was a second, driftable copy of the same values.
-# Dogfooded 2026-07-26.
+# Dogfooded.
 security_server:
   code: SS-PNEA
   dns_name: ss-pnea
@@ -14,14 +14,14 @@ services: []                   # consumer in v0.1; provides nothing
 consumes:                      # the exchange this member exists for (wired in 2.6)
   - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
   - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
-member_requirements:           # Module 5.2's checklist — Wave 4 Task 1 (K-01).
+member_requirements:           # Module 5.2's checklist (K-01).
   has_security_server: true
   has_registered_identity: true
   standards_portfolio_adopted: true
   data_conformant: true
   # A consumer-only member has no service to state this on instead (design
   # decision 1) -- stated here directly. A resolved value, not an unresolved
-  # confirm-marker (Service.lawful_basis' own convention, Wave 2 Task 3):
+  # confirm-marker (Service.lawful_basis' own convention):
   # the ship gate's --ready check scans configs/ for that marker pattern and
   # refuses to ship one. This pack carries no real decree to cite (Module
   # 2's decree is out of scope), so the category, not an article number, is

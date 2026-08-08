@@ -16,7 +16,7 @@ def test_topology_resolves():
     assert {s["host"] for s in truth.topology["security_servers"]} == {
         "ss-pdga", "ss-pnea", "ss-plr", "ss-pnia", "ss-moeys",
     }
-    # PNIA and PLR (the negative check's caller since Wave 3 Task 1) are
+    # PNIA and PLR (the negative check's caller) are
     # both self-hosted -- resolved from topology.json's hosted_on, not from
     # once-only-exchange.yaml's static entrypoint field (module docstring).
     assert truth.negative_check_entrypoint == "http://ss-plr:8080"

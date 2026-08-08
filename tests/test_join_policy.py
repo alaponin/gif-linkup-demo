@@ -1,11 +1,10 @@
-"""Unit tests for hurl/generate.py's check_join_policy() (join-b Task 2,
-Step 2, extended in the Task 2 review fix) -- the same "a declared key the
-code does not apply is a hard failure" rule check_policy() already applies
-to the bus policy, extended to configs/x-road-bus/join-policy.yaml's join: block,
-plus the join.member_class vs identity.member_class consistency assertion
-that moved here from apps/join-api/validate.py's per-request check 5
-(review finding 2 -- see validate.py's comment where _check_member_class
-used to be).
+"""Unit tests for hurl/generate.py's check_join_policy() (join-b) -- the same
+"a declared key the code does not apply is a hard failure" rule
+check_policy() already applies to the bus policy, extended to
+configs/x-road-bus/join-policy.yaml's join: block, plus the
+join.member_class vs identity.member_class consistency assertion that moved
+here from apps/join-api/validate.py's per-request check 5 -- see
+validate.py's comment where _check_member_class used to be.
 """
 from __future__ import annotations
 

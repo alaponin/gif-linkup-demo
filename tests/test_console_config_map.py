@@ -1,5 +1,5 @@
-"""Wave 3 Task 2 collapsed three one-member modules (2.3 PNEA, 2.4 PLR, 2.5
-PNIA) into one three-member module. apps/console/app.py's _CONFIG_BY_MEMBER
+"""Three one-member modules (2.3 PNEA, 2.4 PLR, 2.5 PNIA) were collapsed
+into one three-member module. apps/console/app.py's _CONFIG_BY_MEMBER
 now zips a module's building_blocks: against its comma-separated
 member_configs: list (falling back to the single config: path) instead of
 assuming one config per module -- a length mismatch there would silently

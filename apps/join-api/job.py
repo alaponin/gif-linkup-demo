@@ -1,4 +1,4 @@
-"""apps/join-api/job.py -- the join job engine (join-b Task 4, design spec
+"""apps/join-api/job.py -- the join job engine (design spec
 S5). One approved request becomes an ordered list of steps; each step is one
 Hurl invocation over ONE of Plan A's registry templates (hurl/steps.py), run
 against the live federation, with its `provides` captures parsed back out of
@@ -29,12 +29,12 @@ same templates, and all three follow from resumability (decision 5):
      JobStep.must_rerun), which is safe because those steps are all class
      (a)/(b) in hurl/steps.py's 409-safety audit.
 
-Two shapes of join (spec S6, join-c plan Task 3):
+Two shapes of join (spec S6):
 
   - **hosted_on**: the joining member's subsystem becomes an extra client on
     an EXISTING member's Security Server. Every step is the operator's,
-    regardless of hurl/steps.py's own `actor` default -- the override join-a
-    plan Task 3 Step 4 documented at build_hosted_client()'s call sites,
+    regardless of hurl/steps.py's own `actor` default -- the override
+    documented at build_hosted_client()'s call sites,
     applied here rather than trusted from the registry. There is no
     member-side infrastructure in this path at all, so it never blocks.
   - **own_server**: the joining member brings up its own Security Server.
@@ -43,7 +43,7 @@ Two shapes of join (spec S6, join-c plan Task 3):
     `actor: member` steps genuinely exist in the sequence, and BLOCKED (the
     state that waits for them) becomes reachable.
 
-And one shape of un-join (join-c plan Task 4): unjoin() walks a completed
+And one shape of un-join: unjoin() walks a completed
 job's steps BACKWARDS, running each hurl/steps.py `reverse` template guarded
 by its `probe`. It is a second engine beside run(), not a mode of it -- see
 the section comment above unjoin() for the three reasons.
@@ -125,7 +125,7 @@ OCSP_HINT = (
 # HURL_BIN is absolute for exactly that reason: with no PATH in env=,
 # subprocess resolves a bare name against os.defpath (/bin:/usr/bin), which
 # does not include /usr/local/bin, and every step died with FileNotFoundError
-# (found in review, in the built image, 2026-08-02). An absolute path is one
+# in the built image. An absolute path is one
 # fewer thing to get right than a PATH entry that has to agree with the
 # Dockerfile's COPY target.
 HURL_BIN = "/usr/local/bin/hurl"
@@ -197,8 +197,7 @@ def _is_secret(name: str) -> bool:
 # it out. It stays in every `secrets` dict this module passes around (build_constants
 # still needs the real value), just never treated as something to hide from output:
 # redacting it bought nothing, and "xrd" is short enough to appear as a substring
-# inside unrelated words, which could strip legitimate diagnostic text (review
-# finding, 2026-08-02).
+# inside unrelated words, which could strip legitimate diagnostic text.
 _NOT_SECRET = {"ss_admin_user"}
 
 
@@ -288,7 +287,7 @@ def build_constants(pack_dir: pathlib.Path, payload: JoinPayload, secrets: dict[
     # because every canonical member publishes exactly one service; nothing
     # in schema.py or validate.py caps services[], so a two-service join
     # through this API would publish both against whichever spec_url won the
-    # shared name (found in review, 2026-08-02). SPECVAR is a token chosen in
+    # shared name. SPECVAR is a token chosen in
     # this file, so it is disambiguated here rather than inheriting a
     # collision cold deploy never has.
     for svc in payload.services:
@@ -344,7 +343,7 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
                 id=step_id + suffix,
                 kind="hurl",
                 # Under hosted_on, NOT step.actor: every step is the
-                # operator's (join-a plan Task 3 Step 4) -- there is no
+                # operator's -- there is no
                 # member-side infrastructure in that path at all. Under
                 # own_server the registry's own per-step actor is the truth
                 # and is read as declared, which is what puts `actor: member`
@@ -565,8 +564,8 @@ def _default_run_hurl(
     self-signed. Hurl's own --retry is not used -- the retry budget is the
     run's, not the step's (spec S5.5), and lives in run() below.
 
-    cookie_jar (--cookie/--cookie-jar, same file for both): found live,
-    join-b Task 6's own live proof -- cs.members_member 401ed even though it
+    cookie_jar (--cookie/--cookie-jar, same file for both): found live --
+    cs.members_member 401ed even though it
     carried {{cs_xsrf_token}} in its X-XSRF-TOKEN header exactly as
     hurl/steps.py declares. run-linkup.sh concatenates every step into ONE
     hurl invocation, so Hurl's own cookie jar carries the login's JSESSIONID
@@ -616,8 +615,8 @@ def _default_r1_call(url: str, client_header: str) -> tuple[bool, str]:
     """The r1 reachability call, adapted from apps/console/xroad.py's
     exchange() -- a plain GET on the consumer's proxy (:8080) with an
     X-Road-Client header, verify=False for the same Test CA reason. Not
-    imported from apps/console: this container does not mount that app (Task
-    1 copied its request-boundary guard for the same reason).
+    imported from apps/console: this container does not mount that app
+    (app.py copies its request-boundary guard for the same reason).
 
     Verified means the call traversed X-Road and reached a backend: any
     response that is not an X-Road fault. A denial
@@ -649,7 +648,7 @@ def _default_server_up(dns_name: str) -> bool:
     ANY HTTP response counts, including the redirect or 401 an
     unauthenticated GET gets: what this has to establish is that the TLS
     listener is up and serving, not that a particular page renders. The
-    failure it exists to distinguish is the one Task 9 found live -- a
+    failure it exists to distinguish is the one found live -- a
     container that is "started" but whose Tomcat/TLS listener never comes up,
     so a caller hangs mid-handshake instead of being refused."""
     try:
@@ -709,7 +708,7 @@ def _failure_text(element: dict) -> str:
 # an interpreter is only written where re-running is NOT safe.
 #
 # A hosted join reaches two of the eight probed steps; an own-server join
-# (join-c Task 3) reaches three more, one of which needed one:
+# reaches three more, one of which needed one:
 #   - ss.bringup_register: bundles register-then-approve, whose halves can
 #     diverge on a process death in between, so 409-as-success would report a
 #     half-done step as done. Skipping it costs nothing downstream: its one
@@ -766,8 +765,7 @@ def _sign_key_id(step: JobStep, captures: dict) -> str | None:
     by label: a shared host's token carries one identically-labelled "Sign
     key" per hosted member (security_server.hosted_on; four, live, on
     ss-plr under the since-retired lite profile at the time --
-    PROBE_SS_SIGN_KEY.hurl.tmpl's own comment, confirmed join-a plan Task 5
-    Step 4).
+    PROBE_SS_SIGN_KEY.hurl.tmpl's own comment).
 
     Forwards this answers "does it already exist?" (the probe interpreter
     below). Backwards it answers "which key do I delete?" -- the same read,
@@ -854,7 +852,7 @@ def run(
     completed; execution starts after it, re-injecting every persisted
     capture. Steps before it re-run only if they provide a session token
     (JobStep.must_rerun) -- nothing else is re-run, which is the guarantee
-    Task 4 Step 6's resume test asserts.
+    the resume test asserts.
 
     BLOCKED: an own-server join's `actor: member` steps run against the
     joining member's own Security Server, which this API cannot stand up. Any
@@ -876,8 +874,8 @@ def run(
     session: dict[str, str] = {}
 
     # One shared cookie jar for the whole run (_default_run_hurl's own
-    # docstring explains why this exists at all: found live, join-b Task 6's
-    # first real approve, cs.members_member 401ed because the JSESSIONID
+    # docstring explains why this exists at all: found live, on the first
+    # real approve -- cs.members_member 401ed because the JSESSIONID
     # cs.init's login set was never carried to the next step's separate Hurl
     # process). Only wired in for the real default -- a caller that supplies
     # its own run_hurl (every test in this module) is replaying fixtures or
@@ -968,8 +966,7 @@ def run(
                 # completed it -- moving the marker back to it would, for the
                 # span of the next two invocations, describe less progress than
                 # was actually made, and a kill in that window would make the
-                # NEXT resume re-run steps this one deliberately skipped (found
-                # in review, 2026-08-02).
+                # NEXT resume re-run steps this one deliberately skipped.
                 record["last_completed_step"] = step.id
             save(record)
 
@@ -1032,7 +1029,7 @@ def _execute(
                 # The runner itself broke (a missing binary, an unreadable
                 # template) -- not something a retry fixes, and not something
                 # that should escape past the FAILED-with-a-step-id contract
-                # into app.py's blanket handler. Found in review: a
+                # into app.py's blanket handler. A
                 # FileNotFoundError for the Hurl binary did exactly that.
                 raise StepFailure(step.id, f"could not run this step: {type(exc).__name__}: {exc}") from exc
             if _succeeded(element):
@@ -1069,7 +1066,7 @@ def _execute(
 
 def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> bool:
     """Has this step already happened? Only asked on resume, and only for the
-    steps join-a plan Task 5 classified as ambiguous (spec S5.3): a probe
+    steps classified as ambiguous (spec S5.3): a probe
     failure answers "no", never fails the job -- re-running is the safe
     default and the whole point of the classification."""
     generate, _ = _hurl_modules(pack_dir)
@@ -1082,7 +1079,7 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
     return PROBE_INTERPRETERS[step.id.split(":")[0]](step, _captures(element))
 
 
-# -- the reversal walk (join-c plan Task 4) -----------------------------------
+# -- the reversal walk --------------------------------------------------------
 # Un-joining is not run() with the sequence reversed. Three things make it its
 # own engine:
 #
@@ -1111,7 +1108,7 @@ def _probe(step: JobStep, variables: dict, pack_dir: pathlib.Path, run_hurl) -> 
 # walk re-runs the job's session steps first (JobStep.must_rerun), exactly as a
 # resume does.
 #
-# Resumability (Task 4 Step 9): there is no reversal marker to trust. The walk
+# Resumability: there is no reversal marker to trust. The walk
 # is re-entrant because every entry is probed first -- a DELETE re-issued after
 # a kill re-walks from the top and skips whatever the probes now report absent.
 # record["last_reversed_step"] is written for the operator's benefit, never
@@ -1164,8 +1161,8 @@ def _absent_service_description(step: JobStep, element: dict, variables: dict) -
         return False
     if not isinstance(descriptions, list) or not all(isinstance(d, dict) for d in descriptions):
         # A body that is not the list-of-descriptions this endpoint documents
-        # is unreadable, not empty -- and "unreadable" must never be absence
-        # (review finding, 2026-08-02). Without this, a JSON object or string
+        # is unreadable, not empty -- and "unreadable" must never be absence.
+        # Without this, a JSON object or string
         # iterates to elements that match nothing, any() is False, and this
         # returns "already gone": the service description survives its own
         # member's departure.
@@ -1222,7 +1219,7 @@ def _absent_cs_member(step: JobStep, element: dict, variables: dict) -> bool:
         return False
     clients = body.get("clients") if isinstance(body, dict) else None
     # No clients[] at all is unreadable, not empty -- same rule as
-    # _absent_service_description's (review finding, 2026-08-02).
+    # _absent_service_description's.
     return isinstance(clients, list) and not clients
 
 
@@ -1237,7 +1234,7 @@ REVERSAL_ABSENT: dict[str, Callable[[JobStep, dict, dict], bool]] = {
 
 
 def retire_instruction(payload: JoinPayload) -> dict | None:
-    """Task 4 Step 4: what the operator must do by hand for an own-server
+    """What the operator must do by hand for an own-server
     member, because this API never gets a Docker socket (design decision 8,
     the same split scripts/join-agent.sh makes for the bring-up direction).
     None for a hosted member -- it owns no container and no volumes, and its

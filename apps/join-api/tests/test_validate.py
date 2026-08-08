@@ -1,11 +1,11 @@
-"""Unit tests for apps/join-api/validate.py -- join-b Task 2's twelve
-checks (spec S8), plus Wave 4's lawful_basis and sla_required (K-01), for
+"""Unit tests for apps/join-api/validate.py -- twelve
+checks (spec S8), plus lawful_basis and sla_required (K-01), for
 thirteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
 Check 9 (backend reachability) is the one place this suite does real I/O,
 deliberately: a local http.server thread stands in for "inside the linkup
-network" (task-2 brief point 6), and fixtures/specs/unreachable.yaml's
+network", and fixtures/specs/unreachable.yaml's
 servers.url (127.0.0.1:1, a privileged port nothing listens on) is a real
 connection attempt that fails fast, not a mocked-away one -- mocking it
 would defeat the point of the check.
@@ -85,7 +85,7 @@ EXISTING_SERVERS = {
     "pnia": {"code": "SS-PNIA", "dns_name": "ss-pnia", "hosted_on": None},
 }
 
-# Mirrors configs/semantic/semantic-map.yaml (Wave 2 Task 1) -- a fixture
+# Mirrors configs/semantic/semantic-map.yaml -- a fixture
 # copy, not a disk read, matching how MANIFEST/POLICY/EXISTING_SERVERS above
 # are already fixture dicts rather than files loaded from PACK_DIR.
 SEMANTIC_MAP = {
@@ -136,8 +136,8 @@ def _payload(**overrides) -> dict:
 
 def _run(raw: dict, *, manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS,
          semantic_map=SEMANTIC_MAP, **kw):
-    # validate() returns (payload, ValidationContext) since Task 5 (the
-    # context's fetched_specs feeds module 2.7's join-time drift baseline) --
+    # validate() returns (payload, ValidationContext) -- the
+    # context's fetched_specs feeds module 2.7's join-time drift baseline --
     # every caller in this file wants just the payload.
     payload, _ctx = validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers,
                               semantic_map=semantic_map, **kw)
@@ -211,7 +211,7 @@ def test_collision_rejects_a_reused_security_server_code():
 
 
 def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_members_entry():
-    """task-2 brief point 4: PDGA is canonical via identity.owner.code, not
+    """PDGA is canonical via identity.owner.code, not
     an identity.members entry -- check 4 must still catch it. (The other
     four canonical codes are always caught by check 3, collision, first --
     each is already an identity.members entry, so there is no payload for
@@ -220,8 +220,8 @@ def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_me
               "not_canonical")
 
 
-# Check 5 (member class) has no per-request test here -- join-b Task 2
-# review finding 2: the payload schema has no member_class field, so there
+# Check 5 (member class) has no per-request test here -- the payload
+# schema has no member_class field, so there
 # was nothing about a submitted request for that check to evaluate. The
 # join.member_class vs identity.member_class consistency assertion moved to
 # hurl/generate.py's check_join_policy() (tests/test_join_policy.py).
@@ -233,7 +233,7 @@ def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_me
 def test_hosting_rejects_a_request_that_asks_for_neither_hosting_nor_its_own_server():
     """join.default_hosting: hosted_on means "a join defaults to hosting;
     own_server must be asked for" (configs/x-road-bus/2.7.yaml's own comment).
-    Since join-c Task 3 an own-server join is a real code path, so the reason
+    An own-server join is a real code path, so the reason
     this is still a rejection is the fail-safe, not the missing feature: a
     payload that simply forgot hosted_on must not silently become an
     own-server join that then waits in BLOCKED for a server nobody agreed to
@@ -246,7 +246,7 @@ def test_hosting_rejects_a_request_that_asks_for_neither_hosting_nor_its_own_ser
 
 def test_hosting_accepts_an_explicit_own_server_request():
     """The other half of the same policy key: asked for explicitly, an own
-    Security Server is admissible (join-c plan Task 3)."""
+    Security Server is admissible."""
     raw = _payload()
     raw["security_server"] = {"code": "SS-PTSB", "dns_name": "ss-ptsb", "own_server": True}
     payload = _run(raw)
@@ -320,7 +320,7 @@ def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic()
 
 
 def test_purpose_limitation_rejects_an_entity_not_in_the_semantic_map():
-    """Conformance, not presence, since Wave 2 Task 1 Step 2 (K-03):
+    """Conformance, not presence (K-03):
     semantic.entity must be a key in configs/semantic/semantic-map.yaml."""
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
@@ -346,7 +346,7 @@ def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
     assert payload.semantic.entity == "enrolment"
 
 
-# -- lawful_basis and sla_required (Wave 4, K-01) -------------------------------
+# -- lawful_basis and sla_required (K-01) ---------------------------------------
 
 
 def test_lawful_basis_rejects_a_consumer_only_member_with_none_stated():
@@ -455,21 +455,21 @@ def test_identifier_characters_rejects_a_bad_service_code_last_after_9_10_11_pas
 
 
 def test_identifier_characters_accepts_a_dotted_service_code():
-    """join-b Task 2 review finding 1 banned '.' after "awards.list" (a
+    """A previous denylist banned '.' after "awards.list" (a
     service code copied from a third-party tool's human-facing API name)
     slipped through every other check -- but X-Road >=7.3.0's actual
-    allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) permits '.'. That finding
+    allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) permits '.'. Banning dots
     was solving the wrong problem: "awards.list" is a valid X-Road
     identifier and this pack must not reject it. Deliberately asserting
     ACCEPTANCE here, not rejection -- do not "fix" this back to a reject,
-    that would resurrect the false-reject bug Task 1 (G-01) corrected."""
+    that would resurrect the false-reject bug (G-01) corrected."""
     raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "access": [], "sla": _sla()}])
     payload = _run(raw, fetch_spec=_fetch_fixture("bad_service_code.yaml"))
     assert payload.services[0].code == "awards.list"
 
 
-# Table-driven per Task 1 (G-01) Step 4: X-Road >=7.3.0's identifier
+# Table-driven (G-01): X-Road >=7.3.0's identifier
 # allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) disagrees with this pack's old
 # denylist in both directions -- see validate.py's comment above
 # _bad_identifier for the full story. Exercised against `subsystem`

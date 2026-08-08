@@ -1,7 +1,7 @@
-"""Golden-corpus test for hurl/generate.py -- testing-strategy plan Task 1.
+"""Golden-corpus test for hurl/generate.py, per the testing-strategy plan.
 
-Two cases, not a `--profile full|lite` parametrize (Wave 3 Task 4 removed the
-profile concept from generate.py itself; D5: one topology):
+Two cases, not a `--profile full|lite` parametrize (the profile concept was
+removed from generate.py itself; D5: one topology):
 
   - test_generate_matches_golden_deployment: regenerates from the real
     configs/ (via --out/--env, which exist only for this test -- see

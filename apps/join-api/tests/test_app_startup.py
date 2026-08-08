@@ -1,4 +1,4 @@
-"""Review finding (2026-08-02): a job's record can be left at RUNNING
+"""A job's record can be left at RUNNING
 forever if the process running it stops mid-job (scripts/join.sh down, a
 rebuild, acceptance.sh's own 2.7 section) -- job.run() resumes correctly from
 any record carrying last_completed_step, but resume_request only accepts

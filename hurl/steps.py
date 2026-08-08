@@ -24,8 +24,8 @@ class Step:
     requires: tuple[str, ...]   # Hurl {{var}} names this step reads
     provides: tuple[str, ...]   # Hurl [Captures] names this step writes
     # "has this already happened?" -- filename under hurl/templates/, or None.
-    # Set only for the 409-ambiguous class from the join-a plan Task 5 audit
-    # (see that plan's Task 5 Step 1 classification comment above each step
+    # Set only for the 409-ambiguous class identified by the join-a plan's
+    # audit (see the classification comment above each step
     # below). Read-only and 409-safe steps need no probe: design spec Section
     # 5.3's default is 409-as-success, proven live for service.acl
     # (PLAN.md Section 11, apps/console/xroad.py's 409 handling).
@@ -37,28 +37,28 @@ class Step:
     unsafe_to_repeat: bool = False
     # "how do I undo this?" -- filename under hurl/templates/, or None.
     # Default None: most steps still do not have one, and that is correct --
-    # only the six steps join-c plan Task 1 live-verified a working reversal
+    # only the six steps the join-c plan live-verified a working reversal
     # for (docs/xroad-770-notes.md #11) carry one. Like `template`, this is a
     # template filename, not a second Step: the reversal's own `requires` are
     # read straight off its .tmpl file (tests/test_steps.py's `_extract()`,
     # same as for `template`), never declared a second time here. Reversal
     # EXECUTION ORDER is not derivable from this field or from reversing
-    # REGISTRY -- see REVERSAL_ORDER below (join-c plan Task 2 Step 2b).
+    # REGISTRY -- see REVERSAL_ORDER below.
     reverse: str | None = None
 
 
 # Ordered registry: generate.py renders these in order. Order here IS the
-# executable sequence -- Task 3 relies on this for the hosted-client
-# ordering bug it must not reintroduce.
+# executable sequence -- the hosted-client ordering below relies on this
+# order and must not reintroduce the bug it describes.
 #
-# -- 409-safety classification (join-a plan Task 5 Step 1) --------------
+# -- 409-safety classification --------------
 # Every step below is tagged with one of:
 #   (a) read-only        -- no mutation, always safe to re-run.
 #   (b) 409-safe mutation -- repeat either conflicts cleanly (409, per
 #       design spec Section 5.3's default -- proven live for service.acl,
 #       PLAN.md Section 11 / apps/console/xroad.py) or is a state-setting
 #       call that's naturally idempotent (e.g. a PATCH to the same value).
-#   (c) ambiguous -- carries a `probe` (Step 2). Two distinct failure modes
+#   (c) ambiguous -- carries a `probe`. Two distinct failure modes
 #       land here, both worth a probe even though only one is what design
 #       spec Section 5.3 anticipated: some of these create a NEW resource
 #       with no natural uniqueness constraint (a repeat silently doubles
@@ -68,15 +68,15 @@ class Step:
 #       process died in between (a repeat's submit half may cleanly 409
 #       while the approval half is still outstanding).
 #   (d) unsafe to repeat at all -- none found; tests/test_steps.py asserts
-#       this class stays empty (Task 5 Step 3).
+#       this class stays empty.
 # Audited count: 3 (a), 10 (b), 8 (c), 0 (d) of 21 steps -- roughly a third
 # need a probe, more than Section 5.3's "rare" framing anticipated but not
-# "most" of them; recorded in the design spec Section 15/5.3 (Task 5 Step 6).
+# "most" of them; recorded in the design spec Section 15/5.3.
 REGISTRY: tuple[Step, ...] = (
     # (b) POST /login is a re-authenticate (idempotent); POST /initialization
     # is a bootstrap-once call X-Road is expected to 409 on repeat, per
     # Section 5.3's general claim -- UNVERIFIED for this specific endpoint
-    # until the Task 5 Step 4 live deploy.
+    # until confirmed against a live deploy.
     Step(
         id="cs.init",
         template="fragments/CS_INIT.hurl.tmpl",
@@ -139,9 +139,9 @@ REGISTRY: tuple[Step, ...] = (
     # (b) Same reasoning as cs.members_owner -- and the one cs.* step Plan B's
     # join flow actually reaches (a new member's own registration on the CS).
     # Rendered once per member, in a loop, in generate.py -- the registry
-    # holds this step once (design decision 4 of the templates plan; join-a
-    # plan Task 2 Step 2 applies the same rule here).
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # holds this step once (design decision 4 of the templates plan; the
+    # join-a plan applies the same rule here).
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 6) -- sixth and LAST step in the reversal order
     # (REVERSAL_ORDER below): the member's identity leaves the Central
     # Server only after every SS-side call has undone the member's bus
@@ -174,8 +174,8 @@ REGISTRY: tuple[Step, ...] = (
     #
     # `actor` below is declared for the join lifecycle a joining member goes
     # through (build_ss_file's own-server path): "the anchor-upload through
-    # cert-import run is member; CS approval is operator" (join-a plan Task 3
-    # Step 4). Two call sites are declared exceptions to these defaults,
+    # cert-import run is member; CS approval is operator" (join-a plan).
+    # Two call sites are declared exceptions to these defaults,
     # documented at the call site rather than as a second field, because Plan
     # A has no executor to read either value yet (design decision 6):
     #   - main()'s 10-ss-pdga block reuses ss.bringup_init/ss.auth_key_csr/
@@ -185,7 +185,7 @@ REGISTRY: tuple[Step, ...] = (
     #   - build_hosted_client()'s ss.client_add/ss.sign_key_csr/service.publish/
     #     service.acl steps run against the HOST's Security Server on behalf of
     #     a member with none of its own -- "under hosted_on, every step is
-    #     operator" (Task 3 Step 4), regardless of the defaults below.
+    #     operator" regardless of the defaults below.
     # (b) bundles anchor upload (replace-with-same-content is a no-op),
     # login (idempotent) and initialization (bootstrap-once, same reasoning
     # as cs.init) and token-login (idempotent).
@@ -197,11 +197,11 @@ REGISTRY: tuple[Step, ...] = (
         provides=("@P@_xsrf_token",),
     ),
     # (a) read-only. PDGA-only today (main()'s 10-ss-pdga block always
-    # renders this; a regular member's build_ss_file() never does -- Task 3
-    # must not start rendering it for a member unless it also becomes that
-    # member's own ca_name source). ca_name is the single most-depended-on
+    # renders this; a regular member's build_ss_file() never does -- doing
+    # so for a member would require that member to also become its own
+    # ca_name source). ca_name is the single most-depended-on
     # `provides` in the registry: every ss.auth_key_csr and ss.sign_key_csr
-    # step, for every member, reads it back (Tasks 2 and 3).
+    # step, for every member, reads it back.
     Step(
         id="ss.ca_name_capture",
         template="fragments/CA_NAME_CAPTURE.hurl.tmpl",
@@ -221,7 +221,7 @@ REGISTRY: tuple[Step, ...] = (
         probe="fragments/PROBE_SS_AUTH_KEY.hurl.tmpl",
     ),
     # (c) Same reasoning as ss.auth_key_csr, for the SIGN key. Join-relevant.
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 5; "What happens to a hosted member's SIGN key") --
     # fifth step in the reversal order (REVERSAL_ORDER below), last of the
     # SS-side calls: the client goes before its key even backwards, so this
@@ -307,10 +307,10 @@ REGISTRY: tuple[Step, ...] = (
     # registration -- the signer rejects a member_id it doesn't yet recognize
     # as a client with 400 client_not_found (found live for the lite profile,
     # 2026-07-26-deployment-spec-and-lite-profile.md). Reordering this list
-    # reintroduces that bug; join-a plan Task 3 Step 2.
+    # reintroduces that bug; see the join-a plan.
     # (b) POST /clients has a natural unique key (member_class+member_code+
     # subsystem_code) -- repeat conflicts.
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 4) -- fourth step in the reversal order (REVERSAL_ORDER
     # below), after ss.client_register's unregister and before
     # ss.sign_key_csr's key delete: the client goes before its key,
@@ -327,7 +327,7 @@ REGISTRY: tuple[Step, ...] = (
     # (c) Same partial-completion risk as ss.bringup_register (PUT
     # .../register then GET-pending-then-approve). Join-relevant -- every
     # member's own bring-up AND every hosted client runs this.
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 3) -- third step in the reversal order
     # (REVERSAL_ORDER below), and the one whose ordering is NOT the mirror
     # of the forward client_add -> sign_key_csr -> client_register sequence
@@ -350,7 +350,7 @@ REGISTRY: tuple[Step, ...] = (
     # (rest_service_code per client) -- repeat conflicts; the separate PUT
     # .../enable on an already-enabled description is a state-transition
     # X-Road is expected to 409 on repeat, per Section 5.3's default.
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 2) -- second step in the reversal order (REVERSAL_ORDER
     # below), after service.acl's revoke and before ss.client_register's
     # unregister.
@@ -366,7 +366,7 @@ REGISTRY: tuple[Step, ...] = (
     # (b) proven live: 409 on an already-granted access right is treated as
     # success (PLAN.md Section 11, apps/console/xroad.py's 409 handling) --
     # the one step in this registry with confirmed, not inferred, evidence.
-    # Reversal live-verified join-c plan Task 1 (docs/xroad-770-notes.md
+    # Reversal live-verified join-c plan (docs/xroad-770-notes.md
     # #11, table row 1) -- first step in the reversal order (REVERSAL_ORDER
     # below): revoke the grant before the service description it grants
     # access to is deleted.
@@ -383,7 +383,7 @@ REGISTRY: tuple[Step, ...] = (
 
 BY_ID: dict[str, Step] = {step.id: step for step in REGISTRY}
 
-# The reversal order (join-c plan Task 2 Step 2b), for a hosted client's six
+# The reversal order (join-c plan), for a hosted client's six
 # reversal calls -- established LIVE (docs/xroad-770-notes.md #11 finding 5,
 # apps/join-api/tests/fixtures/xroad/unjoin.*.json), NOT `reversed(REGISTRY)`
 # and NOT simply build_hosted_client()'s own forward sequence
@@ -394,12 +394,12 @@ BY_ID: dict[str, Step] = {step.id: step for step in REGISTRY}
 # instead is ss.client_register -> ss.client_add -> ss.sign_key_csr -- the
 # client goes before its key, same relative order as forward, only
 # ss.client_register moves from last to first. The strict mirror (key before
-# client) was never tried live. Task 4 Step 2 walks this order; this task
-# only records it -- nothing in hurl/generate.py or Plan A's cold-deploy
-# rendering reads this constant.
+# client) was never tried live. The runner that performs a reversal walks
+# this order; this registry only records it -- nothing in hurl/generate.py
+# or Plan A's cold-deploy rendering reads this constant.
 #
-# What this walk does NOT revoke (withdrawn G-03b, wave1-corrections Task 3
-# Step 4): `service.acl` above revokes ACL entries on the departing member's
+# What this walk does NOT revoke (withdrawn G-03b, per the wave1-corrections
+# plan): `service.acl` above revokes ACL entries on the departing member's
 # OWN service(s) -- it does not revoke any grant naming the departing member
 # AS A SUBJECT on some *other* member's service. That gap is unreachable
 # today: schema.py's `requested_access` field is recorded on the join

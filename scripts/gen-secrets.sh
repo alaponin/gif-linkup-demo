@@ -44,9 +44,9 @@ random_value() {
 # (join-b). docker-compose.yml now requires both unconditionally at
 # interpolation time (${VAR:?...}), even for services in the demo profile
 # that nobody is bringing up -- so an .env that predates them breaks the
-# WHOLE pack, not just the join-related parts, until it has them (review
-# finding, 2026-08-02). Below: if that is the ONLY thing wrong with an
-# existing .env, append just those two keys rather than refusing outright --
+# WHOLE pack, not just the join-related parts, until it has them. Below: if
+# that is the ONLY thing wrong with an existing .env, append just those two
+# keys rather than refusing outright --
 # no PIN/password rotation, so none of the --force path's teardown/purge
 # warning applies.
 JOIN_TOKEN_KEYS="KP2_JOIN_APPLICANT_TOKEN KP2_JOIN_OPERATOR_TOKEN"

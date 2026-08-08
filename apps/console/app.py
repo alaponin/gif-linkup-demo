@@ -1,4 +1,4 @@
-"""apps/console/app.py -- read (Task 4) and write (Task 5) API for the KP2
+"""apps/console/app.py -- the read and write API for the KP2
 demonstration console. The browser talks only to this service; this is the
 only thing in the demo that talks to X-Road (see the plan's Architecture
 section). Credentials come from the environment (.env via Docker Compose),
@@ -30,7 +30,7 @@ OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 ADMIN_USER = os.environ["XROAD_ADMIN_USER"]
 ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 
-# Task 6 (join tab): the join API's operator token stays server-side here,
+# join tab: the join API's operator token stays server-side here,
 # exactly like ADMIN_PASSWORD above -- read once at import, only ever used
 # inside _join_api()'s Authorization header, never serialized into a
 # response. join-api is on the same linkup network as every other
@@ -113,12 +113,12 @@ _last_heartbeat = time.time()
 
 # member code -> that member's own config file, derived from manifest.yaml's
 # module map (never hardcoded) -- so the inspector's semantic pane can show
-# each provider's own semantic.fields list (UX plan Task 6, Step 2).
+# each provider's own semantic.fields list.
 #
 # A module's building_blocks: and member_configs: (falling back to config:
 # for a module with exactly one member building block and no
 # member_configs: key -- every module but the collapsed one below, today)
-# are parallel lists (Wave 3 Task 2 collapsed three one-member modules into
+# are parallel lists (three one-member modules were collapsed into
 # one three-member module; config: itself stays a single path there because
 # the sibling ITU-Giga-KP-Plugin ship gate's check_pack.py does a plain
 # os.path.exists(pack/config) per module and has no notion of a
@@ -172,7 +172,7 @@ def _journal_is_dirty() -> bool:
 def _reset_locked() -> dict:
     """The one place that calls journal_mod.reset() -- post_reset, the
     watchdog, and the lifespan's startup reset all go through this, so the
-    S16 lock and (Task 3) the off-event-loop wrapping only need stating
+    S16 lock and the off-event-loop wrapping only need stating
     once."""
     with _MUTATE_LOCK:
         return journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
@@ -259,7 +259,7 @@ def get_learners():
     """A handful of seeded NINs: several present in both registries, and --
     labelled as such -- one present in PNIA but absent from PLR, which is
     acceptance.sh check 2.6.5's clean-404 case. Read from the same CSVs
-    seed.sh regenerates. No names here (UX plan Task 2, Step 1): the name
+    seed.sh regenerates. No names here: the name
     arriving from PNIA over the bus is the demonstration's payoff, and a
     chip that already shows it spoils that before the exchange runs."""
     with open(PACK_DIR / "apps/data/persons.csv", newline="") as f:
@@ -332,7 +332,7 @@ def get_exchange(nin: str):
 def _identity_held_fields(nin: str) -> list[str]:
     """Field names PNIA's own record carries but its published contract
     doesn't send -- read directly from the mock, off the bus entirely,
-    never through xroad.py (UX plan Task 5, Step 3). Never the values."""
+    never through xroad.py. Never the values."""
     # Validated again even though get_exchange already validated its nin --
     # deliberate double-check (request-boundary plan S12): this is a
     # module-level function a future caller could reach directly, not just
@@ -349,8 +349,8 @@ def _identity_held_fields(nin: str) -> list[str]:
 @app.get("/api/exchange/{nin}/negative", dependencies=[Depends(_require_console_origin)])
 def get_exchange_negative(nin: str):
     """The negative check (Module 5.6): the same calls, run as the
-    unauthorised client through ITS OWN Security Server -- confirmed live
-    this must be routed this way, or the denial comes from a consumer SS
+    unauthorised client through ITS OWN Security Server -- it
+    must be routed this way, or the denial comes from a consumer SS
     rejecting a client it doesn't host rather than from the provider's ACL.
 
     Guarded for the same reason as get_exchange above: it issues real bus
@@ -408,7 +408,7 @@ def _mutate_acl(action: str) -> dict:
         # grant when already granted, or revoke when already revoked, is a
         # success no-op). If prior_state assumed a transition happened when it
         # didn't, reset()'s reversal would apply the wrong action and corrupt
-        # the real state -- confirmed live: calling this endpoint twice with the
+        # the real state -- calling this endpoint twice with the
         # same action left the journal permanently dirty and unable to verify.
         prior_state = "granted" if MUTABLE_SERVICE in session.read_acl(subsystem["id"], subject) else "revoked"
 
@@ -440,7 +440,7 @@ def post_acl_grant():
 @app.post("/api/reset", dependencies=[Depends(_require_console_origin)])
 def post_reset():
     """Reverses the journal newest-first and verifies the result equals
-    truth.expected_acl exactly -- never a silent 'reset ok' (Task 5 Step 2)."""
+    truth.expected_acl exactly -- never a silent 'reset ok'."""
     global _last_heartbeat
     _last_heartbeat = time.time()
     result = _reset_locked()
@@ -456,18 +456,18 @@ def post_heartbeat():
     return {"ok": True}
 
 
-# -- join tab (Task 6) --------------------------------------------------------
+# -- join tab --------------------------------------------------------
 # A thin, read-mostly proxy onto the REAL apps/join-api/app.py -- never the
 # journal, never _MUTATE_LOCK: a join is not an ACL mutation this console
-# tracks (Task 6 Step 4), so nothing below touches JOURNAL or _reset_locked,
+# tracks, so nothing below touches JOURNAL or _reset_locked,
 # and scripts/acceptance.sh's dirty-journal refusal keeps meaning exactly
-# what it already means. The operator token stays server-side (Step 2,
-# JOIN_OPERATOR_TOKEN above); the browser only ever sees join-api's own
+# what it already means. The operator token stays server-side
+# (JOIN_OPERATOR_TOKEN above); the browser only ever sees join-api's own
 # response bodies, which never carry it.
 #
 # Route paths verified directly against apps/join-api/app.py, not spec §7's
-# stated-but-inaccurate "/api/join" base path (a discrepancy Tasks 1/3/4/5
-# already found and left alone) -- join-api's real routes have no prefix:
+# stated-but-inaccurate "/api/join" base path (a discrepancy already
+# found and left alone) -- join-api's real routes have no prefix:
 # POST/GET /requests, POST /requests/{id}/{approve,resume,reject}.
 _JOIN_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
 
@@ -482,7 +482,7 @@ def _validated_join_request_id(request_id: str) -> str:
 
 
 def _join_api(method: str, path: str, **kwargs) -> httpx.Response:
-    """Server-to-server call to the real join-api (Task 6 Step 2) -- same
+    """Server-to-server call to the real join-api -- same
     shape as _admin_session()'s calls to X-Road's admin API. join-api is on
     the same linkup network as every other console-adjacent service
     (docker-compose.yml), reachable at JOIN_API_URL without leaving the
@@ -498,7 +498,7 @@ def _join_api(method: str, path: str, **kwargs) -> httpx.Response:
 def _proxy_join(method: str, path: str, **kwargs) -> dict:
     """join-api's JSON body verbatim on success. join-api is profile "demo",
     like the console itself, and not always running (scripts/join.sh
-    up/down) -- that is a fact for the tab to render (Step 1's queue view
+    up/down) -- that is a fact for the tab to render (the queue view
     treats a body with no "requests" key as "no join API reachable"), not a
     500 the console throws at its own caller."""
     try:
@@ -516,7 +516,7 @@ def _proxy_join(method: str, path: str, **kwargs) -> dict:
 
 @app.get("/api/join/requests", dependencies=[Depends(_require_console_origin)])
 def get_join_requests():
-    """The pending queue (Task 6 Step 1): every request, each already
+    """The pending queue: every request, each already
     carrying its config diff, its step sequence coloured by actor, and (for
     an ACTIVE record) the live-but-uncommitted flag -- all computed by
     join-api's own GET /requests (apps/join-api/app.py's _record_view)."""
@@ -525,7 +525,7 @@ def get_join_requests():
 
 @app.post("/api/join/requests/{request_id}/approve", dependencies=[Depends(_require_console_origin)])
 def post_join_approve(request_id: str, body: dict | None = None):
-    """Wave 2 Task 2: forwards decision_reference the same way post_join_reject
+    """Forwards decision_reference the same way post_join_reject
     already forwards reason -- join-api is where the required-field check
     lives, this is just a pass-through."""
     request_id = _validated_join_request_id(request_id)

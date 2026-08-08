@@ -1,5 +1,5 @@
 # PTSB awards API — the OpenAPI3 service description X-Road parses for the
-# live-proof join (join-b Task 6, design spec §2.1). GET-only, mirroring
+# live-proof join (design spec §2.1). GET-only, mirroring
 # apps/specs/pnia-identity.openapi.yaml's shape exactly -- Plan B's join
 # policy (configs/x-road-bus/2.7.yaml's allowed_methods: [GET]) rejects
 # anything else.

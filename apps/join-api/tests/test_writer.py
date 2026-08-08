@@ -1,4 +1,4 @@
-"""Tests for apps/join-api/writer.py (join-b Task 3).
+"""Tests for apps/join-api/writer.py.
 
 Every test here works against a temporary COPY of the pack, never the real
 checkout -- REAL_PACK_DIR is read from exactly once, as the copy source
@@ -104,7 +104,7 @@ def test_render_member_config_matches_the_documented_shape():
 
 
 def test_render_member_config_includes_pattern_when_classified():
-    """Wave 2 Task 1 Step 3 (G-04): pattern is optional on Semantic, but when
+    """Pattern is optional on Semantic (G-04), but when
     a joining payload does set it, the rendered config must carry it -- not
     silently drop a field the schema now accepts."""
     payload = _payload(
@@ -118,7 +118,7 @@ def test_render_member_config_includes_pattern_when_classified():
 
 
 def test_render_member_config_includes_lawful_basis_when_set():
-    """Wave 2 Task 3 (K-02): lawful_basis is optional on Service, but when a
+    """lawful_basis is optional on Service (K-02), but when a
     joining payload does set it, the rendered config must carry it -- the
     same "don't silently drop a field the schema now accepts" rule
     test_render_member_config_includes_pattern_when_classified enforces for
@@ -225,8 +225,8 @@ def test_dry_run_diff_surfaces_generates_stderr_verbatim_on_failure():
 
 
 def test_writer_output_is_discovered_by_generates_own_discover_members(tmp_path):
-    """task-3 brief step 6: "asserting generate.py accepts the result and
-    discover_members() finds the new member" -- calling discover_members()
+    """Asserting generate.py accepts the result and
+    discover_members() finds the new member -- calling discover_members()
     directly, not just relying on dry_run_diff() not raising."""
     writer._copy_pack(REAL_PACK_DIR, tmp_path)
     writer._write_member(tmp_path, "ptsb", _payload())
@@ -263,7 +263,7 @@ def test_apply_real_refuses_when_the_checkout_is_dirty(tmp_path):
 
 
 def test_apply_real_refuses_cleanly_when_the_git_check_itself_cannot_run(tmp_path):
-    """Review finding (2026-08-02): repo_root not actually being a git repo
+    """repo_root not actually being a git repo
     (a structural problem: the pack copy ended up outside the monorepo, or
     parents[2] resolved somewhere wrong) used to raise a raw, unhandled
     subprocess.CalledProcessError out of _git_status_dirty -- a 500, not a
@@ -281,7 +281,7 @@ def test_apply_real_refuses_cleanly_when_the_git_check_itself_cannot_run(tmp_pat
 
 
 def test_apply_real_refuses_cleanly_on_a_member_directory_collision(tmp_path):
-    """Review finding (2026-08-02): validate.py's own collision check (S8
+    """validate.py's own collision check (S8
     check 3) already refuses a request whose key collides with an existing
     configs/member-<key>/ at submission time -- this reproduces the
     unlikely race where a directory for the same key appears between that
@@ -325,7 +325,7 @@ def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     assert (pack / "hurl" / "topology.json").exists()
 
 
-# -- onboarding/<key>/ (Wave 4 Task 2, G-07) -----------------------------------
+# -- onboarding/<key>/ (G-07) --------------------------------------------------
 
 
 def test_render_gates_table_links_sla_when_the_member_has_services():

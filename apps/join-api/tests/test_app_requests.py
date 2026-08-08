@@ -1,4 +1,4 @@
-"""join-b Task 3: POST /requests and GET /requests/{id} through FastAPI's
+"""POST /requests and GET /requests/{id} through FastAPI's
 TestClient, against a temporary copy of the pack -- never the real
 checkout. Same env-vars-before-import pattern test_app_health.py uses
 (loaded by path under a distinct module name -- see that file's own

@@ -1,4 +1,4 @@
-"""Unit tests for scripts/render_onboarding.py (Wave 4 Task 3, K-01). Not a
+"""Unit tests for scripts/render_onboarding.py (K-01). Not a
 consistency test against hardcoded expected content -- that would guard a
 duplication the simplification pass deliberately removed (canonical members'
 onboarding records are generated, never hand-authored, so there is nothing

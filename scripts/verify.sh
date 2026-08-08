@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One entry point, three tiers -- testing-strategy plan Task 2. Before this,
+# One entry point, three tiers. Before this,
 # "verify" meant either a handful of static scripts or a full 880-900s
 # teardown.sh --purge -> hurl/run-linkup.sh cycle, so anything that felt
 # like real verification cost a quarter of an hour.
@@ -79,8 +79,8 @@ run_full() {
   "$PACK_DIR/scripts/acceptance.sh"
   log "console smoke"
   "$PACK_DIR/scripts/console.sh" up
-  # console.sh up now passes --wait (D12, reproducible-builds plan Task 3
-  # Step 5), so its own HEALTHCHECK already blocked until the FastAPI app was
+  # console.sh up now passes --wait (D12, reproducible-builds plan), so its
+  # own HEALTHCHECK already blocked until the FastAPI app was
   # accepting connections. This loop stays anyway as a backstop for any other
   # caller that brings the container up without --wait -- a recorded decision,
   # not an oversight -- and costs nothing extra: it succeeds on the first
@@ -94,7 +94,7 @@ run_full() {
 
   # Guard against silent rot: recorded fixtures nobody re-records
   # eventually describe a server that no longer exists (testing-strategy
-  # plan Task 6).
+  # plan).
   log "xroad fixture drift check"
   "$PACK_DIR/scripts/capture-xroad-fixtures.sh" --check
 }

@@ -6,7 +6,7 @@ central_server:
   # instance_identifier, owner (code/name/management_subsystem) and
   # member_classes[0].code all come from manifest.yaml's identity: block now
   # -- restating them here was never read by generate.py for .code (dead
-  # field) and was a second, driftable copy for the rest. Dogfooded 2026-07-26.
+  # field) and was a second, driftable copy for the rest. Dogfooded.
   address: cs                      # container DNS name on the linkup network
   member_classes:
     - description: Government institutions of Progressa
@@ -14,7 +14,7 @@ trust_services:
   # Certificate files themselves are not a config field: hurl/generate.py reads
   # them from the shared ca volume (ca.pem/ocsp.pem/tsa.pem, no rename) per
   # decision 3 in PLAN.md -- a path here would be a second, driftable source of
-  # truth for something the deployment already gets right. Dogfooded 2026-07-25.
+  # truth for something the deployment already gets right. Dogfooded.
   certification_service:
     certificate_profile: ee.ria.xroad.common.certificateprofile.impl.FiVRKCertificateProfileInfoProvider
     ocsp_responder:
@@ -36,7 +36,7 @@ management_security_server:
   dns_name: ss-pdga
   # owner is central_server.owner above -- hurl/generate.py builds this server
   # from that block directly; a second owner field here is drift, not a fact
-  # generate.py reads. Dogfooded 2026-07-25.
+  # generate.py reads. Dogfooded.
 demo_only:
   - test CA as trust anchor
   - fixed Central Server admin credentials (test image)

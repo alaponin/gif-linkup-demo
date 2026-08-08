@@ -17,7 +17,7 @@ Endpoints: GET /v1/{ENTITY}/{key}              -> record (spec-declared
 
 The response is filtered to exactly the OpenAPI spec's declared fields, not
 the whole CSV row: purpose limitation is a property of the published
-contract, proved by absence (UX plan Task 5) -- a field the CSV carries but
+contract, proved by absence -- a field the CSV carries but
 the spec never declares is held, never sent, and /held-fields exposes only
 its name (never its value) so the demo console can show what was withheld
 without ever transporting it.

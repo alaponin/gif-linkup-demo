@@ -4,18 +4,18 @@ module: "pnia"
 building_block: member-pnia
 # member/subsystem identity comes from manifest.yaml's identity.members.pnia
 # now -- restating it here was a second, driftable copy of the same values.
-# Dogfooded 2026-07-26.
+# Dogfooded.
 security_server:
   code: SS-PNIA
   dns_name: ss-pnia
 services:
   # type/forwarding URL/enabled/tls_verify: not config fields, see 2.2.yaml's
-  # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
+  # comment -- hurl/generate.py never reads them. Dogfooded.
   - code: identity-api
     spec_url: http://app-pnia:8000/spec.yaml
     access:                    # deliberate: PNEA only — PLR:ENROLMENT excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS
-    sla:                       # Module 5.3's template — Wave 4 Task 3 Step 2:
+    sla:                       # Module 5.3's template —
                                 # illustrative demo values, not a real signed target.
       availability: "99.5% monthly uptime"
       response_time: "4 business hours; 1 hour for a P1 incident"
@@ -28,7 +28,7 @@ semantic:                      # from configs/semantic/semantic-map.yaml — 'pe
   key: nin
   fields: [nin, given_name, family_name, date_of_birth, sex, region]
   pattern: digital_registries_lookup
-member_requirements:           # Module 5.2's checklist — Wave 4 Task 1 (K-01).
+member_requirements:           # Module 5.2's checklist (K-01).
   has_security_server: true
   has_registered_identity: true
   standards_portfolio_adopted: true

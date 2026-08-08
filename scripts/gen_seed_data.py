@@ -12,7 +12,7 @@ Outputs (to the directory given as argv[1]):
                       (the mismatch rows for the negative checks)
 
 school_records.csv (MoEYS/PEMIS) was generated here too until MoEYS was
-retired (Wave 3 Task 1, docs/production-delta.md); removing it did not
+retired (docs/production-delta.md); removing it did not
 change persons.csv/enrolments.csv -- the rng draws that fed it happened
 strictly after both were already fully built.
 """
@@ -72,8 +72,8 @@ def main(outdir):
             "sex": sex,
             "region": region,
             # PNIA plausibly holds these too, but the credential purpose
-            # doesn't need them -- purpose limitation, proved by absence
-            # (UX plan Task 5): the mock filters these out before they ever
+            # doesn't need them -- purpose limitation, proved by absence:
+            # the mock filters these out before they ever
             # reach the bus (apps/mock-registry/app.py), and the console's
             # legal pane shows they were withheld, never their values.
             "mother_name": f"{rng.choice(GIVEN_F)} {rng.choice(FAMILY)}",
@@ -102,11 +102,11 @@ def main(outdir):
             f"Deterministic (seed {SEED}); regenerate with scripts/gen_seed_data.py.\n\n"
             f"- persons.csv: {len(persons)} (PNIA)\n"
             f"- enrolments.csv: {len(enrolments)} (PLR)\n"
-            # awards.csv is NOT written by this script (join-b Task 6): PTSB
+            # awards.csv is NOT written by this script: PTSB
             # is not a canonical member, so there is no generator entity for
             # it, and this line would otherwise be silently lost every time
             # seed.sh reruns this script and overwrites this file whole --
-            # found live when a hand-added note here vanished on the next
+            # a hand-added note here vanished on the next
             # seed.sh. Hardcoded here instead, once, so it survives.
             "- awards.csv: 4 (PTSB) -- hand-written, not this script's output "
             "(a live-proof fixture; NINs reused from persons.csv on purpose)\n\n"

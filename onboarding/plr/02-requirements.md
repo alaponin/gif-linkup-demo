@@ -8,5 +8,5 @@ The checklist Module 5.2 teaches: what an agency must have in place before it ca
 | Registered identity on the bus | yes |
 | Standards portfolio adopted | yes |
 | Data cleaned and conformed to the schema | yes |
-| Lawful basis for its exchanges | satisfied by this member's published services (each service's own `lawful_basis`, Wave 2 Task 3) -- see `03-sla/` |
+| Lawful basis for its exchanges | satisfied by this member's published services (each service's own `lawful_basis`) -- see `03-sla/` |
 | Named technical contact | Head of IT, PLR |

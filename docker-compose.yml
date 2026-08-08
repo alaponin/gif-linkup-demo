@@ -1,15 +1,15 @@
 # KP2 build pack — Linkup demonstration federation (X-Road 7.x)
 # Basis: NIIS KB "How to Set Up a Local Test Environment Using Docker Compose?"
 # CS + Test CA + 4 Security Servers (PDGA + PNEA + PLR + PNIA) + 2 mock
-# providers. One topology (Wave 3 Task 4, design decision 5): MoEYS is
-# retired (Wave 3 Task 1, docs/production-delta.md), not hosted, and PNIA
-# owns its own Security Server unconditionally -- no lite/full split.
+# providers. One topology (design decision 5): MoEYS is retired
+# (docs/production-delta.md), not hosted, and PNIA owns its own Security
+# Server unconditionally -- no lite/full split.
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
 x-sidecar: &sidecar
   # XROAD_SS_DIGEST (deployment.yaml xroad.ss_digest, C13) wins when set;
   # XROAD_VERSION is the plain-tag fallback.
-  # This is also where the Wave 5 monitoring add-ons are "installed": the
+  # This is also where the monitoring add-ons are "installed": the
   # NIIS Sidecar ships a slim tag (bare packages only) and a full tag with
   # message logging + operational monitoring (xroad-opmonitor) +
   # environmental monitoring (xroad-monitor) pre-installed and
@@ -50,7 +50,7 @@ services:
   ca:
     # Test CA + OCSP (:8888) + TSA (:8899) — demo trust anchor.
     # TESTCA_TAG defaults to a digest pin (.env.example) per the reproducibility
-    # rule (PLAN.md decision 1) — confirmed at P0 2026-07-25.
+    # rule (PLAN.md decision 1).
     image: ghcr.io/nordic-institute/xrddev-testca:${TESTCA_TAG:-latest}
     container_name: ca
     ports: ["${XROAD_BIND:-127.0.0.1}:8888:8888"]
@@ -96,7 +96,7 @@ services:
     # Host port 5100, not 5000: macOS's AirPlay Receiver (ControlCenter) listens
     # on 5000 by default and silently swallows the connection instead of
     # refusing it, so a straight "5000:4000" mapping hangs on macOS rather than
-    # failing fast. Confirmed at P0, 2026-07-25.
+    # failing fast.
     <<: *sidecar
     container_name: ss-pnia
     ports: ["${XROAD_BIND:-127.0.0.1}:5100:4000", "${XROAD_BIND:-127.0.0.1}:5180:8080"]
@@ -133,8 +133,8 @@ services:
       - ./apps/specs:/specs:ro
 
   app-ptsb:
-    # Mock scholarship-awards registry behind PTSB -- the join-b Task 6
-    # live-proof fixture (design spec §2.1: "PTSB wants to ... publish
+    # Mock scholarship-awards registry behind PTSB -- the live-proof fixture
+    # (design spec §2.1: "PTSB wants to ... publish
     # awards-api so PNEA can verify that a candidate holds a scholarship
     # award"). Not one of the canonical five -- exists only so the live join
     # has a real, reachable backend to pass check 9 (backend reachability)
@@ -168,7 +168,7 @@ services:
       OUT_DIR: /out
       XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
       XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
-      # Task 6 (join tab): the join API's operator token, held server-side
+      # The join tab's join-api operator token, held server-side
       # here exactly like XROAD_ADMIN_PASSWORD above -- the browser never
       # sees it. join-api itself is reached at its Compose service name on
       # the linkup network (JOIN_API_URL's default, apps/console/app.py).
@@ -197,8 +197,8 @@ services:
     # which needs the enclosing .git -- the real git root, three levels above
     # this pack directory. So: bind-mount the whole monorepo checkout,
     # read-write, at a path that preserves that relative layout, rather than
-    # a curated per-file subset. One-time decision (see the plan's Task 1
-    # brief); no later task revisits this file.
+    # a curated per-file subset. One-time decision; this mount is not
+    # revisited per task.
     build: ./apps/join-api
     container_name: join-api
     profiles: ["demo"]
@@ -219,9 +219,9 @@ services:
       # "gitdir: <abs host path>/geatdm-framework/.git/worktrees/<name>" --
       # an absolute HOST path that does not exist inside the container, so
       # `git status --porcelain` exits 128 and every approval 409s with
-      # "could not check whether ... is a clean checkout" (found live,
-      # join-c plan Task 1; the fail-safe refusal itself is a join-b review
-      # finding and is not being relaxed). scripts/join.sh exports
+      # "could not check whether ... is a clean checkout" (found live; the
+      # fail-safe refusal itself is a known finding and is not being
+      # relaxed). scripts/join.sh exports
       # KP2_GIT_COMMON_DIR (`git rev-parse --git-common-dir`, absolutised),
       # and this mounts it at its OWN host path -- the exact path that
       # `gitdir:` pointer names. In a plain checkout the same variable
@@ -248,7 +248,7 @@ volumes:
   ss-pnia-conf: {name: kp2-ss-pnia-conf}
   ss-pnia-archive: {name: kp2-ss-pnia-archive}
   # ss-moeys-{db,conf,archive} volumes retired with the ss-moeys service
-  # above (Wave 3 Task 1) -- not kept as reserved, unlike PINNED_PORTS in
+  # above -- not kept as reserved, unlike PINNED_PORTS in
   # hurl/generate.py, since a volume with no service using it is dead weight,
   # not a collision risk.
 

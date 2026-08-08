@@ -35,10 +35,10 @@ did not write; that is the gap this check closes.
   3. **the r1 clause — the one that carries this module:** a real `r1` call,
      through the *joined* member's own consumer Security Server, against the
      joined member's published service ROOT (not a specific operation --
-     `apps/join-api/job.py`'s own `r1_verify` step and, since join-b Task 6's
-     live proof surfaced why, this check both call the service root rather
-     than a resource path, because there is no real record id either one has
-     a way to know), with `X-Road-Client` set to an authorized consumer's
+     `apps/join-api/job.py`'s own `r1_verify` step and this check both call
+     the service root rather than a resource path, because there is no real
+     record id either one has a way to know), with `X-Road-Client` set to an
+     authorized consumer's
      identity, reaches the backend with no X-Road fault in the response (a
      plain backend 404 counts — it proves the call traversed X-Road end to
      end; only a `Server.*`/`Client.*` fault type means it did not); the same
@@ -60,10 +60,10 @@ did not write; that is the gap this check closes.
   Since this module has no fixed running example the way 2.6 has PNEA/PNIA/
   PLR, the given/when/then above is written generically over "the joined
   member" and "an authorized/unauthorized consumer" rather than a hardcoded
-  agency. Task 6 of the join-b plan is where a concrete payload (PTSB) is
-  actually submitted and this check runs against it for real.
+  agency. A concrete payload (PTSB) is submitted and this check runs against
+  it for real.
 
-## The own-server join (join-c plan Task 5)
+## The own-server join
 
 The clause above is written for a member with `hosted_on` set. A member that
 brings up its **own** Security Server runs a different middle — the same
@@ -94,7 +94,7 @@ work, not the operator's. That is the whole of what this case adds:
      for at all: a hosted member owns no AUTH key, so nothing in
      `acceptance/2.7.md`'s hosted clauses exercises this path.
 
-## The un-join transition (join-c plan Task 5)
+## The un-join transition
 
 `DELETE /members/{key}` walks the six steps of `hurl/steps.py`'s
 `REVERSAL_ORDER` backwards and then runs `scripts/member.sh remove <key>`.
@@ -165,10 +165,10 @@ Specifically the **hosted** join (`default_hosting: hosted_on` / an explicit
 `compose.members.yml`) is `--full`-tier only and not this check's scope.
 
 **The un-join transition is `--live`-tier, the own-server join is not**, and
-the split is a cost one, measured rather than assumed. Task 1 established
-the hosted un-join as six calls with no approval round and nothing retried;
-join-c Task 5 measured a scripted own-server un-join end to end and the five
-clauses above are plain reads on top of it. That is cheap enough to sit
+the split is a cost one, measured rather than assumed. The hosted un-join is
+six calls with no approval round and nothing retried; a scripted own-server
+un-join has been measured end to end, and the five clauses above are plain
+reads on top of it. That is cheap enough to sit
 beside the hosted join `--live` already carries. An own-server join is not:
 it stands up a whole extra Security Server container (minutes to healthy,
 ~2 GB of RAM) and needs `scripts/join-agent.sh` run out of band at
@@ -187,34 +187,20 @@ job-context secret-leakage tests, the step engine against recorded
 fixtures — all under `apps/join-api/tests/` and `tests/`, already covered by
 `scripts/verify.sh --fast`, not restated here).
 
-Status: VERIFIED on the live stack (join-c plan Task 5, 2026-08-03,
-`profile: lite` from cold) for the hosted join, the own-server join and both
-un-join cases — `2.7.1`, `2.7.r1(PVTB.awards-api)`,
-`2.7.deny(PVTB.awards-api)`, `2.7.unjoin(PVTB)` (own-server),
-`2.7.unjoin(PHTB)` (hosted, all five clauses) and `2.7.unjoin.topology` all
-green, and the un-join clauses re-run green on two later cold deploys.
-**Re-verified 2026-08-07 (Wave 3 Task 6)** against the collapsed single (D5)
-topology, `--full` from cold, with both a hosted and an own-server join and
-un-join (identity PTSB, see `docs/production-delta.md`): `2.7.1`,
+Status: VERIFIED on the live stack, `--full` from cold, against the
+collapsed single (D5) topology, with both a hosted and an own-server join
+and un-join (identity PTSB, see `docs/production-delta.md`): `2.7.1`,
 `2.7.unjoin(PTSB)` and `2.7.unjoin.topology` all green from
-`scripts/acceptance.sh`, and — new since the last VERIFIED note — the
-own-server case reached `ACTIVE, verified: true` for the first time (see
-below).
+`scripts/acceptance.sh`, and the own-server case reaches
+`ACTIVE, verified: true`.
 
-**Historical: one clause of the own-server case was NOT met when this was
-last measured (2026-08-03) — since re-verified live (Wave 3 Task 6,
-2026-08-07), record kept for the diagnosis.** Clause 7's sibling — the
-request reaching `ACTIVE, **verified: true**` — did not happen for an
-own-server join at that time. It reached `ACTIVE` with `verified: false`,
-because `apps/join-api/job.py`'s single per-run retry budget (120s) was
-spent on `ss.client_register`'s propagation wait before `join.r1_verify`
-ran, and no resume could revisit the step afterwards. `job.py` now gives
-`join.r1_verify` its own budget, `R1_RETRY_BUDGET = 54`, separate from the
-run's shared budget. **Re-verified live 2026-08-07 (Wave 3 Task 6):** a real
-own-server join (PTSB) reached `ACTIVE, verified: true` 131s after
-`resume`, with 7 of the shared run's 12 retries left when `join.r1_verify`
-started and nowhere near exhausting its own 54 — the fix works against a
-real federation, not just the synthesised-response test in
-`apps/join-api/tests/test_job.py`. See `docs/production-delta.md`, "An
-own-server join could not reach `verified: true` — fixed, and now
-re-verified live" and "Wave 3 Task 6: proved live from cold".
+`apps/join-api/job.py` gives `join.r1_verify` its own retry budget,
+`R1_RETRY_BUDGET = 54`, separate from the run's shared per-run budget
+(120s). Without the separate budget, `ss.client_register`'s propagation wait
+can exhaust the shared budget before `join.r1_verify` runs, and no resume
+can revisit the step afterwards, leaving the request at `ACTIVE` with
+`verified: false`. With the separate budget, a real own-server join reaches
+`ACTIVE, verified: true` well within it — confirmed against a real
+federation, not just the synthesised-response test in
+`apps/join-api/tests/test_job.py`. See `docs/production-delta.md` for
+background.

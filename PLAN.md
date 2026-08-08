@@ -16,7 +16,7 @@ exchange on the Linkup (X-Road) federation across the Progressa institutions.
 
 1. **X-Road 7.x now, 8.x noted.** Pin the images the NIIS KB uses:
    `niis/xroad-central-server:noble-7.7.0`, `niis/xroad-security-server-sidecar:7.7.0`,
-   `ghcr.io/nordic-institute/xrddev-testca:latest` [confirm: latest 7.x at P0].
+   `ghcr.io/nordic-institute/xrddev-testca:latest` [confirm: latest 7.x].
    A short `xroad-8-delta.md` notes what changes under 8.x; no 8.x implementation in v0.1.
 2. **Docker-first; ITU cloud deferred.** The slice runs from one `docker-compose.yml`
    on a workstation/VM. ITU cloud (Linkup) is a later re-targeting of the same scripts
@@ -70,22 +70,21 @@ environment survives container recreation; `XROAD_TOKEN_PIN`, `XROAD_ADMIN_USER`
 SS DNS names are the container names.
 
 **Sizing.** Full topology = CS + CA + five SSs + three mocks ≈ 13 GB RAM in
-steady state — measured at P0 (2026-07-25) via `docker stats --no-stream` on a
-16 GB colima VM: ~2.0–2.3 GB per SS (≈10.7 GB), 1.7 GB for the CS, under
-100 MB each for the Test CA and the three mocks. Fits 16 GB with ~3 GB
-headroom. There is one topology (Wave 3 Task 4, design decision 5): no
-smaller lite alternative that hosts PNIA (or, before its retirement in Wave
-3 Task 1, MoEYS) as an extra client of `ss-plr` instead of standing up its
-own Security Server. `ss-moeys` above is retired, not deployed — see
-`docs/production-delta.md`.
+steady state, measured via `docker stats --no-stream` on a 16 GB colima VM:
+~2.0–2.3 GB per SS (≈10.7 GB), 1.7 GB for the CS, under 100 MB each for the
+Test CA and the three mocks. Fits 16 GB with ~3 GB headroom. There is one
+topology (design decision 5): no smaller lite alternative that hosts PNIA
+(or, before its retirement, MoEYS) as an extra client of `ss-plr` instead of
+standing up its own Security Server. `ss-moeys` above is retired, not
+deployed — see `docs/production-delta.md`.
 
 **Identifiers** (all `[confirm]` until live): owner `PROGRESSA/GOV/PDGA`; members
 `GOV/MOEYS:PEMIS`, `GOV/PNEA:EXAMS`, `GOV/PLR:ENROLMENT`, `GOV/PNIA:IDENTITY`.
 Service codes: `identity-api` (PNIA), `enrolment-api` (PLR), `pemis-api` (MoEYS).
 These are the cross-pack join keys for KP3/KP4 — freeze them in `manifest.yaml`.
 `GOV/MOEYS:PEMIS`/`pemis-api` above is historical: MoEYS was retired from the
-frozen contract in Wave 3 Task 1, with KP3/KP4 sign-off — `manifest.yaml`'s
-`identifiers:` block now lists only PNEA, PLR and PNIA.
+frozen contract, with KP3/KP4 sign-off — `manifest.yaml`'s `identifiers:`
+block now lists only PNEA, PLR and PNIA.
 
 ## 3. Federation stand-up sequence (what the Hurl scenarios automate)
 
@@ -242,15 +241,15 @@ Each assertion mapped to its EIF layer per 5.6. UNVERIFIED until green.
 
 | Phase | Work | Exit gate | Status |
 | --- | --- | --- | --- |
-| P0 Spike | Compose up as-published; `hurlfmt --check hurl/.build/setup.hurl` (never yet parsed by Hurl — authored without network access to the binary); `hurl/run-linkup.sh` from zero; measure RAM; confirm the testca cert filenames in `/home/ca/certs`; fix full-vs-lite default | Federation up from the scenarios; §3 assumptions confirmed on a live stack | **Done** 2026-07-25 |
-| P1 Configs + prompts | bb-config-gen plays 2.1–2.5; manifest titles + fixes (`home:` says `KP2-INT`, folder is `KP2-GIF`; freeze identifiers); **dogfood**: run each prompt for real, diff its output against the config, reconcile — only then is the config "generated" | `check_pack.py` passes; every config regenerated from its prompt | **Done** 2026-07-25 |
-| P2 Providers + seed | Mocks from the OpenAPI specs; Gambia-grounded CSVs; `seed.sh` | Mocks answer locally with seeded data | **Done** 2026-07-25 |
-| P3 Deploy automation | `hurl/run-linkup.sh` from zero incl. retries and explicit approvals; `deploy.sh` reduced to a wrapper; `teardown.sh`; runbook rewritten to match reality (incl. teardown + manual fallback) | Clean machine → federation up, one command | **Done** 2026-07-25 |
-| P4 Acceptance | `acceptance.sh` + six checks incl. 2.6's four assertions | Suite green | **Done** 2026-07-25 |
-| P5 Verify + ship | Resolve all `[confirm]` against the live registry; `check_pack.py --ready`; teardown `--purge` → redeploy → re-run (reproducibility proof) | Pack VERIFIED | **Done** 2026-07-25 |
-| P6 Deltas | `xroad-8-delta.md`; production delta (5.7 list + demo-only flags from §3: Test CA, fixed CS credentials, TLS-verify off, HTTP connection type, single host); ITU-cloud re-targeting parked | Docs merged | **Done** 2026-07-25 — both delta docs reviewed against the live run, no new shortcuts found, no edits needed |
+| P0 Spike | Compose up as-published; `hurlfmt --check hurl/.build/setup.hurl` (never yet parsed by Hurl — authored without network access to the binary); `hurl/run-linkup.sh` from zero; measure RAM; confirm the testca cert filenames in `/home/ca/certs`; fix full-vs-lite default | Federation up from the scenarios; §3 assumptions confirmed on a live stack | **Done** |
+| P1 Configs + prompts | bb-config-gen plays 2.1–2.5; manifest titles + fixes (`home:` says `KP2-INT`, folder is `KP2-GIF`; freeze identifiers); **dogfood**: run each prompt for real, diff its output against the config, reconcile — only then is the config "generated" | `check_pack.py` passes; every config regenerated from its prompt | **Done** |
+| P2 Providers + seed | Mocks from the OpenAPI specs; Gambia-grounded CSVs; `seed.sh` | Mocks answer locally with seeded data | **Done** |
+| P3 Deploy automation | `hurl/run-linkup.sh` from zero incl. retries and explicit approvals; `deploy.sh` reduced to a wrapper; `teardown.sh`; runbook rewritten to match reality (incl. teardown + manual fallback) | Clean machine → federation up, one command | **Done** |
+| P4 Acceptance | `acceptance.sh` + six checks incl. 2.6's four assertions | Suite green | **Done** |
+| P5 Verify + ship | Resolve all `[confirm]` against the live registry; `check_pack.py --ready`; teardown `--purge` → redeploy → re-run (reproducibility proof) | Pack VERIFIED | **Done** |
+| P6 Deltas | `xroad-8-delta.md`; production delta (5.7 list + demo-only flags from §3: Test CA, fixed CS credentials, TLS-verify off, HTTP connection type, single host); ITU-cloud re-targeting parked | Docs merged | **Done** — both delta docs reviewed against the live run, no new shortcuts found, no edits needed |
 
-**P0–P5 complete, 2026-07-25.** Reproducibility proof: `teardown.sh --purge` →
+**P0–P5 complete.** Reproducibility proof: `teardown.sh --purge` →
 `hurl/run-linkup.sh` (cold, 936s) → `scripts/seed.sh` → `scripts/acceptance.sh`
 — all green, unattended. Real bugs found and fixed along the way (each its own
 commit): a comma in MoEYS's member_name broke X-Road's server-side DN
@@ -261,7 +260,7 @@ was too short for a restart-from-persisted-volumes boot (60→120 retries);
 5100); and `acceptance.sh`'s registration-status checks were single-shot
 against an asynchronous propagation window (now retried, like everywhere else
 this asynchrony shows up). See
-`docs/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full task
+`docs/superpowers/plans/2026-07-25-kp2-verified-pack.md` for the full build
 log. P6 (deltas) below.
 
 ## 8. Known traps
@@ -274,9 +273,9 @@ are disabled after they are added until explicitly enabled; consumer default con
 type HTTPS breaks the demo call unless set to HTTP or a client cert is uploaded;
 concurrent admin-UI sessions in one browser log each other out; CS test image admin
 creds are fixed `xrd`/`secret` (test/dev only — note in production delta); a Security
-Server's Test CA-issued OCSP response has a bounded freshness window — confirmed live
-(2026-07-27) that after roughly ten hours idle, the signer rejects the server's own
-authentication certificate as `IncorrectValidationInfo: OCSP response is too old`,
+Server's Test CA-issued OCSP response has a bounded freshness window: after roughly
+ten hours idle, the signer rejects the server's own authentication certificate as
+`IncorrectValidationInfo: OCSP response is too old`,
 failing every cross-server call through it with `Server.ClientProxy.SslAuthenticationFailed`
 (not an ACL problem, and not specific to the demo console — see `runbook.md` "Known
 traps"). Redeploy fresh rather than trusting a federation that has sat up for hours.
@@ -291,24 +290,22 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
 
 ## 9. Parked / open items
 
-- **Resolved 2026-08-02:** module 2.7, the join API (`apps/join-api/`,
-  design spec `docs/superpowers/specs/2026-08-01-member-join-api-design.md`,
-  join-b plan) — a hosted-only member join from a submitted payload through
-  validation, operator approval, real config generation, and the live
-  X-Road admin-API sequence to `ACTIVE`. The console gains a fourth tab
-  (pending queue + diff, approve/reject with a reason, live progress as a
-  step list coloured by actor, `FAILED` resume, the live-but-uncommitted
-  warning, `requested_access:` follow-ups) — a thin, server-side-token-
-  holding proxy onto join-api, wired to touch neither the ACL journal nor
-  its watchdog. Live-verified end to end (§12's live proof, PTSB per spec
-  §2.1, `profile: lite`): submit → approve → `ACTIVE, verified: true` in
+- Module 2.7, the join API (`apps/join-api/`, design spec
+  `docs/superpowers/specs/2026-08-01-member-join-api-design.md`), is a
+  hosted-only member join from a submitted payload through validation,
+  operator approval, real config generation, and the live X-Road admin-API
+  sequence to `ACTIVE`. The console has a fourth tab (pending queue + diff,
+  approve/reject with a reason, live progress as a step list coloured by
+  actor, `FAILED` resume, the live-but-uncommitted warning,
+  `requested_access:` follow-ups) — a thin, server-side-token-holding proxy
+  onto join-api, wired to touch neither the ACL journal nor its watchdog.
+  Live-verified end to end: submit → approve → `ACTIVE, verified: true` in
   **~93s** → `acceptance.sh` green → `member.sh list` → `member.sh remove` →
-  regenerate → `acceptance.sh` green again. Confirms Task 5's design call
-  (`--live` stays vacuous for 2.7, a real join is a separate manual
-  procedure) was right: 93s is comfortably under the ~2-minute threshold
-  that would have forced 2.7's live check behind its own flag. Two real bugs
-  found and fixed by the live proof, neither caught by `--fast`'s
-  fixture-driven tests: the `apps/join-api` container image had no `git`
+  regenerate → `acceptance.sh` green again — comfortably under the
+  ~2-minute threshold past which `--live` would need to stop being vacuous
+  by default; a real join stays a separate, manual procedure instead. Two
+  real bugs were found and fixed by the live proof, neither caught by
+  `--fast`'s fixture-driven tests: the `apps/join-api` container image had no `git`
   binary, but `writer.apply_real()`'s dirty-checkout guard (spec S9) shells
   out to it — fixed in the Dockerfile; and `job.py` ran each step as its own
   Hurl process with no cookie jar, so any step after the one that logged in
@@ -331,41 +328,41 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   implemented) — a genuine non-Docker target is a separate, not-yet-started spec.
 - **Full rename/reuse support for a different country or sector** — configuring
   this pack to stand up a differently-named federation (not just Progressa) is
-  a separate, not-yet-started spec (decided 2026-07-26, sequenced after the
-  `deployment.yaml`/lite-profile work). Touches the bb-config-gen prompts,
+  a separate, not-yet-started spec. Touches the bb-config-gen prompts,
   `manifest.yaml`'s frozen-identifier contract, `gen_seed_data.py`, and the
   KP3/KP4 cross-pack join-key story.
 - **Joget DX** — replaces mocks behind the same OpenAPI specs in KP4 era.
 - **X-Road 8.x** — delta note only.
-- **Resolved 2026-07-26:** `deployment.yaml` (analyst-facing spec: target,
-  topology profile, X-Road version pins — `.env` shrinks to secrets only) and a
-  genuinely working `profile: lite` (3 Security Servers — PNIA/MoEYS hosted as
-  extra clients on ss-plr). Live-verified: ~8.9 GB RAM vs full's ~13 GB,
-  `ACCEPTANCE GREEN` under both profiles. Two ordering bugs found and fixed in
-  X-Road's admin API sequence for a hosted member (client-add must precede its
-  SIGN-key generation, which must precede its registration) — see
-  `docs/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
-  **Retired 2026-08-06 (Wave 3 Task 4, design decision 5):** the profile
-  split itself — `deployment.yaml`'s `profile:` key, `--profile`, and the
-  lite topology it selected are gone; one topology (full minus MoEYS, which
-  Wave 3 Task 1 retired) remains. The ordering findings above are unaffected
-  — they hold for any hosted member under `security_server.hosted_on`,
-  which is how a hosted member is expressed now.
-- **Resolved at P0 (2026-07-25):** testca image digest pinned
-  (`.env.example` `TESTCA_TAG=latest@sha256:018e9f...c16c0c5`); the test CA does
-  write `ca.pem`/`ocsp.pem`/`tsa.pem` into `/home/ca/certs`, confirmed live; RAM
-  measured (~13 GB steady state, §2); `hurlfmt --check` parses the generated
-  scenario set clean via the containerized Hurl image (no local `hurl` binary
-  needed — `docker run --rm --entrypoint hurlfmt ... --check`); the full
-  federation stands up from zero via `hurl/run-linkup.sh` in ~9–10 minutes.
-  Two real bugs found and fixed in the process: MoEYS's member_name contains a
-  comma, which broke X-Road's server-side DN construction for its AUTH/SIGN
-  CSRs (`hurl/generate.py`'s `dn_escape()`); and `scripts/lib-stack.sh`'s
-  `COMPOSE_ALL` never referenced `hurl/compose.hurl.yml`, so `teardown.sh
-  --purge` could not remove the overlay's `kp2-ca-certs` volume, which would
-  have handed a fresh CA container stale certs on the next "clean" run.
-  **Still open:** NIN format; the exact access-denied fault shape asserted by
-  `acceptance.sh` (Task 8 of the implementation plan).
+- `deployment.yaml` (analyst-facing spec: target, X-Road version pins —
+  `.env` shrinks to secrets only) is how the pack is configured. It
+  originally also carried a topology `profile:` key selecting between the
+  full topology and a smaller `lite` one (3 Security Servers — PNIA/MoEYS
+  hosted as extra clients on `ss-plr`, ~8.9 GB RAM vs full's ~13 GB, both
+  live-verified `ACCEPTANCE GREEN`); the profile split itself is gone —
+  `deployment.yaml`'s `profile:` key, `--profile`, and the lite topology it
+  selected have all been removed. One topology remains (full minus MoEYS,
+  design decision 5). Two ordering bugs found and fixed at the time in
+  X-Road's admin API sequence for a hosted member remain relevant: client-add
+  must precede its SIGN-key generation, which must precede its registration
+  — see `docs/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
+  These findings are unaffected by the profile split's removal — they hold
+  for any hosted member under `security_server.hosted_on`, which is how a
+  hosted member is expressed now.
+- The testca image digest is pinned (`.env.example`
+  `TESTCA_TAG=latest@sha256:018e9f...c16c0c5`); the test CA does write
+  `ca.pem`/`ocsp.pem`/`tsa.pem` into `/home/ca/certs`, confirmed live; RAM
+  measured at ~13 GB steady state (§2); `hurlfmt --check` parses the
+  generated scenario set clean via the containerized Hurl image (no local
+  `hurl` binary needed — `docker run --rm --entrypoint hurlfmt ... --check`);
+  the full federation stands up from zero via `hurl/run-linkup.sh` in ~9–10
+  minutes. Two real bugs were found and fixed in the process: MoEYS's
+  member_name contains a comma, which broke X-Road's server-side DN
+  construction for its AUTH/SIGN CSRs (`hurl/generate.py`'s `dn_escape()`);
+  and `scripts/lib-stack.sh`'s `COMPOSE_ALL` never referenced
+  `hurl/compose.hurl.yml`, so `teardown.sh --purge` could not remove the
+  overlay's `kp2-ca-certs` volume, which would have handed a fresh CA
+  container stale certs on the next "clean" run. **Still open:** NIN format;
+  the exact access-denied fault shape asserted by `acceptance.sh`.
 - **Video calibration (Module 5 bundle §5):** 5.5 says "four Security Servers";
   the runnable topology needs five (X-Road management SS at PDGA). Raise at the
   Tuesday call: either the script says "four member Security Servers (plus
@@ -392,7 +389,7 @@ identifiers are not reused — see `docs/xroad-770-notes.md` §5. Admin API defi
 `src/{central,security}-server/openapi-model/.../openapi-definition.yaml`.
 docs.x-road.global manuals (CS/SS user guides) for anything the scenario does not cover.
 
-## 11. Demonstration console (2026-07-26)
+## 11. Demonstration console
 
 `apps/console/` (`scripts/console.sh up`, `http://localhost:8090`) is a demo
 asset, deliberately **outside** the module map in §4 and outside the
@@ -411,9 +408,9 @@ decision** can lag by up to ~30s (a server-conf cache effect, not a bug);
 and re-revoking or re-granting an already-there state both return `409`,
 which must be treated as success, not failure.
 
-All 8 tasks complete and verified live (2026-07-27): a from-zero purge → redeploy
-→ seed → acceptance → console-up → all three tabs exercised → console-reset →
-acceptance cycle ran clean end to end, plus the 21-test unit suite. A security
+The console is verified live end to end: a from-zero purge → redeploy → seed →
+acceptance → console-up → all three tabs exercised → console-reset →
+acceptance cycle runs clean end to end, plus the 21-test unit suite. A security
 pass over the console (secret handling, XSS, CORS, path/command injection) found
 one real issue — federated-exchange field values and X-Road fault bodies were
 interpolated unescaped into `innerHTML` in `static/app.js`, a stored-XSS vector

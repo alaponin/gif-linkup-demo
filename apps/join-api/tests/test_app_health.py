@@ -1,7 +1,7 @@
-"""join-b Task 1: the join-api skeleton. No live containers, no network --
+"""The join-api skeleton. No live containers, no network --
 just GET /health, and the auth/origin-guard dependencies unit-tested
 directly (no protected route exists to hang them off yet; that arrives with
-the real endpoints in a later task). Env vars set before import, same
+the real endpoints later). Env vars set before import, same
 pattern as apps/console/tests/test_app_csrf.py."""
 import importlib.util
 import os

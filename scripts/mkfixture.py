@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Parse a raw `curl -ksi` dump (status line + headers + blank line + body)
 into a clean fixture JSON: {status, headers, body, captured, context}.
-Used by scripts/capture-xroad-fixtures.sh (testing-strategy plan Task 6) to
-record real X-Road admin-API/proxy responses instead of hand-written
-approximations."""
+Used by scripts/capture-xroad-fixtures.sh to record real X-Road admin-API/
+proxy responses instead of hand-written approximations."""
 import json
 import re
 import sys

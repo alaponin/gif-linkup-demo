@@ -19,8 +19,8 @@ generation, parameterised over which of the two shapes below the agency
 takes. Precondition for all three: the member has passed the Member
 Requirements checklist (Module 5.2) and a provider's service levels are
 additionally set in a signed SLA (Module 5.3) — both now carried as fields
-this prompt generates (`member_requirements`, `sla`; Wave 4, K-01), not
-deferred to the Interop Toolkit.
+this prompt generates (`member_requirements`, `sla`; K-01), not deferred to
+the Interop Toolkit.
 
 ## Prompt (copy-paste ready)
 
