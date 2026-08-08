@@ -290,8 +290,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
 
 ## 9. Parked / open items
 
-- Module 2.7, the join API (`apps/join-api/`, design spec
-  `docs/decisions/superpowers/specs/2026-08-01-member-join-api-design.md`), is a
+- Module 2.7, the join API (`apps/join-api/`), is a
   hosted-only member join from a submitted payload through validation,
   operator approval, real config generation, and the live X-Road admin-API
   sequence to `ACTIVE`. The console has a fourth tab (pending queue + diff,
@@ -343,8 +342,7 @@ codes, with the discrepancy noted inline so nobody "corrects" them.
   selected have all been removed. One topology remains (full minus MoEYS,
   design decision 5). Two ordering bugs found and fixed at the time in
   X-Road's admin API sequence for a hosted member remain relevant: client-add
-  must precede its SIGN-key generation, which must precede its registration
-  — see `docs/decisions/superpowers/plans/2026-07-26-deployment-spec-and-lite-profile.md`.
+  must precede its SIGN-key generation, which must precede its registration.
   These findings are unaffected by the profile split's removal — they hold
   for any hosted member under `security_server.hosted_on`, which is how a
   hosted member is expressed now.
@@ -400,9 +398,9 @@ really mutates the `identity-api` ACL live for its permissions tab — every
 mutation is journalled and reversed (`journal.py`), with reset on demand, on
 container start, and on a 120s no-heartbeat watchdog, and
 `scripts/acceptance.sh` itself refuses to run while that journal is dirty.
-See `docs/decisions/superpowers/plans/2026-07-26-kp2-demo-console.md` for the full
-build record, including two live-confirmed X-Road behaviours worth knowing
-about elsewhere in this pack: revoking/granting access-rights is instant in
+Two live-confirmed X-Road behaviours from the console's build are worth
+knowing about elsewhere in this pack: revoking/granting access-rights is
+instant in
 the **admin API's own read**, but the **proxy's actual authorization
 decision** can lag by up to ~30s (a server-conf cache effect, not a bug);
 and re-revoking or re-granting an already-there state both return `409`,

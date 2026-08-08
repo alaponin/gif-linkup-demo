@@ -163,8 +163,9 @@ def test_ambiguous_steps_have_a_probe():
 def test_requires_satisfied_by_an_earlier_step_or_a_global():
     """Walk the registry in order -- the sequence Plan B will eventually
     resume through one step at a time. A requires not yet available is
-    exactly the ordering bug 2026-07-26-deployment-spec-and-lite-profile.md
-    found live in build_hosted_client() (join-a plan)."""
+    exactly the ordering bug found live in build_hosted_client(): a client's
+    SIGN-key generation and registration rendered before the client-add step
+    that must precede both."""
     available = {_canon(g) for g in GLOBALS}
     violations = []
     for step in steps_module.REGISTRY:

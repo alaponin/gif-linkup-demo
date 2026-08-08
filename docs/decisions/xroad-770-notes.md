@@ -431,8 +431,7 @@ Two carry-overs from §7 that this spike does **not** overturn:
 
 ## 12. Auto-approval: no admin-API route, `[center]` section, restart-time only
 
-Spike (`docs/decisions/superpowers/plans/2026-08-08-kp2-approval-policy-spike.md`),
-checked against the running `cs` container rather than assumed.
+A spike checked this against the running `cs` container rather than assuming it.
 
 - **No admin-API route.** The Central Server's own `GET /api/v1/openapi.yaml`
   (68 paths, fetched live) has nothing under `/system/*` or anywhere else for

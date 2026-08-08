@@ -6,8 +6,8 @@
 requires explicit operator approval — the same model
 `configs/x-road-bus/federation-core.yaml`'s `policy.management_request_approval: explicit`
 already commits the federation to); this pack's own §2.3 (service-level vs
-endpoint-level access rights over a tool-generated OpenAPI spec) —
-`docs/decisions/superpowers/specs/2026-08-01-member-join-api-design.md`
+endpoint-level access rights over a tool-generated OpenAPI spec, deferred —
+see `docs/production-delta.md` item 6)
 
 ## Problem
 

@@ -305,9 +305,8 @@ REGISTRY: tuple[Step, ...] = (
     # every caller must render these in (build_ss_file, build_hosted_client):
     # client-add must precede its SIGN-key generation, which must precede its
     # registration -- the signer rejects a member_id it doesn't yet recognize
-    # as a client with 400 client_not_found (found live for the lite profile,
-    # 2026-07-26-deployment-spec-and-lite-profile.md). Reordering this list
-    # reintroduces that bug; see the join-a plan.
+    # as a client with 400 client_not_found (found live for the lite profile).
+    # Reordering this list reintroduces that bug.
     # (b) POST /clients has a natural unique key (member_class+member_code+
     # subsystem_code) -- repeat conflicts.
     # Reversal live-verified join-c plan (docs/decisions/xroad-770-notes.md
