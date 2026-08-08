@@ -26,7 +26,7 @@
 # A clause with no honest home in those four is a defect, not a fifth status.
 
 meta:
-  path_document: 08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md
+  path_document: docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md
   path_version: v0.2 (rev. 4 Aug 2026)
   reviewed: 2026-08-08
   generated_output: docs/path-conformance.md

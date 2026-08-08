@@ -21,7 +21,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   Progressa identifiers that are the KP3/KP4 join keys)
 - **Status against the onboarding path:** `docs/path-conformance.md` — the
   only place the pack states what it does and does not implement of
-  `08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`.
+  `docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`.
   Generated from `docs/path-conformance.yaml`; every cited evidence path is
   existence-checked by `tests/test_path_conformance.py`, so a status claim
   cannot outlive the file it cites. Four statuses and no tick mark. **Where a

@@ -9,7 +9,7 @@ status is generated from `docs/path-conformance.yaml` and existence-checked by
 pattern, §7's KP3/KP4 handoffs, and §8's toolkit amendments — all still
 forward-looking, unlike the finding write-ups.
 **Analysed:** `10-Knowledge-Products/KP2-GIF/KP2-build-pack/`
-**Against:** `08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`
+**Against:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`
 **And against:** KP2's own curriculum — `KP2-GIF/gitbook/KP2_Module{1..6}_Script_Bundle_v0.1.md`
 
 ---
@@ -247,7 +247,7 @@ Two further notes for the path document itself:
 scope statements, Module 5 subtopic table, subtopic 5.2 and 5.3 scripts,
 subtopic 4.7 script, Module 4 tag lines.
 
-**Path:** `08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`.
+**Path:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md`.
 
 Character-set findings (G-01) were produced by executing the pack's own
 `_bad_identifier()` against the path's stated X-Road 7.3+ permitted set. Absence

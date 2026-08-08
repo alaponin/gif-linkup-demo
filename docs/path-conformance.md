@@ -5,7 +5,7 @@
      re-render. tests/test_path_conformance.py fails if the two disagree, and
      fails if any cited evidence path does not exist. -->
 
-**Path:** `08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` (v0.2 (rev. 4 Aug 2026))
+**Path:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` (v0.2 (rev. 4 Aug 2026))
 **Last reviewed:** 2026-08-08
 
 This is the only place the pack states its status against the path. Narrative

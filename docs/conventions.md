@@ -1,6 +1,6 @@
 # Conventions (§0.5, §1a)
 
-`08-Interoperability/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` §0 lists
+`docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` §0 lists
 "identifier and naming conventions published" as prerequisite 5 of five
 ecosystem-level decisions made once, before member #1, and its §1a gives the
 reason: *"the naming convention is not cosmetic: certificates, DNS, firewall
