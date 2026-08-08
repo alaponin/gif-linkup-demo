@@ -10,12 +10,12 @@ demo as production.
 
 | Demo shortcut (where) | Production requirement |
 | --- | --- |
-| Test CA as trust anchor (`2.1.yaml`) | Accredited certification authority + real OCSP/TSA |
+| Test CA as trust anchor (`configs/x-road-bus/federation-core.yaml`) | Accredited certification authority + real OCSP/TSA |
 | Single Docker host, containers (`docker-compose.yml`) | Separate sized hosts per component, HA/redundancy |
 | Fixed CS admin creds `xrd/secret` (test image, cannot be rotated — not read from `.env`) | Hardened access, individual accounts, audit |
 | Loopback binding (`deployment.yaml`'s `network.bind`, exposure-and-secrets Task 1) is the *only* network control | Network segmentation, a reverse proxy terminating real TLS, and authenticated admin access — a bind address is not a substitute for any of these once the stack leaves one trusted host |
-| Plain-HTTP service URLs, TLS-verify off (`2.2/2.4/2.5.yaml`) | HTTPS to information systems, certificates verified |
-| Consumer connection type HTTP (`2.3.yaml`) | HTTPS + client TLS certificate |
+| Plain-HTTP service URLs, TLS-verify off (`configs/member-{plr,pnea,pnia}/*.yaml`'s `spec_url`) | HTTPS to information systems, certificates verified |
+| Consumer connection type HTTP (`configs/member-pnea/pnea.yaml`) | HTTPS + client TLS certificate |
 | Mock CSV registries (`apps/`) | The agencies' real systems (e.g. Joget DX apps) behind the same OpenAPI contracts |
 | Add-ons installed and running (Wave 5, `acceptance/member.md`), but no collector, no alerting, no 24/7 support | A collector (`xroad-metrics`, NIIS OSS) receiving what the add-ons already emit, alerting on it, and an Operating Authority standing team to act on the alerts — see "Wave 5: monitoring add-ons installed, collector deliberately absent" below |
 | Sized for demo calls | Capacity for real volumes; security hardening + audit |
@@ -28,7 +28,7 @@ demo as production.
 | A joining member's AUTH and SIGN certificates are signed by the Test CA (`http://ca:8888`) with no identity vetting whatsoever, same as every canonical member | In production this step — verifying who is actually asking to join — is the entire trust decision, not a formality the join API can automate |
 | `backend.auth: none` is what every mock in this pack actually accepts, demo-only posture (`apps/join-api/schema.py`'s `BackendAuth`, join-b Task 6's PTSB fixture) | A real joining member must use `network_allowlist` or `proxy_injected`; the consumer must never hold the provider's own API credential (design spec §2.5) |
 | A joined member's service description is never automatically refreshed — X-Road reloads only on explicit refresh, so a real third-party backend (a Joget app someone edited in a browser) drifts silently from what the federation publishes | `scripts/member.sh drift <key>` *detects* this (design spec §2.4); nothing in this pack *remedies* it — a production operator still has to act on what drift reports |
-| The join policy admits `GET` operations only (`configs/x-road-bus/2.7.yaml`'s `allowed_methods`, design spec §2.3) | A production federation that needs to admit write endpoints from a joined member needs endpoint-level access rights and a different acceptance assertion — service-level `access:` grants the whole service, not the specific operations a review actually approved |
+| The join policy admits `GET` operations only (`configs/x-road-bus/join-policy.yaml`'s `allowed_methods`, design spec §2.3) | A production federation that needs to admit write endpoints from a joined member needs endpoint-level access rights and a different acceptance assertion — service-level `access:` grants the whole service, not the specific operations a review actually approved |
 | **Live-but-uncommitted window:** `writer.apply_real()` writes `configs/member-<key>/` and the `manifest.yaml` entry, and the job then makes the member live on the running federation, all before anyone runs `git commit` — confirmed live (join-b Task 6): a member can be `ACTIVE, verified: true` on the stack while `git status` still shows it untracked. Two mitigations exist, not a fix: `apply_real()` refuses to *start* a new job while `configs/`/`manifest.yaml` are already dirty (spec S9), and the console's join tab surfaces the fact live (an "uncommitted" flag on the request, `apps/join-api/app.py`'s `_live_uncommitted`) | A production join workflow should not have a window where the running system and its version-controlled description of itself can disagree at all — e.g. gate "live" on a successful commit, not the other way around |
 | No rate limiting, no quota — the join API accepts as many requests as it is given | Production needs both, plus abuse monitoring on an endpoint that can register federation members |
 | Job context (`out/join/*.json`) lives on local disk only | Not durable, not replicated, and not access-controlled beyond filesystem permissions — production needs a real datastore behind this, with its own access control |
@@ -44,158 +44,6 @@ Migrate each agency off its legacy point-to-point links and **retire them** —
 parallel-run the once-only exchange beside the old link, confirm the two agree,
 cut consumers over, decommission. Schedule per agency in the multi-agency phase;
 a new bus does not retire old links by itself.
-
-## What a joined member costs on a single demo host (member-parameterisation Task 9)
-
-Measured live, adding a throwaway sixth member that owns its own Security
-Server to an already-running 5-server `full`-profile federation:
-
-- **RAM:** ~2.1 GiB per Security Server sidecar (measured 2.07–2.29 GiB across
-  all six, `docker stats --no-stream`), regardless of whether it is one of the
-  canonical five or a joined member — a joined member's own server is not a
-  different resource class, it costs the same as any other. Central Server
-  ~1.7–1.8 GiB, Test CA ~90 MiB, each mock provider ~33 MiB. A 6-server `full`
-  deploy runs at roughly 15–17 GiB total on a single Docker host; this pack's
-  own `docker-compose.yml` header already estimates "~16 GB RAM" for the
-  canonical five alone, so budget proportionally more per additional
-  own-server member.
-- **Boot time:** two independent cold `teardown.sh --purge` → `hurl/run-linkup.sh`
-  runs with a sixth, own-server member measured **~880s and ~898s** (≈15 min)
-  end to end — driving all the admin APIs to a fully registered, serviced
-  state, not just "containers started." The `retries: 120` healthcheck budget
-  (10 min per server, `hurl/compose.hurl.yml`) covers this; the request-level
-  Hurl retry (`--retry 12 --retry-interval 10000`, 2 min per request) covers
-  the individual slow calls within it.
-- **Host CPU contention is real and worth planning for, not just RAM.** Running
-  six X-Road JVM Security Servers concurrently on a laptop-class host produced
-  a live, reproducible failure independent of the two config bugs below: one
-  server's admin API became unreachable from the host (TLS handshake accepted,
-  never completed — not a refusal, a hang) after a period where its own log
-  showed a Hikari connection-pool "thread starvation or clock leap detected"
-  warning. `docker restart` on that container did **not** fix it by itself
-  (the actual fix, below, was a config bug) — but the underlying symptom
-  (a JVM's own admin-API thread pool starving under host contention) is a
-  genuine single-host resource-pressure risk this pack's "DEMO ONLY, single
-  Docker host" posture accepts and production must not.
-
-**Two real bugs this live test found in the generated Compose overlay for a
-joined member's own server** (both fixed in `hurl/generate.py`, byte-identical
-proof re-run afterward for the canonical five on both profiles):
-
-- The generated `hurl/compose.members.yml` service block was missing the
-  `xroad-demo-local.ini` bind mount every canonical Security Server gets via
-  `docker-compose.yml` — the mount that shortens the proxy's authorization-
-  cache period from the documented 60s default to 5s (see
-  `docs/xroad-770-notes.md` §6). A joined member's own server was silently
-  running at the 60s default instead.
-- The generated block had **no `healthcheck` at all**. Every canonical
-  Security Server gets one from `hurl/compose.hurl.yml` (hand-written,
-  scoped to the canonical five by name) so `run-linkup.sh`'s Compose `up`
-  waits for the admin API to actually answer before the Hurl runner starts
-  firing requests at it. A joined member's own server had nothing waiting
-  for it, and nothing generated declares one for it either — fixed by adding
-  the same healthcheck directly into `hurl/compose.members.yml`'s generation,
-  so a joined member's own-server block is self-sufficient rather than
-  depending on the hand-written canonical-five overlay.
-
-**One real bug this live test found in port allocation, the same class as an
-already-known one:** `FRESH_PORT_START = 7000` (`hurl/generate.py`) landed
-squarely on the **other** port macOS's AirPlay Receiver (`ControlCenter`)
-silently hangs on rather than refuses — the pack already knew about port
-5000 (`FORBIDDEN_PORT_RANGE`, `docker-compose.yml`'s `ss-pnia` comment) but
-not 7000. Confirmed live: `lsof -i :7000` on the host found `ControlCenter`,
-not the container, holding the port; a login call TLS-handshake-hung for the
-full `curl --max-time` budget every time, on every retry, indefinitely — no
-amount of waiting or `docker restart` fixed it, because the container was
-never actually reachable on that port to begin with. Fixed by extending
-`FORBIDDEN_PORT_RANGE` to also exclude 7000; a fresh allocation now lands on
-7100 instead and works immediately. **Anyone reusing this pattern on macOS
-should check `lsof -i :<port>` for `ControlCenter` before trusting a fresh
-port range, not just the one port a previous investigation happened to hit.**
-
-**One real operational gotcha, not a code bug:** removing a member's config
-(`scripts/member.sh remove`) regenerates `hurl/compose.members.yml` to
-`services: {}`, so a subsequent `teardown.sh --purge` no longer references
-that member's own-server container or volumes at all — they survive the purge
-as orphans (found live: `ss-phib` and its three `kp2-phib-*` volumes had to be
-removed by hand with `docker rm -f` / `docker volume rm`). Purge or retire the
-member live (`docs/xroad-770-notes.md` §7) **before** removing its config,
-not after.
-
-**Recommendation:** default a joined member to `hosted_on` an existing
-Security Server rather than its own, on a single-host demo deployment. It
-costs zero extra containers, zero extra RAM, and sidesteps every finding
-above (the port-allocation bug, the missing healthcheck/ini-mount bugs, and
-the host-CPU-contention risk) entirely — reserve a joined member's own server
-for the specific case the demonstration needs it (this plan's Task 9 Step 3:
-proving the Compose overlay and port allocation actually work), not as the
-default shape for "just add a member."
-
-## Federation snapshots — measured, and their real shelf life (testing-strategy Task 3)
-
-`scripts/federation.sh snapshot|restore` tars/untars the ~19 named `kp2-*`
-volumes. Measured live, twice, on a freshly deployed federation:
-
-- **Snapshot:** ~64s steady state (a one-off `alpine` image pull added ~10s
-  the very first time only), 62–64 MiB.
-- **Restore mechanics** (purge current volumes, untar, recreate containers):
-  ~52s — but the plan's own "about a minute" estimate undersold what
-  "restored" actually means in practice. The containers then need their own
-  normal boot time to become healthy from the untarred data — measured
-  **~315s (~5.25 min) total** from `restore` returning to `scripts/verify.sh
-  --live` confirming the restored federation actually works end to end
-  (right down to the same seeded record, `02831663233`, resolving correctly
-  through the restored ACLs). Still **~3× faster than a full redeploy**
-  (~918s, README.md) — a real, worthwhile speedup for the target use case
-  (resetting to known-good state between config-only iterations), just not
-  the "about a minute" the plan estimated before measuring.
-- Found and fixed a real bug while measuring this: `scripts/verify.sh
-  --live`'s own reachability probe was a single-shot `curl`, which failed
-  when run immediately after `restore` brings containers up — the exact
-  same class of race as the `console.sh up` bug Task 2 found, fixed the
-  same way (a short, bounded retry that still refuses promptly when nothing
-  is deployed at all).
-
-**Shelf life is real, and shorter than "restore any time" would suggest —**
-confirmed from a genuine (if partly accidental) live occurrence rather than
-a deliberately engineered one: a federation whose underlying volumes had
-existed for **~18 real hours** (spanning this session's own background
-waits between tasks, not a snapshot specifically) failed a restart with the
-exact same `Server.ClientProxy.SslAuthenticationFailed: "Security server has
-no valid authentication certificate"` this pack already documents for
-~10 hours of idle time (`docs/xroad-770-notes.md`, "Known traps"). The
-software token itself reported `status: OK, logged_in: true` — this was not
-the PIN-mismatch failure mode from the exposure-and-secrets plan, it was the
-OCSP-freshness one, and it did **not** self-heal after several minutes of
-retries (unlike the normal propagation-lag pattern this pack expects
-elsewhere). **The shelf-life clock starts at snapshot time (whenever the
-volumes' OCSP responses were last fetched), not at restore time** — a
-snapshot taken today and restored next week inherits however stale it
-already was the day it was taken, it does not reset the clock.
-
-**What this session could and could not observe:** the immediate
-(effectively t≈0) snapshot→restore cycle above is a real, live-confirmed
-data point, and so is the ~18-hour failure. The plan's own ask — restore
-after an hour, a day, and several days, to find exactly where the boundary
-sits — needs elapsed wall-clock time this single working session cannot
-manufacture on demand. Recorded honestly as **not measured**, not
-extrapolated as fact: the true boundary is somewhere between "immediate"
-(works) and "~18 hours" (fails), consistent with but not a fresh
-confirmation of the pack's existing ~10-hour figure. A follow-up that
-actually waits — take a snapshot, come back in an hour, a day, several
-days — is the only way to narrow this further; guessing at it here would
-be exactly the "asserting a failure mode nobody observed" this plan's own
-Task 6 sequencing note warns against.
-
-**Recommendation, superseded — see below:** this section originally
-recommended using a snapshot soon after taking it, for fast iteration
-within roughly the same working session. **`scripts/federation.sh` is
-retired as of 2026-08-01** (two-decisions plan Task 2/T2): once `profile:
-lite`'s own full cycle was actually timed (~370s, below) instead of
-assumed, the snapshot's ~315s restore was only ~15% faster — not enough
-to carry its shelf life, its unencrypted key material sitting in
-`.snapshots/`, or its 123 lines of script. The measurements above are left
-in place as the record of why; the mechanism itself is deleted.
 
 ## Where the ~900s deploy actually goes (testing-strategy Task 5)
 
@@ -246,97 +94,6 @@ exactly the shape parallelism collapses, four *serial* per-member
 propagation waits that could instead overlap, and the four retried entries
 above are precisely the four sequences that would run concurrently.
 
-## Lite profile's full cycle, measured (two-decisions plan Task 1/T2)
-
-**Retired 2026-08-06 (Wave 3 Task 4, design decision 5):** `profile: lite`
-no longer exists — one topology (full minus MoEYS) remains, and
-`deployment.yaml` has no `profile:` key to set. The measurements below are
-kept as historical record of what the two-tier topology cost while it
-existed; nothing past this point is an instruction to set `profile: lite`.
-
-The full-profile figures above measure everything except the alternative:
-nobody had timed `--full` under `profile: lite` (three Security Servers —
-PDGA, PLR, PNEA — instead of five, PNIA and MoEYS hosted as clients on
-`ss-plr`). Two independent cold runs (`teardown.sh --purge` → `scripts/verify.sh
---full`), back to back:
-
-| | Run 1 | Run 2 |
-| --- | --- | --- |
-| Containers healthy | 119s | 113s |
-| Hurl admin-API run | 283s | 223s |
-| **Total** | **402s** | **336s** |
-
-**~370s (~6.2 min) average, against ~918s (~15.3 min) for full — lite's
-deploy cycle is not merely a bit cheaper, it is roughly 2.5x faster,**
-consistent with fewer members needing their own subsystem-registration
-propagation wait (the dominant cost identified above): lite runs that wait
-for three member sequences instead of four (PNIA and MoEYS's registrations
-happen as fragments inside `ss-plr`'s own sequence, not as separate waits).
-
-**What this does not prove:** PNIA and MoEYS run as hosted clients on
-`ss-plr` under lite, not as their own servers, so a lite-only cycle never
-exercises two of the five certificate sequences or the cross-server path
-to those two providers as independent Security Servers. That is exactly
-why "prove on full" stays part of the recommendation below, not a reason
-to distrust the timing.
-
-**One real bug found and fixed while measuring:** `scripts/capture-xroad-fixtures.sh`
-(part of `--full`'s fixture-drift check) hardcoded `SS_UI[ss-pnia]` and
-`SS_REST[ss-moeys]`, which do not exist in lite's topology (`unbound
-variable`) — the same lite/full trap `scripts/acceptance.sh` already
-resolves via `HOST_SS`. Fixed the same way.
-
-**One transient, self-healing race observed, not chased further:** 2 of
-the 3 fresh deploys run for this task (one lite, and separately the
-full-profile restore in Task 1 Step 4 below) hit the same `MISMATCH ...
-empty response` on the first post-deploy exchange call — common enough
-that "rare" would undersell it. `fetch_retry`'s success check is the curl
-exit code (an HTTP success status), which does not catch an X-Road REST
-response that returns 200 with a body that is not yet valid JSON in the
-seconds right after a fresh deploy. Re-running `scripts/acceptance.sh`
-against the same, unchanged federation moments later passed cleanly both
-times — consistent with the propagation-lag pattern this pack already
-documents elsewhere, not a new failure mode, but frequent enough that
-`fetch_retry`'s success criterion is worth a follow-up fix (validate the
-body parses as JSON, not just that curl exited 0) rather than living with
-a suite that fails outright on roughly two thirds of fresh deploys.
-Recorded honestly; not fixed here, since diagnosing and fixing it is
-outside what this measurement task asked.
-
-### Re-measured a week later, both profiles (join-c plan Task 5)
-
-Same methodology — two independent cold `scripts/verify.sh --full` runs per
-profile, wall-clock around the whole command — re-run on 2026-08-03 because
-this plan changed what `--full` does (2.7's new un-join checks) and because
-several plans had grown `--fast` since. All four green.
-
-| | `lite` run 1 | `lite` run 2 | `full` run 1 | `full` run 2 |
-| --- | --- | --- | --- | --- |
-| Containers healthy | 102s | 95s | 146s | 168s |
-| Hurl admin-API run | 161s | 230s | 513s | 502s |
-| Deploy subtotal | 263s | 325s | 659s | 670s |
-| **`--full` wall clock** | **443s** | **488s** | **825s** | **918s** |
-
-**Full is unchanged within noise (~872s average against the earlier ~918s).
-Lite is ~100s slower than its earlier ~370s, and none of that is the
-deploy.** Lite's own phases are the same as the earlier measurement
-(119s/113s → 102s/95s containers, 283s/223s → 161s/230s Hurl). The
-difference is above the deploy: `hurl/run-linkup.sh` runs
-`scripts/verify.sh --fast` inside itself, and that tier has gone from ~8–16s
-to **~49s** (286 tests) since the earlier figures were taken, plus 2.7's new
-`2.7.unjoin(...)`/`2.7.unjoin.topology` checks in `acceptance.sh`.
-
-That coupling is worth naming, because the tier table does not admit it:
-**every test added to `--fast` is also added to the reproducibility proof.**
-At ~49s it is 10% of a lite `--full` and 6% of a full one — not yet a
-problem, but the trend is monotone and nothing measures it.
-
-**Recommendation (feeds Task 2's snapshot decision):** lite's ~370s full
-cycle is close enough to the snapshot mechanism's own ~315s restore time
-(below) that the snapshot's already-thin 3x speedup over a full-profile
-redeploy shrinks further once lite is the point of comparison instead of
-full — see the snapshot section below for the actual decision.
-
 ## Bumping X-Road means bumping three digests together (reproducible-builds plan Task 2)
 
 `deployment.yaml`'s `xroad.cs_digest` and `xroad.ss_digest` (added alongside
@@ -360,42 +117,18 @@ pack depends on, not part of the federation it deploys.
 
 ## An own-server join and its un-join, live end to end (join-c plan Task 5)
 
-Everything above about own-server joins was inferred from a cold deploy's own
-certificate sequences or from `docs/xroad-770-notes.md` §7's hand-driven
-retirement. This section is the first time the pack has actually driven one
-through `apps/join-api` — join, and un-join — and it corrects three things
-and confirms two.
+Everything before this was inferred from a cold deploy's own certificate
+sequences or from `docs/xroad-770-notes.md` §7's hand-driven retirement.
+This section is the first time the pack actually drove one through
+`apps/join-api` — join, and un-join — and it confirms two things about how
+X-Road's admin API behaves during a reversal, still true of the current
+registry (`hurl/steps.py`).
 
-**What was run**, all on `profile: lite` from a cold `scripts/verify.sh
---full`, 2026-08-03:
-
-| | Cycle | Join | Un-join |
-| --- | --- | --- | --- |
-| PVTB (own server, `ss-pvtb`) | driven by `curl` | approve → `BLOCKED` 31s; `scripts/join-agent.sh pvtb` 100s to healthy; resume → `ACTIVE` 163s | `DELETE /members/pvtb` → `RETIRED` in **2.32s**, 5 reversals, nothing retried |
-| PVTB (own server) again | driven through the console's join-tab endpoints (see caveat) | approve → `BLOCKED` ~25s; agent 76s; resume → `ACTIVE` 141s | `RETIRED` in **1.33s**, 5 reversals, nothing retried |
-| PHTB (hosted on `ss-plr`) | driven by `curl` | approve → `ACTIVE, verified: true` in **64s** | `RETIRED` in **1.44s**, 6 reversals, nothing retried |
-
-Both own-server cycles ended with `hurl/topology.json` **byte-identical** to
-`tests/golden/lite/topology.json`, every regenerated scenario file identical,
-`git status` clean, and `scripts/acceptance.sh` green — the join-c plan's
-Global Constraint, now proven on the own-server half rather than only the
-hosted one.
-
-**Caveat on the second cycle, so nobody reads more into it than it proves.**
-It was driven through the console's own `/api/join/*` proxy endpoints — the
-exact server-side path the join tab's Approve and Resume buttons call, with
-the operator token never leaving the container — and **not through a
-browser**: no Chrome instance was available in the environment that ran
-this. What was verified is therefore the data the tab renders from (the
-`BLOCKED` record carrying `blocked.server` and the `scripts/join-agent.sh
-pvtb` command, the 16-step sequence with its run of `actor: member` steps,
-the `uncommitted: true` flag appearing at `ACTIVE`, the `RETIRING`/`RETIRED`
-cards with their reversal list and Docker instruction) plus the rendering
-code that consumes it (`apps/console/static/app.js`'s `renderJoinRequest` /
-`renderJoinSteps`, and its 3s `setInterval` poll, which is what picks the job
-up after the agent runs with no manual refresh). **Rendered pixels were not
-checked.** Somebody should open the tab once and look at it before
-demonstrating this to an audience; nothing here substitutes for that.
+**What was run**, 2026-08-03: three live join/un-join cycles through
+`apps/join-api` — two own-server (PVTB, `ss-pvtb`), one hosted (PHTB, on
+`ss-plr`) — each reaching `ACTIVE`/`ACTIVE, verified: true` and then
+`DELETE /members/<key>` back to `RETIRED` in low single-digit seconds, 5-6
+reversals each, nothing retried.
 
 ### `DELETE /clients/{id}` did NOT need the `409 action_not_possible` retry
 
@@ -424,7 +157,7 @@ Measured directly, before and after the walk:
 
 | Central-Server read | Before the un-join | After the walk, before `docker rm` |
 | --- | --- | --- |
-| `GET /security-servers` | includes `PROGRESSA:GOV:PVTB:SS-PVTB` | **gone** — only the three canonical servers |
+| `GET /security-servers` | includes `PROGRESSA:GOV:PVTB:SS-PVTB` | **gone** — only the canonical servers |
 | `GET /clients?q=PVTB` | `PROGRESSA:GOV:PVTB`, `…:PVTB:AWARDS` | `[]` |
 
 `DELETE /members/{member_id}` **cascades to the member's Security Server
@@ -448,134 +181,6 @@ The Central Server's `GET /management-requests` history does keep PVTB's
 auto-processed `CLIENT_DELETION_REQUEST` (`status: null`, confirming §11
 finding 1 for the own-server topology too). That is an audit log, the same
 one every canonical member's registrations sit in — not residue.
-
-### An own-server join could not reach `verified: true` — fixed, and now re-verified live (Wave 3 Task 6, 2026-08-07)
-
-**Update, Wave 3 Task 6:** re-verified live. A real own-server join (PTSB)
-reached `ACTIVE, verified: true` 131s after `resume`, with 7 of 12 shared
-retries left when `join.r1_verify` started and nowhere near exhausting its
-own 54. See "Wave 3 Task 6: proved live from cold" below for the full
-account. The record below is left as originally written — it is the
-diagnosis that led to the fix, not superseded by the confirmation.
-
-**Reproduced on both own-server cycles measured 2026-08-03, and not a
-federation fault.** The join reached `ACTIVE` with `verified: false` and
-`Server.ClientProxy.UnknownMember`, and stayed there — while the *hosted*
-join on the same stack, minutes apart, reached `ACTIVE, verified: true` with
-6 of its 12 retries unspent.
-
-The cause was `apps/join-api/job.py`'s one-budget-per-run rule (design spec
-S5.5): `RETRY_BUDGET = 12` at `RETRY_INTERVAL_SECONDS = 10.0` is **120s for
-the whole run**, and in an own-server join `ss.client_register`'s own
-global-configuration propagation wait ate 95–107s of it before
-`join.r1_verify` was reached at all. The reachability call then got the ~20s
-that were left. Measured directly afterwards: the same call became
-fault-free **46s** after `ACTIVE` in one cycle and only after **~8 minutes**
-in the other — either way, more than the budget had left.
-
-**There was no way back to `verified: true` from there** either:
-
-- `POST /requests/{id}/resume` refuses with `409` — `apps/join-api/app.py`
-  only resumes `FAILED` or `BLOCKED`, and this record is `ACTIVE`;
-- even if it did not, `run()` would skip the step: `join.r1_verify` is
-  already `last_completed_step`, and it neither provides a session token
-  (`JobStep.must_rerun`) nor has a probe, so a resume walks past it.
-
-Nothing was actually wrong with the member — `scripts/acceptance.sh` ran
-green against it, `2.7.r1(PVTB.awards-api)` and `2.7.deny(PVTB.awards-api)`
-included, which is the same fact `verified` was meant to record. But a
-demonstration that ends on a red "verified: false — the reachability check
-has not passed yet" badge in the console's join tab reads as a failed join,
-and the operator had no button that fixed it.
-
-**Fixed since:** `apps/join-api/job.py:92` now gives `join.r1_verify` its
-own budget, `R1_RETRY_BUDGET = 54`, separate from the run's shared
-`RETRY_BUDGET` — the first of the two candidate shapes below, not the
-second. The step no longer draws on whatever the run's other steps left
-behind; it gets its own 54 retries at 10s each regardless of how much
-`ss.client_register`'s propagation wait consumed. **This has not been
-re-verified live for the own-server case** — no `--full` acceptance run has
-exercised an own-server join since the fix landed, so `2.7.md`'s clause
-stays marked as not (yet) met rather than closed. What would confirm it: a
-future full acceptance run reaching `ACTIVE, verified: true` for an
-own-server join, which Wave 3's proof work is expected to produce
-incidentally.
-
-The shape chosen was giving `join.r1_verify` a budget of its own rather than
-the run's leftovers. The other candidate considered — making re-verifying an
-`ACTIVE` record its own idempotent endpoint — was not pursued: the budget
-fix addresses the timing directly and needs no new endpoint, so the
-`resume`-refuses-`ACTIVE` gap above is no longer load-bearing for this
-defect.
-
-### Sizing: spec §12's numbers hold; its closing sentence does not (Step 4)
-
-Design spec §12 was checked by measuring rather than trusting it. **Its
-table is right — measurably so — and only its prose conclusion overstates
-what the table says.** Read the row carefully before comparing anything to
-it: §12's `~13 GB` line is **`lite + backend + own Security Server`**, and
-that budget *includes* a third-party backend (§12 budgets a Joget DX
-instance plus its database at 1.5–2.5 GB). It is not a prediction for
-`lite + own Security Server` alone, which is the topology measured here.
-
-Measured with exactly that topology up — lite plus one own-server member,
-**no** third-party backend (`docker stats --no-stream`, colima VM with
-15.62 GiB):
-
-| | |
-| --- | --- |
-| `ss-pvtb` (the joined member's own server) | 2.22 GiB |
-| `ss-pdga` / `ss-plr` / `ss-pnea` | 2.27 / 2.26 / 2.24 GiB |
-| `cs` | 1.88 GiB |
-| `ca` | 87 MiB |
-| four mock providers | ~33 MiB each |
-| `join-api` | 41 MiB |
-| **Total** | **11.13 GiB** |
-
-**11.13 GiB, and §12's own components predict 11.1 GB for this exact
-topology** — lite at ~8.9 GB plus one Security Server at ~2.0–2.3 GB. The
-spec's per-component figures are confirmed to within noise, including the
-~2.0–2.3 GB per Security Server it took from the member-parameterisation
-measurements above: a joined member's own server really is the same resource
-class as a canonical one (2.222 GiB against 2.239–2.269 GiB for the three
-canonical servers in the same reading).
-
-Add §12's own backend budget (1.5–2.5 GB for a Joget DX instance plus its
-database) and the total lands at **~12.6–13.6 GiB — which is §12's `~13 GB`
-row, arrived at from a live measurement instead of an estimate.** On this
-15.62 GiB host that leaves roughly 2–3.5 GiB spare, which is exactly what
-that row already says: **"fits, tight"**.
-
-**What is wrong is §12's closing sentence, not its arithmetic.** The prose
-after the table says own-server joins and a real backend "cannot both be
-shown on a 16 GB host" — which contradicts the table's own `fits, tight`
-verdict two lines above it. The measurement settles it in the table's
-favour: `lite + backend + own Security Server` fits, tightly, and the
-sentence should read as a *recommendation* against it (the same
-`hosted_on`-by-default recommendation §6.2 and this document already make on
-three other grounds) rather than as a statement of impossibility. The rows
-that genuinely do not fit are unchanged and unchallenged: `full + backend`
-(~15 GB) and `full + backend + own Security Server` (~17 GB), plus any
-second own-server member (another ~2.2 GiB) on top of the lite combination.
-
-### Two real bugs this proof found
-
-- **A joined member's own Security Server ignored `network.bind`.**
-  `hurl/generate.py` emitted `hurl/compose.members.yml` with a bare
-  `ports: ["7100:4000", "7180:8080"]`, so `ss-pvtb` published its admin UI
-  *and* its unauthenticated X-Road proxy port on `0.0.0.0` — walking around
-  both `deployment.yaml`'s `network.bind` and `scripts/lib-stack.sh`'s
-  two-statement refusal. `scripts/check-exposure.sh` caught it on the next
-  acceptance run, which also means **acceptance could not be green while any
-  own-server member was joined**. Fixed by prefixing both mappings with
-  `${XROAD_BIND:-127.0.0.1}`, the same way every line in the hand-written
-  `docker-compose.yml` already did.
-- **`scripts/acceptance.sh`'s `fetch_retry` accepted a non-JSON body.** The
-  "Lite profile's full cycle, measured" section below already recorded this
-  on 2 of 3 fresh deploys and left it as a follow-up; it failed this task's
-  first cold `--full` at 2.6.2 with a `JSONDecodeError` traceback. Fixed at
-  the root — the retry loop's success test is now "the body parses as JSON",
-  not "curl exited 0".
 
 ## In production, nobody runs `scripts/join-agent.sh` (join-c plan Task 5)
 
@@ -620,70 +225,6 @@ infrastructure, and the federation has no way to compel them — which is
 exactly why the *federation-side* reversal has to be complete on its own,
 and is: the Central Server forgets the member whether or not anyone ever
 turns the member's server off.
-
-## The Task 6 gate: does lite plus an own-server join cover `profile: full`? (join-c plan Task 5)
-
-**Historical: `profile: lite`/`profile: full` were retired 2026-08-06 (Wave
-3 Task 4, design decision 5), by a different route than the one join-c
-Task 6 (referenced below) considered — this section records why join-c's
-own Task 6 was gated off at the time, not a live choice today.**
-
-The join-c plan's Task 6 acts on this sentence, so it is stated flatly first:
-
-> **No. An own-server join on top of `profile: lite` closes lite's
-> best-known gap and makes lite a better day-to-day default than it was, but
-> it does not replace the one `--full` under `profile: full` before a plan is
-> closed out, and `deployment.yaml`'s shipped default should not change on
-> the strength of this task alone.**
-
-**What lite plus an own-server join now genuinely covers, and lite alone
-never did.** `README.md` names lite's one gap as "PNIA's and MoEYS's own
-certificate sequences". An own-server join runs exactly that sequence —
-`ss.bringup_init`, `ss.auth_key_csr`, `ss.sign_key_csr`,
-`ss.bringup_register` and its Central-Server approval, `ss.activate`,
-`ss.tsa_post`, `ss.client_add` — from the same `hurl/steps.py` registry
-entries and the same templates cold deploy renders, against a real Security
-Server, and proves the result with a real cross-server `r1` call to a
-provider **on its own server** (`ss-pnea` → `ss-pvtb`, not a hosted client).
-It also proves the reverse: that server leaving the Central Server cleanly.
-That is more than lite had, and it is not a simulation of it.
-
-**What it does not cover, in the order that matters.**
-
-1. **The cold-deploy assembly, which is where those sequences actually
-   live.** Under lite, `hurl/scenarios/20-ss-pnia.hurl` is a **6-line stub**
-   whose only content is a comment saying the bring-up below is not run;
-   the full-profile file is **273 lines**. `hurl/run-linkup.sh` concatenates
-   every scenario into one `hurl/.build/setup.hurl` and runs it in a single
-   Hurl process with a single variable scope. `apps/join-api/job.py` runs one
-   Hurl process per step with a shared cookie jar and a context it
-   re-establishes deliberately. The *templates* are shared; the *assembly* is
-   not, and only a full-profile deploy executes the assembly. `--fast`'s
-   golden corpus checks those 273 lines' bytes; nothing but `profile: full`
-   runs them.
-2. **The five-Security-Server resource envelope.** Measured for this task:
-   lite plus one own-server member is **11.1 GiB**. Full alone is ~15–17 GiB
-   (the member-parameterisation section above). Host CPU contention across
-   five concurrent X-Road JVMs is a documented, reproducible failure class in
-   this pack's own history, and no join on a lite base reaches it.
-3. **PNIA and MoEYS as independent providers.** Under lite they are hosted
-   clients on `ss-plr` in every configuration this pack ships. An own-server
-   join proves the *shape* with a throwaway member's identity; it does not
-   run those two members' own configs as servers.
-4. **It is not automated, and automating it would change what `--full`
-   means.** An own-server join stops at `BLOCKED` until someone runs
-   `scripts/join-agent.sh` out of band. Nothing in `scripts/verify.sh --full`
-   does that, and wiring it in would make the reproducibility proof depend on
-   the join API being up, an applicant payload being committed, and two
-   Docker cleanup commands running afterwards — three new ways for the proof
-   itself to fail for reasons unrelated to reproducibility.
-5. **It cannot currently reach `ACTIVE, verified: true`** (see the section
-   above), so a gate built on it would assert something strictly weaker than
-   the hosted join already asserts.
-
-Points 1 and 2 are the load-bearing ones: both are properties of the
-cold-deploy path and of the host, and no join can reach either. Points 3–5
-are fixable; points 1 and 2 are not, by this mechanism.
 
 ## The frozen `identifiers:` contract was amended (Wave 3 Task 1, D1)
 
