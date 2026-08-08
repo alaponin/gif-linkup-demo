@@ -429,6 +429,48 @@ Two carry-overs from §7 that this spike does **not** overturn:
   slower than its six round trips, subject to finding 3's open question about
   the `DELETE /clients/{id}` window.
 
+## 12. Auto-approval: no admin-API route, `[center]` section, restart-time only
+
+Spike (`docs/decisions/superpowers/plans/2026-08-08-kp2-approval-policy-spike.md`),
+checked against the running `cs` container rather than assumed.
+
+- **No admin-API route.** The Central Server's own `GET /api/v1/openapi.yaml`
+  (68 paths, fetched live) has nothing under `/system/*` or anywhere else for
+  a settings/system-parameters/management-request-policy endpoint. The only
+  `/management-requests` operations are list, get and
+  `POST .../{id}/approval` — approving one request at a time, not switching
+  the policy. Setting auto-approval is a `local.ini` edit, full stop; there
+  is no generated-call alternative to cost against the Wave 7 branch.
+- **The packaged file, read from the container, not memory.** `cs`'s
+  `/etc/xroad/conf.d/local.ini` at this deployment carries
+  `[admin-service]`, `[configuration-client]`, `[registration-service]`,
+  `[management-service]` and `[signer]` sections — no `[center]` section,
+  because none of the three auto-approve flags are set (this stack still
+  approves explicitly). Decompiling the shared
+  `ee.ria.xroad.common.SystemProperties` class (present in every
+  `centralserver-*.jar`, `/usr/share/xroad/jlib/`) confirms the flag names
+  §8 already gave and resolves the section they belong under, which §8
+  didn't state: the fully-qualified keys are
+  `xroad.center.auto-approve-auth-cert-reg-requests`,
+  `xroad.center.auto-approve-client-reg-requests` and
+  `xroad.center.auto-approve-owner-change-requests` — `xroad.<module>.<key>`
+  is X-Road's standard mapping to INI `[<module>]` / `key`, so the section a
+  hand edit needs to add is **`[center]`**, matching no section currently
+  present in this file.
+- **Restart-time, not runtime.** The three flags are read by
+  `ee.ria.xroad.common.SystemPropertiesLoader`, which populates them as JVM
+  system properties once at process start; nothing in that class or its
+  neighbours in the jar (`SystemProperties`, `SystemPropertiesLoader$1`,
+  `SystemPropertiesLoader$FileWithSections`) implements a file watch or
+  reload path. `supervisorctl status` inside `cs` shows registration
+  requests are served by a separate `xroad-center-registration-service`
+  process, not the `xroad-center` (admin-service) process — that is the one
+  a `local.ini` edit needs restarting for the new value to take effect.
+  `automatic` is therefore a redeploy/restart-level choice, not a runtime
+  toggle: half of question 2 (what it saves) is answered before a single
+  join is timed — there is no scenario where flipping the switch mid-demo is
+  cheaper than restarting one container.
+
 ## Sources
 
 `nordic-institute/X-Road` at tag `7.7.0`: `development/hurl/scenarios/setup.hurl`,
