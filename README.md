@@ -130,8 +130,10 @@ approve → `ACTIVE` → `acceptance.sh` green → `member.sh list` → `member.
 remove` → regenerate → `acceptance.sh` green again, well under two minutes
 for the join step itself. `prompts/member.md`'s manual flow — running the prompt against an
 agency brief and committing what it produces — is still there for anyone
-without a running stack to submit against, or for a member type Plan B's
-join API doesn't cover (an own Security Server; Plan C). On a single-host demo
+without a running stack to submit against. `apps/join-api` itself covers both
+shapes of join: a hosted member (the default) and one that brings up its own
+Security Server (`security_server.own_server: true`, `runbook.md`'s "A join
+with the member's OWN Security Server"). On a single-host demo
 deployment, default a joining member to `hosted_on` an existing Security
 Server rather than its own (the join API does this by default —
 `configs/x-road-bus/join-policy.yaml`'s `default_hosting: hosted_on`): it costs zero

@@ -18,9 +18,8 @@ host, and run the once-only exchange that proves it. Demo only — see
   4-Security-Server topology (`docker stats --no-stream`: four Security
   Servers ~2.2–2.3 GiB each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB,
   two mock providers ~32 MiB each). Fits comfortably in 16 GB. There is one
-  topology (design decision 5): no smaller alternative to opt into — an
-  earlier 5-server topology including MoEYS measured ~13 GB before MoEYS was
-  retired.
+  topology: no smaller alternative to opt into — an earlier 5-server
+  topology including MoEYS measured ~13 GB before MoEYS was retired.
 - `curl`, `jq`, `python3` on the workstation.
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
@@ -111,13 +110,13 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   from `hurl/topology.json`.
 - **Remove:** `scripts/member.sh remove <key>` — deletes
   `configs/member-<key>/` and the `manifest.yaml` entry, regenerates.
-  Refuses on a canonical member (the five never renumber or leave). Does
+  Refuses on a canonical member (the four never renumber or leave). Does
   **not** touch a running federation: the member stays registered there
   until `scripts/teardown.sh --purge` — or until you un-join it properly
   (below), which calls this script for you at the end.
 - **Drift:** `scripts/member.sh drift <key>` — re-fetches a joined member's
   *current* OpenAPI spec and diffs its endpoint set against the baseline
-  captured at join time (design spec §2.4). No auth, no HTTP to the join
+  captured at join time. No auth, no HTTP to the join
   API — reads `out/join/*.json` and the live spec URL directly, works
   whether or not `join-api` is even running. The spec URL is an
   internal `linkup`-network hostname (`app-<key>:8000`), so this needs to
@@ -173,7 +172,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
 
     then **Resume** (the console's button, or `POST /requests/{id}/resume` —
     the same endpoint a `FAILED` job resumes through; there is no callback
-    and no work-order queue, by design: spec §6.1). A resume that still finds
+    and no work-order queue, by design). A resume that still finds
     the server absent goes back to `BLOCKED` rather than failing, as many
     times as it takes — `BLOCKED` never expires into `FAILED`. Prefer
     `hosted_on` unless the point of the demo is to show a server being stood
@@ -227,7 +226,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     which is what the raw fault text alone would suggest.
   - **A real bug this pack's own live proof found and fixed:** the
     `apps/join-api` container image (`python:3.12-slim`) shipped with no
-    `git` binary, but `writer.apply_real()`'s dirty-checkout guard (spec S9)
+    `git` binary, but `writer.apply_real()`'s dirty-checkout guard
     shells out to `git status --porcelain` against the mounted monorepo —
     every approval failed with a 500 until the Dockerfile installed it. If
     approving a request ever 500s with `FileNotFoundError: ... 'git'`
@@ -235,7 +234,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     first place to look.
   - **A long but not misconfigured `r1` URL:** a real third-party backend
     served under its own path prefix (Joget DX serves under `/jw/`, plus an
-    app and version segment, per spec §2.5/§14) combines with X-Road's `r1`
+    app and version segment) combines with X-Road's `r1`
     call form (`/r1/<instance>/<class>/<member>/<subsystem>/<service>/...`)
     to produce a long, ugly-looking consumer-side URL. That length is
     expected — X-Road's own `servers.url` from the joining member's OpenAPI
@@ -268,7 +267,7 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     reason: `manifest.yaml`'s `identifiers:` block is the frozen KP3/KP4
     cross-pack contract and a demonstration un-join must never change it.
   - **A member with its OWN Security Server leaves two Docker commands
-    behind.** The API never touches Docker (design decision 8, same split as
+    behind.** The API never touches Docker (same split as
     `scripts/join-agent.sh`), so the record carries the instruction and you
     run it: `docker rm -f <dns>` then `docker volume rm kp2-<key>-db
     kp2-<key>-conf kp2-<key>-archive`. Skip it and the next member to reuse
