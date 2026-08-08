@@ -977,14 +977,23 @@ processes, and `git status` on `configs/`/`manifest.yaml` came back clean
 afterward. No finding on the add-ons — this is the expected, unremarkable
 result the plan's Step 6 asked to have confirmed rather than assumed.
 
-**An unrelated, real bug this live proof found, not fixed (out of scope for
-this wave):** `POST /requests`'s JSON response embeds the computed
-`configs/`/`manifest.yaml` diff as a `diff` string containing literal,
-unescaped newline characters rather than `\n` — technically invalid JSON
-(both `python -m json.tool` and `jq` refuse to parse it; only a
-newline-tolerant regex extraction of individual fields worked around it
-here). `curl`'s own success and the console's client-side rendering both
-happen not to care, which is presumably why this has not surfaced before.
-Worth a fix in `apps/join-api/app.py`'s response construction, but unrelated
-to monitoring add-ons — noted here rather than filed nowhere, per this
-document's own purpose.
+**A suspected bug in `POST /requests`'s response, investigated and ruled
+out — false positive in the diagnostic tooling, not `apps/join-api`.** The
+first live join above appeared to return invalid JSON: capturing the
+response into a shell variable (`RESP=$(curl ...)`) and writing it out with
+`echo "$RESP" > file` produced a `diff` field with literal, unescaped
+newline bytes where `\n` should have been, and both `python -m json.tool`
+and `jq` refused to parse the result. Rather than patch `app.py`'s response
+construction on the strength of that alone, re-ran the same request writing
+the response straight to disk with `curl -o` (no shell variable in the
+path) and inspected the raw bytes: properly escaped, valid JSON, `\n`
+present as the two-byte sequence throughout. Bisected the difference by
+capturing into a variable again and comparing `echo "$RESP"` against
+`printf '%s' "$RESP"` byte-for-byte — `echo` was the one that mangled it.
+**Root cause: this session's shell is zsh, whose builtin `echo` interprets
+backslash escape sequences by default (unlike bash's), so `echo "$RESP"`
+silently rewrote every `\n` inside the JSON string into a real newline
+byte before it ever reached the file** — a defect in the diagnostic
+command, not in `apps/join-api`. No code change needed; recorded here
+because the wrong conclusion was reported first and the correction belongs
+next to it, not silently dropped.
