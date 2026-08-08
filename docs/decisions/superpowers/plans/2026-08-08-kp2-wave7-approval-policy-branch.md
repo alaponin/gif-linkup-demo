@@ -49,9 +49,25 @@ pack would be more "complete". The path names a service catalogue, a second
 Central Server and a trust-service SLA too; `docs/path-conformance.md` records
 those as named absences and that is a complete answer.
 
-> **Spike recommendation:** _(the spike writes it here — run / rewrite / close,
-> and why. If this line still reads like this, the spike has not been done and
-> this plan is not ready to start.)_
+> **Spike recommendation: close this plan unstarted.** No admin-API route
+> exists (`local.ini` plus a restart is the only path, so nothing here gets
+> cheaper), the technical saving is not a clean signal against this pack's own
+> retry budget (control and experiment landed within one retry interval of
+> each other), and — the strongest reason — the audit-trail argument for
+> *building* the switch does not hold either: the Central Server's own
+> records are byte-identical under both policies, so there is no evidence to
+> preserve by keeping `explicit` that automatic approval would remove.
+> `S3.4` stays a named absence with a measurement behind it
+> (`docs/decisions/xroad-770-notes.md` §12, `docs/production-delta.md`'s
+> control/experiment table, `docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md`
+> A8). One correction to §2's cost estimate below, in case this gate is
+> revisited: point 3 ("the spike observed this failing") is no longer
+> accurate — the experiment run reached `ACTIVE` through the existing
+> explicit-approval templates unmodified, self-healing a race at the
+> `WAITING` poll via the ordinary retry budget (1 of 12 spent) rather than
+> hard-failing. The two-template argument for Task 3/4's cost should be
+> re-examined before this plan is ever restarted, not carried forward as
+> given.
 
 ---
 

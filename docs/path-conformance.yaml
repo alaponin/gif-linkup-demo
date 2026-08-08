@@ -684,11 +684,22 @@ clauses:
     key in join-policy.yaml is gone -- approval mode was never that file's
     fact to state. The real one is federation-core.yaml's
     `policy.management_request_approval: explicit`, which check_policy()
-    genuinely enforces; nothing generates the automatic alternative.
+    genuinely enforces; nothing generates the automatic alternative. A spike
+    measured what the absent policy costs rather than leaving it unstated: no
+    admin-API route exists for it (a `local.ini` edit and a restart of the
+    Central Server's registration/management services is the only path), the
+    technical time saved is not a clean signal against this pack's own retry
+    budget, and -- contrary to this fact's own framing -- the Central
+    Server's audit surface (both its management-request records and its
+    access log) is byte-identical under either policy; what explicit
+    approval actually provides is this pack's own `decision_reference`, not
+    anything X-Road records.
   evidence:
     - {path: configs/x-road-bus/federation-core.yaml, symbol: management_request_approval}
     - {path: hurl/generate.py, symbol: check_policy}
     - {path: hurl/generate.py, symbol: JOIN_POLICY_KEYS}
+    - {path: docs/decisions/xroad-770-notes.md, symbol: restart-time}
+    - {path: docs/production-delta.md, symbol: decision_reference}
 
 - id: S3.5
   section: "3"

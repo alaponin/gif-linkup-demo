@@ -18,6 +18,7 @@
 | A5 | §2 G2 | Note that the hosting/role compatibility test has no mechanical form | Minor |
 | A6 | §7 | Permit a folder name other than `members/`, and state the rule the layout is *for* | Minor |
 | A7 | §6 | Strengthen the add-on argument with the counter-example it now has | Minor |
+| A8 | §3 | Correct the audit-log claim (measured, does not hold) and reframe the time saving as organisational, not technical | **Substantive** |
 
 ---
 
@@ -139,6 +140,24 @@ And add to the "Legacy backends" paragraph:
 
 ---
 
+## A8 — §3's approval-policy facts: the audit claim does not hold as stated (§3)
+
+**What v0.2 says.** Fact 1: *"automatic approval collapses days into seconds and moves the control to G0–G1, where arguably it belongs."* Fact 3, second sentence: *"Management-request origin IPs are now carried into the Central Server audit log, which is what makes an automated join auditable."*
+
+**What the evidence shows.** A spike (`docs/decisions/superpowers/plans/2026-08-08-kp2-approval-policy-spike.md`) measured both facts against a running Central Server rather than reading them. Fact 1's "days into seconds" is correct but easy to misread as a technical saving: a control run (explicit approval) and an experiment run (all three `[center]` auto-approve flags set, CS restarted) reached `ACTIVE` within one retry interval of each other, both inside this pack's own 12-retry shared budget — the seconds were already being spent under `explicit`, because this pack's own operator-approval call happens immediately after submission. There is no propagation delay for automatic approval to remove here; the days it collapses are the *organisational* wait for someone to be available to approve, which this demo cannot measure because it never has that wait.
+
+Fact 3's audit claim does not hold. Checked against the Central Server's own `GET /api/v1/management-requests/{id}` for a request approved explicitly and one approved automatically: both return the same shape — `id`, `type`, a *categorical* `origin` (`SECURITY_SERVER`/`CENTER`, not an address), `security_server_owner`, `status`, `created_at`. No IP field, no approver field, under either policy. The origin IP the fact refers to lives one layer down, in the registration/management service's plain access log (one `POST /managementservice/manage` line per join, an IP and a timestamp, correlatable only by matching the timestamp by eye) — and that line is written identically regardless of approval policy, since the Security Server still submits the same request either way. **Automatic approval does not remove anything from the Central Server's audit trail, because explicit approval was never adding anything there beyond what automatic approval also produces.** What an operator loses under an automatic policy is layer above X-Road entirely: an onboarding tool's own record of who decided and why — this pack's `decision_reference` is the concrete instance, and it exists only because a human called an approve endpoint with one.
+
+**Proposed amendment.** Replace fact 3's second sentence:
+
+> Management-request origin IPs are carried into the Central Server's plain access logs, not a structured audit trail — the same log line is written whether a request is approved manually or automatically, since it records the Security Server's submission, not the approval decision. Neither the admin API's `management-requests` records nor the access log carries an approver identity under either policy. An operator that needs to record *who* approved a join, and *why*, must keep that record in its own onboarding tooling — the choice is a time/control/**evidence** trade, and the evidence half is the onboarding tool's responsibility, not X-Road's.
+
+And append to fact 1:
+
+> This is a saving in *organisational* wait, not technical propagation time — a scripted or otherwise immediately-available approval step spends the same seconds either way. State it as: automatic approval removes the wait for a human to be available, not a wait X-Road itself imposes.
+
+---
+
 ## Two things v0.2 got right that are worth keeping unchanged
 
 Recorded because a review that only lists amendments misrepresents the document.
@@ -151,6 +170,6 @@ Recorded because a review that only lists amendments misrepresents the document.
 
 ## Recommended disposition
 
-A1 and A3 change what an implementer will build and what a tender can be marked against; they are the two worth carrying into v0.3 even if nothing else is. A2 changes what a funder is told. A4–A7 are clarifications that cost a paragraph each.
+A1 and A3 change what an implementer will build and what a tender can be marked against; they are the two worth carrying into v0.3 even if nothing else is. A2 and A8 change what a funder and an operator are told about a specific technical claim each — both corrections of record, not style. A4–A7 are clarifications that cost a paragraph each.
 
 None of the amendments arise from the implementation being incomplete. Every one arises from a place where a complete-and-live implementation met the clause and something other than the clause decided the outcome — which is the only thing a build pack can tell a framework that the framework could not have worked out on its own.
