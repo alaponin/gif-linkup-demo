@@ -115,7 +115,9 @@ module, never in the acceptance path, whose **4 · Join a member** tab is a
 thin, server-side-token-holding proxy onto `apps/join-api/` — module 2.7's own
 service, which validates and drives a real member join from a submitted
 payload to `ACTIVE` over the live X-Road admin API), `docs/` (production delta
-per Module 5.7; X-Road 8 note; what reading the 7.7.0 reference corrected).
+per Module 5.7; X-Road 8 note; what reading the 7.7.0 reference corrected;
+`deployment-targets.md` — the contract a `target:` other than `docker-local`
+would be written against).
 
 The number and identity of members is a property of `configs/member-*/` plus
 `manifest.yaml`'s `identity.members`, not of this pack's source code. There is

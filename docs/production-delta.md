@@ -11,6 +11,7 @@ ship the demo as production.
 | Demo shortcut (where) | Production requirement |
 | --- | --- |
 | Test CA as trust anchor (`configs/x-road-bus/federation-core.yaml`) | Accredited certification authority + real OCSP/TSA |
+| `scripts/lib-stack.sh` refuses a non-loopback `network.bind` outright while the Test CA (`ca`) is still part of the compose set -- no `acknowledge_public_exposure` setting can override it | A non-loopback target must replace the Test CA with an accredited CA before deploying, not just acknowledge the exposure -- see `docs/deployment-targets.md` |
 | Single Docker host, containers (`docker-compose.yml`) | Separate sized hosts per component, HA/redundancy |
 | Fixed CS admin creds `xrd/secret` (test image, cannot be rotated — not read from `.env`) | Hardened access, individual accounts, audit |
 | Loopback binding (`deployment.yaml`'s `network.bind`) is the *only* network control | Network segmentation, a reverse proxy terminating real TLS, and authenticated admin access — a bind address is not a substitute for any of these once the stack leaves one trusted host |

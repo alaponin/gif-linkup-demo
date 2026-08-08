@@ -61,6 +61,28 @@ export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
 case "$XROAD_BIND" in
   127.0.0.1|::1|localhost) ;;
   *)
+    # The Test CA cannot be acknowledged onto a public bind -- unlike the
+    # rest of this exposure, there is no legitimate reason to want it there.
+    CA_IN_COMPOSE=$(python3 - "$PACK_DIR/docker-compose.yml" <<'PY'
+import sys, yaml
+print('ca' in (yaml.safe_load(open(sys.argv[1])).get('services') or {}))
+PY
+)
+    if [ "$CA_IN_COMPOSE" = "True" ]; then
+      echo "lib-stack.sh: deployment.yaml sets network.bind=$XROAD_BIND with the Test
+CA (service \"ca\") still part of this stack. Refused -- no
+acknowledge_public_exposure setting can override this one.
+
+The xrddev-testca image's /testca/sign endpoint signs any CSR it is handed,
+with no authentication. On a non-loopback interface that turns the
+federation's own trust anchor into a public certificate factory: anyone who
+can reach the endpoint can mint a certificate this federation will accept as
+a member's identity.
+
+Replace the Test CA with an accredited CA before binding to anything but
+loopback -- see docs/deployment-targets.md." >&2
+      exit 1
+    fi
     ACK=$(yq_get "$DEPLOY_SPEC" network.acknowledge_public_exposure 2>/dev/null || echo false)
     if [ "$ACK" != "True" ]; then
       echo "lib-stack.sh: deployment.yaml sets network.bind=$XROAD_BIND without

@@ -3,6 +3,8 @@
 # git-committed. Do not hand-edit configs/*.yaml or hurl/scenarios/ to change
 # deployment shape; change this file and regenerate (hurl/generate.py).
 
+# Changing target away from docker-local? Read docs/deployment-targets.md
+# first -- it states what every other dimension below has to become.
 target: docker-local   # only supported value today. Future: itu-cloud, vm (PLAN.md §9)
 
 network:

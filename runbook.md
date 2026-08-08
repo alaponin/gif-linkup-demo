@@ -21,8 +21,20 @@ host, and run the once-only exchange that proves it. Demo only — see
   topology: no smaller alternative to opt into — an earlier 5-server
   topology including MoEYS measured ~13 GB before MoEYS was retired.
 - `curl`, `jq`, `python3` on the workstation.
+- **Host clock synchronised (NTP).** X-Road signs and timestamps every
+  message; a drifting clock produces failures that present as certificate
+  errors, not time errors. Check before deploying, don't just assume it:
+  `timedatectl status` (Linux, look for `System clock synchronized: yes`) or
+  `sntp -sS time.apple.com` / System Settings → Date & Time (macOS).
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
   (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
+- **Firewalled host, conference network, or air-gapped machine?** `deploy.sh`
+  pulls images from Docker Hub and `ghcr.io` as it needs them. Run
+  `scripts/preload-images.sh` first, while the host still has network, to
+  fetch every pinned image ahead of time. For a genuinely offline deploy,
+  `docker save`/`docker load` the images it pulled onto removable media —
+  the tarball is large. This does not cover `apps/mock-registry` (built
+  locally) or the Hurl runner image; see `docs/deployment-targets.md`.
 
 ## Steps
 
