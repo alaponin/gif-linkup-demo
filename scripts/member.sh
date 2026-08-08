@@ -34,16 +34,18 @@ USAGE
 cmd_list() {
   local topo="$PACK_DIR/hurl/topology.json"
   [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
-  python3 - "$topo" <<'PY'
+  local bind; bind=$(yq_get "$PACK_DIR/deployment.yaml" network.bind)
+  python3 - "$topo" "$bind" <<'PY'
 import json, sys
 topo = json.load(open(sys.argv[1]))
+bind = sys.argv[2]
 ports = {s["host"]: (s["host_ui_port"], s["host_proxy_port"]) for s in topo["security_servers"]}
 print(f"{'KEY':<8} {'ORIGIN':<10} {'SERVER':<10} UI              REST")
 for sub in sorted(topo["subsystems"], key=lambda s: s["member_code"]):
     key = sub["member_code"].lower()
     host = sub["hosted_on"]
     ui, rest = ports.get(host, ("?", "?"))
-    print(f"{key:<8} {sub['origin']:<10} {host:<10} localhost:{ui:<6} localhost:{rest}")
+    print(f"{key:<8} {sub['origin']:<10} {host:<10} {bind}:{ui:<6} {bind}:{rest}")
 PY
 }
 

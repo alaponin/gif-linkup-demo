@@ -41,7 +41,7 @@ mkdir -p "$OUT_DIR"
 PNIA_SS=${HOST_SS[PNIA:IDENTITY]}
 PLR_SS=${HOST_SS[PLR:ENROLMENT]}
 
-jar=$(api_key "localhost:${SS_UI[$PNIA_SS]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
+jar=$(api_key "${XROAD_BIND}:${SS_UI[$PNIA_SS]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
 token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
 RAW_TMP=$(mktemp -d)
 
@@ -54,26 +54,26 @@ _capture() {  # $1=name $2=context $3...=curl args (after -ksi)
 log "capturing read_acl_404"
 _capture read_acl_404 \
   "GET /clients/{id}/service-clients/{subject}/access-rights where subject is not a service-client on this resource at all" \
-  -b "$jar" -X GET "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${UNGRANTED_SUBJECT}/access-rights" \
+  -b "$jar" -X GET "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${UNGRANTED_SUBJECT}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}"
 
 log "capturing grant_409_duplicate"
 _capture grant_409_duplicate \
   "POST /clients/{id}/service-clients/{subject}/access-rights granting a right already held" \
-  -b "$jar" -X POST "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+  -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
 
 log "revoking, capturing revoke_409_not_found, then restoring the grant"
-curl -ksf -b "$jar" -X POST "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+curl -ksf -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
 _capture revoke_409_not_found \
   "POST /clients/{id}/service-clients/{subject}/access-rights/delete revoking a right already revoked" \
-  -b "$jar" -X POST "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+  -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
-curl -ksf -b "$jar" -X POST "https://localhost:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+curl -ksf -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
 
@@ -81,7 +81,7 @@ log "capturing exchange_access_denied"
 _capture exchange_access_denied \
   "GET /r1/.../identity-api/persons/{nin} from a caller (PLR:ENROLMENT) not granted access -- provider-side ACL denial" \
   -H "X-Road-Client: PROGRESSA/GOV/PLR/ENROLMENT" \
-  "http://localhost:${SS_REST[$PLR_SS]}/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/02831663233"
+  "http://${XROAD_BIND}:${SS_REST[$PLR_SS]}/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/02831663233"
 
 rm -rf "$RAW_TMP"
 

@@ -15,6 +15,12 @@ set -euo pipefail
 PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PACK_DIR"
 
+# lib-core.sh only, not lib-stack.sh: --fast must stay usable with no .env
+# and no Docker daemon, and lib-stack.sh's credential/bind checks would
+# refuse both. yq_get is all this needs, to reach a running stack at its
+# configured deployment.yaml network.bind instead of an assumed localhost.
+. "$PACK_DIR/scripts/lib-core.sh"
+
 SHIP_GATE="$PACK_DIR/../../ITU-Giga-KP-Plugin/skills/kp-solution-verify/scripts/check_pack.py"
 PYTEST="$PACK_DIR/.venv/bin/python3"
 
@@ -57,12 +63,13 @@ run_live() {
   # stopped-but-not-purged federation" path) without blurring that
   # distinction -- found live, a single-shot probe right after containers
   # come up failed on ones that were reachable seconds later.
+  local bind; bind=$(yq_get "$PACK_DIR/deployment.yaml" network.bind)
   local _reachable=0 _i
   for _i in 1 2 3 4 5 6; do
-    curl -sk --max-time 3 -o /dev/null https://localhost:4000 2>/dev/null && { _reachable=1; break; }
+    curl -sk --max-time 3 -o /dev/null "https://${bind}:4000" 2>/dev/null && { _reachable=1; break; }
     sleep 5
   done
-  [ "$_reachable" = 1 ] || fail "no federation reachable at https://localhost:4000 (waited 30s) -- deploy one first (hurl/run-linkup.sh), or run scripts/verify.sh --full. --live never deploys one itself."
+  [ "$_reachable" = 1 ] || fail "no federation reachable at https://${bind}:4000 (waited 30s) -- deploy one first (hurl/run-linkup.sh), or run scripts/verify.sh --full. --live never deploys one itself."
   run_fast
   log "acceptance.sh"
   "$PACK_DIR/scripts/acceptance.sh"
@@ -85,9 +92,10 @@ run_full() {
   # caller that brings the container up without --wait -- a recorded decision,
   # not an oversight -- and costs nothing extra: it succeeds on the first
   # curl once the container is already healthy.
+  local bind; bind=$(yq_get "$PACK_DIR/deployment.yaml" network.bind)
   local _i
   for _i in 1 2 3 4 5 6; do
-    curl -sf --max-time 3 http://localhost:8090/api/health >/dev/null 2>&1 && break
+    curl -sf --max-time 3 "http://${bind}:8090/api/health" >/dev/null 2>&1 && break
     [ "$_i" = 6 ] && fail "console health check still failing 30s after scripts/console.sh up"
     sleep 5
   done

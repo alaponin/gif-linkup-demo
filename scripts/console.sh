@@ -11,7 +11,7 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-stack.sh"
 
-CONSOLE_URL="http://localhost:8090"
+CONSOLE_URL="http://${XROAD_BIND}:8090"
 # --profile demo is additive to COMPOSE (lib-stack.sh); only console is ever
 # targeted below, so this never starts or restarts the federation itself.
 COMPOSE_DEMO=("${COMPOSE[@]}" --profile demo)

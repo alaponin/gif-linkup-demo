@@ -15,7 +15,7 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-stack.sh"
 
-JOIN_URL="http://localhost:8091"
+JOIN_URL="http://${XROAD_BIND}:8091"
 
 # The one thing join-api's /repo mount cannot carry on its own: in a git
 # WORKTREE the checkout's .git is a file pointing at an absolute host path

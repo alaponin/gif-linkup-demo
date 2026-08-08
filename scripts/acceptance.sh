@@ -82,11 +82,11 @@ check() { local id=$1 desc=$2 fn=$3
   if "$fn"; then log "PASS $id — $desc"; else fail "FAIL $id — $desc"; fi }
 
 # ---- 2.1 federation core -----------------------------------------------------
-CS_KEY=$(api_key localhost:4000 xrd secret)
+CS_KEY=$(api_key ${XROAD_BIND}:4000 xrd secret)
 check_21() {  # paths confirmed live at P0
-  api GET localhost:4000 "$CS_KEY" /initialization/status \
+  api GET ${XROAD_BIND}:4000 "$CS_KEY" /initialization/status \
     | jq -e '.instance_identifier=="PROGRESSA"' >/dev/null &&
-  api GET localhost:4000 "$CS_KEY" /member-classes \
+  api GET ${XROAD_BIND}:4000 "$CS_KEY" /member-classes \
     | jq -e 'map(.code)|index("GOV")!=null' >/dev/null
 }
 check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
@@ -125,8 +125,8 @@ done
 # here, same scope as before this generalisation.
 check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
   local ss=${HOST_SS[$1]} sub=${1##*:}
-  local key; key=$(api_key "localhost:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
-  api GET "localhost:${SS_UI[$ss]}" "$key" /clients \
+  local key; key=$(api_key "${XROAD_BIND}:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
+  api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" /clients \
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
 # Registration status is global-conf propagation, same asynchrony as the Hurl
@@ -158,12 +158,12 @@ done
 # so this is the one place that data is read for this purpose.
 check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service code, $4 = expected subjects (JSON array)
   local ss=$1 client_id=$2 svc=$3 want_json=$4
-  local key; key=$(api_key "localhost:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
-  api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients" \
+  local key; key=$(api_key "${XROAD_BIND}:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
+  api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients" \
     | jq -e --argjson want "$want_json" '([.[].id] | sort) == ($want | sort)' >/dev/null || return 1
   local subj
   for subj in $(printf '%s' "$want_json" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-    api GET "localhost:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients/${subj}/access-rights" \
+    api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients/${subj}/access-rights" \
       | jq -e --arg svc "$svc" '[.[].service_code] == [$svc]' >/dev/null || return 1
   done
 }
@@ -221,14 +221,14 @@ EN_PATH_TMPL="${_exchange[3]}"
 
 CONSUMER_MEMBER_SUBSYSTEM="${_exchange[0]//\//:}"; CONSUMER_MEMBER_SUBSYSTEM="${CONSUMER_MEMBER_SUBSYSTEM#*:*:}"
 BAD_MEMBER_SUBSYSTEM="${_exchange[1]//\//:}"; BAD_MEMBER_SUBSYSTEM="${BAD_MEMBER_SUBSYSTEM#*:*:}"
-PNEA_REST="http://localhost:${SS_REST[${HOST_SS[$CONSUMER_MEMBER_SUBSYSTEM]}]}"
+PNEA_REST="http://${XROAD_BIND}:${SS_REST[${HOST_SS[$CONSUMER_MEMBER_SUBSYSTEM]}]}"
 # Negative check goes through the SS that hosts the unauthorised caller (its
 # own server -- so the denial genuinely comes from the provider-side ACL, not
 # from the consumer's SS rejecting an unknown client). If that caller were
 # ever hosted (security_server.hosted_on), this would resolve to the host's
 # shared server instead.
 BAD_SS=${HOST_SS[$BAD_MEMBER_SUBSYSTEM]}
-BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
+BAD_REST="http://${XROAD_BIND}:${SS_REST[$BAD_SS]}"
 
 ID_URL="$PNEA_REST${ID_PATH_TMPL%/\{nin\}}"
 EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
@@ -603,7 +603,7 @@ if _selection_touches_27; then
   trap '"$(dirname "$0")/join.sh" down' EXIT
   "$(dirname "$0")/join.sh" up
 
-  check_271() { curl -sf "http://localhost:8091/health" | jq -e '.status=="ok"' >/dev/null; }
+  check_271() { curl -sf "http://${XROAD_BIND}:8091/health" | jq -e '.status=="ok"' >/dev/null; }
   check 2.7.1 "join-api deploys and reports healthy" check_271
 
   for _row in "${_27_ROWS[@]}"; do
@@ -614,8 +614,8 @@ if _selection_touches_27; then
       log "SKIP 2.7 r1(${code}.${svc}) -- ${good_pair} or ${bad_pair} not in this deployment's HOST_SS"
       continue
     fi
-    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
-    BAD_REST="http://localhost:${SS_REST[$BAD_SS]}"
+    GOOD_REST="http://${XROAD_BIND}:${SS_REST[$GOOD_SS]}"
+    BAD_REST="http://${XROAD_BIND}:${SS_REST[$BAD_SS]}"
 
     # "2xx" per acceptance/2.7.md's prose meant, in practice, "the call
     # traversed X-Road and reached the backend" -- true for job.py's own
@@ -654,13 +654,13 @@ if _selection_touches_27; then
       log "SKIP 2.7.unjoin(${code}) -- ${good_pair}, its authorised consumer before it left, is not in this deployment's HOST_SS"
       continue
     fi
-    GOOD_REST="http://localhost:${SS_REST[$GOOD_SS]}"
+    GOOD_REST="http://${XROAD_BIND}:${SS_REST[$GOOD_SS]}"
 
     # Clause 1. Absence on the CS is an EMPTY LIST, not a 404 -- there is no
     # GET /subsystems/{id} on the Central Server at all (405), so this read
     # is the only viable one (docs/xroad-770-notes.md #11 finding 4).
     check_unjoin_cs() {
-      api GET localhost:4000 "$CS_KEY" "/clients?q=${code}" | jq -e '.clients == []' >/dev/null
+      api GET ${XROAD_BIND}:4000 "$CS_KEY" "/clients?q=${code}" | jq -e '.clients == []' >/dev/null
     }
     # Clauses 2 and 3, both on the hosting Security Server -- skipped for an
     # own-server member, whose server went with it (retire_instruction()'s
@@ -675,10 +675,10 @@ if _selection_touches_27; then
       [ "$host_dns" != "-" ] || return 0   # own-server: its server is gone with it
       local ui=${SS_UI[$host_dns]:-} key token want
       [ -n "$ui" ] || return 1
-      key=$(api_key "localhost:${ui}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}") || return 1
-      api GET "localhost:${ui}" "$key" /clients \
+      key=$(api_key "${XROAD_BIND}:${ui}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}") || return 1
+      api GET "${XROAD_BIND}:${ui}" "$key" /clients \
         | jq -e --arg c "$code" 'map(select(.member_code == $c)) | length == 0' >/dev/null || return 1
-      token=$(api GET "localhost:${ui}" "$key" /tokens/0) || return 1
+      token=$(api GET "${XROAD_BIND}:${ui}" "$key" /tokens/0) || return 1
       want=$(python3 - "$PACK_DIR/hurl/topology.json" "$host_dns" <<'PY'
 import json, sys
 topo = json.load(open(sys.argv[1]))
