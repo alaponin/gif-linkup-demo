@@ -9,6 +9,16 @@
 x-sidecar: &sidecar
   # XROAD_SS_DIGEST (deployment.yaml xroad.ss_digest, C13) wins when set;
   # XROAD_VERSION is the plain-tag fallback.
+  # This is also where the Wave 5 monitoring add-ons are "installed": the
+  # NIIS Sidecar ships a slim tag (bare packages only) and a full tag with
+  # message logging + operational monitoring (xroad-opmonitor) +
+  # environmental monitoring (xroad-monitor) pre-installed and
+  # supervisord-managed, no separate admin-API call or env var involved
+  # (nordic-institute/X-Road-Security-Server-sidecar's
+  # security_server_sidecar_user_guide.md §1.1/§2.2). This line has never
+  # carried a "-slim" suffix, so every Security Server this pack brings up,
+  # including ss-pdga, already runs both add-ons today -- tests/test_addons.py
+  # asserts the tag stays that way.
   image: niis/xroad-security-server-sidecar:${XROAD_SS_DIGEST:-${XROAD_VERSION:-7.7.0}}
   environment: &sidecar-env
     XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
