@@ -1,0 +1,46 @@
+# DOCUMENT 2 of prompts/member.md, run against brief.md.
+# Written to configs/member-ptsb/ptsb.yaml.
+module: "ptsb"
+building_block: member-ptsb
+# Identity (code, name, subsystem, description) lives in the manifest entry
+# above, not restated here — a second copy is a copy that drifts.
+security_server:
+  code: SS-PTSB
+  dns_name: ss-ptsb
+  # PTSB runs no server of its own: its subsystem is a client on PLR's.
+  # hosted_on must name a real, unhosted host — ss-plr owns its own server.
+  hosted_on: ss-plr
+services:
+  - code: awards-api
+    # Spec URL only. The forwarding target, enabled state and TLS-verify are
+    # read from the spec's own servers.url — a copy here would drift.
+    spec_url: http://app-ptsb:8000/spec.yaml
+    lawful_basis: "[confirm: cite the article of the scholarships decree authorising disclosure to an examinations authority]"
+    access:                    # exactly what the brief names — PNEA only
+      - PROGRESSA/GOV/PNEA/EXAMS
+    sla:                       # Module 5.3's five terms plus a signatory
+      availability: "99.5% monthly uptime"
+      response_time: "500 ms at the 95th percentile"
+      support_hours: "08:00-17:00 on working days"
+      incident_response: "acknowledged within 4 working hours"
+      change_notice: "30 days for a breaking change"
+      signatory: "Head of IT, PTSB"
+semantic:                      # from configs/semantic/semantic-map.yaml
+  entity: award
+  key: nin
+  # Only what the stated purpose needs. The register's disbursement and bank
+  # fields are not here because verifying an award does not need them.
+  fields: [nin, award_id, program, year]
+  pattern: digital_registries_lookup
+backend:
+  # Demonstration answer: the mock backend accepts any call reaching it.
+  # A real joining member must not. Unread by the deploy path; required by
+  # the join API, which is what makes this document submittable as one.
+  auth: none
+member_requirements:           # Module 5.2's checklist, answered by PTSB
+  has_security_server: true
+  has_registered_identity: true
+  standards_portfolio_adopted: true
+  data_conformant: true
+  # lawful_basis absent: a provider states it per service, above.
+  technical_contact: "Head of IT, PTSB"

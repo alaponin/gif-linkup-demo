@@ -8,6 +8,8 @@ requires explicit operator approval — the same model
 already commits the federation to); this pack's own §2.3 (service-level vs
 endpoint-level access rights over a tool-generated OpenAPI spec, deferred —
 see `docs/production-delta.md` item 6)
+**Realises:** Module `join-member` (`video_ref: "?"`) — no Topic 5 subtopic
+covers this module yet; the decision is pending.
 
 ## Problem
 
@@ -66,7 +68,10 @@ Output only the YAML document.
 ## Inputs / outputs
 
 - **Inputs:** the X-Road management-request approval reference + this pack's
-  §2.3 note on service-level vs endpoint-level access rights.
+  §2.3 note on service-level vs endpoint-level access rights. Both are cited
+  above, so this prompt has no brief under `prompts/examples/` — a join
+  policy is the federation's own decision about everyone, not one agency's
+  description of itself, and there is no agency to write it.
 - **Output:** `configs/x-road-bus/join-policy.yaml`'s `join:` block — read by
   `apps/join-api/validate.py` (checks 4/6/10) and `hurl/generate.py`'s
   `check_join_policy()`. Not applied by `scripts/deploy.sh` like the other
@@ -86,3 +91,11 @@ more developed access-rights story (§2.3's deferred endpoint-level model),
 could set either differently without being wrong. Do not treat all four keys
 as equally open — the first two are a consistency check against the rest of
 the federation's own config, not a free choice each time this prompt runs.
+
+## Prove it
+
+- **Static** (`--fast`): `hurl/generate.py`'s `check_join_policy()` — it
+  refuses a policy whose `member_class` disagrees with the federation's own.
+- **Live** (`--live`): exercised by any join;
+  `acceptance/join-member.md` asserts against whatever has joined and passes
+  vacuously when nothing has (README.md's `--live` tier note).

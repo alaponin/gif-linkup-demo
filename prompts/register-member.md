@@ -6,6 +6,8 @@
 **Public spec:** NIIS X-Road member and subsystem registration; Security
 Server user guide (consumer connection types); OpenAPI 3 service
 descriptions; access rights (ACL)
+**Realises:** Module `register-member` (`video_ref` 5.4) — the
+production-grade form of subtopic 5.4's AI usage tip.
 
 ## Problem
 
@@ -95,3 +97,10 @@ Two failure modes, one per shape:
   list is the legal layer: it must match the decree's purpose limitation
   exactly, never the full identity record; a wrong member code here can
   route one citizen's data to a service that asked about another.
+
+## Prove it
+
+- **Static** (`--fast`): `python3 hurl/generate.py && scripts/verify.sh --fast`.
+- **Live** (`--live`): `acceptance/register-member.md`, plus
+  `acceptance/member.md`'s generic per-member check, which runs against every
+  member the topology declares rather than a named three.

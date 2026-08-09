@@ -7,6 +7,10 @@ code, lowercased; nothing hardcodes the set of keys this can be, see
 `identity.members.<key>` entry under `manifest.yaml`
 **Public spec:** NIIS X-Road subsystem registration; OpenAPI 3 service
 descriptions; access rights (ACL)
+**Realises:** no module of its own — this is the by-hand join, the path
+module `join-member` (`video_ref: "?"`) automates through the join API. It is
+the only prompt `manifest.yaml` binds to no module, deliberately: a member
+joining is not a curriculum module.
 
 ## Problem
 
@@ -68,7 +72,13 @@ DOCUMENT 2 — configs/member-<key>/<key>.yaml:
     (availability, response_time, support_hours, incident_response,
     change_notice) plus a signatory, reusing the same template for every
     service on the bus. Omit entirely for a consumer-only agency (no
-    services to attach one to).
+    services to attach one to);
+(7) backend.auth — how this agency's own backend authenticates calls arriving
+    from the Security Server: none, network_allowlist, or proxy_injected.
+    Nothing in the by-hand deploy path reads this, but the join API requires
+    it, so a Document 2 without it cannot be reshaped into a join request.
+    "none" is a demonstration answer only: a real backend must not accept an
+    unauthenticated call just because it arrived from the bus.
 
 Rules: every identifier is [confirm: verify against the live X-Road registry].
 Do not add fields the purpose does not need; do not widen the ACL beyond what
@@ -81,10 +91,7 @@ the brief names. Output only the two YAML documents.
   (name, code, subsystem, whether it runs its own server, what it publishes
   and to whom).
 - **Output:** append Document 1 under `manifest.yaml`'s `identity.members:`;
-  write Document 2 to `configs/member-<key>/<key>.yaml`. Then run
-  `python3 hurl/generate.py` — the new member is discovered from the
-  directory, not registered anywhere else. `scripts/member.sh list` shows it
-  once generated; `scripts/deploy.sh` brings it up.
+  write Document 2 to `configs/member-<key>/<key>.yaml`.
 
   This is the by-hand path. The same Document-2 payload (reshaped to the
   join API's `JoinPayload` schema, `apps/join-api/schema.py`) can instead be
@@ -114,3 +121,12 @@ There is no `scripts/member.sh add`: running this prompt and committing what
 it produces **is** how a member joins. `scripts/member.sh` only reports on
 the joined set and retires a member that turns out to be a throwaway (see
 `scripts/member.sh remove`) — it never writes member config by hand.
+
+## Prove it
+
+- **Static** (`--fast`): `python3 hurl/generate.py` — the new member is
+  discovered from the directory, not registered anywhere else — then
+  `scripts/member.sh list` to see it, and `scripts/verify.sh --fast`.
+- **Deployed:** `scripts/deploy.sh` brings it up.
+- **Live** (`--live`): `acceptance/member.md`'s generic per-member check;
+  `acceptance/join-member.md` if it arrived through the join API instead.

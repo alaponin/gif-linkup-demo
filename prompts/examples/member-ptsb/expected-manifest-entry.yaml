@@ -1,0 +1,12 @@
+# DOCUMENT 1 of prompts/member.md, run against brief.md.
+# Appended under manifest.yaml's identity.members: block — never under
+# identifiers.members, which is the frozen KP3/KP4 contract.
+ptsb:
+  code: PTSB
+  name: Progressa Tertiary Scholarship Board
+  subsystem: SCHOLARSHIP
+  subsystem_description: Scholarship award register
+  # Never canonical. A joined member states its origin explicitly; leaving
+  # this off defaults to canonical and a demonstration join would start
+  # looking like part of the frozen cross-pack contract.
+  origin: joined

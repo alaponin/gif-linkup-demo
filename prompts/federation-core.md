@@ -3,6 +3,8 @@
 **Building block(s):** x-road-bus
 **Produces:** `configs/x-road-bus/federation-core.yaml`
 **Public spec:** NIIS X-Road Central Server configuration (docs.x-road.global; niis.org); EIF Technical layer
+**Realises:** Module `federation-core` (`video_ref` 5.5) — the production-grade
+form of subtopic 5.5's AI usage tip.
 
 ## Problem
 
@@ -56,3 +58,10 @@ The instance identifier and member class are permanent join keys — every later
 config, and the KP3/KP4 packs, reference them. A wrong value here silently breaks
 every subsequent registration. Freeze them in `manifest.yaml` and confirm before
 deploy; never let the model invent replacement identifiers.
+
+## Prove it
+
+- **Static** (`--fast`): `python3 hurl/generate.py && scripts/verify.sh --fast`
+  — the config must render scenarios that reference no undefined variable.
+- **Deployed:** `scripts/deploy.sh`.
+- **Live** (`--live`): `acceptance/federation-core.md`.

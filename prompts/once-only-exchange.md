@@ -3,6 +3,8 @@
 **Building block(s):** x-road-bus
 **Produces:** `configs/x-road-bus/once-only-exchange.yaml`
 **Public spec:** X-Road Message Protocol for REST (r1); PAERA v1.0 §5.2 Principle #5 (Once-Only)
+**Realises:** Module `once-only-exchange` (`video_ref` 5.6) — the
+production-grade form of subtopic 5.6's AI usage tip.
 
 ## Problem
 
@@ -51,3 +53,9 @@ An acceptance that only proves the happy path is half a check. This config must
 carry the negative check (unauthorised caller denied) and the right-learner
 assertion (fields match the seeded record, not merely "data returned") — and a
 passing run proves this exchange only, not exchanges never tested.
+
+## Prove it
+
+- **Static** (`--fast`): `python3 hurl/generate.py && scripts/verify.sh --fast`.
+- **Live** (`--live`): `scripts/acceptance.sh` — `acceptance/once-only-exchange.md`
+  is the headline check, and the one the framework's own claim rests on.
