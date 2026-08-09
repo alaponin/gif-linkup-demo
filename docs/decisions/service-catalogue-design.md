@@ -1,10 +1,10 @@
 # Service catalogue — design
 
-**Status:** design, pre-implementation. Nothing described here is built yet.
+**Status:** built. This document says what the artefact *is* and why it takes
+this shape; whether each clause it touches is satisfied is
+`docs/path-conformance.yaml`'s answer, not this file's.
 **Driver:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md` A9.
 **Implementation plan:** `docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`.
-**Closes, when built:** `docs/path-conformance.yaml` G5.6, S6.2, S6a.4, and the
-larger half of S7.6.
 
 > **Status claims live in `docs/path-conformance.yaml`, not here.** This
 > document says what the artefact *is*; that file says whether it exists. No row
