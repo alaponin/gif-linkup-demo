@@ -19,6 +19,7 @@ import time
 import httpx
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 import journal as journal_mod
@@ -615,6 +616,27 @@ def post_join_reject(request_id: str, body: dict | None = None):
     return _proxy_join("POST", f"/requests/{request_id}/reject", json=body or {})
 
 
+class _RevalidatingStatic(StaticFiles):
+    """StaticFiles, but every asset revalidates.
+
+    FileResponse sends Last-Modified and no Cache-Control, which lets a
+    browser apply HEURISTIC freshness and serve app.js from cache without
+    asking. Across a `console.sh up --build` that means fresh index.html
+    with a stale app.js -- a new tab's button rendering against a script
+    that has no loader for it, which reads as a dead tab and survives a
+    plain reload. (JSON responses carry no Last-Modified, so they were
+    never heuristically cached; this is a static-asset fault only.)
+
+    no-cache, not no-store: revalidate every time, but the ETag
+    StaticFiles already emits still makes the answer a bodyless 304.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Mounted last so it never shadows an /api/* route -- StaticFiles(html=True)
 # serves static/index.html for "/" and any other unmatched path.
-app.mount("/", StaticFiles(directory=pathlib.Path(__file__).parent / "static", html=True), name="static")
+app.mount("/", _RevalidatingStatic(directory=pathlib.Path(__file__).parent / "static", html=True), name="static")

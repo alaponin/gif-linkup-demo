@@ -110,3 +110,31 @@ def test_layer_sources_name_a_file_and_the_string_it_holds():
 def test_layer_sources_are_empty_when_the_catalogue_is_unrendered(monkeypatch, tmp_path):
     monkeypatch.setattr(app, "PACK_DIR", tmp_path)
     assert app._layer_sources() == {}
+
+
+# -- static assets must revalidate --------------------------------------------
+
+
+def test_static_assets_carry_no_cache_so_a_rebuild_is_picked_up():
+    """FileResponse sends Last-Modified and no Cache-Control, which lets a
+    browser heuristically cache app.js and never ask again. Found live: after
+    a rebuild the page served fresh index.html (new tab button) against a
+    cached app.js (no loader for it) -- a dead tab that a plain reload does
+    not fix."""
+    client = _client()
+    for path in ("/", "/index.html", "/app.js", "/style.css"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert resp.headers["cache-control"] == "no-cache", path
+
+
+def test_revalidation_still_answers_304_rather_than_resending_the_body():
+    """no-cache means "ask", not "never cache" -- the ETag StaticFiles
+    already emits must still make the answer bodyless, or every page load
+    re-downloads every asset."""
+    client = _client()
+    first = client.get("/app.js")
+    again = client.get("/app.js", headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304
+    assert again.content == b""
+    assert again.headers["cache-control"] == "no-cache"
