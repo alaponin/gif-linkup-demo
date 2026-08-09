@@ -265,7 +265,7 @@ has not been passed, whatever the calendar says.
 | Hosting (G2) | Own Security Server vs hosted as a client; hosting compatible with the member's role | Operating Authority | passed -- [`05-registration.md`](05-registration.md)'s hosting row |
 | Certificates (G3) | CA/TSA issuance record, member-verified | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
 | Platform conformance (G4) | Add-ons installed; monitoring data arriving centrally | Operating Authority | add-ons confirmed per server (`acceptance/member.md`); no central collector -- see `docs/production-delta.md` |
-| Service conformance (G5) | Contract, SLA and ACL registered; a live response carries exactly the fields the contract declares | Operating Authority | mostly passed -- SLA (above, when published) and ACL ([`05-registration.md`](05-registration.md)) recorded here; contract and field conformance checked at join time but not copied into this record; no service-catalogue entry, no tier-1 BB pattern register -- see `docs/production-delta.md` |
+| Service conformance (G5) | Contract, SLA and ACL registered; a live response carries exactly the fields the contract declares | Operating Authority | mostly passed -- SLA (above, when published) and ACL ([`05-registration.md`](05-registration.md)) recorded here; contract and field conformance checked at join time but not copied into this record; catalogue entry per published service: {catalogue_status}; no tier-1 BB pattern register -- see `docs/production-delta.md` |
 | Go-live (G6) | Monitored first production transactions | Operating Authority | not implemented in this demo -- see `docs/production-delta.md` |
 | Retirement (GX) | Absent everywhere; message-log records retained for the statutory period | Operating Authority | written at exit by the API (`99-retirement.md`, once retired) -- the absence half is asserted (`acceptance/join-member.md`), the message-log retention half is unmet by demo teardown, see `docs/production-delta.md` |
 """
@@ -277,9 +277,9 @@ _ADMISSION_RECORDED = "decided outside this system; reference recorded in [`01-a
 def render_gates_table(has_services: bool, *, admitted: bool = False) -> str:
     """00-gates.md -- one table, not four near-identical stub files: every
     gate KP2 teaches or exceeds, with the file that proves it or a named absence pointing at
-    production-delta.md. Identical for every member except the SLA row
-    (whether this member published anything to sign one for) and the
-    Admission row (`admitted`: True for a member that joined through this
+    production-delta.md. Identical for every member except the SLA and
+    catalogue rows (both of which turn on whether this member published
+    anything at all) and the Admission row (`admitted`: True for a member that joined through this
     API and has a 01-admission.md; False -- including every canonical
     member, which never passed an admission -- keeps the named absence)."""
     sla_status = (
@@ -291,8 +291,15 @@ def render_gates_table(has_services: bool, *, admitted: bool = False) -> str:
             "§8 open question 5)"
         )
     )
+    catalogue_status = (
+        "[`04-catalogue/`](04-catalogue/)"
+        if has_services
+        else "nothing published, so nothing to catalogue"
+    )
     admission_status = _ADMISSION_RECORDED if admitted else _ADMISSION_NOT_IMPLEMENTED
-    return _GATES_TABLE.format(sla_status=sla_status, admission_status=admission_status)
+    return _GATES_TABLE.format(
+        sla_status=sla_status, catalogue_status=catalogue_status, admission_status=admission_status
+    )
 
 
 def _sanitize_cell(text: str) -> str:

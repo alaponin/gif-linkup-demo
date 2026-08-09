@@ -340,6 +340,23 @@ def test_render_gates_table_names_the_consumer_only_absence():
     assert "[`03-sla/`]" not in text
 
 
+def test_render_gates_table_points_g5_at_the_catalogue_but_keeps_the_pattern_absence():
+    """The entry closes half of G5's remaining gap; the tier-1 pattern
+    register is untouched and must still be named."""
+    g5 = next(line for line in writer.render_gates_table(True).splitlines()
+              if line.startswith("| Service conformance"))
+    assert "[`04-catalogue/`](04-catalogue/)" in g5
+    assert "no service-catalogue entry" not in g5
+    assert "no tier-1 BB pattern register" in g5
+
+
+def test_render_gates_table_does_not_link_a_catalogue_a_consumer_has_not_got():
+    g5 = next(line for line in writer.render_gates_table(False).splitlines()
+              if line.startswith("| Service conformance"))
+    assert "[`04-catalogue/`]" not in g5
+    assert "nothing to catalogue" in g5
+
+
 def test_render_requirements_record_shows_every_stated_item():
     payload = _payload()
     text = writer.render_requirements_record(payload.member_requirements)
