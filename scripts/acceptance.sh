@@ -766,7 +766,8 @@ if not (spec_file.startswith("/specs/") and csv_file.startswith("/data/") and ke
     sys.exit(0)
 
 spec = yaml.safe_load(open(f"{pack_dir}/apps/specs/{spec_file.removeprefix('/specs/')}"))
-schema = next(iter(spec["paths"].values()))["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+path_tmpl, path_item = next(iter(spec["paths"].items()))
+schema = path_item["get"]["responses"]["200"]["content"]["application/json"]["schema"]
 declared = set(schema.get("properties", {}))
 required = set(schema.get("required", []))
 
@@ -774,7 +775,15 @@ import csv as csv_module
 with open(f"{pack_dir}/apps/data/{csv_file.removeprefix('/data/')}", newline="") as f:
     key = next(csv_module.DictReader(f))[key_field]
 
-req = urllib.request.Request(f"{good_rest}{r1_path}{key}", headers={"X-Road-Client": client_header})
+# r1_path is the service ROOT (the call clause above needs exactly that, and
+# 404s by design). A key-specific call needs the resource path too, and that
+# comes off the same contract the declared fields do -- "/awards/{nin}",
+# "/persons/{nin}". Appending the key alone assumes every provider serves its
+# records at the service root, which none of them do.
+path_param = next(p["name"] for p in path_item["get"].get("parameters", []) if p.get("in") == "path")
+resource = path_tmpl.lstrip("/").replace("{" + path_param + "}", key)
+
+req = urllib.request.Request(f"{good_rest}{r1_path}{resource}", headers={"X-Road-Client": client_header})
 with urllib.request.urlopen(req, timeout=10) as resp:
     body = json.loads(resp.read())
 
