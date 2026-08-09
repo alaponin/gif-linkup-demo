@@ -62,14 +62,13 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   un-join, live end to end".
 
   There is one topology — no lite/full split to develop against or measure
-  separately; run `--fast` after each step and one `--full` before closing
-  out a plan. **When to run which, inside a plan:** `--fast` after each
-  step (it's the one that's always cheap enough to run every time), `--live`
-  once a task is done (proves it against a real running stack, not just
-  statically), `--full` once before the plan is closed out (the
-  reproducibility proof, not a per-task ritual). A plan's own "verified
-  live" notes should say which tier backed them, so a later reader can
-  tell a `--fast`-only claim from a `--full` one.
+  separately. **When to run which:** `--fast` after every change, because it
+  is the one always cheap enough to run every time; `--live` once a change
+  is finished, which proves it against a running federation rather than
+  statically; `--full` before handing the pack to anyone, as the
+  reproducibility proof rather than a routine step. Whenever you record that
+  something was verified, say which tier backed it — a `--fast` claim and a
+  `--full` one are different claims.
   **`--live` does not itself perform a real member join**
   (`acceptance/join-member.md`'s checks discover already-joined members
   generically and pass vacuously when none exist — they never submit,
