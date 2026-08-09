@@ -8,7 +8,9 @@ side, POST /requests/{id}/approve writes the config for real
 at a time; POST /requests/{id}/resume re-runs a FAILED one from its
 last_completed_step. DELETE /members/{key} is the other direction: it walks
 a completed job backwards (job.unjoin) and then delegates the config half
-to scripts/member.sh remove.
+to scripts/member.sh remove. GET /catalogue reads rather than writes: what
+is published on this instance, for a body that has just joined or is
+deciding whether to.
 
 Credentials come from the environment (.env via Docker Compose), read here
 once, never returned in a response or logged -- same rule as
@@ -141,6 +143,25 @@ app = FastAPI(title="KP2 member-join API")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/catalogue")
+def get_catalogue(
+    _origin: None = Depends(_require_console_origin),
+    # The applicant credential, not the operator one. The reader who needs a
+    # service catalogue is a body that has just joined, or is deciding
+    # whether to; gating that behind the operator credential would put
+    # discovery back behind the people who already know what is published.
+    _role: str = Depends(require_applicant),
+) -> dict:
+    """Every service published on this instance, as JSON -- the same derived
+    data onboarding/catalogue.yaml carries, read from the member configs at
+    request time. No write path, and it never talks to X-Road.
+
+    What this answers is which services were registered here, not which ones
+    a given caller may invoke: the response says so in a field of its own so
+    that a client rendering it cannot leave the caveat out by accident."""
+    return writer.catalogue_data(PACK_DIR)
 
 
 # -- request persistence -------------------------------------------------------

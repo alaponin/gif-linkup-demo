@@ -310,7 +310,29 @@ subjects its ACL names, and links to the signed SLA and the service's own
 appearing in it grants nothing — publication is not permission, and the two
 are the easiest pair on the bus to confuse.
 
-- **Regenerate it:** `scripts/render-onboarding.sh`. It is derived wholesale
+- **Read it over HTTP:** `GET /catalogue` on the join API returns the same
+  derived data as JSON, re-read from the configs on every call. It takes the
+  **applicant** token, not the operator one — the reader who needs a
+  catalogue is a body that has just joined or is deciding whether to, and
+  the operator credential would put discovery back behind the people who
+  already know:
+
+  ```
+  curl -H "X-KP2-Console: 1" \
+       -H "Authorization: Bearer $KP2_JOIN_APPLICANT_TOKEN" \
+       http://localhost:8091/catalogue
+  ```
+
+  It is read-only, has no write path, and never talks to X-Road.
+- **This is `listMethods`, not `allowedMethods`.** It tells you what was
+  registered here, not what the bus will let *you* call. The response says
+  so in a field of its own, and the two answers differ: a service can be in
+  this catalogue and refuse your call, because the ACL is the provider's.
+  There is no `?subject=` filter, deliberately — filtering to the services
+  whose ACL already names a subsystem would answer *what the register
+  recorded*, which is not the same question, and the gap between the two is
+  where an operator gets a wrong answer at the worst moment.
+- **Regenerate the file:** `scripts/render-onboarding.sh`. It is derived wholesale
   from `manifest.yaml` + `configs/member-*/` every time — nothing appends a
   row and nothing deletes one, so regenerating from unchanged inputs
   produces the same bytes, and a member whose config is gone is simply not
