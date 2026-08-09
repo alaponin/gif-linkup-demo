@@ -29,33 +29,14 @@ reproduce-and-diff exercise.
 curriculum module. `join-member`'s `video_ref` is `"?"` because no Topic 5
 subtopic covers it yet.
 
-## Name migration
-
-The prompts were numbered `2.N.md` after the module they served, until the
-modules were renamed to stable ids and three of them collapsed into one
-(`manifest.yaml`'s own comment records why). Module bundles and reviews
-written before that rename still cite the old names; this table resolves
-them.
-
-| Old name | Current file | Note |
-| --- | --- | --- |
-| `prompts/2.1.md` | `federation-core.md` | |
-| `prompts/2.2.md` | — | module retired: its claim ("the registration shape is identical for every member") is what collapsed 2.3–2.5 into one prompt |
-| `prompts/2.3.md` | `register-member.md` | PNEA, the consumer shape |
-| `prompts/2.4.md` | `register-member.md` | PLR, the provider shape |
-| `prompts/2.5.md` | `register-member.md` | PNIA, the provider shape |
-| `prompts/2.6.md` | `once-only-exchange.md` | |
-| `prompts/2.7.md` | `join-member.md` | |
-| — | `member.md` | new; no numbered predecessor |
-
 ## Not here yet
 
 Two generating prompts are named absences rather than omissions — the legal
 and organisational layers of the framework have no prompt in this pack:
 
-- `legal-decree.md` — the decree the exchanges rely on. Planned, W1.
+- `legal-decree.md` — the decree the exchanges rely on.
 - `governance-pack.md` — the operating authority's own governance
-  instruments. Planned, W1.
+  instruments.
 
 When they arrive they take the same shape as the five above, each with a
 brief under `examples/` and a document-tier check of its own.
