@@ -45,7 +45,7 @@ import tempfile
 
 import yaml
 
-from schema import JoinPayload, MemberRequirements, SecurityServer, Service
+from schema import JoinPayload, MemberRequirements, SecurityServer, Semantic, Service
 
 # Everything hurl/generate.py's main() reads via load()/discover_members()/
 # TEMPLATES/read_env() (hurl/generate.py: PACK/HURL_DIR/ENV_PATH at the top,
@@ -242,7 +242,8 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
 
 # -- onboarding/<key>/ (G-07) --------------------------------------------------
 #
-# Four generated files per member -- not the onboarding path's ten (D3: no
+# A handful of generated files per member, plus one per published service --
+# not the onboarding path's ten (D3: no
 # curriculum change). Never hand-maintained (P2): an
 # absent file means the gate has not been passed, whatever the calendar
 # says, so nothing here backfills a plausible-looking stub.
@@ -370,6 +371,82 @@ def render_sla_record(service: Service) -> str:
     )
 
 
+# Fixed text on every catalogue entry. The single most likely misreading of
+# a service catalogue is that finding a service means being allowed to call
+# it, so the entry says otherwise on its own face rather than in a document
+# the reader may never open.
+_CATALOGUE_FOOTER = (
+    "This entry records what was published, not what you may call. Access is "
+    "the provider's own access-control list; appearing here grants nothing.\n"
+)
+
+
+def _request_line(request_id: str | None) -> str:
+    """How a record names the join request behind it. None for a canonical
+    member, registered by hand and never through the join API."""
+    if request_id:
+        return f"`{request_id}`"
+    return "registered by hand (`prompts/register-member.md`) -- no join request"
+
+
+def render_catalogue_entry(
+    service: Service,
+    *,
+    service_id: str,
+    provider: str,
+    semantic: Semantic | None,
+    semantic_anchor: str | None,
+    request_id: str | None,
+) -> str:
+    """04-catalogue/<service-code>.md -- what this service is, published so
+    that a body deciding whether to join can find it out without asking
+    someone who already knows.
+
+    Every value is derived from what the registration already produced; no
+    field here is one a human typed into this file. Where a source is empty
+    the row says so in words the reader can act on, because a blank cell and
+    an unclassified service look identical and mean very different things.
+
+    The SLA is linked rather than copied: 03-sla/<code>.md stays the one
+    place an SLA is written, and this is the missing direction -- reachable
+    from the service, not only from the member.
+    """
+    if semantic and semantic.entity:
+        anchor = f" (anchor: {semantic_anchor})" if semantic_anchor else ""
+        entity = f"`{semantic.entity}`{anchor}"
+    else:
+        entity = "*not declared*"
+    pattern = (
+        f"`{semantic.pattern.value}`"
+        if semantic and semantic.pattern
+        else (
+            "*unclassified -- this service declares no exchange pattern, so "
+            "it cannot be found by pattern*"
+        )
+    )
+    return (
+        f"# Catalogue entry -- {service.code}\n\n"
+        "| Field | Value |\n"
+        "| --- | --- |\n"
+        f"| Service code | `{service.code}` |\n"
+        f"| X-Road service id | `{service_id}` |\n"
+        f"| Provider | {provider} |\n"
+        f"| Contract | `{service.spec_url}` |\n"
+        # Deliberately not a copy of the contract's field list: the contract
+        # above is the one source, and a snapshot taken when this file was
+        # written would drift from it silently.
+        "| Declared fields | *not copied -- read them from the contract "
+        "above, which is not re-fetched when this entry is written* |\n"
+        f"| Semantic entity (tier 2) | {entity} |\n"
+        f"| Exchange pattern (tier 1) | {pattern} |\n"
+        f"| Lawful basis | {_sanitize_cell(service.lawful_basis) if service.lawful_basis else '*not stated*'} |\n"
+        f"| SLA | {f'[`../03-sla/{service.code}.md`](../03-sla/{service.code}.md)' if service.sla else '*not signed -- the SLA gate was not passed*'} |\n"
+        f"| Access granted to | {', '.join(f'`{s}`' for s in service.access) if service.access else '*nobody -- no consumer has been granted access*'} |\n"
+        f"| Registered by | {_request_line(request_id)} |\n\n"
+        f"{_CATALOGUE_FOOTER}"
+    )
+
+
 def render_registration_record(
     *,
     subsystem: str,
@@ -395,11 +472,7 @@ def render_registration_record(
             "not this member's own (a hosting delegation) |\n"
         )
     acl = ", ".join(f"`{s}`" for s in acl_subjects) if acl_subjects else "none"
-    request_line = (
-        f"`{request_id}`"
-        if request_id
-        else "registered by hand (`prompts/register-member.md`) -- no join request"
-    )
+    request_line = _request_line(request_id)
     return (
         "# Registration -- Module 5.4\n\n"
         "| Field | Value |\n"
@@ -444,6 +517,26 @@ def render_retirement_record(key: str, retired_at: str, request_id: str) -> str:
     )
 
 
+def _read_identifiers(target_dir: pathlib.Path) -> tuple[str, str]:
+    """The X-Road instance and member class, each read from the file that
+    owns it -- the generator reads the same two values from the same two
+    files, and a constant here would be a second copy free to drift from
+    them."""
+    manifest = yaml.safe_load((target_dir / "manifest.yaml").read_text())
+    policy = yaml.safe_load((target_dir / "configs" / "x-road-bus" / "join-policy.yaml").read_text())
+    return manifest["identity"]["instance"], policy["join"]["member_class"]
+
+
+def _semantic_anchor(target_dir: pathlib.Path, semantic: Semantic | None) -> str | None:
+    """The standard a semantic entity is anchored in, per the semantic map.
+    None when the member declared no entity, or declared one the map does
+    not carry -- the caller renders that absence rather than a blank."""
+    if semantic is None:
+        return None
+    doc = yaml.safe_load((target_dir / "configs" / "semantic" / "semantic-map.yaml").read_text()) or {}
+    return (doc.get(semantic.entity) or {}).get("anchor")
+
+
 def render_onboarding_tree(
     target_dir: pathlib.Path,
     key: str,
@@ -481,8 +574,22 @@ def render_onboarding_tree(
     if payload.services:
         sla_dir = onboarding_dir / "03-sla"
         sla_dir.mkdir()
+        catalogue_dir = onboarding_dir / "04-catalogue"
+        catalogue_dir.mkdir()
+        instance, member_class = _read_identifiers(target_dir)
+        anchor = _semantic_anchor(target_dir, payload.semantic)
         for svc in payload.services:
             (sla_dir / f"{svc.code}.md").write_text(render_sla_record(svc))
+            (catalogue_dir / f"{svc.code}.md").write_text(
+                render_catalogue_entry(
+                    svc,
+                    service_id=f"{instance}/{member_class}/{payload.code}/{payload.subsystem}/{svc.code}",
+                    provider=f"{payload.name} ({payload.code})",
+                    semantic=payload.semantic,
+                    semantic_anchor=anchor,
+                    request_id=request_id,
+                )
+            )
     acl_subjects = sorted(
         {subject for svc in payload.services for subject in svc.access} | set(payload.requested_access)
     )

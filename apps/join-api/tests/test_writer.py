@@ -370,6 +370,87 @@ def test_render_sla_record_carries_every_term_and_the_signatory():
     assert "Signed by: Head of IT" in text
 
 
+def _catalogue_entry(service, **overrides) -> str:
+    kwargs = dict(
+        service_id="PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api",
+        provider="Progressa Tertiary Scholarship Board (PTSB)",
+        semantic=None,
+        semantic_anchor=None,
+        request_id=None,
+    )
+    kwargs.update(overrides)
+    return writer.render_catalogue_entry(service, **kwargs)
+
+
+def test_render_catalogue_entry_carries_the_service_id_contract_and_acl():
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"],
+                   "lawful_basis": "Scholarship Act", "sla": _sla()}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id"],
+                  "pattern": "digital_registries_lookup"},
+    )
+    text = _catalogue_entry(
+        payload.services[0], semantic=payload.semantic, semantic_anchor="CEDS", request_id="req-1"
+    )
+    assert "`PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api`" in text
+    assert "http://app-ptsb:8000/spec.yaml" in text
+    assert "`award`" in text and "anchor: CEDS" in text
+    assert "`digital_registries_lookup`" in text
+    assert "Scholarship Act" in text
+    assert "`PROGRESSA/GOV/PNEA/EXAMS`" in text
+    assert "`req-1`" in text
+    # Publication is not permission, on the face of the entry itself.
+    assert "appearing here grants nothing" in text
+
+
+def test_render_catalogue_entry_links_the_sla_rather_than_copying_it():
+    """One SLA, written once and reachable from two directions -- the entry
+    must carry the link and none of the five terms."""
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "sla": _sla()}],
+    )
+    text = _catalogue_entry(payload.services[0])
+    assert "[`../03-sla/awards-api.md`](../03-sla/awards-api.md)" in text
+    for term in ("99.5% monthly uptime", "Mon-Fri 08:00-18:00 ICT", "Head of IT"):
+        assert term not in text
+
+
+def test_render_catalogue_entry_names_an_unclassified_services_absence():
+    """An unclassified service and a service whose classification was lost
+    render identically as a blank cell -- so the absence is stated in words
+    the reader can act on instead."""
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "sla": _sla()}],
+        semantic={"entity": "award", "key": "award_id", "fields": ["award_id"]},
+    )
+    text = _catalogue_entry(payload.services[0], semantic=payload.semantic)
+    assert "cannot be found by pattern" in text
+    assert "| Exchange pattern (tier 1) |  |" not in text
+    # The reader has no way to look an internal conformance id up.
+    assert "S6a" not in text
+
+
+def test_render_catalogue_entry_names_every_other_empty_source():
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "sla": _sla()}],
+    )
+    text = _catalogue_entry(payload.services[0])
+    assert "*not declared*" in text        # no semantic entity
+    assert "*not stated*" in text          # no lawful basis
+    assert "no consumer has been granted access" in text
+
+
+def test_render_catalogue_entry_sanitises_a_pipe_and_newline_lawful_basis():
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "lawful_basis": "Act 1 | 2\n(consent)", "sla": _sla()}],
+    )
+    text = _catalogue_entry(payload.services[0])
+    basis_line = next(line for line in text.splitlines() if line.startswith("| Lawful basis"))
+    assert basis_line == "| Lawful basis | Act 1 \\| 2 (consent) |"
+
+
 def test_render_gates_table_names_the_admission_absence_by_default():
     text = writer.render_gates_table(True)
     admission_row = next(line for line in text.splitlines() if line.startswith("| Admission"))
@@ -484,6 +565,13 @@ def test_apply_real_renders_the_onboarding_tree_for_a_provider(tmp_path):
     assert (onboarding / "00-gates.md").exists()
     assert (onboarding / "02-requirements.md").exists()
     assert (onboarding / "03-sla" / "awards-api.md").exists()
+    entry = (onboarding / "04-catalogue" / "awards-api.md").read_text()
+    # The instance and member class come off manifest.yaml and the join
+    # policy, not a constant in the renderer.
+    assert "`PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api`" in entry
+    # The SLA link resolves to a file that is actually there -- a dangling
+    # link is the one failure this artefact exists to prevent.
+    assert (onboarding / "04-catalogue" / "../03-sla/awards-api.md").resolve().exists()
     registration = (onboarding / "05-registration.md").read_text()
     assert "req-123" in registration
     assert "PROGRESSA/GOV/PNEA/EXAMS" in registration
@@ -516,6 +604,9 @@ def test_apply_real_renders_no_sla_directory_for_a_consumer_only_member(tmp_path
     onboarding = pack / "onboarding" / "ptsb"
     assert (onboarding / "00-gates.md").exists()
     assert not (onboarding / "03-sla").exists()
+    # Nothing published, so nothing to catalogue -- no empty directory and
+    # no placeholder file, exactly as for the SLA above.
+    assert not (onboarding / "04-catalogue").exists()
     assert (onboarding / "01-admission.md").exists()
 
 

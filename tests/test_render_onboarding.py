@@ -45,6 +45,14 @@ def test_renders_a_providers_onboarding_tree_with_an_sla_per_service(tmp_path):
     assert (onboarding / "00-gates.md").exists()
     assert (onboarding / "02-requirements.md").exists()
     assert (onboarding / "03-sla" / "identity-api.md").exists()
+    entry = (onboarding / "04-catalogue" / "identity-api.md").read_text()
+    assert "`PROGRESSA/GOV/PNIA/IDENTITY/identity-api`" in entry
+    assert (onboarding / "04-catalogue" / "../03-sla/identity-api.md").resolve().exists()
+    # configs/member-pnia/pnia.yaml's semantic: block reaches the entry --
+    # without it every canonical service would render as unclassified while
+    # its own config says otherwise.
+    assert "`person`" in entry and "anchor: CEDS" in entry
+    assert "`digital_registries_lookup`" in entry
     registration = (onboarding / "05-registration.md").read_text()
     # security_server.hosted_on is absent in configs/member-pnia/pnia.yaml --
     # own_server must be inferred True, not left False (which would render
@@ -60,6 +68,7 @@ def test_renders_a_consumer_only_members_onboarding_tree_with_no_sla_directory(t
     onboarding = pack / "onboarding" / "pnea"
     assert (onboarding / "00-gates.md").exists()
     assert not (onboarding / "03-sla").exists()
+    assert not (onboarding / "04-catalogue").exists()
     # configs/member-pnea/pnea.yaml's consumes: list maps onto
     # requested_access, and from there into the ACL subjects column.
     registration = (onboarding / "05-registration.md").read_text()

@@ -30,7 +30,7 @@ PACK_DIR = pathlib.Path(sys.argv[1])
 KEY = sys.argv[2]
 
 sys.path.insert(0, str(PACK_DIR / "apps" / "join-api"))
-from schema import Backend, JoinPayload, MemberRequirements, SecurityServer, Service, SLA  # noqa: E402
+from schema import Backend, JoinPayload, MemberRequirements, SecurityServer, Semantic, Service, SLA  # noqa: E402
 from writer import render_onboarding_tree  # noqa: E402
 
 manifest = yaml.safe_load((PACK_DIR / "manifest.yaml").read_text())
@@ -67,6 +67,13 @@ services = [
     for svc in (cfg.get("services") or [])
 ]
 
+# The same block a join payload carries: the entity the member's exchange is
+# about, and the exchange pattern it follows. A catalogue entry renders both,
+# so leaving it off here would render every canonical service unclassified
+# while its own config says otherwise.
+semantic_cfg = cfg.get("semantic")
+semantic = Semantic(**semantic_cfg) if semantic_cfg else None
+
 requirements_cfg = cfg.get("member_requirements")
 if not requirements_cfg:
     sys.exit(
@@ -83,6 +90,7 @@ payload = JoinPayload(
     subsystem_description=identity["subsystem_description"],
     security_server=security_server,
     services=services,
+    semantic=semantic,
     backend=Backend(auth="none"),  # unused by render_onboarding_tree -- see module docstring
     member_requirements=member_requirements,
     # A canonical config's own consumer shape (client.connection_type/
