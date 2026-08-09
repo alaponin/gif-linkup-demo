@@ -146,10 +146,20 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
   API — reads `out/join/*.json` and the live spec URL directly, works
   whether or not `join-api` is even running. The spec URL is an
   internal `linkup`-network hostname (`app-<key>:8000`), so this needs to
-  run from inside that network: `docker compose exec join-api python3
-  scripts/member.sh drift <key>` (or any other container already on
+  run from inside that network (or from any other container already on
   `linkup`) if a plain host-side run reports "nodename nor servname
   provided" — that error is the trap working as designed, not a bug.
+  `join-api` mounts the monorepo at `/repo`, not the pack at its own
+  working directory, and `member.sh` is bash, not Python — so the command
+  is:
+
+  ```
+  docker compose exec join-api \
+    bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift <key>
+  ```
+
+  Start `join-api` with `scripts/join.sh up` first if it is not running —
+  `scripts/acceptance.sh` stops it when it finishes.
 - **Join via the API (automated):** `scripts/join.sh {up|down|status}`
   starts/stops the join API itself (`profile: demo`, like the console) at
   `http://localhost:8091`. Submit a payload matching `apps/join-api/schema.py`

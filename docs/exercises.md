@@ -73,6 +73,7 @@ the technical join runs itself.
 
 ```
 scripts/join.sh up            # the join API at http://localhost:8091
+set -a; . ./.env; set +a      # the two tokens the commands below reference
 ```
 
 Submission is the **applicant's** act, with the applicant token, from
@@ -124,9 +125,15 @@ itself; the operator token never reaches the browser.
 - Approval refuses outright if the checkout is dirty
   (`DirtyCheckoutError`) — the API writes files into the repository and will
   not do so on top of uncommitted work. Commit first.
-- `state` reaches `ACTIVE, verified: true` well inside two minutes for a
-  **hosted** join. (An own-server join ends `ACTIVE, verified: false` — a
-  known defect, documented in `runbook.md`, not something you caused.)
+- `state` reaches `ACTIVE` well inside two minutes — ~65s on the run this
+  document was checked against, the last step being `join.r1_verify`.
+- `verified` may be `false` even on a hosted join. `runbook.md` documents
+  that outcome for an own-server join and calls a hosted one unaffected;
+  it was observed here on a **hosted** join against a federation that had
+  been up for some hours. It is a flag, not a fault: `scripts/acceptance.sh`
+  passes `2.7.r1(PTSB.awards-api)` against the same member, which is the
+  fact `verified` was meant to record. If you are demonstrating this, say so
+  before the badge appears.
 - `onboarding/ptsb/` appears, and `01-admission.md` carries the decision
   reference you typed. Canonical members have no such file — they never
   passed an admission through this API, which is why their records begin at
@@ -164,7 +171,9 @@ Edit `apps/specs/ptsb-awards.openapi.yaml` — add a path alongside
 edit is live with no restart:
 
 ```
-docker compose exec join-api python3 scripts/member.sh drift ptsb
+scripts/join.sh up      # acceptance.sh stops join-api when it finishes
+docker compose exec join-api \
+  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift ptsb
 ```
 
 (The mock's *field filtering* is a different thing: that is read once at
@@ -180,10 +189,12 @@ data.)
   from a container on that network. It is not a bug and not a misconfigured
   member.
 - Run from inside, the output is an **endpoint diff** against the baseline
-  captured at join time (`out/join/*.json`) — the paths added, the paths
-  gone. An unchanged spec produces no diff.
-- No auth, no HTTP to the join API: `scripts/join.sh down` first and the
-  check still works.
+  captured at join time (`out/join/*.json`):
+  `awards-api: DRIFT` with `+ /awards/{nin}/history`. An unchanged spec
+  reports `no drift (1 endpoint(s), unchanged since join)`.
+- It reads `out/join/*.json` and the live spec URL directly — no auth, no
+  HTTP to the join API. The API only has to be *running* here because its
+  container is the one on the `linkup` network with the pack mounted.
 
 **Cleanup:** `git checkout apps/specs/ptsb-awards.openapi.yaml`.
 
@@ -225,9 +236,11 @@ curl -X DELETE -H "X-KP2-Console: 1" \
   Try it: `DELETE /members/pnia` changes nothing.
 - The next join against a dirty checkout fails with `DirtyCheckoutError` —
   the un-join has just written files. Commit them.
-- Re-issue the same `DELETE` and it succeeds again, skipping what is already
-  gone: every reversal is guarded by a read that proves whether it needs
-  doing.
+- Re-issuing the same `DELETE` after a **completed** walk returns `404`: the
+  member is gone from `configs/`, so there is nothing left to look up. The
+  re-issue that resumes work is for a walk **interrupted halfway** — there,
+  every reversal is guarded by a read that proves whether it is already
+  done, so the walk re-runs from the top and skips what is finished.
 
 **Cleanup:** commit or discard what the walk wrote.
 
