@@ -16,3 +16,8 @@ PY="$PACK_DIR/.venv/bin/python3"
 for key in pnia plr pnea; do
   "$PY" "$PACK_DIR/scripts/render_onboarding.py" "$PACK_DIR" "$key"
 done
+
+# Last, after every member's own record exists: the instance-wide catalogue
+# is derived from configs/member-*/ rather than from the trees above, and is
+# regenerated wholesale -- re-running this script is how it is kept current.
+"$PY" "$PACK_DIR/scripts/render_catalogue.py" "$PACK_DIR"

@@ -371,13 +371,13 @@ def render_sla_record(service: Service) -> str:
     )
 
 
-# Fixed text on every catalogue entry. The single most likely misreading of
-# a service catalogue is that finding a service means being allowed to call
-# it, so the entry says otherwise on its own face rather than in a document
-# the reader may never open.
-_CATALOGUE_FOOTER = (
-    "This entry records what was published, not what you may call. Access is "
-    "the provider's own access-control list; appearing here grants nothing.\n"
+# Fixed text on every catalogue artefact. The single most likely misreading
+# of a service catalogue is that finding a service means being allowed to
+# call it, so each one says otherwise on its own face rather than in a
+# document the reader may never open.
+PUBLICATION_IS_NOT_PERMISSION = (
+    "This records what was published, not what you may call. Access is the "
+    "provider's own access-control list; appearing here grants nothing."
 )
 
 
@@ -443,7 +443,7 @@ def render_catalogue_entry(
         f"| SLA | {f'[`../03-sla/{service.code}.md`](../03-sla/{service.code}.md)' if service.sla else '*not signed -- the SLA gate was not passed*'} |\n"
         f"| Access granted to | {', '.join(f'`{s}`' for s in service.access) if service.access else '*nobody -- no consumer has been granted access*'} |\n"
         f"| Registered by | {_request_line(request_id)} |\n\n"
-        f"{_CATALOGUE_FOOTER}"
+        f"{PUBLICATION_IS_NOT_PERMISSION}\n"
     )
 
 
@@ -527,14 +527,14 @@ def _read_identifiers(target_dir: pathlib.Path) -> tuple[str, str]:
     return manifest["identity"]["instance"], policy["join"]["member_class"]
 
 
-def _semantic_anchor(target_dir: pathlib.Path, semantic: Semantic | None) -> str | None:
+def _semantic_anchor(target_dir: pathlib.Path, entity: str | None) -> str | None:
     """The standard a semantic entity is anchored in, per the semantic map.
     None when the member declared no entity, or declared one the map does
     not carry -- the caller renders that absence rather than a blank."""
-    if semantic is None:
+    if not entity:
         return None
     doc = yaml.safe_load((target_dir / "configs" / "semantic" / "semantic-map.yaml").read_text()) or {}
-    return (doc.get(semantic.entity) or {}).get("anchor")
+    return (doc.get(entity) or {}).get("anchor")
 
 
 def render_onboarding_tree(
@@ -577,7 +577,7 @@ def render_onboarding_tree(
         catalogue_dir = onboarding_dir / "04-catalogue"
         catalogue_dir.mkdir()
         instance, member_class = _read_identifiers(target_dir)
-        anchor = _semantic_anchor(target_dir, payload.semantic)
+        anchor = _semantic_anchor(target_dir, payload.semantic.entity if payload.semantic else None)
         for svc in payload.services:
             (sla_dir / f"{svc.code}.md").write_text(render_sla_record(svc))
             (catalogue_dir / f"{svc.code}.md").write_text(
@@ -601,6 +601,91 @@ def render_onboarding_tree(
             request_id=request_id,
         )
     )
+
+
+# -- onboarding/catalogue.yaml -------------------------------------------------
+#
+# One file for the whole instance, regenerated wholesale from the member
+# configs every time and never appended to. Two things follow from that, and
+# both are the reason it is built this way: an un-join needs no delete path
+# (the next regeneration simply does not find the member's config), and the
+# file cannot drift from the register, because regenerating it IS the
+# register.
+
+CATALOGUE_PATH = pathlib.PurePosixPath("onboarding/catalogue.yaml")
+
+_CATALOGUE_HEADER = (
+    "# Generated -- do not hand-edit. Regenerate: scripts/render-onboarding.sh\n"
+)
+
+
+def catalogue_data(pack_dir: pathlib.Path) -> dict:
+    """Every service published on this instance, derived from manifest.yaml
+    and configs/member-*/ -- the register's own inputs, not the onboarding
+    tree this same module writes. Deriving it from those records instead
+    would check the generator against itself and prove nothing.
+
+    Sorted by service id, so regenerating from unchanged inputs produces the
+    same bytes. Absent values are present as null rather than as a missing
+    key: a service with no pattern and a service whose pattern was dropped
+    on the way in must not look the same.
+    """
+    pack_dir = pathlib.Path(pack_dir)
+    instance, member_class = _read_identifiers(pack_dir)
+    members = (yaml.safe_load((pack_dir / "manifest.yaml").read_text())["identity"]["members"]) or {}
+
+    services = []
+    for member_dir in sorted((pack_dir / "configs").glob("member-*")):
+        key = member_dir.name.removeprefix("member-")
+        identity = members.get(key)
+        if identity is None:
+            continue  # no manifest entry: hurl/generate.py refuses this state already
+        config_files = sorted(member_dir.glob("*.yaml"))
+        cfg = yaml.safe_load(config_files[0].read_text()) if config_files else None
+        semantic = (cfg or {}).get("semantic") or {}
+        for svc in (cfg or {}).get("services") or []:
+            code = svc["code"]
+            services.append({
+                "id": f"{instance}/{member_class}/{identity['code']}/{identity['subsystem']}/{code}",
+                "provider": {"key": key, "code": identity["code"], "name": identity["name"]},
+                "service_code": code,
+                "contract": svc.get("spec_url"),
+                "semantic": {
+                    "entity": semantic.get("entity"),
+                    "anchor": _semantic_anchor(pack_dir, semantic.get("entity")),
+                },
+                "pattern": semantic.get("pattern"),
+                "lawful_basis": svc.get("lawful_basis"),
+                "sla": f"onboarding/{key}/03-sla/{code}.md" if svc.get("sla") else None,
+                "access": list(svc.get("access") or []),
+                "entry": f"onboarding/{key}/04-catalogue/{code}.md",
+            })
+    services.sort(key=lambda s: s["id"])
+
+    return {
+        "instance": instance,
+        "generated_from": "manifest.yaml + configs/member-*/",
+        "publication_is_not_permission": PUBLICATION_IS_NOT_PERMISSION,
+        "services": services,
+    }
+
+
+def render_catalogue(pack_dir: pathlib.Path) -> str:
+    return _CATALOGUE_HEADER + yaml.safe_dump(
+        catalogue_data(pack_dir), sort_keys=False, default_flow_style=False, allow_unicode=True
+    )
+
+
+def write_catalogue(pack_dir: pathlib.Path) -> pathlib.Path:
+    """The one writer of onboarding/catalogue.yaml, called by everything that
+    changes the member set: a canonical re-render, a real join, and an
+    un-join once the member is gone. Always last, after the member's own
+    tree -- a failed join must never leave a catalogue naming a member that
+    does not exist."""
+    path = pathlib.Path(pack_dir) / CATALOGUE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_catalogue(pack_dir))
+    return path
 
 
 def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> None:
@@ -761,3 +846,7 @@ def apply_real(
         pack_dir, key, payload,
         request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
     )
+    # Last: the instance-wide catalogue is the first SHARED file a join
+    # touches, and it must never name a member whose own record failed to
+    # write.
+    write_catalogue(pack_dir)

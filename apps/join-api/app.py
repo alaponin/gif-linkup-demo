@@ -702,6 +702,11 @@ def _run_unjoin(request_id: str) -> None:
             }
         else:
             record["config_removed"] = True
+            # The instance catalogue is derived from the member configs, so
+            # it drops this member's services by regeneration -- there is no
+            # entry to delete, and nothing to forget to delete. Its own
+            # onboarding/<key>/ record stays as evidence of what was revoked.
+            writer.write_catalogue(PACK_DIR)
         _save_request(record)
 
 

@@ -14,4 +14,4 @@
 | Access granted to | `PROGRESSA/GOV/PNEA/EXAMS` |
 | Registered by | registered by hand (`prompts/register-member.md`) -- no join request |
 
-This entry records what was published, not what you may call. Access is the provider's own access-control list; appearing here grants nothing.
+This records what was published, not what you may call. Access is the provider's own access-control list; appearing here grants nothing.

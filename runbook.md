@@ -300,6 +300,37 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     re-runs from the top and skips what is done. `POST /requests/{id}/resume`
     is *not* the way back — that one re-enters the forward path.
 
+## The service catalogue
+
+`onboarding/catalogue.yaml` answers, for the whole instance, what is
+published on this bus: one row per published service with its X-Road service
+id, contract, semantic entity and exchange pattern, lawful basis, the
+subjects its ACL names, and links to the signed SLA and the service's own
+`onboarding/<key>/04-catalogue/<code>.md` entry. It states on its face that
+appearing in it grants nothing — publication is not permission, and the two
+are the easiest pair on the bus to confuse.
+
+- **Regenerate it:** `scripts/render-onboarding.sh`. It is derived wholesale
+  from `manifest.yaml` + `configs/member-*/` every time — nothing appends a
+  row and nothing deletes one, so regenerating from unchanged inputs
+  produces the same bytes, and a member whose config is gone is simply not
+  found.
+- **A join and an un-join through the API regenerate it for you**, the join
+  after the member's own record is written, the un-join after
+  `scripts/member.sh remove` has taken the config away.
+- **`scripts/member.sh remove` on its own does not.** It is the deliberately
+  dumb config-removal path with no API behind it, so the catalogue keeps
+  naming that member's services until someone runs
+  `scripts/render-onboarding.sh`. Removing a member by hand and regenerating
+  are two commands, in that order.
+- **The member's own `04-catalogue/` entries survive a removal**, exactly as
+  the rest of its `onboarding/<key>/` record does — that record is evidence
+  of what was published and what the operator revoked. The aggregate is the
+  live view; the record is the history.
+- **A join refuses to start on an uncommitted `onboarding/`**, and
+  `catalogue.yaml` is the first shared file a join writes there. Commit it
+  after a join, or the next one stops with `DirtyCheckoutError`.
+
 ## Reaching the stack from another machine
 
 Every port binds to `127.0.0.1` by default (`deployment.yaml`'s

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -449,6 +450,78 @@ def test_render_catalogue_entry_sanitises_a_pipe_and_newline_lawful_basis():
     text = _catalogue_entry(payload.services[0])
     basis_line = next(line for line in text.splitlines() if line.startswith("| Lawful basis"))
     assert basis_line == "| Lawful basis | Act 1 \\| 2 (consent) |"
+
+
+# -- onboarding/catalogue.yaml -------------------------------------------------
+
+
+def test_catalogue_lists_every_published_service_on_the_instance():
+    doc = yaml.safe_load(writer.render_catalogue(REAL_PACK_DIR))
+    assert doc["instance"] == "PROGRESSA"
+    ids = [s["id"] for s in doc["services"]]
+    assert "PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api" in ids
+    assert "PROGRESSA/GOV/PNIA/IDENTITY/identity-api" in ids
+    assert ids == sorted(ids)
+    # A consumer-only member publishes nothing, so it contributes no rows.
+    assert not [s for s in doc["services"] if s["provider"]["key"] == "pnea"]
+    assert "grants nothing" in doc["publication_is_not_permission"]
+
+    enrolment = next(s for s in doc["services"] if s["service_code"] == "enrolment-api")
+    assert enrolment["semantic"] == {"entity": "enrolment", "anchor": "OneRoster"}
+    assert enrolment["pattern"] == "digital_registries_lookup"
+    assert enrolment["access"] == ["PROGRESSA/GOV/PNEA/EXAMS"]
+    # Both paths point at files that are actually on disk.
+    assert (REAL_PACK_DIR / enrolment["sla"]).exists()
+    assert (REAL_PACK_DIR / enrolment["entry"]).exists()
+
+
+def test_catalogue_regenerates_byte_identically_from_unchanged_inputs():
+    assert writer.render_catalogue(REAL_PACK_DIR) == writer.render_catalogue(REAL_PACK_DIR)
+    assert writer.render_catalogue(REAL_PACK_DIR) == (REAL_PACK_DIR / "onboarding" / "catalogue.yaml").read_text()
+
+
+def test_catalogue_drops_a_removed_members_services_without_a_delete_path(tmp_path):
+    """An un-join deletes configs/member-<key>/ and nothing else; the
+    services leave the catalogue because the next regeneration does not find
+    them, not because anything removed them."""
+    pack = tmp_path / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    before = yaml.safe_load(writer.render_catalogue(pack))
+    assert [s for s in before["services"] if s["provider"]["key"] == "plr"]
+
+    shutil.rmtree(pack / "configs" / "member-plr")
+
+    after = yaml.safe_load(writer.render_catalogue(pack))
+    assert not [s for s in after["services"] if s["provider"]["key"] == "plr"]
+    assert [s for s in after["services"] if s["provider"]["key"] == "pnia"]
+
+
+def test_apply_real_regenerates_the_catalogue_including_the_joined_member(tmp_path):
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+
+    payload = _payload(
+        services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
+    )
+    writer.apply_real(
+        pack, "ptsb", payload, repo_root=repo_root, request_id="req-123",
+        decision_reference="RIHA-2026-001", approved_at="2026-08-08T00:00:00+00:00",
+    )
+
+    doc = yaml.safe_load((pack / "onboarding" / "catalogue.yaml").read_text())
+    joined = next(s for s in doc["services"] if s["provider"]["key"] == "ptsb")
+    assert joined["id"] == "PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api"
+    assert (pack / joined["entry"]).exists()
+    assert (pack / joined["sla"]).exists()
 
 
 def test_render_gates_table_names_the_admission_absence_by_default():
