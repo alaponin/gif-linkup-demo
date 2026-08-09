@@ -12,3 +12,9 @@ person:
 enrolment:
   anchor: OneRoster
   fields: [nin, school, level, enrolment_year, status]
+# The entity apps/specs/ptsb-awards.openapi.yaml publishes. Fields match that
+# spec's declared 200 response exactly -- without this entry the pack's own
+# live-join fixture is rejected by _check_purpose_limitation.
+award:
+  anchor: CEDS
+  fields: [nin, award_id, program, year]
