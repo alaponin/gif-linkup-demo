@@ -63,6 +63,14 @@ this check closes.
   4. the config and manifest on disk describe the member that is actually
      live — `configs/member-<key>/<key>.yaml` exists, and
      `manifest.yaml`'s `identity.members.<key>` has `origin: joined`.
+  5. **the joined member is discoverable** — its published service appears in
+     `GET /catalogue`, asked of the running join API with the applicant
+     token, not read off the file the same process wrote. That distinction
+     is the whole value of the clause: comparing a rendered file to the
+     config it was rendered from tests the renderer against itself, which
+     this pack does not accept as evidence. What a body that has just joined
+     depends on is that the *service* answers the question, so the service
+     is what is asked.
 
   Since this module has no fixed running example the way 2.6 has PNEA/PNIA/
   PLR, the given/when/then above is written generically over "the joined
@@ -108,7 +116,10 @@ work, not the operator's. That is the whole of what this case adds:
 "Un-joined" is not one assertion but five, and they are exactly
 `docs/decisions/xroad-770-notes.md` §11's closing claims — the section that established
 the sequence live in the first place. Anything less than all five would let a
-member look gone from wherever you happened to look.
+member look gone from wherever you happened to look. A sixth (4b below) was
+added with the service catalogue: gone from the bus and still listed as
+publishing is exactly the "looks gone from where you happened to look" failure,
+one artefact further out.
 
 - **Given** a member that joined through this API, reached `ACTIVE`, and has
   since been retired through `DELETE /members/{key}` to state `RETIRED`
@@ -147,6 +158,18 @@ member look gone from wherever you happened to look.
      and not a generic transport error. This is the reachability clause of
      the join case run backwards, and it is the only one of the five that
      proves the *bus* forgot the member rather than just the registries;
+  4b. **the departed member's services are gone from `GET /catalogue`.** GX's
+     third clause asks the operator to *remove the catalogue entry*; there is
+     nothing to remove. The catalogue is derived from `configs/member-*/`,
+     the un-join took that config away, and the next read simply does not
+     find its services — so this clause closes by derivation and not by a
+     delete path, which is the point, because a delete path is a thing that
+     can be forgotten. **This check is the evidence for that half of GX**;
+     the other two thirds, certificate revocation and consumer notification,
+     remain absent (`docs/production-delta.md`). The member's own
+     `onboarding/<key>/04-catalogue/` entries stay on disk, deliberately:
+     the aggregate is the live view, the record is the history of what the
+     operator revoked.
   5. `hurl/topology.json` is **byte-identical** to the single deployment
      golden (`tests/golden/deployment/topology.json`) — the working tree came back
      to exactly where it was before the join. This is

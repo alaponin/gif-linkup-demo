@@ -43,6 +43,20 @@ headline, education-specific check (`acceptance/2.6.md`) and is not
 generalised — the once-only exchange it proves is Progressa's story to tell,
 not every member's.
 
+**The service catalogue (G5's fourth artefact).** Generic in the same way, and
+over the same member set: for every service `onboarding/catalogue.yaml` names,
+the check asserts that the entry file it points at exists, that the entry says
+on its face that publication is not permission, and that **the SLA link in it
+resolves to a file on disk**. The last one is the specific assertion: an SLA
+that exists but cannot be reached *from the service* is the orphan-SLA problem
+this artefact was added to close, and a link that resolves to nothing is that
+same problem with a link on top of it. Cross-artefact rather than
+self-checking — the aggregate is derived from `configs/member-*/` and the
+entries from the join payload, so neither is being compared against its own
+output. A member with no `onboarding/<key>/` record at all (a config added by
+hand, never rendered) is skipped with a logged reason: there is no record for a
+link to dangle in.
+
 **Monitoring add-ons (G-06).** The operational- and environmental-
 monitoring add-ons are server-level, not client-level, so this check does not
 extend the per-subsystem loop above for them — it checks every Security

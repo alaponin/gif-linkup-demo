@@ -9,8 +9,10 @@
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
 # Ids today are 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
-# 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>),
-# 2.7.deny(<member>.<service>), 2.7.unjoin(<member>) and 2.7.unjoin.topology
+# 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1,
+# 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>),
+# 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>),
+# 2.7.unjoin.catalogue(<member>) and 2.7.unjoin.topology
 # (member-parameterisation generalised what used to be
 # discrete 2.2/2.3/2.4/2.5 into the 2.x(...) loops -- there is no longer a
 # literal "2.4" id to select; --only/--from match against what actually
@@ -178,6 +180,45 @@ for sub in topo['subsystems']:
     for svc in sub['services']:
         access = [a.replace('/', ':') for a in svc['access']]
         print(f"{sub['hosted_on']}\t{sub['id']}\t{svc['code']}\t{json.dumps(access)}")
+PY
+)
+
+# ---- the service catalogue: every entry the aggregate claims is really there -
+# onboarding/catalogue.yaml names, per published service, the file holding its
+# catalogue entry and the file holding its signed SLA. A DANGLING LINK is the
+# specific failure this artefact exists to prevent -- an SLA reachable from
+# the member and not from the service is the orphan-SLA problem in smaller
+# form, and a link that resolves to nothing is that problem with a link on top
+# of it. So that is the specific thing asserted, per service.
+#
+# Cross-artefact, not self-checking: the aggregate is derived from
+# configs/member-*/ and the entries from the join payload, so this compares
+# two artefacts rather than a generator against its own output.
+#
+# A member with no onboarding/<key>/ at all (a config added by hand rather
+# than through the join API or scripts/render-onboarding.sh) is skipped with a
+# logged reason -- there is no record to have a dangling link in.
+while IFS=$'\t' read -r svc_id entry sla; do
+  check_catalogue_entry() {
+    [ -f "$PACK_DIR/$entry" ] || { log "  missing catalogue entry: $entry"; return 1; }
+    grep -q "grants nothing" "$PACK_DIR/$entry" || {
+      log "  $entry does not say that publication is not permission"; return 1; }
+    [ "$sla" = "-" ] && return 0
+    [ -f "$PACK_DIR/$sla" ] || { log "  $entry links an SLA that is not there: $sla"; return 1; }
+  }
+  check "2.x.catalogue(${svc_id})" "${svc_id}'s catalogue entry exists and its SLA link resolves" check_catalogue_entry
+done < <(python3 - "$PACK_DIR" <<'PY'
+import pathlib, sys, yaml
+
+pack = pathlib.Path(sys.argv[1])
+doc = yaml.safe_load((pack / "onboarding" / "catalogue.yaml").read_text())
+for svc in doc.get("services") or []:
+    key = svc["provider"]["key"]
+    if not (pack / "onboarding" / key).is_dir():
+        print(f"{key} has no onboarding/{key}/ record -- registered outside the join API "
+              f"and never rendered; skipping {svc['id']}", file=sys.stderr)
+        continue
+    print(f"{svc['id']}\t{svc['entry']}\t{svc['sla'] or '-'}")
 PY
 )
 
@@ -498,7 +539,8 @@ PY
 _27_IDS=(2.7.1)
 for _row in "${_27_ROWS[@]}"; do
   IFS=$'\t' read -r _ _code _svc _ _ _ _ _ _ <<<"$_row"
-  _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})" "2.7.fields(${_code}.${_svc})")
+  _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})" "2.7.fields(${_code}.${_svc})"
+            "2.7.catalogue(${_code}.${_svc})")
 done
 
 # ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
@@ -614,7 +656,7 @@ PY
 )
 for _row in "${_27_RETIRED[@]}"; do
   IFS=$'\t' read -r _code _ _ _ _ _ <<<"$_row"
-  _27_IDS+=("2.7.unjoin(${_code})")
+  _27_IDS+=("2.7.unjoin(${_code})" "2.7.unjoin.catalogue(${_code})")
 done
 if [ ${#_27_RETIRED[@]} -gt 0 ]; then _27_IDS+=(2.7.unjoin.topology); fi
 
@@ -642,6 +684,17 @@ if _selection_touches_27; then
 
   check_271() { curl -sf "http://${XROAD_BIND}:8091/health" | jq -e '.status=="ok"' >/dev/null; }
   check 2.7.1 "join-api deploys and reports healthy" check_271
+
+  # The catalogue, read the way a member reads it -- through the API, with
+  # the applicant token, not off the file the same process wrote. Comparing
+  # a rendered file to the config it was rendered from would test the
+  # renderer against itself; asking the running service what it publishes
+  # asserts the property a joining body actually depends on.
+  catalogue_json() {
+    curl -sf -H "X-KP2-Console: 1" \
+         -H "Authorization: Bearer ${KP2_JOIN_APPLICANT_TOKEN}" \
+         "http://${XROAD_BIND}:8091/catalogue"
+  }
 
   for _row in "${_27_ROWS[@]}"; do
     IFS=$'\t' read -r provider_host code svc client_header good_pair bad_header bad_pair r1_path spec_url <<<"$_row"
@@ -732,6 +785,17 @@ assert not undeclared and not missing, f"{spec_url}: undeclared={undeclared} mis
 PY
     }
     check "2.7.fields(${code}.${svc})" "${client_header} r1 call to ${svc} carries exactly its contract's declared fields (G5.9)" check_r1_fields
+
+    # A member that joined and reached ACTIVE is discoverable: its service is
+    # in the catalogue the API serves, without anyone having been asked.
+    # The r1 path is the service id with an /r1/ prefix, so the id this row
+    # already carries is the id the catalogue must list -- no second
+    # construction of it here to disagree with the first.
+    svc_id=${r1_path#/r1/}; svc_id=${svc_id%/}
+    check_catalogue_lists() {
+      catalogue_json | jq -e --arg id "$svc_id" '[.services[].id] | index($id) != null' >/dev/null
+    }
+    check "2.7.catalogue(${code}.${svc})" "${code}'s ${svc} appears in GET /catalogue" check_catalogue_lists
   done
 
   # -- the un-join transition (acceptance/join-member.md's un-join clause) ------------
@@ -796,6 +860,17 @@ PY
     }
     _where=$([ "$host_dns" = "-" ] && echo "its own (destroyed) server" || echo "$host_dns")
     check "2.7.unjoin(${code})" "${code} is gone from the CS, from ${_where} and from the bus" check_unjoin
+
+    # GX asks the operator to remove the departed member's catalogue entry.
+    # There is nothing to remove: the catalogue is derived from the member
+    # configs, and the un-join took that config away, so the next read simply
+    # does not find its services. This is that third of GX proven live -- the
+    # evidence for it is this check, not an argument in a document.
+    check_catalogue_forgot() {
+      catalogue_json | jq -e --arg c "$code" \
+        '[.services[] | select(.provider.code == $c)] | length == 0' >/dev/null
+    }
+    check "2.7.unjoin.catalogue(${code})" "${code}'s services are gone from GET /catalogue, by derivation and not by a delete path" check_catalogue_forgot
   done
 
   if [ ${#_27_RETIRED[@]} -gt 0 ]; then
@@ -822,10 +897,10 @@ PY
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.topology."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 
 if [ "$SELECT_MODE" = all ]; then
