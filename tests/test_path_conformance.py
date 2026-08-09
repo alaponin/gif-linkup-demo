@@ -124,9 +124,11 @@ def test_the_renderer_check_flag_agrees():
 
 
 def test_every_gate_the_path_defines_has_at_least_one_clause():
-    """The register's own completeness. The gate register in
-    onboarding/<key>/00-gates.md names four of the path's gates and is silent
-    on G2, G4 and GX -- this file must not inherit that."""
+    """The register's own completeness: every gate the path document defines
+    has to be answered here, whether the answer is an implementation or an
+    absence. This is the only place that completeness is enforced -- the
+    per-member register (onboarding/<key>/00-gates.md) carries its own copy of
+    the gate list, hand-maintained, with nothing checking the two agree."""
     sections = {str(c["section"]) for c in CLAUSES}
     for gate in ("G0", "G1", "G2", "G3", "G4", "G5", "G6", "GX"):
         assert gate in sections, f"no clause covers {gate}"
