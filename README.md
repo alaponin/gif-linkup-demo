@@ -33,8 +33,7 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   cannot outlive the file it cites. Four statuses and no tick mark. **Where a
   narrative document disagrees with it, it wins** — that divergence is what
   once let findings be recorded as closed by files that never existed.
-- **Plan / review:** `PLAN.md` (build plan, doc-verified X-Road sequence);
-  `docs/decisions/` holds the design records — reasoning, never status
+- **Design records:** `docs/decisions/` — reasoning, never status
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,
@@ -193,7 +192,7 @@ Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs,
 `kp-solution-verify` proves the pack runs. **Status: VERIFIED** —
 `check_pack.py --ready`
 passes and the live acceptance suite is green, including the reproducibility
-proof (`teardown.sh --purge` → cold redeploy → reseed → acceptance, unattended
-— PLAN.md §7) and a full console up/exercise/reset pass (PLAN.md §11). Scope:
+proof (`teardown.sh --purge` → cold redeploy → reseed → acceptance,
+unattended) and a full console up/exercise/reset pass. Scope:
 Education only, public anchors only. Demo only — never production
 (`docs/production-delta.md`).

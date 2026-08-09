@@ -12,8 +12,8 @@ central_server:
     - description: Government institutions of Progressa
 trust_services:
   # Certificate files themselves are not a config field: hurl/generate.py reads
-  # them from the shared ca volume (ca.pem/ocsp.pem/tsa.pem, no rename) per
-  # decision 3 in PLAN.md -- a path here would be a second, driftable source of
+  # them from the shared ca volume (ca.pem/ocsp.pem/tsa.pem, no rename) --
+  # a path here would be a second, driftable source of
   # truth for something the deployment already gets right. Dogfooded.
   certification_service:
     certificate_profile: ee.ria.xroad.common.certificateprofile.impl.FiVRKCertificateProfileInfoProvider

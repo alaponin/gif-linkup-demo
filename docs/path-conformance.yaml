@@ -734,7 +734,6 @@ clauses:
   note: Session-authenticated admin REST API throughout; no UI scripting anywhere.
   evidence:
     - {path: apps/console/xroad.py, symbol: "X-XSRF-TOKEN"}
-    - {path: PLAN.md, symbol: "/api/v1"}
 
 # -- 4. What can be automated ------------------------------------------------
 

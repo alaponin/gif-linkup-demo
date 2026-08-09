@@ -55,7 +55,7 @@ class Step:
 # Every step below is tagged with one of:
 #   (a) read-only        -- no mutation, always safe to re-run.
 #   (b) 409-safe mutation -- repeat either conflicts cleanly (409, proven
-#       live for service.acl, PLAN.md Section 11 / apps/console/xroad.py)
+#       live for service.acl -- apps/console/xroad.py)
 #       or is a state-setting call that's naturally idempotent (e.g. a
 #       PATCH to the same value).
 #   (c) ambiguous -- carries a `probe`. Two distinct failure modes

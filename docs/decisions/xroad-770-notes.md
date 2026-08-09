@@ -14,7 +14,7 @@ This note records what reading it at 7.7.0 changed, and the traps around it.
 
 ## 1. What the earlier plan had wrong
 
-`PLAN.md` §3 was sequenced correctly from the KB articles, but seven of its
+The build plan's sequence was correct from the KB articles, but seven of its
 implementation assumptions did not survive contact with the reference. Each was
 carried in `scripts/deploy.sh` as a `[confirm P0]` marker; all seven are now
 resolved.
@@ -88,7 +88,7 @@ from upstream only what is genuinely reusable: **the call sequence**. The one
 development image retained is `xrddev-testca`, which has no release equivalent
 and is demo-only by nature.
 
-This reverses `PLAN.md` §1 decision 3, which had rejected the whole of
+This reverses the earlier decision, which had rejected the whole of
 `xrd-dev-stack` including its Hurl scenarios and committed the pack to bespoke
 bash. The distinction that decision missed: the scenarios are the *reference
 implementation of the admin API sequence*, and reimplementing them in bash bought

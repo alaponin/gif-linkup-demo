@@ -38,7 +38,8 @@ Everything below is the engineering depth under those three.
   `timedatectl status` (Linux, look for `System clock synchronized: yes`) or
   `sntp -sS time.apple.com` / System Settings → Date & Time (macOS).
 - No ITU cloud dependency: this run book targets the local stack. The ITU cloud
-  (Linkup) deployment re-targets the same scripts later — see PLAN.md §9.
+  (Linkup) deployment re-targets the same scripts later — see
+  `docs/deployment-targets.md`.
 - **Firewalled host, conference network, or air-gapped machine?** `deploy.sh`
   pulls images from Docker Hub and `ghcr.io` as it needs them. Run
   `scripts/preload-images.sh` first, while the host still has network, to

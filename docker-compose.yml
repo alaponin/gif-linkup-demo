@@ -49,8 +49,8 @@ services:
 
   ca:
     # Test CA + OCSP (:8888) + TSA (:8899) — demo trust anchor.
-    # TESTCA_TAG defaults to a digest pin (.env.example) per the reproducibility
-    # rule (PLAN.md decision 1).
+    # TESTCA_TAG defaults to a digest pin (.env.example) per the
+    # reproducibility rule: pin by digest.
     image: ghcr.io/nordic-institute/xrddev-testca:${TESTCA_TAG:-latest}
     container_name: ca
     ports: ["${XROAD_BIND:-127.0.0.1}:8888:8888"]

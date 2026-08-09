@@ -136,8 +136,8 @@ captures do not cross file boundaries).
   "under `hosted_on`, every step is `operator`" regardless of the default.
 - **`probe`** (a template path, or `None`) is set only where a step's 409
   behaviour on repeat is ambiguous — most of the registry is not: a repeat
-  either conflicts cleanly (`409`, this pack's proven default — `PLAN.md`
-  Section 11) or is naturally idempotent. Audited counts: 3 read-only, 10
+  either conflicts cleanly (`409`, this pack's proven default) or is
+  naturally idempotent. Audited counts: 3 read-only, 10
   `409`-safe, 8 ambiguous (probed), 0 unsafe to repeat. The 8 probes were written, then run live against a real
   deployed federation (`docker run` the pinned `hurl` image directly against
   a real Central Server and Security Server, not just re-derived from the

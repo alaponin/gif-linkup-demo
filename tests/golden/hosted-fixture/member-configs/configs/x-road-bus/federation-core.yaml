@@ -13,7 +13,7 @@ central_server:
 trust_services:
   # Certificate files themselves are not a config field: hurl/generate.py reads
   # them from the shared ca volume (ca.pem/ocsp.pem/tsa.pem, no rename) per
-  # decision 3 in PLAN.md -- a path here would be a second, driftable source of
+  # -- a path here would be a second, driftable source of
   # truth for something the deployment already gets right. Dogfooded 2026-07-25.
   certification_service:
     certificate_profile: ee.ria.xroad.common.certificateprofile.impl.FiVRKCertificateProfileInfoProvider
