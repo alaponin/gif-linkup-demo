@@ -577,24 +577,26 @@ removing the untracked `configs/member-<key>/`) rather than fixed — out of
 scope for a spike that commits no code, but real and reproducible on the
 current `main`.
 
-## No service catalogue, and the metadata a collector could never rebuild (G5.6, S6.2, S6a.4, S7.6)
+## The catalogue this pack builds, and the one it does not (G5.6, S6.2, S6a.4, S7.6)
 
-**The absence, stated where a reader following the pack will meet it.** Three
-members publish services through this pack. Every one of them has a registered
-contract, a signed SLA and an applied ACL, and **none of them has a catalogue
-entry**, because there is no catalogue. A body that joined this instance today
-could enumerate every member (X-Road's `listClients` serves that from the global
-configuration, and needs nothing from this pack) and would still have no way to
-learn what any of them publishes, under what lawful basis, against which
-service-level terms, without asking someone who already knows.
+**What exists now.** Every published service has a generated catalogue entry
+(`onboarding/<key>/04-catalogue/<code>.md`) carrying its X-Road service id, its
+contract reference, the semantic entity and tier-1 exchange pattern, the lawful
+basis, the ACL subjects, and a **link to the signed SLA** — which is what closed
+the orphan-SLA problem in the direction it was actually open. The SLA always
+existed and was always reachable from the member; it was not reachable *from the
+service*, which is the direction the person who needs it reads in.
+`onboarding/catalogue.yaml` aggregates the same data over the instance, and
+`GET /catalogue` serves it under the applicant token. All of it is derived from
+the registration — no new field is asked of a joining member.
 
-The SLA is the sharp edge. `onboarding/<key>/03-sla/<service>.md` is a real
-signed record, reachable from the member. It is not reachable **from the
-service** — which is the direction the person who needs it reads in. That is the
-orphan-SLA problem the path's own G5 addition set out to fix, surviving in
-smaller form: not an SLA that does not exist, an SLA that will not be found.
+That is the **register's own output**, and it is one half of what the single
+word "catalogue" covers. It is complete for members this register admitted and
+blind to everything else on the bus. The other half is a **collector**, and this
+pack does not build it — see "What production must still add" below, which is
+the operative absence in this section now.
 
-**Why this is not simply "add a catalogue later".** X-Road's metaservices make a
+**Why the half that was built had to be built first.** X-Road's metaservices make a
 large part of a catalogue reconstructible at any time: `listClients` for members
 and subsystems, `listMethods` for a provider's published services, `getOpenAPI`
 for each service's contract. A collector — NIIS's X-Road Catalog is the reference
@@ -613,18 +615,18 @@ It cannot rebuild the three fields that carry the governance:
 | **Tier-1 BB pattern classification** | no | **no — only at registration** |
 
 Metadata not captured at the moment of registration is not recoverable
-afterwards by any amount of catalogue engineering. That is the argument for
-treating the catalogue *entry* as a G5 registration artefact rather than as
-output of the §6 catalogue building block — proposed as amendment **A9** in
+afterwards by any amount of catalogue engineering. **The table above is the
+whole argument for having done this at registration, and it stays true now that
+the entry exists** — it is the reason the entry could not wait for the catalogue
+product to be procured. That argument is amendment **A9** in
 `docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md`, designed in
-`docs/decisions/service-catalogue-design.md`, and planned in
-`docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`. Until
-those land, the absence is this section.
+`docs/decisions/service-catalogue-design.md`.
 
-**What production needs beyond anything this pack will build.** The design above
-covers the register's own output — derived from the join, complete for members
-this register admitted, structurally unable to go stale. A production ecosystem
-needs the other half too, and the two are not substitutes:
+**What production must still add.** The pack covers the register's own output —
+derived from the join, complete for members this register admitted, structurally
+unable to go stale. A production ecosystem needs the other half too, and the two
+are not substitutes. **This table is the live absence; nothing below it is
+built:**
 
 | Production needs | Why the register's output does not cover it |
 | --- | --- |
@@ -641,10 +643,14 @@ answered "what APIs exist" and left "who is authoritative for this data, and may
 I have it" exactly where it was.
 
 **One consequence for retirement, recorded here because it is easy to lose.**
-GX.3 asks the operator to *remove the catalogue entry* at retirement. There is no
-catalogue to remove one from today. The design closes this without a delete path
-at all: the aggregate is derived wholesale from `manifest.yaml` and
-`configs/member-*/`, so an un-join that deletes the member's configuration also
-deletes its services from the next regeneration. A delete path can be forgotten;
-a derivation cannot. GX.3's other two halves — certificate revocation and
-notifying consumers who held access — stay absent regardless.
+GX.3 asks the operator to *remove the catalogue entry* at retirement. There is
+nothing to remove, and that is by construction rather than by omission: the
+aggregate is derived wholesale from `manifest.yaml` and `configs/member-*/`, so
+an un-join that deletes the member's configuration also deletes its services
+from the next read. A delete path can be forgotten; a derivation cannot.
+Asserted live against the running API, not against the file
+(`scripts/acceptance.sh`'s `2.7.unjoin.catalogue(<member>)`). The member's own
+`onboarding/<key>/04-catalogue/` entries stay on disk deliberately — the
+aggregate is the live view, the record is evidence of what the operator revoked.
+GX.3's other two halves — certificate revocation and notifying consumers who
+held access — stay absent regardless, which is why that row does not move.

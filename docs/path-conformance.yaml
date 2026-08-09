@@ -493,19 +493,19 @@ clauses:
 - id: G5.6
   section: G5
   clause: Register -- publish the description, apply the ACL, create the service catalogue entry
-  status: named-absence
+  status: implemented
   note: >-
-    Publication and ACL are implemented. There is no catalogue, so the SLA
-    lands on the member record rather than as catalogue metadata -- a smaller
-    version of the orphan-SLA problem the path's G5 addition sets out to fix.
-    Named in production-delta.md: the deferral was taken in
-    onboarding-alignment-design.md section 4.4, which is frozen and must not be the
-    only home for a live absence. Designed in
-    docs/decisions/service-catalogue-design.md; the framework driver that
-    un-defers it is amendment A9. This row moves only when the code exists.
+    All three. The entry is onboarding/<key>/04-catalogue/<code>.md, generated
+    per published service from the same validated payload the rest of the
+    record comes from, and it links the signed SLA rather than copying it --
+    which closes the orphan-SLA problem in the direction it was open: the SLA
+    was reachable from the member and not from the service. A consumer-only
+    member gets no entry, because it publishes nothing.
   evidence:
-    - {path: docs/production-delta.md, symbol: "orphan-SLA problem the path's own G5 addition"}
-    - {path: docs/decisions/service-catalogue-design.md, symbol: "G5.6"}
+    - {path: apps/join-api/writer.py, symbol: render_catalogue_entry}
+    - {path: apps/join-api/tests/test_writer.py, symbol: test_render_catalogue_entry_links_the_sla_rather_than_copying_it}
+    - {path: scripts/acceptance.sh, symbol: "2.x.catalogue"}
+    - {path: onboarding/plr/04-catalogue/enrolment-api.md, symbol: "../03-sla/enrolment-api.md"}
 
 - id: G5.7
   section: G5
@@ -614,15 +614,16 @@ clauses:
   clause: Revoke certificates; notify every consumer that held access; remove the catalogue entry
   status: named-absence
   note: >-
-    No CA revocation call exists, no consumer notification, and there is no
-    catalogue to remove an entry from. For an own-server member the cleanup is
-    handed to the operator as instructions rather than executed. The catalogue
-    third closes by derivation rather than by a delete path once the aggregate
-    exists -- un-join removes configs/member-<key>/, so the next regeneration
-    simply does not find its services -- but revocation and notification stay
-    absent, so this row does not move.
+    The catalogue third is closed, and closed without a delete path: un-join
+    removes configs/member-<key>/, the catalogue is derived from those
+    configs, so the next read does not find the member's services. Asserted
+    live against the running API, not against the file. No CA revocation call
+    exists and no consumer is notified; for an own-server member the cleanup
+    is handed to the operator as instructions rather than executed. Two
+    thirds absent, so this row does not move.
   evidence:
     - {path: apps/join-api/job.py, symbol: retire_instruction}
+    - {path: scripts/acceptance.sh, symbol: "2.7.unjoin.catalogue"}
     - {path: docs/production-delta.md, symbol: "remove the catalogue entry* at retirement"}
 
 - id: GX.4
@@ -776,17 +777,25 @@ clauses:
 - id: S6.2
   section: "6"
   clause: Service catalogue
-  status: named-absence
+  status: implemented
   note: >-
-    No catalogue of any kind today. The design separates the two artefacts the
-    one word covers: a collector (pull, scrapes the metaservices -- out of
-    scope, an operator building block) and the register's own derived output
-    (push, generated from the join). Only the second is planned here, so this
-    row moves to implemented for that half alone and the collector stays a
-    named absence in production-delta.md.
+    The register-derived half only, and the distinction is the whole claim.
+    One word covers two artefacts: a collector (pull, scrapes the
+    metaservices, sees everything published including services no register
+    authorised) and the register's own output (push, derived from the join,
+    complete for members this register admitted and blind to everything
+    else). This is the second. onboarding/catalogue.yaml is regenerated
+    wholesale from manifest.yaml + configs/member-*/, and GET /catalogue
+    serves the same derived data as JSON under the applicant token. THE
+    COLLECTOR IS NOT BUILT and stays a named absence in production-delta.md,
+    along with the portal, the federation-wide view and the freshness policy
+    a scraped view needs and a derived one cannot.
   evidence:
-    - {path: docs/production-delta.md, symbol: "No service catalogue, and the metadata a collector could never rebuild"}
-    - {path: docs/decisions/service-catalogue-design.md, symbol: "generated, not collected"}
+    - {path: apps/join-api/writer.py, symbol: catalogue_data}
+    - {path: apps/join-api/app.py, symbol: get_catalogue}
+    - {path: apps/join-api/tests/test_app_catalogue.py, symbol: test_the_response_matches_the_yaml_for_the_same_inputs}
+    - {path: apps/join-api/tests/test_writer.py, symbol: test_catalogue_regenerates_byte_identically_from_unchanged_inputs}
+    - {path: docs/production-delta.md, symbol: "What production must still add"}
 
 - id: S6.3
   section: "6"
@@ -810,9 +819,17 @@ clauses:
   section: 6a
   clause: Tier 1 -- BB pattern, cross-sector
   status: named-absence
-  note: See P0.6 and G5.2.
+  note: >-
+    See P0.6 and G5.2 -- there is still no register to classify a service
+    against, so the enum is a vocabulary and not a check. What changed is
+    where the absence is visible: an unclassified service now says so on the
+    face of its own catalogue entry, in words the reader can act on, rather
+    than only as this row. A blank cell and an unclassified service look
+    identical; the two are not.
   evidence:
     - {path: apps/join-api/schema.py, symbol: ExchangePattern}
+    - {path: apps/join-api/writer.py, symbol: "cannot be found by pattern"}
+    - {path: apps/join-api/tests/test_writer.py, symbol: test_render_catalogue_entry_names_an_unclassified_services_absence}
 
 - id: S6a.2
   section: 6a
@@ -833,17 +850,21 @@ clauses:
 - id: S6a.4
   section: 6a
   clause: The catalogue entry carries the tier-1 classification so services are discoverable by pattern
-  status: named-absence
+  status: implemented
   note: >-
-    Depends on S6.2. Neither tier reaches the onboarding record either. The
-    classification is one of exactly three fields no collector can recover
-    later, because none of them are on the wire (production-delta.md's table);
-    that is what makes this a registration-time obligation rather than a
-    catalogue feature. Design rule R3 renders an unclassified service's
-    absence on the face of its own entry, which turns S6a.1 from a row in this
-    file into something the affected reader sees.
+    Both tiers reach the entry: the sector entity with its anchor, and the
+    exchange pattern, each rendered per service. The classification is one of
+    exactly three fields no collector can recover later, because none of them
+    are on the wire (production-delta.md's table) -- which is what makes it a
+    registration-time obligation rather than a catalogue feature. An
+    unclassified service renders the absence in its place, so the entry never
+    implies a classification it does not have. Discoverability BY pattern
+    still needs the register S6a.1 names; what this row asserts is that the
+    value is captured and published where a reader meets it.
   evidence:
-    - {path: apps/join-api/writer.py, symbol: render_onboarding_tree}
+    - {path: apps/join-api/writer.py, symbol: "Exchange pattern (tier 1)"}
+    - {path: apps/join-api/tests/test_writer.py, symbol: test_render_catalogue_entry_carries_the_service_id_contract_and_acl}
+    - {path: onboarding/plr/04-catalogue/enrolment-api.md, symbol: digital_registries_lookup}
     - {path: docs/production-delta.md, symbol: "**Tier-1 BB pattern classification**"}
 
 # -- 7. The onboarding file --------------------------------------------------
@@ -909,19 +930,23 @@ clauses:
   clause: "05-services/<code>/ -- contract, semantic map, SLA, ACL, catalogue entry"
   status: named-absence
   note: >-
-    Two of five land, relocated: the SLA as 03-sla/<service>.md and the ACL
-    subjects as a row of 05-registration.md. The contract, the semantic map
-    and the catalogue entry are not written. The per-service FOLDER is a
-    deliberate non-goal, not an oversight: this tree already numbers
-    registration at 05-, so adopting 05-services/<code>/ would renumber the
-    tree, relocate every SLA file and buy a golden re-baselining event for a
-    directory name. A6 permits a different layout; A9 extends that to the
-    per-service shape and states the invariant it serves -- reachable FROM
-    the service, not only from the member -- which 04-catalogue/<code>.md
-    satisfies. This row therefore stays a named absence permanently, with a
-    smaller absence to name once the entry lands.
+    Four of five land, relocated: the SLA as 03-sla/<service>.md, the ACL
+    subjects as a row of 05-registration.md, and the catalogue entry as
+    04-catalogue/<service>.md, which also carries the semantic entity and its
+    anchor. The fifth, the contract itself, is referenced by URL from the
+    entry and not held in the record -- the contract is the provider's
+    document, and a copy taken at registration would drift from it silently.
+    The per-service FOLDER is a deliberate non-goal, not an oversight: this
+    tree already numbers registration at 05-, so adopting 05-services/<code>/
+    would renumber the tree, relocate every SLA file and buy a golden
+    re-baselining event for a directory name. A6 permits a different layout;
+    A9 extends that to the per-service shape and states the invariant it
+    serves -- reachable FROM the service, not only from the member -- which
+    04-catalogue/<code>.md satisfies. This row therefore stays a named
+    absence permanently, with a smaller absence to name than it had.
   evidence:
     - {path: onboarding/plr/03-sla/enrolment-api.md}
+    - {path: onboarding/plr/04-catalogue/enrolment-api.md, symbol: "Semantic entity (tier 2)"}
     - {path: onboarding/plr/05-registration.md}
     - {path: docs/decisions/service-catalogue-design.md, symbol: "and not the path's `05-services/<code>/`"}
 
