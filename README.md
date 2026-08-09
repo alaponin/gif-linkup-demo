@@ -58,8 +58,8 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   ~88 MiB, two mock providers ~32 MiB each), including the operational- and
   environmental-monitoring add-ons' acceptance check, which cost nothing
   extra to deploy since they ship on the Sidecar image this pack already
-  uses. See `docs/production-delta.md` "An own-server join and its
-  un-join, live end to end".
+  uses. See `docs/production-delta.md` for what a join and un-join do to
+  Central-Server state.
 
   There is one topology — no lite/full split to develop against or measure
   separately. **When to run which:** `--fast` after every change, because it
@@ -101,10 +101,10 @@ PNEA, PLR and PNIA each on their own; MoEYS is retired),
 `prompts/` (the bb-config-gen plays that generate the configs), `hurl/` (the
 federation as config-as-code — Hurl scenarios driving the admin REST APIs,
 generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`),
-`acceptance/` (given/when/then per module; 2.6 is the once-only exchange, the
+`acceptance/` (given/when/then per module; `once-only-exchange.md` is the
 framework's acceptance; `member.md` is the generic per-member check every
-joined member gets automatically; 2.7 is the join API's own transition +
-reachability check), `scripts/` (deploy / seed / acceptance /
+joined member gets automatically; `join-member.md` is the join API's own
+transition + reachability check), `scripts/` (deploy / seed / acceptance /
 teardown / `member.sh list|remove|drift` — reports on, retires, and checks
 drift for joined members / `join.sh up|down|status` — the join API's own
 service lifecycle /
@@ -114,9 +114,9 @@ the Security Servers + OpenAPI contracts +
 Gambia-grounded, Progressa-named seed data; `apps/console/` is the optional
 one-page demonstration UI, `scripts/console.sh up` — a demo asset, not a
 module, never in the acceptance path, whose **4 · Join a member** tab is a
-thin, server-side-token-holding proxy onto `apps/join-api/` — module 2.7's own
-service, which validates and drives a real member join from a submitted
-payload to `ACTIVE` over the live X-Road admin API), `docs/` (production delta
+thin, server-side-token-holding proxy onto `apps/join-api/` — the
+`join-member` module's own service, which validates and drives a real member
+join from a submitted payload to `ACTIVE` over the live X-Road admin API), `docs/` (production delta
 per Module 5.7; X-Road 8 note; what reading the 7.7.0 reference corrected;
 `deployment-targets.md` — the contract a `target:` other than `docker-local`
 would be written against).
@@ -148,7 +148,7 @@ The number and identity of members is a property of `configs/member-*/` plus
 `manifest.yaml`'s `identity.members`, not of this pack's source code. There is
 still no `scripts/member.sh add`, and that stays true on purpose — writing
 member config by hand is exactly what this pack demonstrates you don't need
-to do — but as of module 2.7 there is now an API for it:
+to do — but there is an API for it:
 `apps/join-api` (`scripts/join.sh up`, or the console's **4 · Join a member**
 tab) drives a real, hosted member from a submitted payload through validation,
 operator approval, config generation and the live X-Road admin-API sequence to
@@ -180,7 +180,7 @@ onboarding gate, and `configs/semantic/semantic-map.yaml` (Module 4, checked
 by `apps/join-api/validate.py` check 8, not merely published) as the
 shared field dictionary together realise GovStack's **Information Mediation**
 building block (GovStack subtopic 4.7) — a member joins the mediator once
-(module 2.7) and reaches every other member's declared exchanges through it,
+and reaches every other member's declared exchanges through it,
 rather than negotiating a bilateral integration per pair.
 
 By design, KP2's slice is **Joget-free**: the member systems are mocks behind

@@ -39,7 +39,7 @@ ship the demo as production.
 | `POST /requests/{id}/approve` requires a `decision_reference` string and records it verbatim (`apps/join-api/app.py`) — the demo verifies only that it is non-empty, not that it refers to anything real | In production this is a minuted Steering Committee decision (Ref Model §5.3); the endpoint actuates that decision, it does not authorise one — an operator's bearer token was never the accountable party, and `decision_reference` is evidence of the real one, not a replacement for it |
 | `onboarding/<key>/00-gates.md` names four gates (Application/G0, Admission/G1, Certificates/G3, Go-live/G6) as **not implemented in this demo** rather than building a stub file for each — the onboarding path's §7 specifies all ten files; this pack builds the three Topic 5 teaches (5.2, 5.3, 5.4) and names the rest, following the principle that a named absence teaches as well as an implementation (no curriculum change) | Each of the four is a real organisational or third-party act with no per-request field this pack could carry honestly: a signed membership agreement, a Steering Committee minute, a CA/TSA issuance record, a monitored go-live handover. **What would change the decision:** a later addition of a join subtopic to Topic 5 for one of these gates (matching how the join module already exceeds the curriculum) — until then, building the file would be the pack teaching a gate no video covers |
 | `Service.spec_url` (`apps/join-api/schema.py`) is a plain `str` with no scheme or host restriction, fetched from inside the `join-api` container at validation time (`validate.py`'s `_check_backend_reachability`) — a container that also holds `JOB_SECRETS` (admin user, admin password, token PIN) and can reach every admin API on `:4000`. The field-conformance check deliberately does **not** add a second fetch of this URL from the post-approval job path — the declared/required field sets are computed once, at validation, and persisted on the record instead — but the *first* fetch, from an applicant-controlled string, from a credential-holding container, is pre-existing and stays in scope here | Restrict `spec_url` to an allowed scheme and host set (or resolve it server-side, off a network segment with no path to the admin plane) before ever fetching an applicant-submitted URL from a container that holds federation admin credentials |
-| Manual approval is hard-wired: `configs/x-road-bus/federation-core.yaml`'s `policy.management_request_approval: explicit` is genuinely enforced by `hurl/generate.py`'s `check_policy()`, but nothing generates the alternative — the onboarding path's own §3 fact 1 (automatic/manual is an operator policy choice since 6.21.0) is modelled only on one side | A production federation choosing automatic approval needs the Central Server's `local.ini` auto-approve flags generated and mounted, plus the two templates that assume a `WAITING` status omitted rather than skipped — see `docs/decisions/xroad-770-notes.md` §12 for the mechanism; not started without a driver, since a spike found no admin-API route, no clean technical saving, and no audit-trail evidence preserved by keeping the switch (`docs/path-conformance.yaml` `S3.4`) |
+| Manual approval is hard-wired: `configs/x-road-bus/federation-core.yaml`'s `policy.management_request_approval: explicit` is genuinely enforced by `hurl/generate.py`'s `check_policy()`, but nothing generates the alternative — the onboarding path's own §3 fact 1 (automatic/manual is an operator policy choice since 6.21.0) is modelled only on one side | A production federation choosing automatic approval needs the Central Server's `local.ini` auto-approve flags generated and mounted, plus the two templates that assume a `WAITING` status omitted rather than skipped — see `docs/decisions/xroad-770-notes.md` §12 for the mechanism; not started without a driver, since there is no admin-API route, no clean technical saving, and no audit-trail evidence preserved by keeping the switch (`docs/path-conformance.yaml` `S3.4`) |
 
 ## The task the hardening list forgets
 
@@ -112,19 +112,14 @@ re-pins it, unlike the X-Road images, which only move when X-Road does.
 rather than via a `deployment.yaml` key, since it is a build/test tool this
 pack depends on, not part of the federation it deploys.
 
-## An own-server join and its un-join, live end to end
+## What a join and un-join do to Central-Server state
 
-This section is the first time the pack drove a join and un-join through
-`apps/join-api` rather than inferring the sequence from a cold deploy's own
-certificate sequences or from `docs/decisions/xroad-770-notes.md` §7's hand-driven
-retirement. It confirms two things about how X-Road's admin API behaves
-during a reversal, still true of the current registry (`hurl/steps.py`).
-
-**What was run:** three live join/un-join cycles through `apps/join-api` —
-two own-server (PVTB, `ss-pvtb`), one hosted (PHTB, on `ss-plr`) — each
-reaching `ACTIVE`/`ACTIVE, verified: true` and then `DELETE /members/<key>`
-back to `RETIRED` in low single-digit seconds, 5-6 reversals each, nothing
-retried.
+Two things about how X-Road's admin API behaves during a reversal, both
+true of the current registry (`hurl/steps.py`). They are measured across
+join/un-join cycles through `apps/join-api` — two own-server (PVTB,
+`ss-pvtb`), one hosted (PHTB, on `ss-plr`) — each reaching `ACTIVE`/`ACTIVE,
+verified: true` and then `DELETE /members/<key>` back to `RETIRED` in low
+single-digit seconds, 5-6 reversals each, nothing retried.
 
 ### `DELETE /clients/{id}` did NOT need the `409 action_not_possible` retry
 
@@ -180,10 +175,10 @@ one every canonical member's registrations sit in — not residue.
 
 ## In production, nobody runs `scripts/join-agent.sh`
 
-The table at the top of this document already carries the one-line version.
-Having run it live, the gap is worth stating at full size, because
-`BLOCKED` is the single place in this pack where the demonstration and a
-real federation differ in *kind* rather than in scale.
+The table at the top of this document carries the one-line version. The gap
+is worth stating at full size, because `BLOCKED` is the single place in this
+pack where the demonstration and a real federation differ in *kind* rather
+than in scale.
 
 `scripts/join-agent.sh <key>` is a `docker compose up --wait` against a
 service block `hurl/generate.py` already wrote. It brings `ss-<key>` from
@@ -222,7 +217,7 @@ exactly why the *federation-side* reversal has to be complete on its own,
 and is: the Central Server forgets the member whether or not anyone ever
 turns the member's server off.
 
-## The frozen `identifiers:` contract was amended
+## The frozen `identifiers:` contract, and the one amendment to it
 
 **What:** `manifest.yaml`'s `identifiers:` block — labelled "Frozen
 identifiers — cross-pack join keys for KP3/KP4" — dropped
@@ -260,7 +255,7 @@ today. `PINNED_SCENARIO_NO`/`PINNED_SERVICE_SCENARIO_NO`'s `"moeys"` entries
 currently walks into them since `discover_members()` never returns a
 `"moeys"` key.
 
-## Golden-corpus regeneration and a full cold deploy, verified live
+## The golden corpus and a cold deploy agree
 
 Regenerating the golden corpus (`python3 hurl/generate.py --out <tmp> --env
 tests/golden/env.fixture` and `tests/test_golden.py`'s own
@@ -270,9 +265,8 @@ committed. Diffed against the pre-reduction four-member topology by eye:
 every difference is either MoEYS's removal (its Security Server, its
 subsystem entry, its scenario files, its `vars.env`/`topology.sh` lines) or
 the `"profile"` key's removal from `topology.json` — plus the
-capability-based config filenames (`configs/x-road-bus/2.1.yaml` →
-`federation-core.yaml`, etc., visible in the scenarios' `# Source of truth:`
-comments).
+capability-based config filenames the scenarios' `# Source of truth:`
+comments name.
 
 `scripts/verify.sh --full` from cold runs green on the single-topology
 baseline, including a console smoke pass exercising
@@ -293,11 +287,10 @@ diffs byte-identical against `tests/golden/deployment/topology.json`, and
 `RETIRED` record in `out/join/*.json` — there is no `lite`/`full` choice to
 make, so this is simply "byte-identical to the golden," full stop.
 
-## The field-conformance check's negative case, observed failing live
+## The field-conformance check fails when the contract and the response disagree
 
-A conformance check nobody has seen fail is the same category of artefact as
-the claim that started the 2026-08-08 review. Confirmed live, against the
-running federation:
+A conformance check nobody has seen fail proves nothing. This one has been
+made to fail, against a running federation:
 
 1. `apps/specs/pnia-identity.openapi.yaml`'s declared properties gained
    `mother_name` (already a column in `apps/data/persons.csv`, already one of
@@ -327,7 +320,7 @@ the "`Service.spec_url`..." row above for the related, pre-existing fetch
 surface. The moment a real backend replaces the mock (KP4), this timing gap
 is not synthetic; it is the normal case.
 
-## A real hosted join and un-join, end to end (`apps/join-api`)
+## What a hosted join costs, end to end
 
 PTSB ("Progressa Tertiary Scholarship Board"), the fixture identity
 `apps/join-api/tests/test_job.py`'s own `_payload()`/`_own_payload()` use,
@@ -341,7 +334,7 @@ route — exactly the non-X-Road-response proof `job.py`'s own comment says any
 such response gives). `DELETE /members/ptsb` walks it back to `RETIRED` in a
 few seconds, and `configs/`/`manifest.yaml` come back git-clean.
 
-## A real own-server join and un-join — the retry-budget fix confirmed live
+## What an own-server join costs, end to end
 
 Same PTSB identity, re-submitted with `security_server.own_server: true`
 after the hosted record above was fully retired (freeing the code). Reaches
@@ -361,7 +354,7 @@ same federation-side walk as the hosted case), plus the two documented
 manual Docker commands (`docker rm -f ss-ptsb`; `docker volume rm
 kp2-ptsb-db kp2-ptsb-conf kp2-ptsb-archive`).
 
-## A defect in `scripts/join-agent.sh`, found live and fixed
+## Why `join-agent.sh` brings containers up with the full Compose file set
 
 Bringing `ss-ptsb` up left `cs` and `ca` with `Config.Healthcheck: null` —
 their Docker `HEALTHCHECK` had silently disappeared. Root cause:
@@ -466,49 +459,39 @@ supervisorctl status` before the join, right after `ACTIVE`, and right after
 processes, and `git status` on `configs/`/`manifest.yaml` came back clean
 afterward.
 
-## A pre-existing flake, ruled out as unrelated by a live control test
+## A known propagation flake in `2.x(PNEA:EXAMS) REGISTERED`
 
-Consecutive cold `--full` runs while landing the add-ons acceptance check
-occasionally failed at a *pre-existing* check — `2.x(PNEA:EXAMS)
-REGISTERED` — timing out its 60s retry budget; `acceptance.sh`'s own comment
-already documents this exact asynchronous-propagation risk ("a cold
-reproducibility run hit PNEA:EXAMS still short of REGISTERED the instant
-acceptance.sh started ... though it settled seconds later"). Rather than
-assume the add-ons acceptance loop was responsible, a control run repeated
-`--full` cold with the *unmodified* script (the add-ons check stashed out).
-**It failed at the identical check.** That rules out the add-ons change as
-the cause — the flake is host-load-related: several consecutive cold
-`--full` cycles inside a short window on a laptop-class single Docker host
-running several JVM Security Servers concurrently reproduce the same class
-of risk this document's "host CPU contention" finding already documents.
-With the add-ons check restored, a subsequent cold run passed clean end to
-end, including this exact check, on the first try.
+Consecutive cold `--full` runs can fail at `2.x(PNEA:EXAMS) REGISTERED`,
+timing out its 60s retry budget. This is asynchronous propagation under host
+load, not a defect: `acceptance.sh`'s own comment documents the same risk
+("a cold reproducibility run hit PNEA:EXAMS still short of REGISTERED the
+instant acceptance.sh started ... though it settled seconds later").
 
-## A suspected bug in `POST /requests`'s response, investigated and ruled out
+It reproduces when several cold `--full` cycles run inside a short window on
+a laptop-class single Docker host with several JVM Security Servers
+competing for it — the same host-CPU contention this document describes
+above. A run on a rested host passes the check first time. Treat a failure
+here as a signal about the host, and re-run before looking for a cause in
+the pack.
 
-**False positive in diagnostic tooling, not `apps/join-api`.** A live join's
-response appeared to return invalid JSON: capturing the response into a
-shell variable (`RESP=$(curl ...)`) and writing it out with `echo "$RESP" >
-file` produced a `diff` field with literal, unescaped newline bytes where
-`\n` should have been, and both `python -m json.tool` and `jq` refused to
-parse the result. Rather than patch `app.py`'s response construction on the
-strength of that alone, re-running the same request writing the response
-straight to disk with `curl -o` (no shell variable in the path) showed
-properly escaped, valid JSON, with `\n` present as the two-byte sequence
-throughout. Bisected by capturing into a variable again and comparing `echo
-"$RESP"` against `printf '%s' "$RESP"` byte-for-byte — `echo` was the one
-that mangled it. **Root cause: zsh's builtin `echo` interprets backslash
-escape sequences by default (unlike bash's), so `echo "$RESP"` silently
-rewrites every `\n` inside a JSON string into a real newline byte before it
-ever reaches the file** — a defect in the diagnostic command, not in
-`apps/join-api`. No code change needed; recorded here because the wrong
-conclusion was reported first and the correction belongs next to it, not
-silently dropped.
+## Capturing a join response through a shell variable corrupts it
 
-## What automatic approval actually costs — a control/experiment pair, measured
+A join response written out with `RESP=$(curl ...); echo "$RESP" > file`
+arrives as invalid JSON: the `diff` field carries literal newline bytes
+where `\n` should be, and both `python -m json.tool` and `jq` refuse to
+parse it. **zsh's builtin `echo` interprets backslash escapes by default**
+(unlike bash's), so it rewrites every `\n` inside a JSON string into a real
+newline before the bytes reach the file.
 
-A spike measured this directly. Same identity (PTSB, hosted on `ss-plr`, one service) joined twice on
-the same running stack: once against the committed `explicit` configuration
+The API's response is correct; the pipeline reading it is not. Write it
+straight to disk with `curl -o`, or use `printf '%s' "$RESP"`, and the JSON
+is properly escaped throughout. Worth knowing before concluding that
+`apps/join-api` emits malformed JSON.
+
+## What automatic approval actually costs
+
+Measured directly: the same identity (PTSB, hosted on `ss-plr`, one service)
+joined twice on the same running stack, once against the committed `explicit` configuration
 (control), once with all three `[center]` auto-approve flags set on the
 Central Server and its registration/management services restarted
 (experiment) — see `docs/decisions/xroad-770-notes.md` §12 for how those flags
@@ -571,10 +554,9 @@ retirement record) throws `FileExistsError`, returns an uncaught 500, and
 leaves `configs/` and `manifest.yaml` genuinely modified and uncommitted —
 which then blocks every subsequent join attempt via the same dirty-checkout
 guard that was supposed to prevent exactly this kind of half-done
-state. Worked around by hand for this spike (`git checkout -- manifest.yaml`,
-removing the untracked `configs/member-<key>/`) rather than fixed — out of
-scope for a spike that commits no code, but real and reproducible on the
-current `main`.
+The workaround is by hand (`git checkout -- manifest.yaml`, then remove the
+untracked `configs/member-<key>/`); it is not fixed in code, and it is real
+and reproducible on the current `main`.
 
 ## The catalogue this pack builds, and the one it does not (G5.6, S6.2, S6a.4, S7.6)
 
@@ -639,7 +621,7 @@ that builds a service catalogue and calls the discovery problem solved has
 answered "what APIs exist" and left "who is authoritative for this data, and may
 I have it" exactly where it was.
 
-**One consequence for retirement, recorded here because it is easy to lose.**
+**One consequence for retirement, easy to lose.**
 GX.3 asks the operator to *remove the catalogue entry* at retirement. There is
 nothing to remove, and that is by construction rather than by omission: the
 aggregate is derived wholesale from `manifest.yaml` and `configs/member-*/`, so

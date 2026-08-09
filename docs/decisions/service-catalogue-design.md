@@ -5,13 +5,11 @@ this shape; whether each clause it touches is satisfied is
 `docs/path-conformance.yaml`'s answer, not this file's.
 **Driver:** the service-catalogue requirement of the onboarding path this
 pack teaches.
-**Implementation plan:** `docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`.
 
 > **Status claims live in `docs/path-conformance.yaml`, not here.** This
 > document says what the artefact *is*; that file says whether it exists. No row
-> in it changes status before the code that satisfies it exists — the rule the
-> 2026-08-08 review produced, and the reason this design was written before any
-> status was touched.
+> in it changes status before the code that satisfies it exists, which is why
+> this design was written before any status was touched.
 
 ---
 

@@ -26,10 +26,10 @@ installations" (X-Road v7.3.0 release notes, XRDDEV-1960).
 stricter. `apps/join-api/validate.py`'s `_check_identifier_characters` rejects any `code`, `subsystem`, or `services[].code` that does
 not fully match `[a-zA-Z0-9'()+,\-.=?]+` — empty and whitespace-only values
 fall out of that match on their own, so there is no separate empty-string
-check. `_bad_identifier`'s comment tells the fuller history: this used to be
-a denylist built from a guess at which separators might collide with
-X-Road's REST message protocol, and the guess disagreed with X-Road's actual
-allowlist in both directions before the positive-match replacement above.
+check. The match is positive by design: a denylist of separators guessed to
+collide with X-Road's REST message protocol disagrees with X-Road's own
+allowlist in both directions, accepting identifiers it rejects and rejecting
+ones it accepts.
 
 ## Member code scheme
 

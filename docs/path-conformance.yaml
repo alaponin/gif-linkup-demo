@@ -11,12 +11,11 @@
 # THIS FILE IS THE ONLY PLACE THE PACK STATES ITS STATUS AGAINST THAT MODEL.
 # docs/path-conformance.md is generated from it and must not be hand-edited.
 # Narrative documents (docs/production-delta.md, docs/decisions/) carry
-# reasoning; when they carry a status claim as well, the two drift, and on
-# 2026-08-08 an external review found three findings recorded as closed by
-# files that had never been created. That is the failure this file exists to
-# make impossible: tests/test_path_conformance.py asserts that every `path:`
-# below exists on disk and every `symbol:` is found in it, so a claim can no
-# longer outlive its evidence.
+# reasoning; a status claim in one of them drifts from this file, and a claim
+# that drifts far enough records a gap as closed by a file nobody wrote.
+# That is what this file makes impossible: tests/test_path_conformance.py
+# asserts that every `path:` below exists on disk and every `symbol:` is
+# found in it, so a claim cannot outlive its evidence.
 #
 # Four statuses, and no tick mark -- "checked" is what let "labelled" pass as
 # "built":
@@ -699,8 +698,8 @@ clauses:
     key in join-policy.yaml is gone -- approval mode was never that file's
     fact to state. The real one is federation-core.yaml's
     `policy.management_request_approval: explicit`, which check_policy()
-    genuinely enforces; nothing generates the automatic alternative. A spike
-    measured what the absent policy costs rather than leaving it unstated: no
+    genuinely enforces; nothing generates the automatic alternative. What that
+    absent policy costs is measured rather than left unstated: no
     admin-API route exists for it (a `local.ini` edit and a restart of the
     Central Server's registration/management services is the only path), the
     technical time saved is not a clean signal against this pack's own retry
