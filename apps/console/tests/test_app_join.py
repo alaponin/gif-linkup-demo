@@ -306,3 +306,30 @@ def test_the_un_join_render_path_escapes_every_record_derived_field():
         assert unescaped not in src, f"{unescaped!r} is interpolated into app.js without esc()"
     for expected in ("esc(r.step", "esc(r.outcome"):
         assert expected in src, f"expected {expected!r} in app.js's un-join render path"
+
+
+def test_an_own_server_active_record_gets_the_known_defect_explanation():
+    """An own-server join's bring-up spends the retry budget on the
+    propagation wait before the reachability check runs, so `verified: false`
+    there is a known demo defect that never flips -- not the generic "not yet"
+    a hosted join's false means. Rendering both the same way trains an
+    operator to distrust a correct join, or to wait for a flag that will never
+    come."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert "payload.security_server && payload.security_server.own_server" in src
+    assert "2.7.r1" in src
+    # The hosted case must keep its own, different line.
+    assert "the reachability check has not passed yet" in src
+
+
+def test_the_join_tab_offers_the_submit_command_but_no_submit_route():
+    """Submission is the applicant's act with the applicant token. The console
+    holds only the operator token and proxies only the four operator routes --
+    a submit proxy would put both credentials in one UI and flatten the
+    role asymmetry the tab exists to show. The empty state hands over the
+    curl instead."""
+    paths = {route.path for route in app.app.routes}
+    assert "/api/join/requests" in paths
+    assert not [p for p in paths if "submit" in p], paths
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert "$KP2_JOIN_APPLICANT_TOKEN" in src  # referenced, never expanded

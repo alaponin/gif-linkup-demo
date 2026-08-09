@@ -1,0 +1,15 @@
+# Fixture copy of the shape scripts/render-onboarding.sh generates.
+instance: FIXTURE
+generated_from: manifest.yaml + configs/member-*/
+publication_is_not_permission: This records what was published, not what you may call.
+services:
+- id: FIXTURE/GOV/PNIA/IDENTITY/identity-api
+  provider: {key: pnia, code: PNIA, name: Fixture Identity Authority}
+  service_code: identity-api
+  contract: http://app-pnia:8000/spec.yaml
+  semantic: {entity: person, anchor: CEDS}
+  pattern: digital_registries_lookup
+  lawful_basis: Fixture Identity Decree
+  sla: onboarding/pnia/03-sla/identity-api.md
+  access: [FIXTURE/GOV/PNEA/EXAMS]
+  entry: onboarding/pnia/04-catalogue/identity-api.md

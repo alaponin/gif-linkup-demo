@@ -32,6 +32,7 @@
     <button class="tab-btn" data-tab="inspector">2 &middot; How it worked</button>
     <button class="tab-btn" data-tab="permissions">3 &middot; Who's allowed</button>
     <button class="tab-btn" data-tab="join">4 &middot; Join a member</button>
+    <button class="tab-btn" data-tab="catalogue">5 &middot; What's on the bus</button>
   </nav>
 
   <main>
@@ -50,6 +51,7 @@
         <div id="counter-fields"></div>
         <button class="secondary-action" id="receipts-toggle-btn" style="display:none">Show the receipts</button>
         <div id="receipts-panel" class="receipts-panel" style="display:none"></div>
+        <p class="artifact-line" id="artifact-line"></p>
         <p class="break-proof-caption" id="break-proof-caption"></p>
         <div class="break-proof-controls" id="break-proof-controls" style="display:none">
           <button class="secondary-action" id="break-proof-btn">Take PNIA's permission away and try again</button>
@@ -94,6 +96,8 @@
           <button class="secondary-action" id="permissions-restore-btn" style="display:none">Restore PNEA's access</button>
         </div>
         <p class="break-proof-caption" id="permissions-caption"></p>
+        <p class="catalogue-crosslink">What <em>is</em> published: tab 5 &mdash; publication is not permission, and these two tabs are the pair that proves it.</p>
+        <button class="forward-link" data-tab="catalogue">See what's on the bus &rarr;</button>
       </div>
 
       <div class="card">
@@ -111,6 +115,16 @@
         <p style="color: var(--muted)">The queue behind <code>apps/join-api</code> (<code>scripts/join.sh up</code>) &mdash; a new agency's payload, its computed config diff, and the live progress of an approved join. Not drift; see <code>scripts/member.sh drift</code> for that.</p>
         <div id="join-empty">Loading&hellip;</div>
         <div id="join-list"></div>
+      </div>
+    </section>
+
+    <!-- ================= CATALOGUE ================= -->
+    <section class="tab-panel" id="tab-catalogue">
+      <div class="card">
+        <h2>What's published on this bus</h2>
+        <p class="catalogue-disclaimer" id="catalogue-disclaimer"></p>
+        <p style="color: var(--muted)" id="catalogue-source"></p>
+        <div id="catalogue-list">Loading&hellip;</div>
       </div>
     </section>
   </main>

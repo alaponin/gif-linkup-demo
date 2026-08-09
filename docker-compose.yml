@@ -172,13 +172,20 @@ services:
       # here exactly like XROAD_ADMIN_PASSWORD above -- the browser never
       # sees it. join-api itself is reached at its Compose service name on
       # the linkup network (JOIN_API_URL's default, apps/console/app.py).
-      KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:?set in .env}
+      #
+      # :- not :? -- an absent token disables the console's join tab, it
+      # does not stop the console. join-api's own stanza keeps :?, where
+      # the token is load-bearing.
+      KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:-}
     volumes:
       - ./deployment.yaml:/pack/deployment.yaml:ro
       - ./manifest.yaml:/pack/manifest.yaml:ro
       - ./configs:/pack/configs:ro
       - ./hurl/topology.json:/pack/hurl/topology.json:ro
       - ./apps/data:/pack/apps/data:ro
+      # onboarding/catalogue.yaml, for the "what's on the bus" tab -- the
+      # register's own generated output, re-read per request.
+      - ./onboarding:/pack/onboarding:ro
       - ./out:/out
 
   join-api:
@@ -210,8 +217,15 @@ services:
       XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
       XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
-      KP2_JOIN_APPLICANT_TOKEN: ${KP2_JOIN_APPLICANT_TOKEN:?set in .env}
-      KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:?set in .env}
+      # :- not :?, even though join-api genuinely requires both. Compose
+      # interpolates the WHOLE file whatever service is targeted, so a :?
+      # here stops `scripts/console.sh up` too -- the exact coupling
+      # _required_token's own docstring rejects. The guard stays in
+      # apps/join-api/app.py, where it is scoped to join-api and stronger:
+      # it also catches the .env.example CHANGEME placeholder, which :?
+      # accepts. `join.sh up --wait` still fails, on the health check.
+      KP2_JOIN_APPLICANT_TOKEN: ${KP2_JOIN_APPLICANT_TOKEN:-}
+      KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:-}
     volumes:
       - ../../..:/repo
       # ...with one addition, for a checkout that is a git WORKTREE. There,

@@ -48,6 +48,8 @@ function switchToTab(name) {
   // Join tab only polls while it's the one on screen (below) -- no reason
   // to hit join-api every few seconds from every other tab.
   if (name === "join") startJoinPolling(); else stopJoinPolling();
+  // Re-read per activation, not once: a join or un-join regenerates the file.
+  if (name === "catalogue") loadCatalogue();
 }
 
 function initTabs() {
@@ -330,6 +332,10 @@ async function renderCounterForm(nin, data, runToken) {
     : "";
   bumpSessionTally(filled);
   renderReceipts(data);
+  $("#artifact-line").textContent = data.artifact_hint
+    ? `This exchange's assembled application, with per-field provenance, is on disk at `
+      + `${data.artifact_hint} — the object the M5.6 video ends on.`
+    : `Run scripts/acceptance.sh to write this exchange to disk as out/application-${nin}.json.`;
   $("#receipts-toggle-btn").style.display = "inline-block";
   $("#counter-forward-btn").style.display = "inline-block";
 }
@@ -513,6 +519,16 @@ async function renderInspector(data) {
           `${call.service}\n${call.status_code ?? "ERR"} in ${call.elapsed_ms.toFixed(0)}ms, served by ${servedBy}\n${call.url}`;
         el.appendChild(detail);
       });
+    }
+
+    // Where in the pack this layer's claim actually lives -- file paths, not
+    // links: the console is not a file server for the pack tree.
+    const where = (data.layer_sources || {})[pane.key] || [];
+    if (where.length) {
+      const footer = document.createElement("div");
+      footer.className = "layer-where";
+      footer.textContent = "where this lives:\n" + where.join("\n");
+      el.appendChild(footer);
     }
 
     grid.appendChild(el);
@@ -740,10 +756,19 @@ function renderJoinRequest(record) {
     // misleading there (nothing is pending; there is nothing to verify).
     if (record.note) {
       html += `<div class="join-note">${esc(record.note)}</div>`;
+    } else if (record.verified) {
+      html += `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`;
+    } else if (payload.security_server && payload.security_server.own_server) {
+      // An own-server join's bring-up spends the retry budget on the
+      // propagation wait before the reachability check runs, so the flag is
+      // false for a reason that is not a broken join -- and never flips
+      // afterwards. A hosted join reaching false IS genuinely pending.
+      html += `<div class="join-verified pending">verified: false &mdash; known demo defect for `
+        + `own-server joins, not a broken join: the bring-up's propagation wait spends the retry `
+        + `budget before the reachability check runs. <code>scripts/acceptance.sh</code>'s 2.7.r1 `
+        + `check a minute later is the real answer; this flag never flips afterwards.</div>`;
     } else {
-      html += record.verified
-        ? `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`
-        : `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
+      html += `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
     }
     // uncommitted is bool | null (apps/join-api/app.py's _live_uncommitted):
     // null means the git check itself failed -- fails toward SHOWING a
@@ -821,7 +846,15 @@ async function refreshJoinQueue() {
   if (data.requests.length === 0) {
     list.innerHTML = "";
     empty.style.display = "block";
-    empty.textContent = "No join requests yet.";
+    if ($("#join-copy-curl-btn")) return; // the 3s poll must not clobber the button mid-click
+    // This tab reviews, approves, rejects, resumes and watches a join; it
+    // never submits one. Submission is the APPLICANT's act, with the
+    // applicant token, from outside -- that asymmetry is the teaching point,
+    // so the empty state hands over the command rather than a form.
+    empty.innerHTML = `No join requests yet. Submitting one is the applicant's act, `
+      + `not the operator's — this tab reviews what arrives.`
+      + `<button class="secondary-action" id="join-copy-curl-btn">Copy submit as curl</button>`;
+    $("#join-copy-curl-btn").addEventListener("click", copyJoinSubmitCurl);
     return;
   }
   empty.style.display = "none";
@@ -872,8 +905,83 @@ async function onJoinListClick(e) {
   }
 }
 
+// Skeleton, not a working payload: the required keys of
+// apps/join-api/schema.py's JoinPayload with placeholder values, so the
+// applicant edits rather than invents. The token is referenced unexpanded --
+// it stays in .env, exactly as the runbook's own examples do.
+const JOIN_SUBMIT_PAYLOAD = {
+  code: "AGENCY", name: "Agency Full Name",
+  subsystem: "SUBSYSTEM", subsystem_description: "what this subsystem does",
+  security_server: { code: "SS-AGENCY", dns_name: "ss-agency", hosted_on: "ss-pnea" },
+  semantic: { entity: "person", key: "nin", fields: ["nin"], pattern: "digital_registries_lookup" },
+  services: [],
+  member_requirements: {
+    has_security_server: true, has_registered_identity: true,
+    standards_portfolio_adopted: true, data_conformant: true,
+    technical_contact: "Head of IT, Agency",
+  },
+};
+
+const JOIN_SUBMIT_CURL = `curl -s -X POST http://localhost:8091/requests \\
+  -H "X-KP2-Console: 1" \\
+  -H "Authorization: Bearer $KP2_JOIN_APPLICANT_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(JOIN_SUBMIT_PAYLOAD, null, 2)}'`;
+
+async function copyJoinSubmitCurl(e) {
+  await navigator.clipboard.writeText(JOIN_SUBMIT_CURL);
+  const btn = e.target;
+  const original = btn.textContent;
+  btn.textContent = "Copied!";
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
 function initJoinTab() {
   $("#join-list").addEventListener("click", onJoinListClick);
+}
+
+// --------------------------------------------------------- catalogue ----
+// Fifth tab: what the register says is published here. The pair to tab 3 --
+// that one shows a caller refused a service that IS in this list. Every
+// value comes from onboarding/catalogue.yaml, which is generated from
+// member configs an applicant supplied, so esc() at every call site.
+
+function renderCatalogueService(svc) {
+  const provider = svc.provider || {};
+  const semantic = svc.semantic || {};
+  const rows = [
+    ["service", svc.id],
+    ["provider", `${provider.code || "?"} — ${provider.name || ""}`],
+    ["semantic", `${semantic.entity || "?"} (anchored on ${semantic.anchor || "?"})`],
+    ["pattern", svc.pattern],
+    ["lawful basis", svc.lawful_basis],
+    ["ACL names", (svc.access || []).join(", ") || "(nobody)"],
+    ["contract", svc.contract],
+    ["SLA", svc.sla],
+    ["catalogue entry", svc.entry],
+  ];
+  return `<div class="catalogue-card"><h3>${esc(svc.service_code || "?")}</h3>`
+    + rows.map(([k, v]) => `<div class="catalogue-row">`
+      + `<span class="catalogue-key">${esc(k)}</span>`
+      + `<span class="catalogue-value">${esc(v ?? "—")}</span></div>`).join("")
+    + `</div>`;
+}
+
+async function loadCatalogue() {
+  const data = await api("/api/catalogue");
+  const list = $("#catalogue-list");
+  const disclaimer = $("#catalogue-disclaimer");
+  const source = $("#catalogue-source");
+  if (!data || !Array.isArray(data.services)) {
+    disclaimer.textContent = "";
+    source.textContent = "";
+    list.textContent = (data && data.error) || "Catalogue unavailable.";
+    return;
+  }
+  disclaimer.textContent = data.publication_is_not_permission || "";
+  source.textContent = `Reading ${data.source} for instance ${data.instance || "?"},`
+    + ` regenerated by joins and un-joins. Same data over HTTP: ${data.api_form}.`;
+  list.innerHTML = data.services.map(renderCatalogueService).join("");
 }
 
 // ------------------------------------------------------------ guided run ----

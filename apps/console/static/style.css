@@ -484,6 +484,44 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 #journal-banner.dirty { display: flex; }
 #journal-banner button { background: var(--danger); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
 
+/* -- catalogue tab -- */
+
+/* The disclaimer is the point of the tab, so it reads as a banner, not a
+   caption. */
+.catalogue-disclaimer {
+  background: color-mix(in srgb, var(--citizen) 18%, var(--bg));
+  border: 1px solid var(--citizen);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.catalogue-crosslink { font-size: 14px; color: var(--muted); margin: 12px 0 0; }
+.catalogue-card {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 12px;
+}
+.catalogue-card h3 { margin: 0 0 10px; font-size: 15px; }
+.catalogue-row { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; }
+.catalogue-key { width: 130px; flex-shrink: 0; color: var(--muted); font-size: 13px; }
+.catalogue-value { font-size: 14px; word-break: break-word; }
+
+.artifact-line { color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+
+.layer-where {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--panel-border);
+  margin-top: 10px;
+  padding-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #f4f6f9;

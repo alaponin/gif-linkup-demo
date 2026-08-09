@@ -36,8 +36,15 @@ ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 # response. join-api is on the same linkup network as every other
 # console-adjacent service (docker-compose.yml), so this is a plain
 # server-to-server call, same shape as xroad.AdminSession.
+#
+# Optional, unlike ADMIN_PASSWORD: a missing token disables the join tab
+# only (_proxy_join renders the remedy), it does not stop the console.
 JOIN_API_URL = os.environ.get("JOIN_API_URL", "http://join-api:8000")
-JOIN_OPERATOR_TOKEN = os.environ["KP2_JOIN_OPERATOR_TOKEN"]
+JOIN_OPERATOR_TOKEN = os.environ.get("KP2_JOIN_OPERATOR_TOKEN", "")
+JOIN_TOKEN_MISSING = (
+    "KP2_JOIN_OPERATOR_TOKEN not set -- re-run scripts/gen-secrets.sh "
+    "(no flags), then scripts/console.sh up"
+)
 
 # Only one ACL is mutable in this demo -- identity-api's
 # grant to PNEA:EXAMS. enrolment-api stays untouched so a broken reset is
@@ -319,13 +326,20 @@ def get_exchange(nin: str):
         for member_code in {f.source for f in TRUTH.form_fields if f.source != "citizen"}
     }
 
+    # The file acceptance.sh writes for this NIN, if it has been run. Only
+    # ever reported, never written: writing pack outputs is acceptance.sh's
+    # act, and the console is not in the acceptance path.
+    artifact = OUT_DIR / f"application-{nin}.json"
+
     return {
         "credential_application": application,
         "calls": [dataclasses.asdict(r) for r in results],
         "layers": TRUTH.layers,
+        "layer_sources": _layer_sources(),
         "client_header": TRUTH.exchange["headers"]["X-Road-Client"],
         "identity_held_fields": _identity_held_fields(nin),
         "semantic_fields": semantic_fields,
+        "artifact_hint": f"out/application-{nin}.json" if artifact.exists() else None,
     }
 
 
@@ -365,6 +379,58 @@ def get_exchange_negative(nin: str):
         negative["unauthorised_client"],
     )
     return {"calls": [dataclasses.asdict(r) for r in results], "expect": negative["expect"]}
+
+
+CATALOGUE_MISSING = (
+    "onboarding/catalogue.yaml has not been rendered -- run scripts/render-onboarding.sh"
+)
+
+
+@app.get("/api/catalogue", dependencies=[Depends(_require_console_origin)])
+def get_catalogue():
+    """What is published on this bus, straight from the register's own
+    generated onboarding/catalogue.yaml -- no join-api, so the tab works
+    with `scripts/join.sh down`, which is its normal state."""
+    catalogue = truth_mod.load_catalogue(PACK_DIR)
+    if catalogue is None:
+        return {"error": CATALOGUE_MISSING}
+    return {
+        **catalogue,
+        "source": "onboarding/catalogue.yaml",
+        "api_form": "GET :8091/catalogue (applicant token)",
+    }
+
+
+def _layer_sources() -> dict[str, list[str]]:
+    """Per EIF layer, where in the pack that layer's claim actually lives:
+    a file path and the string it holds. Empty lists if the catalogue has
+    not been rendered -- the panes render without the footer."""
+    catalogue = truth_mod.load_catalogue(PACK_DIR)
+    if catalogue is None:
+        return {}
+
+    sources: dict[str, list[str]] = {"legal": [], "organisational": [], "semantic": [], "technical": []}
+    for svc in catalogue.get("services", []):
+        provider = svc.get("provider", {})
+        key, code = provider.get("key", "?"), provider.get("code", "?")
+        semantic = svc.get("semantic", {})
+        sources["legal"].append(
+            f"configs/member-{key}/{key}.yaml -- {code} {svc.get('service_code')} lawful_basis: "
+            f"{svc.get('lawful_basis', '(not stated)')}"
+        )
+        sources["organisational"].append(
+            f"{svc.get('entry')} -- {svc.get('service_code')} ACL names: "
+            f"{', '.join(svc.get('access') or []) or '(nobody)'}"
+        )
+        sources["semantic"].append(
+            f"configs/semantic/semantic-map.yaml -- {svc.get('service_code')} entity "
+            f"{semantic.get('entity')}, anchored on {semantic.get('anchor')}"
+        )
+    sources["technical"].append(
+        "configs/x-road-bus/once-only-exchange.yaml -- the calls, their r1 paths and "
+        f"X-Road-Client {TRUTH.exchange['headers']['X-Road-Client']}"
+    )
+    return sources
 
 
 @app.get("/api/acl")
@@ -500,7 +566,10 @@ def _proxy_join(method: str, path: str, **kwargs) -> dict:
     like the console itself, and not always running (scripts/join.sh
     up/down) -- that is a fact for the tab to render (the queue view
     treats a body with no "requests" key as "no join API reachable"), not a
-    500 the console throws at its own caller."""
+    500 the console throws at its own caller. Same for a missing operator
+    token: the tab renders the remedy, the other tabs are unaffected."""
+    if not JOIN_OPERATOR_TOKEN:
+        return {"error": JOIN_TOKEN_MISSING}
     try:
         resp = _join_api(method, path, **kwargs)
     except httpx.HTTPError as exc:

@@ -76,6 +76,19 @@ class Truth:
     # for the legal pane's "held" query only
 
 
+def load_catalogue(pack_dir: str | pathlib.Path) -> dict | None:
+    """onboarding/catalogue.yaml, or None if it has never been rendered.
+
+    Read per call rather than cached in Truth: a join or un-join regenerates
+    the file, and this matches join-api's GET /catalogue, which re-derives on
+    every call too.
+    """
+    path = pathlib.Path(pack_dir) / "onboarding" / "catalogue.yaml"
+    if not path.exists():
+        return None
+    return yaml.safe_load(path.read_text())
+
+
 def _member_code(xroad_id: str) -> str:
     """Any X-Road identifier ('A/B/CODE/...' or 'A:B:CODE:...') -> CODE.
 
