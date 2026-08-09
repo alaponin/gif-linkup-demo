@@ -42,7 +42,7 @@ not one agency's description of itself.
 
 PTSB is the one worked example that ships its own expected output rather than
 pointing at a committed config, because PTSB is not a member of this pack —
-it joins, demonstrates, and leaves (`docs/exercises.md`, exercises 2–4). The
+it joins, demonstrates, and leaves (`exercises.md`, exercises 2–4). The
 backend it joins with is real and tracked (`apps/specs/ptsb-awards.openapi.yaml`,
 `apps/data/awards.csv`, the `app-ptsb` container); only its member config is
 transient. That is what makes it the right example: you can actually run the

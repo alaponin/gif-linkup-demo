@@ -10,7 +10,7 @@ Three ways in, in increasing depth:
   `docs/path-conformance.md` for how far it goes against the onboarding path.
 - **Run** — `scripts/demo.sh` stands the federation up from zero (~10 minutes)
   and tells you what it is doing at each step.
-- **Do** — `docs/exercises.md`: five exercises over the same operations
+- **Do** — `exercises.md`: five exercises over the same operations
   documented below, each with the observations to expect.
 
 Everything below is the engineering depth under those three.

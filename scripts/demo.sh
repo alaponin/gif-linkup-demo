@@ -86,5 +86,5 @@ separate browsers or profiles:
   Test CA                 http://${BIND}:8888/testca/
   ss-pdga / pnea / plr / pnia  https://${BIND}:1000 / 2000 / 3000 / 5100   .env admin user
 
-Next: docs/exercises.md -- the same operations with expected observations.
+Next: exercises.md -- the same operations, with the observations to expect.
 EOF

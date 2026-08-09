@@ -6,6 +6,12 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 
 - **Track:** interoperability
 - **Depends on:** none (foundation)
+- **First time here?** `scripts/demo.sh` stands the federation up from zero in
+  about ten minutes, naming each step as it runs it. Then `exercises.md` —
+  five exercises over the operations `runbook.md` documents, each with the
+  observations to expect: break and restore the once-only proof, join a
+  member, catch a published contract drifting, un-join, and watch the
+  reproducibility proof run.
 - **Stand it up:** see `runbook.md` — start with `scripts/preflight.sh`
   (checks the host has what the pack needs; installs nothing), then
   `scripts/gen-secrets.sh` (writes a real `.env`; `.env.example` is a
