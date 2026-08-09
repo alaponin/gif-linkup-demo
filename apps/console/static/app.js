@@ -640,6 +640,10 @@ function initPermissions() {
 // federated field values.
 const JOIN_POLL_INTERVAL_MS = 3_000;
 let joinPollTimer = null;
+// Validation messages for the decision-reference field, by request id. Render
+// state, not DOM state: refreshJoinQueue() rebuilds the whole list every poll,
+// so anything written straight into a card is gone within 3s.
+const joinDecisionErrors = {};
 
 function startJoinPolling() {
   if (joinPollTimer) return;
@@ -703,6 +707,9 @@ function renderJoinRequest(record) {
       + `<button class="action join-approve-btn" data-id="${esc(record.id)}">Approve</button>`
       + `<button class="secondary-action join-reject-toggle-btn" data-id="${esc(record.id)}">Reject&hellip;</button>`
       + `</div>`
+      + (joinDecisionErrors[record.id]
+          ? `<div class="join-error join-decision-error">${esc(joinDecisionErrors[record.id])}</div>`
+          : "")
       + `<div class="join-reject-box" id="join-reject-${esc(record.id)}" style="display:none">`
       + `<textarea class="join-reject-reason" placeholder="Reason (shown to the applicant)"></textarea>`
       + `<button class="action revoke join-reject-confirm-btn" data-id="${esc(record.id)}">Confirm reject</button>`
@@ -858,8 +865,30 @@ async function refreshJoinQueue() {
     return;
   }
   empty.style.display = "none";
+  // The list is rebuilt wholesale on every poll, which would otherwise
+  // discard a decision reference the operator is part-way through typing --
+  // a 3s window is shorter than it takes to copy a minute reference across.
+  // Carry the values, the focus and the caret over the rebuild.
+  const typed = {};
+  $all(".join-decision-reference").forEach(input => { typed[input.dataset.id] = input.value; });
+  const active = document.activeElement;
+  const focusedId = active && active.classList.contains("join-decision-reference")
+    ? active.dataset.id : null;
+  const caret = focusedId ? [active.selectionStart, active.selectionEnd] : null;
+  // A field that now has a value has answered its own validation message.
+  Object.keys(typed).forEach(id => { if (typed[id].trim()) delete joinDecisionErrors[id]; });
+
   list.innerHTML = "";
   data.requests.forEach(record => list.appendChild(renderJoinRequest(record)));
+
+  $all(".join-decision-reference").forEach(input => {
+    const value = typed[input.dataset.id];
+    if (value) input.value = value;
+    if (input.dataset.id === focusedId) {
+      input.focus();
+      if (caret) input.setSelectionRange(caret[0], caret[1]);
+    }
+  });
 }
 
 async function onJoinListClick(e) {
@@ -872,12 +901,20 @@ async function onJoinListClick(e) {
     const refInput = approveBtn.parentElement.querySelector(".join-decision-reference");
     const decisionReference = (refInput.value || "").trim();
     if (!decisionReference) {
-      // Wave 2 Task 2: the gate is the field itself, not just the API's 400
-      // -- a required field with no input must not silently round-trip.
-      alert("Decision reference is required: admission is a Steering Committee decision (Ref Model §5.3); this approves and records which one.");
-      refInput.focus();
+      // The gate is the field itself, not just the API's 400 -- a required
+      // field with no input must not silently round-trip.
+      joinDecisionErrors[approveBtn.dataset.id] =
+        "Decision reference is required: admission is a Steering Committee decision "
+        + "(Ref Model §5.3); this approves and records which one.";
+      await refreshJoinQueue();
+      // Matched on dataset, not built into a selector: a join id is
+      // applicant-influenced, and this avoids the escaping question entirely.
+      const reopened = $all(".join-decision-reference")
+        .find(input => input.dataset.id === approveBtn.dataset.id);
+      if (reopened) reopened.focus();
       return;
     }
+    delete joinDecisionErrors[approveBtn.dataset.id];
     approveBtn.disabled = true;
     await api(`/api/join/requests/${encodeURIComponent(approveBtn.dataset.id)}/approve`, {
       method: "POST",

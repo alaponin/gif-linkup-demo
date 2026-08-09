@@ -335,6 +335,24 @@ def test_the_join_tab_offers_the_submit_command_but_no_submit_route():
     assert "$KP2_JOIN_APPLICANT_TOKEN" in src  # referenced, never expanded
 
 
+def test_the_decision_reference_gate_reports_inline_and_survives_the_poll():
+    """The queue rebuilds the whole list every 3s, so a validation message
+    written straight into a card -- or a reference the operator is still
+    typing -- is gone before it is read. The message is render state keyed by
+    request id, and typed values are carried across the rebuild; alert() is
+    not the console's idiom anywhere else."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    approve_gate = src.split("if (approveBtn) {", 1)[1].split("} else if", 1)[0]
+    assert "alert(" not in approve_gate, "the approve gate is back to a browser dialog"
+    assert "joinDecisionErrors[approveBtn.dataset.id]" in approve_gate
+    # Rendered escaped, like every other join-payload-derived value.
+    assert "esc(joinDecisionErrors[record.id])" in src
+    # Carried over the rebuild, or the poll eats it.
+    rebuild = src.split("async function refreshJoinQueue", 1)[1]
+    assert "typed[input.dataset.id] = input.value" in rebuild
+    assert "setSelectionRange" in rebuild
+
+
 def test_the_submit_skeleton_carries_every_field_the_join_api_requires():
     """The skeleton is the first thing an applicant runs, so a missing
     required field is rejected before an operator ever sees the request --

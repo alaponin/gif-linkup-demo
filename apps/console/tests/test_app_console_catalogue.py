@@ -36,7 +36,7 @@ def _client():
     return TestClient(app.app)
 
 
-# -- C1: no operator token ----------------------------------------------------
+# -- no operator token ---------------------------------------------------------
 
 
 def test_console_imports_without_the_join_operator_token():
@@ -72,7 +72,7 @@ def test_health_is_ok_without_the_token(monkeypatch):
     assert _client().get("/api/health").json() == {"status": "ok"}
 
 
-# -- C2: the catalogue endpoint -----------------------------------------------
+# -- the catalogue endpoint ----------------------------------------------------
 
 
 def test_catalogue_requires_the_console_header():
@@ -95,7 +95,7 @@ def test_catalogue_reports_an_unrendered_file_rather_than_500(monkeypatch, tmp_p
     assert "render-onboarding.sh" in body["error"]
 
 
-# -- C5: the inspector's per-layer "where this lives" -------------------------
+# -- the inspector's per-layer "where this lives" ------------------------------
 
 
 def test_layer_sources_name_a_file_and_the_string_it_holds():
@@ -112,7 +112,7 @@ def test_layer_sources_are_empty_when_the_catalogue_is_unrendered(monkeypatch, t
     assert app._layer_sources() == {}
 
 
-# -- static assets must revalidate --------------------------------------------
+# -- static assets must revalidate ---------------------------------------------
 
 
 def test_static_assets_carry_no_cache_so_a_rebuild_is_picked_up():

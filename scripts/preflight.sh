@@ -104,6 +104,17 @@ fi
 # false positive that refuses to deploy is worse than a line of advice.
 WARNINGS=()
 
+# The join tokens are interpolated with ${VAR:-}, so they are not in the
+# required set above and their absence does not stop a deploy -- it costs the
+# join demo only. Warn rather than fail, and say what it costs.
+if [ -f "$ENV_FILE" ]; then
+  join_missing=""
+  for key in KP2_JOIN_APPLICANT_TOKEN KP2_JOIN_OPERATOR_TOKEN; do
+    grep -q "^${key}=." "$ENV_FILE" || join_missing="$join_missing $key"
+  done
+  [ -n "$join_missing" ] && WARNINGS+=("- .env has no:$join_missing -- the federation deploys without them, but the join demo does not (join-api refuses to start; the console's join tab shows the remedy). Re-run scripts/gen-secrets.sh with no flags to append just those.")
+fi
+
 # Drift presents as certificate errors, not time errors -- which is why it is
 # worth naming here rather than leaving to be diagnosed later.
 if [ "$OS" = macos ]; then
@@ -134,7 +145,7 @@ print_warnings() {
 }
 
 if [ "${#FAILURES[@]}" -eq 0 ] && [ "${#ENV_PROBLEMS[@]}" -eq 0 ]; then
-  echo "preflight: docker, docker compose (v2), jq, curl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, and a complete .env are all present."
+  echo "preflight: docker, docker compose (v2), jq, curl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, and every .env key the deploy requires are all present."
   print_warnings
   exit 0
 fi

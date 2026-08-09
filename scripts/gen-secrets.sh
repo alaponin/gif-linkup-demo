@@ -40,15 +40,14 @@ random_value() {
 }
 
 # KP2_JOIN_APPLICANT_TOKEN/KP2_JOIN_OPERATOR_TOKEN were added to this
-# script's own output after some .env files were already generated
-# (join-b). docker-compose.yml now requires both unconditionally at
-# interpolation time (${VAR:?...}), even for services in the demo profile
-# that nobody is bringing up -- so an .env that predates them breaks the
-# WHOLE pack, not just the join-related parts, until it has them. Below: if
-# that is the ONLY thing wrong with an existing .env, append just those two
-# keys rather than refusing outright --
-# no PIN/password rotation, so none of the --force path's teardown/purge
-# warning applies.
+# script's own output after some .env files were already generated.
+# docker-compose.yml interpolates both with ${VAR:-}, so an .env that
+# predates them still deploys the federation; what it loses is the join
+# demo -- join-api refuses to start on an empty token and the console's join
+# tab renders the remedy in place of a queue. Below: if that is the ONLY
+# thing wrong with an existing .env, append just those two keys rather than
+# refusing outright -- no PIN/password rotation, so none of the --force
+# path's teardown/purge warning applies.
 JOIN_TOKEN_KEYS="KP2_JOIN_APPLICANT_TOKEN KP2_JOIN_OPERATOR_TOKEN"
 
 if [ -f "$ENV_FILE" ] && [ "${1:-}" != "--force" ]; then
