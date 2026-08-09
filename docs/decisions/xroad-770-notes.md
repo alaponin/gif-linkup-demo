@@ -285,7 +285,7 @@ waited on.** No call in either cycle returned anything but its `204` on the
 first attempt — in particular there is no approval round to poll and no `409`
 window was encountered (but see finding 3 for what that does and does not
 establish about `DELETE /clients/{id}`). Four calls the
-join-c plan budgeted for turned out not to exist: a `PUT .../disable` before
+the budgeted step turned out not to exist: a `PUT .../disable` before
 the service-description delete, a Central-Server approval round after the
 unregister, a separate certificate delete before the SIGN-key delete, and a
 separate `DELETE /subsystems/{id}` before the member delete. See below for
@@ -414,7 +414,7 @@ failure §7 recorded — not a hang and not a stale success.
 
 **No global-configuration residue was found, and no restart was needed.** The
 "if clean live de-registration turns out not to be achievable" branch of the
-join-c plan does not apply.
+the earlier assumption does not apply.
 
 Two carry-overs from §7 that this spike does **not** overturn:
 

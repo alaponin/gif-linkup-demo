@@ -200,7 +200,7 @@ services:
     # Path(__file__).resolve().parent.parent -- i.e. relative to wherever
     # hurl/generate.py itself sits -- so it needs the whole pack tree present
     # at the same relative layout, writable. It also runs `git status
-    # --porcelain configs/ manifest.yaml` (spec S9's "known gap" mitigation),
+    # --porcelain configs/ manifest.yaml`,
     # which needs the enclosing .git -- the real git root, three levels above
     # this pack directory. So: bind-mount the whole monorepo checkout,
     # read-write, at a path that preserves that relative layout, rather than

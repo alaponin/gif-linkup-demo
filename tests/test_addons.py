@@ -65,6 +65,5 @@ def test_every_security_server_uses_the_full_non_slim_sidecar_image():
     slim = {name: svc["image"] for name, svc in ss_services.items() if "slim" in svc["image"]}
     assert not slim, (
         "the following Security Servers resolve to a -slim Sidecar image, which "
-        "does not ship operational/environmental monitoring "
-        f"(G-06): {slim}"
+        f"add-ons: {slim}"
     )

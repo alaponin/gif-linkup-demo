@@ -182,7 +182,7 @@ def test_join_api_error_response_is_surfaced_not_swallowed(monkeypatch):
 def test_join_render_paths_escape_every_payload_derived_field():
     """A join payload is attacker-supplied by construction (agency name,
     service code, rejection reason) -- the console's own prior stored-XSS
-    finding (PLAN.md §11) came from exactly this shape of bug, in a
+    finding came from exactly this shape of bug, in a
     different tab. Every join-tab interpolation of a payload/record-derived
     string must go through esc(), from this commit, not acquired later."""
     src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
@@ -204,7 +204,7 @@ def test_join_render_paths_escape_every_payload_derived_field():
         assert expected in src, f"expected {expected!r} in app.js's join render path"
 
 
-# -- the BLOCKED card (join-c plan, Steps 5 and 7) ----------------------
+# -- the BLOCKED card ---------------------------------------------------
 # Same static-source discipline as the escaping check above: no JS runtime
 # here, so these read the committed source for the two things Step 5 asks for.
 
@@ -235,7 +235,7 @@ def test_the_blocked_state_has_its_own_style_like_every_other_state():
     assert ".join-blocked-command" in css
 
 
-# -- un-joining (join-c plan, Steps 6-8) --------------------------------
+# -- un-joining --------------------------------------------------------
 # Step 6 chose option (a): the states render, there is no delete control. Two
 # reasons, in the order they decided it. First, the audience -- the join tab
 # shows an agency arriving, and a destructive control is a different act for a

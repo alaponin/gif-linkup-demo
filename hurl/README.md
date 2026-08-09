@@ -202,11 +202,11 @@ install step regardless of interpreter version, so the floor was never
 installed".
 
 **Decision: raise the floor to 3.9+.** This deletes the invisible
-host-vs-container idiom rule (C8 in the simplification plan) — both sides
+host-vs-container idiom rule — both sides
 now support `removeprefix`/`removesuffix` — and CI's `python-version` moves
 off an EOL 3.7 pin (`.github/workflows/kp2-fast.yml`) that would eventually
 stop being satisfiable on hosted runner images at all. The
-`scripts/check-python-floor.sh` lint queued in the simplification plan
+`scripts/check-python-floor.sh` lint once queued
 is withdrawn: there is no longer a restriction for it to enforce.
 Cost, paid honestly: an operator on a stock Mac whose `python3` still
 resolves to something older than 3.9 needs to fix that — but they need a
@@ -215,7 +215,7 @@ new burden, it is naming one that already existed.
 
 ## Golden corpus
 
-`generate.py` has one topology, not a profile concept (D5), and the golden
+`generate.py` has one topology, not a profile concept, and the golden
 corpus matches: two directories, not a `{full,lite}/` pair that generated
 the identical tree twice.
 

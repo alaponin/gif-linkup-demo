@@ -105,7 +105,7 @@ def test_render_member_config_matches_the_documented_shape():
 
 
 def test_render_member_config_includes_pattern_when_classified():
-    """Pattern is optional on Semantic (G-04), but when
+    """Pattern is optional on Semantic, but when
     a joining payload does set it, the rendered config must carry it -- not
     silently drop a field the schema now accepts."""
     payload = _payload(
@@ -119,7 +119,7 @@ def test_render_member_config_includes_pattern_when_classified():
 
 
 def test_render_member_config_includes_lawful_basis_when_set():
-    """lawful_basis is optional on Service (K-02), but when a
+    """lawful_basis is optional on Service, but when a
     joining payload does set it, the rendered config must carry it -- the
     same "don't silently drop a field the schema now accepts" rule
     test_render_member_config_includes_pattern_when_classified enforces for
@@ -325,7 +325,7 @@ def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     assert (pack / "hurl" / "topology.json").exists()
 
 
-# -- onboarding/<key>/ (G-07) --------------------------------------------------
+# -- onboarding/<key>/ --------------------------------------------------
 
 
 def test_render_gates_table_links_sla_when_the_member_has_services():

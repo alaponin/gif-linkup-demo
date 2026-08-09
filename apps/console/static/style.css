@@ -19,7 +19,7 @@
 
 /* Explicit, high-contrast focus ring on every interactive element -- never
    rely on a browser default that can be too subtle to see on a dark
-   custom-styled button (UX plan Task 10, Step 2). Every control the
+   custom-styled button. Every control the
    keyboard path touches is a real <button>, so :focus-visible covers the
    whole demonstration without per-element wiring. */
 button:focus-visible, a:focus-visible {
@@ -218,7 +218,7 @@ main {
 }
 
 /* Solid, not tinted-transparent: measured >=6.2:1 against white text,
-   comfortably past WCAG AA's 4.5:1 for normal text (UX plan Task 10) --
+   comfortably past WCAG AA's 4.5:1 for normal text --
    the old color-mix()-on-panel background depended on what was under it
    and could not be guaranteed AA in both themes. */
 .source-badge.citizen { background: #7a5c14; color: #fff; }
@@ -324,7 +324,7 @@ button.action:disabled { opacity: 0.5; cursor: default; }
    states an operator most needs to tell apart at a glance: one wants a
    decision, the other wants a command run. */
 .join-state-blocked { background: #a05a1e; color: #fff; }
-/* Un-joining (join-c plan Task 4). RETIRING borrows RUNNING's blue because it
+/* Un-joining. RETIRING borrows RUNNING's blue because it
    IS a run -- six calls against the live federation -- and RETIRED is a muted
    slate rather than a green or a red: a member that has left is neither a
    success to celebrate nor a failure. A RETIRED card STAYS in the queue,
@@ -532,7 +532,7 @@ button.action:disabled { opacity: 0.5; cursor: default; }
   }
 }
 
-/* Persistent, quiet honesty line (UX plan Task 10, Step 3) -- always on
+/* Persistent, quiet honesty line -- always on
    screen, never only in a doc nobody watching the demo will read. */
 .demo-disclosure {
   text-align: center;

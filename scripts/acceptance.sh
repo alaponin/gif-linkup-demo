@@ -93,7 +93,7 @@ check_21() {  # paths confirmed live at P0
 }
 check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
 
-# ---- add-ons: operational + environmental monitoring (G-06) ---------
+# ---- add-ons: operational + environmental monitoring ---------
 # Server-level, not client-level -- xroad-monitor (environmental) and
 # xroad-opmonitor (operational) ship pre-installed and supervisord-managed on
 # the full (non-slim) Sidecar image every Security Server in this pack already
@@ -280,8 +280,8 @@ EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
 # retry() itself only reports success/failure and discards stdout, so capture
 # the body with a small inline retry instead.
 #
-# The success criterion is "the body parses as JSON", NOT curl's exit code
-# (join-c plan). curl -sf exits 0 on an X-Road REST response that is
+# The success criterion is "the body parses as JSON", NOT curl's exit code.
+# curl -sf exits 0 on an X-Road REST response that is
 # 200 with an empty or not-yet-valid body, which a fresh deploy really does
 # return for a few seconds -- docs/production-delta.md's "Lite profile's full
 # cycle, measured" recorded it happening on 2 of 3 fresh deploys and left it
@@ -543,7 +543,7 @@ for _row in "${_27_ROWS[@]}"; do
             "2.7.catalogue(${_code}.${_svc})")
 done
 
-# ---- 2.7.unjoin -- the un-join transition (join-c plan) ---------------
+# ---- 2.7.unjoin -- the un-join transition -----------------------------
 # acceptance/join-member.md's un-join clause: five assertions, which are exactly
 # docs/decisions/xroad-770-notes.md #11's closing claims. Discovered the same generic,
 # vacuous-by-default way the r1 rows above are: the newest RETIRED
@@ -883,7 +883,7 @@ PY
   done
 
   if [ ${#_27_RETIRED[@]} -gt 0 ]; then
-    # Clause 5. The Global Constraint of the join-c plan: a join-then-unjoin
+    # Clause 5. The Global Constraint: a join-then-unjoin
     # cycle leaves hurl/topology.json byte-identical. The single deployment
     # golden IS the "before the join" state -- it is generated from the
     # canonical member set alone (tests/test_golden.py), so with every

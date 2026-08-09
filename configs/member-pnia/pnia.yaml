@@ -29,7 +29,7 @@ semantic:                      # from configs/semantic/semantic-map.yaml — 'pe
   key: nin
   fields: [nin, given_name, family_name, date_of_birth, sex, region]
   pattern: digital_registries_lookup
-member_requirements:           # Module 5.2's checklist (K-01).
+member_requirements:           # Module 5.2's checklist.
   has_security_server: true
   has_registered_identity: true
   standards_portfolio_adopted: true

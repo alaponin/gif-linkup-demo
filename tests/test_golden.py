@@ -1,4 +1,4 @@
-"""Golden-corpus test for hurl/generate.py, per the testing-strategy plan.
+"""Golden-corpus test for hurl/generate.py.
 
 Two cases, not a `--profile full|lite` parametrize (the profile concept was
 removed from generate.py itself; D5: one topology):
@@ -12,12 +12,12 @@ removed from generate.py itself; D5: one topology):
     explicitly, and diffs against tests/golden/hosted-fixture/generated/.
     This is the one code path in hurl/generate.py's resolve_hosted_on_map()
     that no canonical config exercises today -- no member in configs/ sets
-    hosted_on (D5), and job.py's step-engine tests cover the join API, not
+    hosted_on, and job.py's step-engine tests cover the join API, not
     generate.py's rendering of a hosted member's stub/appended-client files.
     See _generate_hosted_fixture()'s docstring for the mechanism.
 
-Turns the byte-identical ritual pasted into every plan that touches
-generate.py into a two-second check. If a change to generate.py *should*
+Turns the byte-identical ritual every change to generate.py used to
+repeat into a two-second check. If a change to generate.py *should*
 alter the output, regenerate the corpus in the same commit -- see
 hurl/README.md.
 
@@ -84,7 +84,7 @@ def _generate_hosted_fixture(tmp_path: pathlib.Path) -> pathlib.Path:
     __file__, running the *copied* generate.py naturally treats the temp
     directory as its pack root -- zero code changes to the real
     hurl/generate.py, and the fixture set the input to a config nothing in
-    configs/ needs to carry today (D5: no canonical member is hosted)."""
+    configs/ needs to carry today (no canonical member is hosted)."""
     mini_hurl = tmp_path / "hosted-fixture-pack" / "hurl"
     mini_pack = mini_hurl.parent
     mini_hurl.mkdir(parents=True)

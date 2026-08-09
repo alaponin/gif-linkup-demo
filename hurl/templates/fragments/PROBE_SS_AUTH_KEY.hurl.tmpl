@@ -1,5 +1,5 @@
 
-# Probe for ss.auth_key_csr (join-a plan Task 5): "has this already
+# Probe for ss.auth_key_csr: "has this already
 # happened?" POST .../keys-with-csrs creates a NEW key every call -- no
 # natural uniqueness, so a resumed-but-already-done retry would silently
 # generate a second AUTH key rather than 409. The (future) executor decides

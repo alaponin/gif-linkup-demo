@@ -306,7 +306,7 @@ def test_session_tokens_are_never_persisted_but_are_still_injected():
 def test_409_on_a_repeat_counts_as_success():
     """The idempotence default: the templates assert HTTP 201, so
     a step whose effect already exists fails its assert with a 409 on the
-    wire -- proven live for service.acl (PLAN.md S11)."""
+    wire -- proven live for service.acl."""
     conflict = {
         "success": False,
         "entries": [{"captures": [], "calls": [{"response": {"status": 409}}]}],
@@ -368,8 +368,7 @@ def test_the_r1_check_gets_its_own_budget_however_little_the_run_has_left():
 
 
 def test_ocsp_staleness_is_named_rather_than_surfaced_as_a_tls_error():
-    """The single most likely way a live demo of this module breaks (spec
-    S5.5, PLAN.md S8): a federation idle overnight must not fail with what
+    """The single most likely way a live demo of this module breaks: a federation idle overnight must not fail with what
     reads as a certificate fault."""
     stale = {
         "success": False,

@@ -1,5 +1,5 @@
 """Unit tests for apps/join-api/validate.py -- twelve
-checks, plus lawful_basis and sla_required (K-01), for
+checks, plus lawful_basis and sla_required, for
 thirteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
@@ -321,7 +321,7 @@ def test_purpose_limitation_allows_a_publish_with_empty_access_and_no_semantic()
 
 
 def test_purpose_limitation_rejects_an_entity_not_in_the_semantic_map():
-    """Conformance, not presence (K-03):
+    """Conformance, not presence:
     semantic.entity must be a key in configs/semantic/semantic-map.yaml."""
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"]}],
@@ -347,7 +347,7 @@ def test_purpose_limitation_accepts_a_real_entity_and_field_subset():
     assert payload.semantic.entity == "enrolment"
 
 
-# -- lawful_basis and sla_required (K-01) ---------------------------------------
+# -- lawful_basis and sla_required ---------------------------------------
 
 
 def test_lawful_basis_rejects_a_consumer_only_member_with_none_stated():
@@ -473,14 +473,14 @@ def test_identifier_characters_accepts_a_dotted_service_code():
     was solving the wrong problem: "awards.list" is a valid X-Road
     identifier and this pack must not reject it. Deliberately asserting
     ACCEPTANCE here, not rejection -- do not "fix" this back to a reject,
-    that would resurrect the false-reject bug (G-01) corrected."""
+    that would resurrect the false-reject bug this table corrected."""
     raw = _payload(services=[{"code": "awards.list", "spec_url": "http://app-ptsb:8000/spec.yaml",
                                 "lawful_basis": "consent", "access": [], "sla": _sla()}])
     payload = _run(raw, fetch_spec=_fetch_fixture("bad_service_code.yaml"))
     assert payload.services[0].code == "awards.list"
 
 
-# Table-driven (G-01): X-Road >=7.3.0's identifier
+# Table-driven: X-Road >=7.3.0's identifier
 # allowlist (a-zA-Z0-9'()+,-.=?, XRDDEV-1960) disagrees with this pack's old
 # denylist in both directions -- see validate.py's comment above
 # _bad_identifier for the full story. Exercised against `subsystem`

@@ -1,5 +1,5 @@
 
-# Probe for cs.signing_keys (join-a plan Task 5): "has this already happened?"
+# Probe for cs.signing_keys: "has this already happened?"
 # Repeating cs.signing_keys does not conflict -- POST .../signing-keys creates
 # a NEW key every call, so a resumed-but-already-done retry would silently
 # double the Central Server's signing keys rather than 409. Captures the raw

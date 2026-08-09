@@ -15,7 +15,7 @@ FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "xroad"
 
 def _fixture(name: str) -> dict:
     """A real recorded response (status + headers + body), not a
-    hand-written guess -- testing-strategy plan. See the fixture's own
+    hand-written guess. See the fixture's own
     "context" field and docs/decisions/xroad-770-notes.md for what each one documents."""
     return json.loads((FIXTURES / f"{name}.json").read_text())
 

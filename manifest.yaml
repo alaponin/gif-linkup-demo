@@ -72,10 +72,10 @@ modules:
     acceptance: acceptance/federation-core.md
   - id: "register-member"
     video_ref: "5.4"   # Topic 5 subtopic this module realises
-    # S-01: 2.3/2.4/2.5 collapsed into this one entry -- all three mapped to
+    # 2.3/2.4/2.5 collapsed into this one entry -- all three mapped to
     # the same 5.4 claim ("the registration shape is identical for every
-    # member", acceptance/2.2.md's own words before it was retired). S-02
-    # (D2) retargeted the id from "2.3" to "register-member". scenarios: below is the
+    # member", acceptance/2.2.md's own words before it was retired), and the
+    # id was retargeted from "2.3" to "register-member". scenarios: below is the
     # union of what the three used to claim (see hurl/check_scenarios.py).
     # config: stays a single existing path -- the ITU-Giga-KP-Plugin ship
     # gate's check_pack.py (a sibling pack, out of this pack's scope) parses

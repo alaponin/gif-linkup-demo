@@ -23,7 +23,7 @@ _run_generate):
                      uncommitted work of unclear provenance). Called by
                      app.py's POST /requests/{id}/approve, before the job
                      (job.py) starts. Once generate.py accepts the result,
-                     also renders onboarding/<key>/ (G-07) --
+                     also renders onboarding/<key>/ --
                      render_onboarding_tree() is the same function
                      scripts/render-onboarding.sh calls for the three
                      canonical members.
@@ -142,12 +142,12 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
                 "code": svc.code,
                 "spec_url": svc.spec_url,
                 **({"access": list(svc.access)} if svc.access else {}),
-                # Recorded and surfaced only (K-02), same treatment as
+                # Recorded and surfaced only, same treatment as
                 # access above and semantic.pattern below -- never resolved
                 # against anything; there is no lawful-basis registry in
                 # this pack to check it against.
                 **({"lawful_basis": svc.lawful_basis} if svc.lawful_basis else {}),
-                # validate.py's sla_required check (K-01) already guarantees
+                # validate.py's sla_required check already guarantees
                 # this is set for a provider's service by the time
                 # apply_real writes this file.
                 **({"sla": svc.sla.model_dump()} if svc.sla else {}),
@@ -163,7 +163,7 @@ def render_member_config(key: str, payload: JoinPayload) -> str:
         if payload.semantic.pattern:
             body["semantic"]["pattern"] = payload.semantic.pattern.value
     body["backend"] = {"auth": payload.backend.auth.value}
-    # Module 5.2's checklist (K-01), required on every payload -- rendered
+    # Module 5.2's checklist, required on every payload -- rendered
     # unconditionally, unlike the optional blocks above.
     body["member_requirements"] = payload.member_requirements.model_dump(exclude_none=True)
     if payload.requested_access:
@@ -240,11 +240,11 @@ def _insert_manifest_entry(text: str, entry_block: str) -> str:
     return "".join(lines[:end] + entry_block.splitlines(keepends=True) + lines[end:])
 
 
-# -- onboarding/<key>/ (G-07) --------------------------------------------------
+# -- onboarding/<key>/ --------------------------------------------------
 #
 # A handful of generated files per member, plus one per published service --
-# not the onboarding path's ten (D3: no
-# curriculum change). Never hand-maintained (P2): an
+# not the onboarding path's ten (no
+# curriculum change). Never hand-maintained: an
 # absent file means the gate has not been passed, whatever the calendar
 # says, so nothing here backfills a plausible-looking stub.
 
@@ -786,7 +786,7 @@ def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
         rel = pack_dir.relative_to(repo_root)
         proc = subprocess.run(
             # The live-but-uncommitted window production-delta.md documents
-            # covers a third tree (G-07): apply_real() writes onboarding/<key>/
+            # covers a third tree: apply_real() writes onboarding/<key>/
             # too, so the refusal-when-dirty check must watch it exactly
             # like configs/ and manifest.yaml, not just the other two trees.
             ["git", "-C", str(repo_root), "status", "--porcelain",

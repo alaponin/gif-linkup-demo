@@ -1,6 +1,6 @@
 """scripts/render_onboarding.py -- renders onboarding/<key>/ for one
 canonical member through the *same* writer.render_onboarding_tree() a real
-join uses (K-01: "generate them, do not hand-author them").
+join uses ("generate them, do not hand-author them").
 No consistency test guarding a duplication that should not exist -- there is
 only one renderer, this script just feeds it identity off manifest.yaml and
 security_server/services/semantic/member_requirements off

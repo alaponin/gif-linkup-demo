@@ -60,7 +60,7 @@ class SecurityServer(_Strict):
 
 
 class SLA(_Strict):
-    """Module 5.3's five terms (K-01), "reuse the same
+    """Module 5.3's five terms, "reuse the same
     template for every service on the bus" -- hence one SLA per Service, not
     per member. Free text like `lawful_basis` above:
     this pack has no numeric target registry to check these against, and a
@@ -81,7 +81,7 @@ class Service(_Strict):
     # Consumer subsystems this service's ACL grants, PROGRESSA/GOV/<CODE>/
     # <SUBSYSTEM> form -- configs/member-pnia/2.5.yaml's own access: shape.
     access: list[str] = Field(default_factory=list)
-    # The decree article this exchange relies on, or "consent" (K-02) --
+    # The decree article this exchange relies on, or "consent" --
     # free text, "[confirm: cite the decree article]" where a demo has no
     # real one to cite. Recorded and surfaced, never resolved against
     # anything: Module 2's decree is not in this pack, so there is nothing
@@ -97,7 +97,7 @@ class Service(_Strict):
 
 
 class ExchangePattern(str, Enum):
-    """The contract shape a semantic exchange takes (G-04). The enum -- not
+    """The contract shape a semantic exchange takes. The enum -- not
     a configs/x-road-bus/2.7.yaml policy key -- is
     deliberate ("the permissible values of a field are a schema
     concern"), the same rule BackendAuth above already follows."""
@@ -123,7 +123,7 @@ class Backend(_Strict):
 
 
 class MemberRequirements(_Strict):
-    """Module 5.2's six-item checklist (K-01) -- "states, up
+    """Module 5.2's six-item checklist -- "states, up
     front, exactly what an agency must have in place before it can join."
     Required on every JoinPayload, provider or consumer: 5.2 precedes
     registration for everyone, not only for a member that publishes a

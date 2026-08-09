@@ -138,7 +138,7 @@ def test_every_template_reference_is_accounted_for():
 
 
 def test_no_step_is_unsafe_to_repeat():
-    """join-a plan: class (d) (not safe to repeat at all) is
+    """Class (d) (not safe to repeat at all) is
     empty today. If a future step ever sets unsafe_to_repeat=True, this test
     starts failing loudly instead of Plan B silently resuming across it."""
     unsafe = [step.id for step in steps_module.REGISTRY if step.unsafe_to_repeat]
@@ -147,7 +147,7 @@ def test_no_step_is_unsafe_to_repeat():
 
 def test_ambiguous_steps_have_a_probe():
     """A step this audit classified as 409-ambiguous is only actually
-    covered if it carries a probe (join-a plan) -- the
+    covered if it carries a probe -- the
     classification comment above each Step in hurl/steps.py is not itself
     checked by anything, so this at least proves every declared probe path
     exists on disk."""
@@ -177,10 +177,10 @@ def test_requires_satisfied_by_an_earlier_step_or_a_global():
     assert not violations, "\n".join(violations)
 
 
-# -- join-c plan: Step.reverse --------------------------------------------
+# -- Step.reverse ---------------------------------------------------------
 #
 # The id sequence apps/join-api/job.py's build_sequence() actually renders
-# for a hosted join (join-b plan's own add() calls), NOT the full
+# for a hosted join, NOT the full
 # cold-deploy REGISTRY above: a hosted join never touches
 # cs.signing_keys/cs.trust_services/ss.auth_key_csr/ss.bringup_register/
 # ss.mgmt_register/ss.activate/ss.tsa_capture/ss.tsa_post at all, so those
@@ -203,7 +203,7 @@ HOSTED_JOIN_FORWARD_SEQUENCE: tuple[str, ...] = (
 
 
 def test_every_reversal_has_a_probe():
-    """join-c plan: reversal is the case probes exist for --
+    """Reversal is the case probes exist for --
     every step with a `reverse` must carry a `probe` (job.py has no other
     way to tell, on resume, whether a reversal call already ran)."""
     missing = [step.id for step in steps_module.REGISTRY if step.reverse and not step.probe]
@@ -232,7 +232,7 @@ def test_reversal_templates_exist():
 
 
 def test_reversal_requires_satisfiable_from_a_completed_forward_run():
-    """join-c plan's headline check: a reversal template that
+    """The headline check: a reversal template that
     reads a Hurl {{var}} name no forward step of a hosted join ever
     `provides` is the most likely defect in this task -- it would only
     surface at runtime, on the first live reversal attempt.

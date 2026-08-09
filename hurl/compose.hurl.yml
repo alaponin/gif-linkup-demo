@@ -48,7 +48,7 @@ services:
     healthcheck: *ss-health
 
   hurl:
-    # Pinned inline, not via a deployment.yaml key (C13): hurl is a build/test
+    # Pinned inline, not via a deployment.yaml key: hurl is a build/test
     # tool this pack depends on, not part of the federation it deploys, so it
     # does not move in lockstep with an X-Road version bump the way
     # cs/ss/testca do. Resolved from the image this pack was last deployed

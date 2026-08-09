@@ -87,7 +87,7 @@ def test_backend_auth_enum_has_exactly_the_three_spec_values():
 
 
 def test_semantic_pattern_defaults_to_none():
-    """Optional (G-04) -- required would reject every
+    """Optional -- required would reject every
     existing config until all are classified against ExchangePattern."""
     payload = JoinPayload(**_consume_only(
         services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
@@ -125,7 +125,7 @@ def test_hosted_on_defaults_to_none():
 
 
 def test_lawful_basis_defaults_to_none():
-    """Optional (K-02) -- no config file and no resolution
+    """Optional -- no config file and no resolution
     check, so a service that omits it must still parse (docs/conventions.md
     does not gate the join payload; this field is recorded, not enforced)."""
     payload = JoinPayload(**_consume_only(
@@ -142,7 +142,7 @@ def test_lawful_basis_accepts_free_text():
     assert payload.services[0].lawful_basis == "[confirm: cite the decree article]"
 
 
-# -- member_requirements (K-01) -------------------------------------------------
+# -- member_requirements -------------------------------------------------
 
 
 def test_member_requirements_is_required():
@@ -166,7 +166,7 @@ def test_member_requirements_lawful_basis_defaults_to_none():
     assert payload.member_requirements.lawful_basis is None
 
 
-# -- sla (K-01) -------------------------------------------------------------------
+# -- sla -------------------------------------------------------------------
 
 
 def _sla(**overrides) -> dict:

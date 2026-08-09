@@ -14,7 +14,7 @@ services: []                   # consumer in v0.1; provides nothing
 consumes:                      # the exchange this member exists for (wired in 2.6)
   - PROGRESSA/GOV/PNIA/IDENTITY/identity-api
   - PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api
-member_requirements:           # Module 5.2's checklist (K-01).
+member_requirements:           # Module 5.2's checklist.
   has_security_server: true
   has_registered_identity: true
   standards_portfolio_adopted: true

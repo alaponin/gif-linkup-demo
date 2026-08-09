@@ -506,7 +506,7 @@ def approve_request(
 
     Manual approval puts one operator's bearer token where Ref Model §5.3
     puts the Steering Committee -- a RACI mismatch the onboarding path's own
-    gap analysis names (K-02, G-02). The fix is not a second login (a
+    gap analysis names. The fix is not a second login (a
     committee doesn't hold an API token); it's requiring the call to name
     the decision it is actuating. `decision_reference` is untyped like
     reject_request's `body`, not a schema.py model -- this is evidence, not

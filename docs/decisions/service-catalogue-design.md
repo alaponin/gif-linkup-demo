@@ -17,7 +17,7 @@ pack teaches.
 
 ## 1. Why this is being built now
 
-The catalogue entry (`catalogue-entry.md`, G-05b) was deferred with an
+The catalogue entry (`catalogue-entry.md`) was deferred with an
 explicit unlock condition: *"the catalogue metadata half waits for
 a curriculum or framework driver."*
 

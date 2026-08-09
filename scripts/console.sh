@@ -18,7 +18,7 @@ COMPOSE_DEMO=("${COMPOSE[@]}" --profile demo)
 
 case "${1:-}" in
   up)
-    # --wait: the console now has its own HEALTHCHECK (D12, reproducible-builds
+    # --wait: the console now has its own HEALTHCHECK (reproducible-builds
     # plan), so "up" can wait for it and actually mean "serving" instead
     # of just "process started". Timeout matches verify.sh's own retry budget,
     # which stays in place as a backstop for any caller that brings the

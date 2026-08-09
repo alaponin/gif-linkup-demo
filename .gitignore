@@ -19,7 +19,7 @@ hurl/topology.sh
 hurl/compose.members.yml
 # tests/golden/{full,lite}/ hold files with these same names, generated from
 # a fixed, fake tests/golden/env.fixture -- but they are a committed test
-# FIXTURE (testing-strategy plan Task 1), not a working artefact, and none of
+# FIXTURE, not a working artefact, and none of
 # the patterns above match them anyway (they live under tests/golden/, not
 # hurl/). Said explicitly here so nobody "fixes" that by widening a pattern.
 # Local dev/test venv for apps/console (pytest/httpx/fastapi) -- the console

@@ -4,8 +4,8 @@
 # apps/console/requirements.txt).
 # Resolved 2026-08-01 against the same python:3.12-slim digest as apps/console.
 #
-# httpx/pyyaml (+ their transitive deps certifi/httpcore) added join-b Task 2
-# -- check 9 (backend reachability) needs httpx; loading configs/x-road-bus/
+# httpx/pyyaml (+ their transitive deps certifi/httpcore): check 9
+# (backend reachability) needs httpx; loading configs/x-road-bus/
 # 2.7.yaml and manifest.yaml needs pyyaml. Lines below are copied verbatim
 # from apps/console/requirements.txt (same base image digest, same resolved
 # versions), not re-resolved -- console already proved this exact version set

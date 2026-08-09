@@ -173,7 +173,7 @@ one artefact further out.
   5. `hurl/topology.json` is **byte-identical** to the single deployment
      golden (`tests/golden/deployment/topology.json`) — the working tree came back
      to exactly where it was before the join. This is
-     the join-c plan's Global Constraint. Asserted only when no joined member remains in the
+     the Global Constraint. Asserted only when no joined member remains in the
      topology; with one still present, byte-identical to the canonical
      golden is the wrong expectation and the check says so rather than
      failing.
@@ -217,7 +217,7 @@ fixtures — all under `apps/join-api/tests/` and `tests/`, already covered by
 `scripts/verify.sh --fast`, not restated here).
 
 Status: VERIFIED on the live stack, `--full` from cold, against the
-collapsed single (D5) topology, with both a hosted and an own-server join
+collapsed single topology, with both a hosted and an own-server join
 and un-join (identity PTSB, see `docs/production-delta.md`): `2.7.1`,
 `2.7.unjoin(PTSB)` and `2.7.unjoin.topology` all green from
 `scripts/acceptance.sh`, and the own-server case reaches

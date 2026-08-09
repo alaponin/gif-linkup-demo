@@ -23,8 +23,7 @@ one place, no indirection.
 installations" (X-Road v7.3.0 release notes, XRDDEV-1960).
 
 **What this pack enforces:** exactly that pattern, nothing looser and nothing
-stricter. `apps/join-api/validate.py`'s `_check_identifier_characters` (spec
-S8 check 12) rejects any `code`, `subsystem`, or `services[].code` that does
+stricter. `apps/join-api/validate.py`'s `_check_identifier_characters` rejects any `code`, `subsystem`, or `services[].code` that does
 not fully match `[a-zA-Z0-9'()+,\-.=?]+` — empty and whitespace-only values
 fall out of that match on their own, so there is no separate empty-string
 check. `_bad_identifier`'s comment tells the fuller history: this used to be

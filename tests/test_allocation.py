@@ -125,7 +125,7 @@ def test_allocate_numbers_is_deterministic():
 # The only own-server compose block the golden corpus contains is the empty
 # `services: {}` variant (no canonical member owns a joined server), so
 # tests/test_golden.py never renders this branch at all -- which is exactly
-# how it shipped for a whole plan publishing an unauthenticated X-Road proxy
+# how it shipped, publishing an unauthenticated X-Road proxy
 # port on 0.0.0.0, caught only by scripts/check-exposure.sh during a
 # hand-driven --full own-server cycle. This is the --fast-tier guard that
 # would have caught it on the commit instead.

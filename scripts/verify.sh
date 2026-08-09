@@ -38,14 +38,14 @@ run_fast() {
   log "check-exposure.sh"
   "$PACK_DIR/scripts/check-exposure.sh"
 
-  # A Python-floor lint was considered here and withdrawn (C10, two-decisions
+  # A Python-floor lint was considered here and withdrawn (two-decisions
   # plan) when the host floor was raised to 3.9+ -- see hurl/README.md's
   # "Host Python runtime" note for what it would have enforced.
   #
   # scripts/preflight.sh's python3/PyYAML check does not belong here either:
   # --fast is meant to stay
   # ~8s, and adding a dependency check to it would need this tier's public
-  # claims (T1, tests/test_tiers.py) revisited again. Preflight runs once, in
+  # claims (tests/test_tiers.py) revisited again. Preflight runs once, in
   # the deploy path (hurl/run-linkup.sh), where the cost it guards against
   # actually lives.
 
@@ -86,7 +86,7 @@ run_full() {
   "$PACK_DIR/scripts/acceptance.sh"
   log "console smoke"
   "$PACK_DIR/scripts/console.sh" up
-  # console.sh up now passes --wait (D12, reproducible-builds plan), so its
+  # console.sh up now passes --wait, so its
   # own HEALTHCHECK already blocked until the FastAPI app was
   # accepting connections. This loop stays anyway as a backstop for any other
   # caller that brings the container up without --wait -- a recorded decision,

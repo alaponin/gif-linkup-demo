@@ -32,7 +32,7 @@ import steps as steps_module
 
 PACK = pathlib.Path(__file__).resolve().parent.parent
 # HURL_DIR/OUT/ENV_PATH are reassigned in main() when --out/--env are passed
-# (tests/test_golden.py only -- see the testing-strategy plan). Every
+# (tests/test_golden.py only). Every
 # other read (manifest.yaml, deployment.yaml, configs/) always goes through
 # PACK itself and is never redirected: a golden-corpus run must read the
 # real, committed member configuration, only write its output elsewhere.
@@ -100,7 +100,7 @@ FRESH_PORT_START = 7000
 # AND 7000 (RAOP audio) by default, and on both it hangs the TCP connection
 # mid-TLS-handshake instead of refusing it outright -- see docker-compose.yml's
 # ss-pnia comment for 5000. 7000 is exactly FRESH_PORT_START's own default and
-# was found live (member-parameterisation plan): a joined member's own
+# was found live: a joined member's own
 # Security Server got this port, registered fine during initial bring-up, then
 # its admin API became unreachable from the host with no error -- `docker
 # restart` did not fix it, `lsof -i :7000` on the host found ControlCenter, not
@@ -456,7 +456,7 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
     prefix = ss_prefix(ss["dns_name"])
     conn = member.get("client", {}).get("connection_type", "HTTP")
     # SS_BRINGUP_INIT was split at the AUTH-key/CSR boundary so ca_name
-    # capture (management-server-only, join-a plan) could become its
+    # capture (management-server-only) could become its
     # own registry step -- see hurl/steps.py "ss.bringup_init" /
     # "ss.ca_name_capture" / "ss.auth_key_csr". capture_ca_name is always
     # False for a member's own bring-up today (only 10-ss-pdga passes it).
@@ -624,14 +624,13 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     """One joined member's own Security Server, as a compose.members.yml
     service block. A module-level function purely so tests/test_allocation.py
     can assert on it without a manifest carrying a joined member: nothing but
-    main() calls it (join-c plan).
+    main() calls it.
 
     `${XROAD_BIND:-127.0.0.1}` on both mappings is NOT decoration -- every
     `ports:` line in the hand-written docker-compose.yml carries it, and
     without it here a joined member's own Security Server published its admin
     UI AND its unauthenticated X-Road proxy port on 0.0.0.0, ignoring
-    deployment.yaml's network.bind entirely. Found live (join-c plan,
-    the first own-server join this pack ever ran): the very next
+    deployment.yaml's network.bind entirely. Found live (the first own-server join this pack ever ran): the very next
     scripts/acceptance.sh hard-failed in check-exposure.sh with
     "ss-pvtb: 0.0.0.0:7100 -> 4000/tcp". A Compose file generated for a
     joined member has to obey the same bind policy as the hand-written one,
@@ -642,7 +641,7 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     to answer on :4000 before driving admin APIs at it. That file stays
     hand-written and scoped to the canonical four; a
     joined member's own server gets it here instead, so it is never a
-    container nothing waits for. Found live (member-parameterisation plan):
+    container nothing waits for. Found live:
     without it, Compose waits only for the process to start, not for its
     Tomcat/TLS listener, and a caller can hang indefinitely on a handshake
     that never completes.
@@ -711,9 +710,8 @@ def main() -> None:
     # Clear before writing: a removed member's scenario file must not
     # linger as a stray -- check_scenarios.py would (correctly) flag it as
     # unclaimed, but "regenerated fresh every run" (hurl/README.md) should
-    # mean fresh, not merely overwritten. Found live while verifying the
-    # member-parameterisation plan (removing a throwaway member left
-    # its scenario file behind).
+    # mean fresh, not merely overwritten. Found live: removing a throwaway
+    # member left its scenario file behind.
     if OUT.exists():
         for stale in OUT.glob("*.hurl"):
             stale.unlink()
@@ -757,7 +755,7 @@ def main() -> None:
     # -- 00 Central Server initialisation ----------------------------------
     # instance init, member class, software token login, INTERNAL/EXTERNAL
     # signing keys -- four steps in the registry, one file here (join-a
-    # plan). The init response is 200, not 201 (PLAN.md #8) -- the
+    # plan). The init response is 200, not 201 -- the
     # assertion lives in fragments/CS_INIT.hurl.tmpl, unchanged.
     body = render(steps_module.BY_ID["cs.init"].template)
     body += render(

@@ -86,7 +86,7 @@ class AdminSession:
             json_body={"items": [{"service_code": service_code}]},
         )
         if resp.status_code == 409:
-            return  # already granted -- reset must treat this as success, not failure (C0)
+            return  # already granted -- reset must treat this as success, not failure
         resp.raise_for_status()
 
     def revoke(self, client_id: str, subject_id: str, service_code: str) -> None:

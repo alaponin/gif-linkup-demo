@@ -326,7 +326,7 @@ Server counts in the `--full` path, including an own-server join:
 | | Canonical | With own-server join |
 |---|---|---|
 | Before (full profile) | 5 | **6** — the count that produced the failure |
-| After (T1) | 4 | **5** — one clear of it |
+| After | 4 | **5** — one clear of it |
 
 A flaky verification tier costs far more than a slow one, because it burns a
 full deploy cycle *and* the time spent deciding whether the failure was real.

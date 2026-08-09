@@ -1,6 +1,6 @@
 """apps/join-api/validate.py -- eleven of the twelve checks required
 before a join request can be approved, plus two more that go
-beyond that (lawful_basis and sla_required, K-01) -- thirteen
+beyond that (lawful_basis and sla_required) -- thirteen
 per-request checks in total. Check 5 (member class) moved to
 hurl/generate.py's check_join_policy() -- a generate-time structural check,
 not a per-request one -- see the comment above where _check_member_class
@@ -317,7 +317,7 @@ def _check_acl_sanity(ctx: ValidationContext) -> str | None:
 
 def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
     """Conformance check against configs/semantic/semantic-map.yaml (closes
-    K-03). Publishing a service AND
+    Publishing a service AND
     granting another subsystem access to it is an exchange -- this pack's
     own convention for one (configs/member-pnia/2.5.yaml's semantic: block)
     is to document it, and now to declare a real entity from the Module 4
@@ -355,7 +355,7 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
 
 
 def _check_lawful_basis(ctx: ValidationContext) -> str | None:
-    """5.2's sixth checklist item (a lawful basis for its exchanges, K-01):
+    """5.2's sixth checklist item (a lawful basis for its exchanges):
     does the applicant hold a legal mandate for the data it proposes to
     expose as authoritative? One check, two shapes: a published service must
     carry its own basis (Service.lawful_basis) -- never resolved against
@@ -386,7 +386,7 @@ def _check_lawful_basis(ctx: ValidationContext) -> str | None:
 
 
 def _check_sla_required(ctx: ValidationContext) -> str | None:
-    """Every published service needs an SLA (K-01) --
+    """Every published service needs an SLA --
     Module 5.3's own "reuse the same template for every service on the bus"
     (schema.SLA lives on Service, not on JoinPayload). A
     consumer-only member (no services) has nothing to check here and is
@@ -558,7 +558,7 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 # Checks run in this exact order -- the original numbered list, verbatim,
 # minus check 5 (member_class), which has no per-request implementation --
 # see the comment above where _check_member_class used to be -- plus
-# lawful_basis and sla_required (K-01), neither one of the original twelve,
+# lawful_basis and sla_required, neither one of the original twelve,
 # inserted after purpose_limitation since all three inspect payload.services.
 # Check 1 (schema) happens in validate() itself, before a ValidationContext
 # can even be built.

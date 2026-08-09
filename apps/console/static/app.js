@@ -28,7 +28,7 @@ function esc(value) {
   return String(value).replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
 }
 
-// Request-boundary plan (S13): every endpoint below requires this header --
+// Request boundary: every endpoint below requires this header --
 // a cross-origin form or <img> can't set it (a custom header on a
 // cross-origin fetch would need a CORS preflight this server never answers
 // with permission). Sent on every call, GET included, so the read endpoints
@@ -73,7 +73,7 @@ function startHeartbeat() {
 
 // One read of /api/acl.dirty drives both the top banner (only shown while
 // dirty) and the context bar's always-visible "Permissions: ..." badge --
-// they track the same fact, so one poll rather than two (UX plan Task 9).
+// they track the same fact, so one poll rather than two.
 async function refreshJournalBanner() {
   const acl = await api("/api/acl");
   $("#journal-banner").classList.toggle("dirty", acl.dirty);
@@ -112,7 +112,7 @@ async function loadTopologyBadge() {
 
 // -- persistent context bar: current learner, federation health,
 // journal state, reset -- all visible regardless of which tab is open
-// (UX plan Task 9, Step 2). Permissions state comes from
+//. Permissions state comes from
 // refreshJournalBanner()'s own poll of /api/acl.dirty, not a second one.
 function updateContextLearner(nin, given, family) {
   $("#context-learner").textContent = (given && family)
@@ -185,7 +185,7 @@ function sourceClassFor(info) {
     : info.member_code === "PLR" ? "PLR" : "citizen";
 }
 
-// Provenance is never colour-alone (UX plan Task 10, Step 1): each source
+// Provenance is never colour-alone: each source
 // also gets its own shape, so the distinction survives colour-blindness or
 // a black-and-white printout of a slide.
 const SOURCE_SHAPE = { citizen: "▲", PNIA: "●", PLR: "■" }; // ▲ ● ■
@@ -205,7 +205,7 @@ function revealField(row, info) {
 // then the one question (NIN) landing, then each provider answering in
 // turn -- "asking PNIA..." -> "PNIA answered in 227ms" -> its fields land
 // -- so the audience sees two systems answer visibly in sequence, not one
-// block of values that could have been hard-coded (UX plan Tasks 2 & 3).
+// block of values that could have been hard-coded.
 async function renderCounterForm(nin, data, runToken) {
   $("#counter-form-card").style.display = "block";
   $("#counter-nin-line").textContent = `NIN ${nin}`;
@@ -280,9 +280,7 @@ async function renderCounterForm(nin, data, runToken) {
   if (runToken !== counterFormRun) return;
 
   // then each provider answers in turn, visibly -- or is denied, visibly
-  // (UX plan Task 4: withdrawing one provider's permission must render
-  // correctly here regardless of how the denial came about, not just via
-  // the break-proof buttons below).
+  //.
   let filled = 0;
   let anyDenied = false;
   for (const [, memberCode, statusEl, sectionRows] of providerSections) {
@@ -342,7 +340,7 @@ async function renderCounterForm(nin, data, runToken) {
 
 // -- receipts: the raw provider responses, verbatim, plus a curl command
 // an architect can run on the host to get the same answer outside the
-// console entirely (UX plan Task 3, Steps 3-4).
+// console entirely.
 function renderReceipts(data) {
   const panel = $("#receipts-panel");
   panel.innerHTML = "";
@@ -377,7 +375,7 @@ function initReceiptsToggle() {
 
 // -- break-one-source proof: the existing ACL write is the trust device --
 // revoking identity-api's grant makes exactly the PNIA half of the form
-// fail while PLR still fills, with no new write path (UX plan Task 4).
+// fail while PLR still fills, with no new write path.
 
 function updateBreakProofButtons(data) {
   const identityCall = data.calls.find(c => c.service.split("/")[2] === "PNIA");
@@ -449,7 +447,7 @@ function initBreakProof() {
 // Single column, ordered the way EIF is taught -- legal, organisational,
 // semantic, technical -- never the 1,4,3,2 grid order the layer_* keys
 // happen to sort into. Each pane keeps its once-only-exchange.yaml sentence as a heading
-// and gains live evidence beneath it (UX plan Task 6).
+// and gains live evidence beneath it.
 async function renderInspector(data) {
   $("#inspector-empty").style.display = "none";
   const contextEl = $("#inspector-context");
@@ -477,7 +475,7 @@ async function renderInspector(data) {
     el.innerHTML = `<h3>${esc(pane.title)}</h3><p class="sentence">${esc(sentence)}</p>`;
 
     if (pane.key === "legal") {
-      // Purpose limitation, proved by absence (UX plan Task 5): PNIA's own
+      // Purpose limitation, proved by absence: PNIA's own
       // record carries more than the credential purpose needs -- these
       // names came straight from the mock, off the bus, never their values.
       const sentFields = Object.entries(data.credential_application)
@@ -537,12 +535,12 @@ async function renderInspector(data) {
 
 // ------------------------------------------------------------ permissions ----
 // Two callers, one service, opposite outcomes -- that is the entire lesson
-// (UX plan Task 7). enrolment-api is deliberately absent from this tab: it
+//. enrolment-api is deliberately absent from this tab: it
 // would just be one more inert row, and the reset path's own verification
 // (journal.py) already checks the mutable/untouched-service asymmetry
 // without an audience needing to see it. Design decision 4 (why only
 // identity-api is writable here) lives in app.py's comment, not on this
-// page. (pemis-api no longer exists -- MoEYS was retired in Wave 3 Task 1.)
+// page. (pemis-api no longer exists -- MoEYS is retired.)
 
 function renderPermResult(resultEl, call) {
   if (call.denied) {
@@ -794,7 +792,7 @@ function renderJoinRequest(record) {
         + `committed &mdash; the git check itself failed. Treat as uncommitted until confirmed otherwise.</div>`;
     }
   } else if (state === "RETIRING" || state === "RETIRED") {
-    // join-c plan Task 4 Step 6, option (a): the states render, there is no
+    // Deliberate: the states render, there is no
     // button. Un-joining is a `curl` / scripts/member.sh operation the runbook
     // documents -- this console is read-mostly-plus-approve, and a delete
     // control is a different act for a different audience than "watch an
@@ -1028,7 +1026,7 @@ async function loadCatalogue() {
 // ------------------------------------------------------------ guided run ----
 // Walks all three beats with deterministic pauses -- the mode used for
 // filming, and for anyone handed the URL cold with nobody to explain the
-// three tabs' order (UX plan Task 9, Step 3).
+// three tabs' order.
 const GUIDED_BEAT_PAUSE_MS = 1_800;
 
 async function runGuidedDemonstration() {

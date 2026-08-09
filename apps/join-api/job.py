@@ -103,7 +103,7 @@ R1_RETRY_BUDGET = 54
 BLOCKED_POLL_ATTEMPTS = 15
 BLOCKED_POLL_INTERVAL_SECONDS = 2.0
 
-# Confirmed live (PLAN.md S8, docs/decisions/xroad-770-notes.md S9): a federation left
+# Confirmed live (docs/decisions/xroad-770-notes.md): a federation left
 # idle overnight fails every cross-server call with this, which reads like a
 # certificate fault and is not one.
 OCSP_MARKER = "Server.ClientProxy.SslAuthenticationFailed"
@@ -711,7 +711,7 @@ def _succeeded(element: dict) -> bool:
     """409-as-success, the idempotence default: the templates
     assert exact created-statuses (HTTP 201), so a step whose effect already
     exists fails its assert with a 409 on the wire. Proven live for
-    service.acl (PLAN.md S11, apps/console/xroad.py's grant()); assumed, per
+    service.acl (apps/console/xroad.py's grant()); assumed, per
     that section, for the rest of class (b)."""
     if element.get("success"):
         return True

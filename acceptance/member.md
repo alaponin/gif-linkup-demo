@@ -57,7 +57,7 @@ output. A member with no `onboarding/<key>/` record at all (a config added by
 hand, never rendered) is skipped with a logged reason: there is no record for a
 link to dangle in.
 
-**Monitoring add-ons (G-06).** The operational- and environmental-
+**Monitoring add-ons.** The operational- and environmental-
 monitoring add-ons are server-level, not client-level, so this check does not
 extend the per-subsystem loop above for them — it checks every Security
 Server `hurl/topology.sh`'s `SS_ORDER` names (canonical or a joined member's

@@ -1,5 +1,5 @@
 """Mechanically enforce the fast tier's contract -- lib-split-and-tier-honesty
-plan (T1). Three documents (README.md's "Verify a change", the CI
+plan. Three documents (README.md's "Verify a change", the CI
 workflow header, testing-strategy's Global Constraints) used to claim
 `scripts/verify.sh --fast` "needs no Docker" -- false: `check-exposure.sh`
 runs `docker compose ... config` to read the *rendered* Compose config
