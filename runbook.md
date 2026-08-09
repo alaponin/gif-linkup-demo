@@ -4,6 +4,17 @@ Stand up the Linkup demonstration federation (X-Road 7.x) from zero on one Docke
 host, and run the once-only exchange that proves it. Demo only — see
 `docs/production-delta.md` before anyone mistakes this for a deployable platform.
 
+Three ways in, in increasing depth:
+
+- **Read** — `README.md` for what this pack is and what it claims;
+  `docs/path-conformance.md` for how far it goes against the onboarding path.
+- **Run** — `scripts/demo.sh` stands the federation up from zero (~10 minutes)
+  and tells you what it is doing at each step.
+- **Do** — `docs/exercises.md`: five exercises over the same operations
+  documented below, each with the observations to expect.
+
+Everything below is the engineering depth under those three.
+
 ## Prerequisites
 
 - Run `scripts/preflight.sh` first -- checks for Docker, Docker Compose v2,
@@ -37,6 +48,9 @@ host, and run the once-only exchange that proves it. Demo only — see
   locally) or the Hurl runner image; see `docs/deployment-targets.md`.
 
 ## Steps
+
+First time? `scripts/demo.sh` runs steps 1–5 below and tells you what it is
+doing at each one. It refuses if a federation is already deployed.
 
 1. `scripts/gen-secrets.sh` — writes a real `.env` with a random token PIN
    and admin password (mode `600`). `.env.example` ships placeholders that

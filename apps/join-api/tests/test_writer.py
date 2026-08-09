@@ -347,7 +347,20 @@ def test_render_gates_table_points_g5_at_the_catalogue_but_keeps_the_pattern_abs
               if line.startswith("| Service conformance"))
     assert "[`04-catalogue/`](04-catalogue/)" in g5
     assert "no service-catalogue entry" not in g5
-    assert "no tier-1 BB pattern register" in g5
+    assert "**named absence** for the tier-1 BB pattern register" in g5
+
+
+def test_every_gate_row_opens_with_a_status_from_the_path_conformance_vocabulary():
+    """docs/path-conformance.yaml's four statuses, and no fifth. G3 in
+    particular: the Test CA signs any CSR, which is `simulated`, not an
+    absence -- this row disagreed with G3.1 until it was reconciled."""
+    vocabulary = ("**implemented**", "**simulated**", "**named absence**", "**out of scope**")
+    for has_services in (True, False):
+        for line in writer.render_gates_table(has_services).splitlines():
+            if not line.startswith("| ") or line.startswith("| Gate") or line.startswith("| ---"):
+                continue
+            status = line.rstrip(" |").rsplit("|", 1)[1].strip()
+            assert status.startswith(vocabulary), f"{line[:40]!r} status opens with {status[:30]!r}"
 
 
 def test_render_gates_table_does_not_link_a_catalogue_a_consumer_has_not_got():

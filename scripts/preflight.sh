@@ -12,8 +12,12 @@
 #
 # Collects every failure and reports them together: four round trips to
 # install four missing packages, one at a time, is the failure mode this
-# script exists to avoid.
+# script exists to avoid. The same applies to the .env check below -- a
+# missing key kills a compose command mid-deploy, so it is worth naming here.
+# Clock sync and RAM warn rather than fail: neither can be measured reliably
+# enough to refuse a deploy on, so exit 0 still means "deployable".
 set -uo pipefail
+PACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 case "$(uname -s)" in
   Darwin) OS=macos ;;
@@ -62,13 +66,82 @@ command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || FAI
 # hurl/topology.sh's declare -A both need bash 4+.
 [ "${BASH_VERSINFO[0]}" -ge 4 ] || FAILURES+=("bash4")
 
-if [ "${#FAILURES[@]}" -eq 0 ]; then
-  echo "preflight: docker, docker compose (v2), jq, curl, python3 (3.9+ with PyYAML), a SHA-256 tool, and bash 4+ are all present."
+# -- .env ---------------------------------------------------------------------
+#
+# The required key set is derived from docker-compose.yml's own ${VAR:?}
+# interpolations, not from .env.example: those are the interpolations that
+# actually abort a compose command, and compose expands them file-wide before
+# any profile filtering, so one missing key stops the whole pack. A key added
+# to compose later is caught here with no edit to this script.
+ENV_PROBLEMS=()
+ENV_FILE="$PACK_DIR/.env"
+REQUIRED_KEYS=$(grep -oE '\$\{[A-Z0-9_]+:\?' "$PACK_DIR/docker-compose.yml" | sed 's/^\${//; s/:?$//' | sort -u)
+
+if [ ! -f "$ENV_FILE" ]; then
+  ENV_PROBLEMS+=("- .env not found -- run scripts/gen-secrets.sh")
+else
+  missing_keys=""
+  for key in $REQUIRED_KEYS; do
+    value=$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -1)
+    if [ -z "$value" ]; then
+      missing_keys="$missing_keys $key"
+    else
+      case "$value" in
+        *CHANGEME*) ENV_PROBLEMS+=("- .env has $key still set to a placeholder -- run scripts/gen-secrets.sh --force (read its PIN-rotation warning first)") ;;
+      esac
+    fi
+  done
+  # Deliberately defers to gen-secrets.sh rather than naming a flag: that
+  # script appends the keys it can add without rotating anything, and says so
+  # if the file needs --force instead. Naming --force here would be wrong for
+  # the keys it self-heals.
+  [ -n "$missing_keys" ] && ENV_PROBLEMS+=("- .env is missing:$missing_keys -- re-run scripts/gen-secrets.sh; it appends what it can and tells you if the file needs --force")
+fi
+
+# -- warn-only checks ---------------------------------------------------------
+#
+# Neither of these can be measured reliably enough to block a deploy on, and a
+# false positive that refuses to deploy is worse than a line of advice.
+WARNINGS=()
+
+# Drift presents as certificate errors, not time errors -- which is why it is
+# worth naming here rather than leaving to be diagnosed later.
+if [ "$OS" = macos ]; then
+  WARNINGS+=("- clock sync not checked on macOS -- confirm it yourself: sntp -sS time.apple.com. A drifting clock produces failures that look like certificate errors.")
+elif command -v timedatectl >/dev/null 2>&1; then
+  if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" != "yes" ]; then
+    WARNINGS+=("- host clock is not NTP-synchronised (timedatectl). A drifting clock produces failures that look like certificate errors, not time errors.")
+  fi
+fi
+
+# ~10.9-11.1 GiB steady state, measured for the current four-Security-Server
+# topology (runbook.md Prerequisites). Docker Desktop's VM makes host RAM an
+# approximation, hence a warning.
+MEM_KIB=""
+if [ -r /proc/meminfo ]; then
+  MEM_KIB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+elif [ "$OS" = macos ]; then
+  MEM_KIB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
+fi
+if [ -n "$MEM_KIB" ] && [ "$MEM_KIB" -gt 0 ] && [ "$MEM_KIB" -lt 12582912 ]; then
+  WARNINGS+=("- $(( MEM_KIB / 1048576 )) GiB RAM on this host; the federation needs ~11 GiB in steady state (runbook.md Prerequisites).")
+fi
+
+print_warnings() {
+  [ "${#WARNINGS[@]}" -eq 0 ] && return
+  echo "preflight: warnings (not blocking):" >&2
+  printf '%s\n' "${WARNINGS[@]}" >&2
+}
+
+if [ "${#FAILURES[@]}" -eq 0 ] && [ "${#ENV_PROBLEMS[@]}" -eq 0 ]; then
+  echo "preflight: docker, docker compose (v2), jq, curl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, and a complete .env are all present."
+  print_warnings
   exit 0
 fi
 
-echo "preflight: this host is missing what the pack needs. Install everything below, then re-run:" >&2
-for f in "${FAILURES[@]}"; do
+echo "preflight: this host is not ready. Fix everything below, then re-run:" >&2
+[ "${#ENV_PROBLEMS[@]}" -eq 0 ] || printf '%s\n' "${ENV_PROBLEMS[@]}" >&2
+for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
   case "$f" in
     docker)
       echo "- docker not found" >&2
@@ -108,4 +181,5 @@ for f in "${FAILURES[@]}"; do
       ;;
   esac
 done
+print_warnings
 exit 1
