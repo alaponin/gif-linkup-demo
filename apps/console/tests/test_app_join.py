@@ -333,3 +333,23 @@ def test_the_join_tab_offers_the_submit_command_but_no_submit_route():
     assert not [p for p in paths if "submit" in p], paths
     src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
     assert "$KP2_JOIN_APPLICANT_TOKEN" in src  # referenced, never expanded
+
+
+def test_the_submit_skeleton_carries_every_field_the_join_api_requires():
+    """The skeleton is the first thing an applicant runs, so a missing
+    required field is rejected before an operator ever sees the request --
+    which is what happened to backend.auth, added to JoinPayload after the
+    skeleton was written. Field NAMES against the live schema, not a parse of
+    the JS: what drifts here is which fields are required, and this pack has
+    no JS test runner to evaluate the literal with."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "join-api"))
+    from schema import JoinPayload
+
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    skeleton = src.split("const JOIN_SUBMIT_PAYLOAD = {", 1)[1].split("\n};", 1)[0]
+    required = [
+        name for name, field in JoinPayload.model_fields.items() if field.is_required()
+    ]
+    assert required, "JoinPayload declares no required fields -- this check would pass vacuously"
+    missing = [name for name in required if f"{name}:" not in skeleton]
+    assert not missing, f"JOIN_SUBMIT_PAYLOAD omits required JoinPayload field(s): {missing}"

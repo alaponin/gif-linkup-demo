@@ -915,6 +915,10 @@ const JOIN_SUBMIT_PAYLOAD = {
   security_server: { code: "SS-AGENCY", dns_name: "ss-agency", hosted_on: "ss-pnea" },
   semantic: { entity: "person", key: "nin", fields: ["nin"], pattern: "digital_registries_lookup" },
   services: [],
+  // Required by JoinPayload, so a skeleton without it is rejected before an
+  // operator ever sees the request. "none" is the demo answer; a real
+  // backend uses network_allowlist or proxy_injected.
+  backend: { auth: "none" },
   member_requirements: {
     has_security_server: true, has_registered_identity: true,
     standards_portfolio_adopted: true, data_conformant: true,
