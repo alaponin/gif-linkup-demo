@@ -19,6 +19,13 @@
 | A6 | §7 | Permit a folder name other than `members/`, and state the rule the layout is *for* | Minor |
 | A7 | §6 | Strengthen the add-on argument with the counter-example it now has | Minor |
 | A8 | §3 | Correct the audit-log claim (measured, does not hold) and reframe the time saving as organisational, not technical | **Substantive** |
+| A9 | §2 G5, §6, §7 | Make the service catalogue **entry** a G5 exit condition, separate from the §6 catalogue *product* | **Substantive** |
+
+> **A9 was added on 9 August 2026**, after the eight above. It is the only one
+> not arising from the clause-by-clause review: it arises from a question the
+> review could not have asked — *how does a member that has just joined find out
+> what is on the bus?* — and from the answer the implementation turned out to
+> give, which is "it doesn't."
 
 ---
 
@@ -158,6 +165,98 @@ And append to fact 1:
 
 ---
 
+## A9 — The catalogue entry is a registration artefact, not a catalogue product (§2 G5, §6, §7)
+
+**What v0.2 says.** Three clauses, each defensible alone, which together leave a
+hole. G5's exit test names *contract, SLA and ACL registered*. §6 makes the
+service catalogue an **operator building block** — infrastructure the operator
+procures. §7's `05-services/<code>/` lists a *catalogue entry* among five
+per-service artefacts, without saying which gate produces it.
+
+**What the evidence shows.** The implementation passed G5 completely — contract
+registered, SLA signed, ACL applied, a live authorised call and a live denied
+one — and produced no catalogue entry, because nothing in the exit test asked for
+one. The SLA landed on the member's record. It is a real, signed, correctly
+templated SLA that a prospective consumer of that service cannot reach *from the
+service*, and will therefore never read. The pack's own conformance file records
+this as a smaller version of the orphan-SLA problem G5's addition set out to fix.
+
+Two things follow, and the second is the reason this is substantive rather than
+tidy-up.
+
+*First, deferring the entry to the catalogue product defers it indefinitely.* The
+entry is a by-product of a registration that has already happened, costing a
+generated file. The catalogue is §6 infrastructure with a budget, a procurement
+and a timeline. Sequencing the second before the first means no entries get
+written in the years before the catalogue arrives — and both reference
+instantiations show the split running the other way. Estonia's **RIHA** record is
+produced by the registration act and is mandatory; the X-tee catalogue front-end
+is a separate product that reads the bus. Finland's Liityntäkatalogi is likewise
+a portal over a collector. In both, the register-side record exists because
+someone made it a condition of registration, not because a catalogue was built.
+
+*Second — and this is the part no amount of later engineering repairs — a
+collector cannot reconstruct the metadata that matters.* X-Road's own metaservices
+will hand any future catalogue every endpoint of every service on demand:
+`listClients`, `listMethods`, `getOpenAPI`. They will never hand it the signed
+SLA, the lawful basis, or the tier-1 pattern classification, because **none of
+those are on the wire.** Whatever is not captured at the moment of registration is
+not recoverable afterwards, at any price. That asymmetry is exactly the one §6
+already argues for the monitoring add-ons — trivial at the gate, a campaign
+afterwards — and it applies here with more force, because a retrofit campaign for
+monitoring add-ons is at least *possible*.
+
+**Proposed amendment.**
+
+Add a fourth clause to G5's exit test:
+
+> - the service's **catalogue entry exists**, and carries at minimum: the X-Road
+>   service id, the contract reference, the tier-1 pattern classification, the
+>   lawful basis, the ACL subjects granted, and a resolvable reference to the
+>   signed SLA.
+>
+> The entry is a **registration artefact, not a catalogue product**, and it is
+> required whether or not a catalogue exists to read it. A collector can rebuild
+> a service's endpoints from `listMethods` and `getOpenAPI` at any time; it can
+> never rebuild the SLA, the lawful basis or the pattern classification, because
+> none of them are transmitted by anything. The entry must be generated from the
+> register's own data (A6's second rule), and it must state on its face that
+> publication is not permission — appearing in a catalogue and being authorised
+> to call are different facts, and a new member will otherwise conflate them.
+
+Add to §6, under the catalogue building block:
+
+> The catalogue building block is the **reader**: collection, search, a portal,
+> currency across an instance no single register covers. Its *inputs* are produced
+> at G5 by every member's registration, whether or not the building block has been
+> procured. An ecosystem that sequences the product before the entry will find,
+> when it finally procures one, that the metadata it most wanted was never
+> captured — and that the only fields recoverable by collection are the ones it
+> needed least.
+
+Extend A6's amendment to §7 with:
+
+> Where a per-service folder is impractical — a layout that already numbers
+> registration at `05-`, for instance — what must survive is the rule the layout
+> is *for*: every published service's contract, pattern, lawful basis, ACL and
+> SLA reachable **from the service**, not only from the member. The direction is
+> the point. An SLA filed under the member is not wrong; it is merely unreachable
+> by the person the SLA is for.
+
+**Why this matters beyond wording.** Without the fourth clause, G5 can be passed
+completely — as this implementation passed it — while producing nothing a future
+member can discover. The programme then hits the question this amendment came
+from, which no clause in v0.2 answers: *a body has just joined; how does it find
+out what services exist?* The honest answer today is that it asks someone. That
+answer does not scale past the first cohort, and it is the answer a framework is
+supposed to make unnecessary.
+
+**Cost of adopting it.** One generated file per published service, at a gate the
+member has already reached. No new obligation on the member: every field the
+clause requires is something G5 already collects for another purpose.
+
+---
+
 ## Two things v0.2 got right that are worth keeping unchanged
 
 Recorded because a review that only lists amendments misrepresents the document.
@@ -170,6 +269,6 @@ Recorded because a review that only lists amendments misrepresents the document.
 
 ## Recommended disposition
 
-A1 and A3 change what an implementer will build and what a tender can be marked against; they are the two worth carrying into v0.3 even if nothing else is. A2 and A8 change what a funder and an operator are told about a specific technical claim each — both corrections of record, not style. A4–A7 are clarifications that cost a paragraph each.
+A1, A3 and A9 change what an implementer will build and what a tender can be marked against; they are the three worth carrying into v0.3 even if nothing else is. A2 and A8 change what a funder and an operator are told about a specific technical claim each — both corrections of record, not style. A4–A7 are clarifications that cost a paragraph each.
 
-None of the amendments arise from the implementation being incomplete. Every one arises from a place where a complete-and-live implementation met the clause and something other than the clause decided the outcome — which is the only thing a build pack can tell a framework that the framework could not have worked out on its own.
+A9 stands slightly apart and should be read on its own terms. A1–A8 arise from places where a complete-and-live implementation met the clause and something other than the clause decided the outcome — which is the only thing a build pack can tell a framework that the framework could not have worked out on its own. **A9 arises from the opposite situation: the clause was met exactly as written, and the outcome was still wrong**, because what G5 asks for and what a new member needs are not the same set. That is a harder finding to surface and a cheaper one to fix, and it is the only amendment here whose cost of *not* adopting compounds — every member that passes G5 without an entry is metadata that cannot be recovered later.

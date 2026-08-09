@@ -576,3 +576,75 @@ state. Worked around by hand for this spike (`git checkout -- manifest.yaml`,
 removing the untracked `configs/member-<key>/`) rather than fixed — out of
 scope for a spike that commits no code, but real and reproducible on the
 current `main`.
+
+## No service catalogue, and the metadata a collector could never rebuild (G5.6, S6.2, S6a.4, S7.6)
+
+**The absence, stated where a reader following the pack will meet it.** Three
+members publish services through this pack. Every one of them has a registered
+contract, a signed SLA and an applied ACL, and **none of them has a catalogue
+entry**, because there is no catalogue. A body that joined this instance today
+could enumerate every member (X-Road's `listClients` serves that from the global
+configuration, and needs nothing from this pack) and would still have no way to
+learn what any of them publishes, under what lawful basis, against which
+service-level terms, without asking someone who already knows.
+
+The SLA is the sharp edge. `onboarding/<key>/03-sla/<service>.md` is a real
+signed record, reachable from the member. It is not reachable **from the
+service** — which is the direction the person who needs it reads in. That is the
+orphan-SLA problem the path's own G5 addition set out to fix, surviving in
+smaller form: not an SLA that does not exist, an SLA that will not be found.
+
+**Why this is not simply "add a catalogue later".** X-Road's metaservices make a
+large part of a catalogue reconstructible at any time: `listClients` for members
+and subsystems, `listMethods` for a provider's published services, `getOpenAPI`
+for each service's contract. A collector — NIIS's X-Road Catalog is the reference
+implementation, and Finland's Liityntäkatalogi and Estonia's X-tee catalogue
+front-end are the two production portals over one — can rebuild all of that on a
+timer, for any ecosystem, whenever it is procured.
+
+It cannot rebuild the three fields that carry the governance:
+
+| Field | On the wire? | Recoverable later? |
+| --- | --- | --- |
+| Endpoints, methods, schemas | yes (`getOpenAPI`) | yes, any time |
+| Member and subsystem identity | yes (`listClients`) | yes, any time |
+| **Signed SLA** | no | **no — only at registration** |
+| **Lawful basis** | no | **no — only at registration** |
+| **Tier-1 BB pattern classification** | no | **no — only at registration** |
+
+Metadata not captured at the moment of registration is not recoverable
+afterwards by any amount of catalogue engineering. That is the argument for
+treating the catalogue *entry* as a G5 registration artefact rather than as
+output of the §6 catalogue building block — proposed as amendment **A9** in
+`docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md`, designed in
+`docs/decisions/service-catalogue-design.md`, and planned in
+`docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`. Until
+those land, the absence is this section.
+
+**What production needs beyond anything this pack will build.** The design above
+covers the register's own output — derived from the join, complete for members
+this register admitted, structurally unable to go stale. A production ecosystem
+needs the other half too, and the two are not substitutes:
+
+| Production needs | Why the register's output does not cover it |
+| --- | --- |
+| A collector (X-Road Catalog or equivalent) | Sees services *actually* published, including any this register never authorised |
+| A portal with search and browse | A YAML file is not a discovery surface for a non-technical service owner |
+| A federation-wide view | This register covers one instance; `listClients` is per-instance, per partner |
+| A freshness policy on the collector | A derived view cannot be stale; a scraped one always can, and needs its own SLA |
+| A system-level registry (RIHA analogue) | Which *system* is authoritative for a dataset, and on what legal basis, is not a property of any service contract — and no amount of OpenAPI answers it |
+
+The last row is the one most often missed. Estonia's discovery story is not the
+X-tee catalogue; it is RIHA, and the catalogue is secondary to it. A programme
+that builds a service catalogue and calls the discovery problem solved has
+answered "what APIs exist" and left "who is authoritative for this data, and may
+I have it" exactly where it was.
+
+**One consequence for retirement, recorded here because it is easy to lose.**
+GX.3 asks the operator to *remove the catalogue entry* at retirement. There is no
+catalogue to remove one from today. The design closes this without a delete path
+at all: the aggregate is derived wholesale from `manifest.yaml` and
+`configs/member-*/`, so an un-join that deletes the member's configuration also
+deletes its services from the next regeneration. A delete path can be forgotten;
+a derivation cannot. GX.3's other two halves — certificate revocation and
+notifying consumers who held access — stay absent regardless.

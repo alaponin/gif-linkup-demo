@@ -498,8 +498,14 @@ clauses:
     Publication and ACL are implemented. There is no catalogue, so the SLA
     lands on the member record rather than as catalogue metadata -- a smaller
     version of the orphan-SLA problem the path's G5 addition sets out to fix.
+    Named in production-delta.md: the deferral was taken in
+    onboarding-alignment-design.md section 4.4, which is frozen and must not be the
+    only home for a live absence. Designed in
+    docs/decisions/service-catalogue-design.md; the framework driver that
+    un-defers it is amendment A9. This row moves only when the code exists.
   evidence:
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "Service catalogue entry"}
+    - {path: docs/production-delta.md, symbol: "orphan-SLA problem the path's own G5 addition"}
+    - {path: docs/decisions/service-catalogue-design.md, symbol: "G5.6"}
 
 - id: G5.7
   section: G5
@@ -610,9 +616,14 @@ clauses:
   note: >-
     No CA revocation call exists, no consumer notification, and there is no
     catalogue to remove an entry from. For an own-server member the cleanup is
-    handed to the operator as instructions rather than executed.
+    handed to the operator as instructions rather than executed. The catalogue
+    third closes by derivation rather than by a delete path once the aggregate
+    exists -- un-join removes configs/member-<key>/, so the next regeneration
+    simply does not find its services -- but revocation and notification stay
+    absent, so this row does not move.
   evidence:
     - {path: apps/join-api/job.py, symbol: retire_instruction}
+    - {path: docs/production-delta.md, symbol: "remove the catalogue entry* at retirement"}
 
 - id: GX.4
   section: GX
@@ -766,8 +777,16 @@ clauses:
   section: "6"
   clause: Service catalogue
   status: named-absence
+  note: >-
+    No catalogue of any kind today. The design separates the two artefacts the
+    one word covers: a collector (pull, scrapes the metaservices -- out of
+    scope, an operator building block) and the register's own derived output
+    (push, generated from the join). Only the second is planned here, so this
+    row moves to implemented for that half alone and the collector stays a
+    named absence in production-delta.md.
   evidence:
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "Service catalogue"}
+    - {path: docs/production-delta.md, symbol: "No service catalogue, and the metadata a collector could never rebuild"}
+    - {path: docs/decisions/service-catalogue-design.md, symbol: "generated, not collected"}
 
 - id: S6.3
   section: "6"
@@ -815,9 +834,17 @@ clauses:
   section: 6a
   clause: The catalogue entry carries the tier-1 classification so services are discoverable by pattern
   status: named-absence
-  note: Depends on S6.2. Neither tier reaches the onboarding record either.
+  note: >-
+    Depends on S6.2. Neither tier reaches the onboarding record either. The
+    classification is one of exactly three fields no collector can recover
+    later, because none of them are on the wire (production-delta.md's table);
+    that is what makes this a registration-time obligation rather than a
+    catalogue feature. Design rule R3 renders an unclassified service's
+    absence on the face of its own entry, which turns S6a.1 from a row in this
+    file into something the affected reader sees.
   evidence:
     - {path: apps/join-api/writer.py, symbol: render_onboarding_tree}
+    - {path: docs/production-delta.md, symbol: "**Tier-1 BB pattern classification**"}
 
 # -- 7. The onboarding file --------------------------------------------------
 
@@ -884,10 +911,19 @@ clauses:
   note: >-
     Two of five land, relocated: the SLA as 03-sla/<service>.md and the ACL
     subjects as a row of 05-registration.md. The contract, the semantic map
-    and the catalogue entry are not written.
+    and the catalogue entry are not written. The per-service FOLDER is a
+    deliberate non-goal, not an oversight: this tree already numbers
+    registration at 05-, so adopting 05-services/<code>/ would renumber the
+    tree, relocate every SLA file and buy a golden re-baselining event for a
+    directory name. A6 permits a different layout; A9 extends that to the
+    per-service shape and states the invariant it serves -- reachable FROM
+    the service, not only from the member -- which 04-catalogue/<code>.md
+    satisfies. This row therefore stays a named absence permanently, with a
+    smaller absence to name once the entry lands.
   evidence:
     - {path: onboarding/plr/03-sla/enrolment-api.md}
     - {path: onboarding/plr/05-registration.md}
+    - {path: docs/decisions/service-catalogue-design.md, symbol: "and not the path's `05-services/<code>/`"}
 
 - id: S7.7
   section: "7"

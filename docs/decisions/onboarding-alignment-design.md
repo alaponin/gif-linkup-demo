@@ -14,6 +14,20 @@ statement of what the pack contains today.
 > existence-checked by `tests/test_path_conformance.py`. Where this document and
 > that one disagree, that one is right.**
 
+> **Correction (2026-08-09) — the catalogue entry.** This document contradicts
+> itself about `catalogue-entry.md`, and the contradiction has been live since
+> D3. §5's "not building" table says the pack builds *"a generated
+> `catalogue-entry.md` per service"* **instead of** a catalogue; §4.4, written
+> after D3, puts the same file **out of scope** *"until a curriculum or framework
+> driver"*; §8.4 records it as a conscious deferral. **§4.4 and §8.4 are the
+> post-D3 position and they win — §5's row is stale and should be read as
+> withdrawn.** The framework driver §4.4 names now exists: amendment **A9** in
+> `docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md` makes the
+> catalogue entry a G5 exit condition. The design that replaces §5's row lives in
+> `docs/decisions/service-catalogue-design.md`, and the deferral's consequence is
+> now named where a reader meets it (`docs/production-delta.md`) rather than only
+> here, in a frozen document. Annotated in place, per the rule above.
+
 **Closes:** the findings in `docs/decisions/onboarding-path-gap-analysis.md` — with the
 exceptions the correction above names.
 **Decision record:** `docs/decisions/topology-profile-decision.md` (analysis and sources).
@@ -318,6 +332,14 @@ gates KP2 actually teaches, not the path's full seven.
 - `catalogue-entry.md` (**G-05b**) — out of scope. The SLA half is
   curriculum-backed and stays as `sla.md`; the catalogue metadata half waits for
   a curriculum or framework driver.
+  > **Un-deferred (2026-08-09).** The framework driver arrived: amendment **A9**
+  > makes the catalogue entry a G5 exit condition, which is the trigger this
+  > bullet names. The curriculum door stays closed and D3 stays correct — Topic 5
+  > is a fixed-runtime contracted deliverable, and the entry is built because the
+  > *framework* requires it, not because the pack found a gap and grew. Design:
+  > `docs/decisions/service-catalogue-design.md`. Plan:
+  > `docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`. This
+  > bullet also supersedes §5's row 1, which said the opposite.
 
 **Exit:** three members each carrying a requirements record, an SLA per service,
 and a registration record — the three things Topic 5 teaches before the bus call.
@@ -341,12 +363,22 @@ Stated so scope creep has something to bounce off.
 
 | Not building | Instead | Why |
 |---|---|---|
-| A service catalogue (collector, portal) | A generated `catalogue-entry.md` per service | Path §6 makes the catalogue an operator building block; the pack demonstrates the *entry* and the SLA attachment, which is the G5 gap |
+| A service catalogue (collector, portal) | ~~A generated `catalogue-entry.md` per service~~ — **withdrawn, see below** | Path §6 makes the catalogue an operator building block; the pack demonstrates the *entry* and the SLA attachment, which is the G5 gap |
 | A membership-agreement workflow | A reference and a stub in `onboarding/<key>/` | P2 — a signed instrument is not a demo artefact; the gate it creates is |
 | A Steering Committee as a running system | ~~A role in `governance.yaml` + a second token on `/approve`~~ → **as built:** a `decision_reference` on `/approve`, checked for non-emptiness only | Revised: in both reference instantiations admission is decided outside any system (Estonia via RIHA, Finland by form to DVV), and path §4 says G0–G3 are "not automatable, and should not be". The enforceable artefact is the *reference to* the decision, not the committee |
 | Retention/archival machinery | Two sentences beside the teardown instruction | Demo teardown deleting a volume is fine; the silence about retention is not |
 | BB implementations | The `pattern:` classification only | KP3 |
 | Real backends | The Joget seam stays as-is | KP4 |
+
+> **Annotation (2026-08-09).** Row 1's "instead" column was written before D3 and
+> is withdrawn by §4.4 below, which puts `catalogue-entry.md` out of scope. The
+> *left* column is still correct and still holds: no collector, no portal. What
+> replaces the middle column is `docs/decisions/service-catalogue-design.md`,
+> whose §2 draws the boundary this row was reaching for more precisely — a
+> **collector** pulls from the bus and can never see an SLA, a lawful basis or a
+> pattern classification, because none of the three are on the wire; the
+> **register's own derived output** has all three because the join payload
+> carried them. This pack builds the second and still not the first.
 
 ---
 
@@ -554,7 +586,7 @@ not *testable*, which is the weaker half of what this section claimed.
 
 | Deferred | By | Consequence to accept |
 |---|---|---|
-| Service catalogue entry | D3 | The SLA lands as `sla.md` on the member record rather than as catalogue metadata. Better than having nothing, but a smaller version of the path's orphan-SLA problem survives — the SLA is attached to the member, not discoverable with the service. |
+| Service catalogue entry | D3 | The SLA lands as `sla.md` on the member record rather than as catalogue metadata. Better than having nothing, but a smaller version of the path's orphan-SLA problem survives — the SLA is attached to the member, not discoverable with the service. **(2026-08-09: deferral lifted by A9 — this row was right about the consequence, and the consequence is what the amendment cites.)** |
 | Monitoring collection layer | Scope of the monitoring-add-ons work | Add-ons installed at G4 emitting to no collector, so **G4's third exit test — "is its monitoring data arriving centrally?" — remains unmet.** Defensible under P2: the lesson G-06 carries is *install the add-on at G4 or run a retrofit campaign*, and an installed add-on with a documented absent collector teaches exactly that. Adding `xroad-metrics` (NIIS, OSS) later closes it properly. |
 | Membership agreement, admission record, certificates record, go-live record | D3 | Four of the seven §7 gate files become named absences in `production-delta.md`. |
 | Inbound ACL revocation at GX | KP3 | Unreachable today; comment left in `steps.py`. |
