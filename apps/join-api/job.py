@@ -648,7 +648,11 @@ def _default_r1_call(
     if isinstance(fault, str) and (fault.startswith("Server.") or fault.startswith("Client.")):
         return False, f"{url}: HTTP {resp.status_code} {fault} {body.get('message', '')}".strip(), None
     mismatch = None
-    if isinstance(body, dict) and (declared or required):
+    # 2xx only. _r1_target probes the service ROOT path deliberately, and a
+    # backend 404 is a PASS for the reachability question this call asks --
+    # but a 404 body carries the backend's error shape, so comparing it
+    # against the contract's fields reports a mismatch that is not one.
+    if resp.status_code // 100 == 2 and isinstance(body, dict) and (declared or required):
         returned = frozenset(body.keys())
         undeclared = sorted(returned - declared)
         missing = sorted(required - returned)

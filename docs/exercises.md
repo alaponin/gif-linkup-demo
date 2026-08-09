@@ -125,15 +125,12 @@ itself; the operator token never reaches the browser.
 - Approval refuses outright if the checkout is dirty
   (`DirtyCheckoutError`) — the API writes files into the repository and will
   not do so on top of uncommitted work. Commit first.
-- `state` reaches `ACTIVE` well inside two minutes — ~65s on the run this
-  document was checked against, the last step being `join.r1_verify`.
-- `verified` may be `false` even on a hosted join. `runbook.md` documents
-  that outcome for an own-server join and calls a hosted one unaffected;
-  it was observed here on a **hosted** join against a federation that had
-  been up for some hours. It is a flag, not a fault: `scripts/acceptance.sh`
-  passes `2.7.r1(PTSB.awards-api)` against the same member, which is the
-  fact `verified` was meant to record. If you are demonstrating this, say so
-  before the badge appears.
+- `state` reaches `ACTIVE, verified: true` well inside two minutes — ~95s on
+  the run this document was checked against, the last step being
+  `join.r1_verify`.
+- `verified_by` records what proved it: `HTTP 404` on the service root. That
+  is a pass, not a failure — the probe asks whether a call traverses both
+  proxies and reaches the backend, and a backend 404 answers yes.
 - `onboarding/ptsb/` appears, and `01-admission.md` carries the decision
   reference you typed. Canonical members have no such file — they never
   passed an admission through this API, which is why their records begin at

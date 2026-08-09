@@ -217,20 +217,21 @@ below), or `scripts/verify.sh --full`, which performs that same proof.
     `hosted_on` unless the point of the demo is to show a server being stood
     up: it costs zero extra containers, and is the only shape that fits
     alongside a third-party backend on a 16 GB host.
-    - **An own-server join ends at `ACTIVE` with `verified: false`, and
-      that is a known defect, not a broken join** (reproduced on repeated
-      live runs). The bring-up's own global-configuration propagation wait
-      spends the job's whole 120s retry budget before `join.r1_verify` runs,
-      so the reachability call gets what is left (~20s) and the federation
-      needs 45s–8min. Nothing is wrong with the member:
-      `scripts/acceptance.sh`'s `2.7.r1(<code>.<service>)` passes against it
-      a minute later, which is the same fact `verified` was meant to record.
-      There is no way to flip the flag afterwards —
+    - **`verified: false` at `ACTIVE` means the reachability call did not
+      pass — read `verified_by`, which says why.** Two historical causes are
+      fixed and should not recur: a propagation wait that left
+      `join.r1_verify` ~20s of a shared budget (fixed by giving that step its
+      own `R1_RETRY_BUDGET`), and the contract-conformance comparison being
+      applied to the probe's own intended 404, which made *every* join with a
+      published service unverified regardless of hosting. If you see it
+      again, `verified_by` distinguishes them: `unreachable for 54 attempts`
+      is the first shape, `does not match its contract` the second.
+      Either way nothing is necessarily wrong with the member —
+      `scripts/acceptance.sh`'s `2.7.r1(<code>.<service>)` asserts the same
+      fact independently — but there is no way to flip the flag afterwards:
       `POST /requests/{id}/resume` refuses on an `ACTIVE` record, and
       `join.r1_verify` is already `last_completed_step` so a resume would
-      skip it. If you are demonstrating this, say so before the badge
-      appears. A **hosted** join is unaffected: it reaches `ACTIVE,
-      verified: true` with half the retry budget unspent.
+      skip it.
     - **A busy host port is a failure, not a re-allocation.**
       `scripts/join-agent.sh` checks the two ports `hurl/generate.py`
       allocated to that server (`lsof`) before starting anything, and refuses

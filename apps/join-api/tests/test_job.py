@@ -410,6 +410,56 @@ def test_a_contract_mismatch_is_active_unverified_not_failed_and_names_the_diff(
     assert "undeclared" in record["verified_by"]
 
 
+class _FakeResponse:
+    def __init__(self, status_code: int, body: dict):
+        self.status_code = status_code
+        self._body = body
+
+    def json(self):
+        return self._body
+
+
+def _r1_against(monkeypatch, status_code, body, declared, required):
+    """Drive the REAL _default_r1_call -- every other test here injects a fake
+    that returns a preset mismatch, which is how the 404 case below went
+    unnoticed."""
+    monkeypatch.setattr(job.httpx, "get", lambda *a, **k: _FakeResponse(status_code, body))
+    return job._default_r1_call(
+        "http://ss-pnea:8080/r1/PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api/",
+        "PROGRESSA/GOV/PNEA/EXAMS",
+        frozenset(declared),
+        frozenset(required),
+    )
+
+
+def test_a_backend_404_is_reachability_passed_not_a_contract_mismatch(monkeypatch):
+    """_r1_target probes the service ROOT path on purpose and treats a
+    backend 404 as proof the call traversed both proxies. A 404 body carries
+    the backend's error shape, never the contract's fields, so comparing the
+    two can only ever produce a false mismatch -- which is what made every
+    join with a published service land ACTIVE, verified: false."""
+    ok, detail, mismatch = _r1_against(
+        monkeypatch, 404, {"detail": "award not found"},
+        declared=["nin", "award_id", "program", "year"],
+        required=["nin", "award_id", "program", "year"],
+    )
+    assert ok is True
+    assert mismatch is None
+    assert "404" in detail
+
+
+def test_a_200_that_does_not_match_its_contract_is_still_a_mismatch(monkeypatch):
+    """The other half: gating on 2xx must not blunt G5.9. A successful
+    response carrying a field its contract never declared is the case this
+    check exists for."""
+    ok, _detail, mismatch = _r1_against(
+        monkeypatch, 200, {"nin": "1", "mother_name": "leaked"},
+        declared=["nin"], required=["nin"],
+    )
+    assert ok is True
+    assert mismatch == {"undeclared": ["mother_name"], "missing": []}
+
+
 def test_a_contract_mismatch_message_is_scrubbed_like_every_other_r1_message():
     """Every message written into a persisted record goes through
     job.scrub() -- this is a new path into out/join/*.json exactly like the
