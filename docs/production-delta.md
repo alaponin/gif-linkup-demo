@@ -243,8 +243,7 @@ KP3/KP4 have stable join keys to build against, not so it can never change.
 `grep -rn "MOEYS\|PEMIS" 10-Knowledge-Products/KP3-DPI/` returns no hits, and
 KP3's own config skeleton (`identity-pnia` / `registry-plr` / `registration`
 / `payment-paypro`) already builds on PNIA and PLR, not MoEYS. Reconfirmed
-against `docs/decisions/onboarding-alignment-design.md` §1.2's original finding: still
-no hits.
+against the original finding: still no hits.
 
 **Sign-off:** obtained from the repo owner and recorded here — this is the
 one change in the reduction another pack (KP3, KP4) could have been building
@@ -618,9 +617,7 @@ Metadata not captured at the moment of registration is not recoverable
 afterwards by any amount of catalogue engineering. **The table above is the
 whole argument for having done this at registration, and it stays true now that
 the entry exists** — it is the reason the entry could not wait for the catalogue
-product to be procured. That argument is amendment **A9** in
-`docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md`, designed in
-`docs/decisions/service-catalogue-design.md`.
+product to be procured. Designed in `docs/decisions/service-catalogue-design.md`.
 
 **What production must still add.** The pack covers the register's own output —
 derived from the join, complete for members this register admitted, structurally

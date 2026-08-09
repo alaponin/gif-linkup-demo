@@ -20,7 +20,7 @@ Everything below is the engineering depth under those three.
 - Run `scripts/preflight.sh` first -- checks for Docker, Docker Compose v2,
   `jq`, `curl`, `python3` 3.9+ with PyYAML, a SHA-256 tool, and bash 4+, and
   reports every gap at once rather than one at a time as the deploy hits
-  each of them (D11). Checks only -- it prints the install line for each
+  each of them. Checks only -- it prints the install line for each
   gap it finds instead of running it. `hurl/run-linkup.sh` also runs this
   automatically before it does anything expensive; running it by hand here
   first is what turns a mid-deploy failure into a pre-deploy one.
@@ -54,8 +54,7 @@ doing at each one. It refuses if a federation is already deployed.
 
 1. `scripts/gen-secrets.sh` — writes a real `.env` with a random token PIN
    and admin password (mode `600`). `.env.example` ships placeholders that
-   cannot work, on purpose — do not copy it by hand
-   (`docs/notes/reviews/2026-07-28-branch-review.md`, finding S2).
+   cannot work, on purpose — do not copy it by hand.
 2. **Deploy** — `scripts/deploy.sh` (a wrapper over `hurl/run-linkup.sh`)
    Brings up the containers and drives the full stand-up over the admin REST APIs:
    CS init (instance `PROGRESSA`, class `GOV`, configuration signing keys) → Test CA /

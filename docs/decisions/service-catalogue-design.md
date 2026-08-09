@@ -3,7 +3,8 @@
 **Status:** built. This document says what the artefact *is* and why it takes
 this shape; whether each clause it touches is satisfied is
 `docs/path-conformance.yaml`'s answer, not this file's.
-**Driver:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.3-amendments.md` A9.
+**Driver:** the service-catalogue requirement of the onboarding path this
+pack teaches.
 **Implementation plan:** `docs/decisions/superpowers/plans/2026-08-09-kp2-service-catalogue.md`.
 
 > **Status claims live in `docs/path-conformance.yaml`, not here.** This
@@ -16,8 +17,8 @@ this shape; whether each clause it touches is satisfied is
 
 ## 1. Why this is being built now
 
-`docs/decisions/onboarding-alignment-design.md` §4.4 deferred `catalogue-entry.md`
-(G-05b) with an explicit unlock condition: *"the catalogue metadata half waits for
+The catalogue entry (`catalogue-entry.md`, G-05b) was deferred with an
+explicit unlock condition: *"the catalogue metadata half waits for
 a curriculum or framework driver."*
 
 The curriculum door is closed and should stay closed. Topic 5 is a contracted

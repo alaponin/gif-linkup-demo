@@ -8,7 +8,6 @@ independent of server count. Current measured figures live in
 `docs/production-delta.md`.
 **Question analysed:** can we cut Security Servers further, and drop the
 `full` / `lite` profile split entirely?
-**Feeds:** `docs/decisions/onboarding-alignment-design.md` §4.3 and §8.2.
 
 **Short answer:** the floor is **3 Security Servers**, not fewer; profiles can go,
 and dropping them is worth more than the server count is. The two questions are
@@ -162,7 +161,7 @@ and would not be on physical hosts.
   authoritative publisher on a peer, which violates G2.
 - **A single hosted-PNIA profile** — hosts PNIA on `ss-plr`, i.e. models a peer
   holding the national identity authority's signing key. Already rejected on the
-  same G2 grounds (`docs/decisions/onboarding-alignment-design.md` §8.2).
+  same G2 grounds as §1.3 above.
 
 ---
 
@@ -228,7 +227,7 @@ piece of work — the largest in the programme.
 
 Splitting it would have been worse: profile removal changes topology, so doing
 it separately buys a second re-baselining event and breaks the "one
-re-baselining event" rule (`docs/decisions/onboarding-alignment-design.md` §1.1).
+re-baselining event" rule.
 Structuring that work as sequenced steps with a single regeneration at the
 end, and its own `--full` proof, kept it to one pass.
 

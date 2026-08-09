@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Generate a real .env for KP2 -- a random token PIN and admin password.
-# .env.example ships placeholders that cannot work on purpose
-# (docs/notes/reviews/2026-07-28-branch-review.md finding S2); this is the only
-# thing that should ever write a working .env.
+# .env.example ships placeholders that cannot work, on purpose; this is the
+# only thing that should ever write a working .env.
 #
 #   scripts/gen-secrets.sh          # refuses if .env already exists, UNLESS
 #                                    # it is only missing keys this script

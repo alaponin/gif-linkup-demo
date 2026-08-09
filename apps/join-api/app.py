@@ -61,7 +61,7 @@ TOKEN_PIN = os.environ["XROAD_TOKEN_PIN"]
 def _required_token(name: str) -> str:
     """scripts/lib-stack.sh refuses to run while XROAD_TOKEN_PIN or
     XROAD_ADMIN_PASSWORD are still a placeholder from .env.example
-    (docs/notes/reviews/2026-07-28-branch-review.md finding S2). Same idea, applied
+    on purpose. Same idea, applied
     here rather than in lib-stack.sh: only join-api cares about these two
     tokens, and every other script that sources lib-stack.sh (console.sh,
     member.sh, ...) has no reason to fail over a secret it never uses."""

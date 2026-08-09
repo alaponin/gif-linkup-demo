@@ -14,8 +14,8 @@
 [ -f "$PACK_DIR/.env" ] && set -a && . "$PACK_DIR/.env" && set +a
 
 # Refuse a .env that is missing, still a placeholder, or still one of the
-# values this repo used to publish (docs/notes/reviews/2026-07-28-branch-review.md
-# finding S2) -- the Central Server's own fixed xrd/secret is a separate,
+# values this repo used to publish -- the Central Server's own fixed
+# xrd/secret is a separate,
 # unrotatable credential baked into the release image, never read from
 # .env, and is not touched by this check.
 for _cred_var in XROAD_TOKEN_PIN XROAD_ADMIN_PASSWORD; do

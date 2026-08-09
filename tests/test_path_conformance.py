@@ -134,14 +134,16 @@ def test_every_gate_the_path_defines_has_at_least_one_clause():
         assert gate in sections, f"no clause covers {gate}"
 
 
-def test_the_path_document_exists():
-    """meta.path_document is the citation the whole file rests on, and was
-    the only one not checked by the evidence-path tests above (those walk
-    clause evidence, not meta)."""
-    target = PACK / DOC["meta"]["path_document"]
-    assert target.exists(), (
-        f"meta.path_document {DOC['meta']['path_document']!r} does not exist"
-    )
+def test_the_register_cites_no_outside_document_as_its_authority():
+    """The gate model is the pack's own. It was drafted in working documents
+    that are no longer carried, and a register that named one of them as its
+    authority outlived them the moment they were withdrawn -- so meta must not
+    grow that citation back."""
+    for key in ("path_document", "path_document_sha256", "path_version"):
+        assert key not in DOC["meta"], (
+            f"meta.{key} is back: the register defines its own gates and has no "
+            "outside document to cite"
+        )
 
 
 def test_every_section_title_has_at_least_one_clause():
@@ -156,15 +158,38 @@ def test_every_section_title_has_at_least_one_clause():
         assert key in sections_with_clauses, f"{title!r} ({key}) has no clauses"
 
 
-def test_the_path_document_hash_matches():
-    """A changed path document must be an action, not a silence: this fails
-    the moment docs/GEATDM-Interop-Member-Onboarding-Path-v*.md changes, with
-    a message that says what to do about it."""
-    path_document = PACK / DOC["meta"]["path_document"]
-    expected = DOC["meta"].get("path_document_sha256")
-    assert expected, "meta.path_document_sha256 is missing from path-conformance.yaml"
-    actual = hashlib.sha256(path_document.read_bytes()).hexdigest()
-    assert actual == expected, (
-        "the onboarding path changed -- re-read it against this matrix, then "
-        f"update meta.path_document_sha256 to {actual} in docs/path-conformance.yaml"
-    )
+# Documents withdrawn from the pack. The onboarding-path drafts were work in
+# progress that a status register should never have cited as authority; the
+# branch reviews and gap analyses were working notes whose findings have since
+# landed in the code. Citing one of them is now a dangling reference.
+WITHDRAWN = (
+    "GEATDM-Interop-Member-Onboarding-Path",
+    "onboarding-alignment-design",
+    "onboarding-path-gap-analysis",
+    "branch-review",
+    "do-terraform-brainstorm",
+)
+
+
+def test_no_withdrawn_document_is_cited_by_a_tracked_file():
+    """A withdrawn document leaves its citations behind, and a reader who
+    follows one finds nothing -- the same failure the evidence-path checks
+    above exist to prevent, one level up. Git-tracked files only: working
+    notes kept locally (docs/decisions/superpowers/, gitignored) may still
+    refer to whatever they were written against."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=PACK, capture_output=True, text=True, check=True
+    ).stdout.split("\0")
+    here = pathlib.Path(__file__).resolve()
+    stale: dict[str, list[str]] = {}
+    for rel in tracked:
+        if not rel or pathlib.Path(rel).suffix not in {".md", ".yaml", ".yml", ".py", ".sh"}:
+            continue
+        path = PACK / rel
+        if not path.is_file() or path.resolve() == here:
+            continue  # this file names them in order to look for them
+        text = path.read_text(errors="replace")
+        for name in WITHDRAWN:
+            if name in text:
+                stale.setdefault(name, []).append(rel)
+    assert not stale, f"withdrawn documents still cited: {stale}"

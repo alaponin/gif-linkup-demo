@@ -305,7 +305,7 @@ def read_env() -> dict[str, str]:
         raise SystemExit(
             "generate.py: .env does not exist -- run scripts/gen-secrets.sh first. "
             ".env.example ships placeholders that cannot work "
-            "(docs/notes/reviews/2026-07-28-branch-review.md finding S2); falling back to "
+            "; falling back to "
             "it here would generate a vars.env full of CHANGEME and fail deep "
             "inside a Hurl run, the worst place to discover it."
         )

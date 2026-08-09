@@ -1,9 +1,8 @@
 # Conventions (§0.5, §1a)
 
-`docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` §0 lists
-"identifier and naming conventions published" as prerequisite 5 of five
-ecosystem-level decisions made once, before member #1, and its §1a gives the
-reason: *"the naming convention is not cosmetic: certificates, DNS, firewall
+The onboarding path this pack teaches lists "identifier and naming
+conventions published" as the fifth of five ecosystem-level decisions made
+once, before member #1, and gives the reason: *"the naming convention is not cosmetic: certificates, DNS, firewall
 rules and monitoring all key off the host name, and a convention retrofitted
 after fifty members is not retrofitted at all."* This pack enforces one of
 §1a's four conventions (`apps/join-api/validate.py`'s identifier allowlist)

@@ -26,3 +26,9 @@ hurl/compose.members.yml
 # container installs its own deps in-image (apps/console/Dockerfile); this is
 # only for running apps/console/tests locally during development.
 .venv/
+
+# Working plans and their notes. They record how a change was arrived at, which
+# is useful while making it and noise once it has landed -- the change itself,
+# its tests and docs/decisions/ carry what survives. Kept locally, never
+# committed.
+docs/decisions/superpowers/

@@ -5,14 +5,16 @@
      re-render. tests/test_path_conformance.py fails if the two disagree, and
      fails if any cited evidence path does not exist. -->
 
-**Path:** `docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md` (v0.2 (rev. 4 Aug 2026))
-**Last reviewed:** 2026-08-08
+**Last reviewed:** 2026-08-09
 
-This is the only place the pack states its status against the path. Narrative
+The gates and clauses below are this pack's own model, defined by
+`docs/path-conformance.yaml` and this renderer's section titles. They are not
+a claim of conformance to any outside document.
+
+This is the only place the pack states its status against that model. Narrative
 documents carry reasoning; where one of them also carries a status claim, treat
-this file as authoritative — that divergence is what produced the corrections
-dated 2026-08-08 in `docs/decisions/onboarding-alignment-design.md` and
-`docs/decisions/onboarding-path-gap-analysis.md`.
+this file as authoritative — a divergence between the two is what once let
+three findings be recorded as closed by files that had never been created.
 
 **There is no tick mark here, deliberately.** A ✓ that meant "built" in one row
 and "labelled" in the next is how a status table stops being readable. Four
@@ -45,7 +47,7 @@ status:
 | P0.3 | Time-Stamping Authority | **simulated** |  | `hurl/templates/fragments/SS_TSA_POST.hurl.tmpl`<br>`docs/production-delta.md` (`Test CA`) |
 | P0.4 | Member classes defined | **implemented** | Single-class federation (GOV), asserted consistent between the join policy and the manifest at generate time. | `configs/x-road-bus/join-policy.yaml` (`member_class`)<br>`hurl/generate.py` (`check_join_policy`) |
 | P0.5 | Identifier and naming conventions published | **implemented** | Published as prose; only the identifier character set is enforced in code. The conventions-as-data file this was once planned as was not built, and was deliberately reversed (one rule, one place, no indirection). | `docs/conventions.md`<br>`apps/join-api/validate.py` (`_check_identifier_characters`) |
-| P0.6 | Building-block pattern register | **named absence** | An ExchangePattern enum exists and both providers set a value, but there is no register of recognised patterns and nothing validates the value. Tier 1 of the semantic layer is therefore classification without a vocabulary. | `apps/join-api/writer.py` (`never resolved`)<br>`docs/decisions/onboarding-alignment-design.md` (`BB pattern register`) |
+| P0.6 | Building-block pattern register | **named absence** | An ExchangePattern enum exists and both providers set a value, but there is no register of recognised patterns and nothing validates the value. Tier 1 of the semantic layer is therefore classification without a vocabulary. | `apps/join-api/writer.py` (`never resolved`) |
 
 ## §1 — The two-track shape
 
@@ -86,7 +88,7 @@ status:
 | --- | --- | --- | --- | --- |
 | G2.1 | Decide own Security Server vs hosted as a client on another's | **implemented** | Both shapes are built and both have been run live. Hosting is the default for a joined member; hosting chains are rejected. | `apps/join-api/validate.py` (`_check_hosting`)<br>`configs/x-road-bus/join-policy.yaml` (`default_hosting`)<br>`apps/join-api/job.py` (`build_sequence`) |
 | G2.2 | The host's token holds the joined member's signing key -- a delegation with no counterpart in the obligation set | **implemented** | Implemented exactly as the path describes, including the consequence: the SIGN key id must be correlated by certificate owner_id, never by label, because a shared token carries one identically-labelled key per hosted member. A hosted member's 05-registration.md now states whose token holds its signing key, so the delegation is recorded where a member would read it, not just enforced in code. | `apps/join-api/writer.py` (`a hosting delegation`)<br>`apps/join-api/job.py` (`_sign_key_id`)<br>`hurl/generate.py` (`build_hosted_client`) |
-| G2.3 | Exit test -- is the hosting choice compatible with the member's role? An authoritative personal-data publisher is not hosted on a peer's server | **named absence** | Enforced nowhere. The reasoning exists as a design decision (it is why the canonical topology gives every member its own server rather than hosting the identity register on a peer), but a submitted payload that hosts an authoritative provider on a peer validates today. | `docs/decisions/onboarding-alignment-design.md` (`violates G2`) |
+| G2.3 | Exit test -- is the hosting choice compatible with the member's role? An authoritative personal-data publisher is not hosted on a peer's server | **named absence** | Enforced nowhere. The reasoning exists as a design decision (it is why the canonical topology gives every member its own server rather than hosting the identity register on a peer), but a submitted payload that hosts an authoritative provider on a peer validates today. | `docs/decisions/topology-profile-decision.md` (`What G2 decides for us`) |
 | G2.4 | Publish minimum Security Server sizing so procurement is not a negotiation | **named absence** | The pack publishes measured demo figures (per-server RAM at steady state, container counts) but no minimum production dimensioning of the kind the path's Finland example gives. | `README.md` (`GiB`) |
 
 ## G3 — Identity and trust
@@ -108,7 +110,7 @@ status:
 | G4.5 | Configuration tooling rather than bespoke scripts | **implemented** | Config-as-code over the sanctioned admin API rather than hand configuration, which is the property the path's recommendation protects. The pack generates its own scenarios rather than using the NIIS Security Server Toolkit or the Ansible playbooks the path names. | `hurl/generate.py`<br>`hurl/README.md` |
 | G4.6 | Exit test part 1 -- the server appears in global configuration as registered and active | **implemented** |  | `acceptance/join-member.md` (`REGISTERED`)<br>`apps/join-api/job.py` (`_probe_auth_cert_registered`) |
 | G4.7 | Exit test part 2 -- the conformance suite passes without waivers | **implemented** |  | `scripts/acceptance.sh`<br>`scripts/verify.sh` |
-| G4.8 | Exit test part 3 -- is its monitoring data arriving centrally? | **named absence** | Add-ons emit to no collector. Deliberate: an installed add-on with a declared absent collector is the pack's counter-example for the path's own point, and adding X-Road Metrics later closes it without a retrofit. | `docs/decisions/onboarding-alignment-design.md` (`remains unmet`) |
+| G4.8 | Exit test part 3 -- is its monitoring data arriving centrally? | **named absence** | Add-ons emit to no collector. Deliberate: an installed add-on with a declared absent collector is the pack's counter-example for the path's own point, and adding X-Road Metrics later closes it without a retrofit. | `docs/production-delta.md` (`no collector`) |
 
 ## G5 — Service conformance and registration
 
@@ -123,7 +125,7 @@ status:
 | G5.7 | Exit test part 1 -- an authorised consumer's call reaches the backend end to end | **implemented** | Asserted per joined service at registration time, with its own retry budget; any X-Road fault counts as unverified. | `apps/join-api/job.py` (`_default_r1_call`)<br>`apps/join-api/job.py` (`R1_RETRY_BUDGET`) |
 | G5.8 | Exit test part 2 -- an unauthorised subsystem's identical call is denied by the provider-side access control, not by a transport error | **implemented** | The clause the path calls the one usually skipped, and the pack does not skip it: the negative call is routed through the Security Server that hosts the provider, so the denial cannot come from the caller's own server rejecting an unknown client, and the specific X-Road access-denied fault is required rather than any failure. | `scripts/acceptance.sh` (`check_264`)<br>`scripts/acceptance.sh` (`check_r1_denied`)<br>`configs/x-road-bus/once-only-exchange.yaml` (`unauthorised_client`) |
 | G5.9 | Exit test part 3 -- the response carries exactly the fields the contract declares | **implemented** | Closed. validate.py's contract_fields() computes declared and required field-name sets once, at validation, from the spec already fetched for check 9; the two sets are persisted on the request record and read back by job.py's r1 step, which reports returned-declared (undeclared) and required-returned (missing) as field NAMES only, never values. A mismatch sets verified: false with the named diff; state still becomes ACTIVE (consistent with R1_RETRY_BUDGET exhaustion) -- a fault means no route, a mismatch means a route to something that does not match its contract. Asserted live by scripts/acceptance.sh's check_266 (the canonical once-only exchange) and check_r1_fields (any joined member whose backend follows the generic mock-registry pattern). The negative case has been observed failing -- see docs/production-delta.md. | `apps/join-api/validate.py` (`contract_fields`)<br>`apps/join-api/job.py` (`_default_r1_call`)<br>`scripts/acceptance.sh` (`check_266`) |
-| G5.10 | Adapter service for a legacy backend that cannot expose a conformant interface | **out of scope** | Every backend here is a mock built to the contract, so the pattern has nothing to adapt. It gets its first real test when real applications arrive behind the same contracts. | `docs/decisions/onboarding-path-gap-analysis.md` (`adapter`) |
+| G5.10 | Adapter service for a legacy backend that cannot expose a conformant interface | **out of scope** | Every backend here is a mock built to the contract, so the pattern has nothing to adapt. It gets its first real test when real applications arrive behind the same contracts. | `apps/mock-registry/app.py` (`Demo stand-in`) |
 
 ## G6 — Production go-live and handover
 
@@ -164,7 +166,7 @@ status:
 | --- | --- | --- | --- | --- |
 | S6.1 | Member management / service management portal | **implemented** | Demo-grade, and the path says this is the one operator building block with no open-source starting point -- so a demo-grade version is the honest maximum here. A join API plus a one-page console, not a self-service portal. | `apps/join-api/app.py`<br>`apps/console/app.py` |
 | S6.2 | Service catalogue | **implemented** | The register-derived half only, and the distinction is the whole claim. One word covers two artefacts: a collector (pull, scrapes the metaservices, sees everything published including services no register authorised) and the register's own output (push, derived from the join, complete for members this register admitted and blind to everything else). This is the second. onboarding/catalogue.yaml is regenerated wholesale from manifest.yaml + configs/member-*/, and GET /catalogue serves the same derived data as JSON under the applicant token. THE COLLECTOR IS NOT BUILT and stays a named absence in production-delta.md, along with the portal, the federation-wide view and the freshness policy a scraped view needs and a derived one cannot. | `apps/join-api/writer.py` (`catalogue_data`)<br>`apps/join-api/app.py` (`get_catalogue`)<br>`apps/join-api/tests/test_app_catalogue.py` (`test_the_response_matches_the_yaml_for_the_same_inputs`)<br>`apps/join-api/tests/test_writer.py` (`test_catalogue_regenerates_byte_identically_from_unchanged_inputs`)<br>`docs/production-delta.md` (`What production must still add`) |
-| S6.3 | Reporting and metrics | **named absence** | Add-on installed at G4, no collection layer. See G4.8. | `docs/decisions/onboarding-alignment-design.md` (`remains unmet`) |
+| S6.3 | Reporting and metrics | **named absence** | Add-on installed at G4, no collection layer. See G4.8. | `docs/production-delta.md` (`no collector`) |
 | S6.4 | Technical monitoring | **named absence** | As S6.3 -- environmental-monitoring add-on installed, nothing collects from it. | `tests/test_addons.py` (`xroad-monitor`) |
 
 ## §6a — Building blocks and the semantic layer

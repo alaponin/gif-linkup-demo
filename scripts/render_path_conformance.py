@@ -33,8 +33,8 @@ PACK = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = PACK / "docs" / "path-conformance.yaml"
 TARGET = PACK / "docs" / "path-conformance.md"
 
-# Order is the reading order of the path document, not alphabetical: a reader
-# arrives here holding the path, and wants to walk it top to bottom.
+# Order is the model's own reading order, not alphabetical: a reader walks
+# the gates top to bottom.
 SECTION_TITLES = [
     ("0", "§0 — What must exist before any member can be onboarded"),
     ("1", "§1 — The two-track shape"),
@@ -71,14 +71,16 @@ HEADER = """\
      re-render. tests/test_path_conformance.py fails if the two disagree, and
      fails if any cited evidence path does not exist. -->
 
-**Path:** `{path_document}` ({path_version})
 **Last reviewed:** {reviewed}
 
-This is the only place the pack states its status against the path. Narrative
+The gates and clauses below are this pack's own model, defined by
+`docs/path-conformance.yaml` and this renderer's section titles. They are not
+a claim of conformance to any outside document.
+
+This is the only place the pack states its status against that model. Narrative
 documents carry reasoning; where one of them also carries a status claim, treat
-this file as authoritative — that divergence is what produced the corrections
-dated 2026-08-08 in `docs/decisions/onboarding-alignment-design.md` and
-`docs/decisions/onboarding-path-gap-analysis.md`.
+this file as authoritative — a divergence between the two is what once let
+three findings be recorded as closed by files that had never been created.
 
 **There is no tick mark here, deliberately.** A ✓ that meant "built" in one row
 and "labelled" in the next is how a status table stops being readable. Four

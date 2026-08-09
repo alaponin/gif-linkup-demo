@@ -1,9 +1,16 @@
-# Conformance of this build pack against the member onboarding path.
+# What this build pack implements of the member onboarding path it teaches.
 #
-# THIS FILE IS THE ONLY PLACE THE PACK STATES ITS STATUS AGAINST THE PATH.
+# THE GATE MODEL BELOW IS THIS PACK'S OWN. It was drafted in three working
+# documents that are not carried here: they were work in progress, and a
+# status register that cited a draft as its authority claimed more than the
+# draft could support. The clauses, their ids and the gate names survive in
+# this file and in scripts/render_path_conformance.py's SECTION_TITLES, which
+# together are now the whole definition -- there is no external document to
+# check them against, and none is implied.
+#
+# THIS FILE IS THE ONLY PLACE THE PACK STATES ITS STATUS AGAINST THAT MODEL.
 # docs/path-conformance.md is generated from it and must not be hand-edited.
-# Narrative documents (docs/decisions/onboarding-alignment-design.md,
-# docs/decisions/onboarding-path-gap-analysis.md, docs/production-delta.md) carry
+# Narrative documents (docs/production-delta.md, docs/decisions/) carry
 # reasoning; when they carry a status claim as well, the two drift, and on
 # 2026-08-08 an external review found three findings recorded as closed by
 # files that had never been created. That is the failure this file exists to
@@ -26,10 +33,7 @@
 # A clause with no honest home in those four is a defect, not a fifth status.
 
 meta:
-  path_document: docs/GEATDM-Interop-Member-Onboarding-Path-v0.2.md
-  path_document_sha256: 86be3473fffa1ada5d595f0d34aa9c3034457b6487e84cf96ca0349ba360f619
-  path_version: v0.2 (rev. 4 Aug 2026)
-  reviewed: 2026-08-08
+  reviewed: 2026-08-09
   generated_output: docs/path-conformance.md
   generator: scripts/render_path_conformance.py
   test: tests/test_path_conformance.py
@@ -99,7 +103,6 @@ clauses:
     vocabulary.
   evidence:
     - {path: apps/join-api/writer.py, symbol: "never resolved"}
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "BB pattern register"}
 
 # -- 1. The two-track shape --------------------------------------------------
 
@@ -305,7 +308,7 @@ clauses:
     the identity register on a peer), but a submitted payload that hosts an
     authoritative provider on a peer validates today.
   evidence:
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "violates G2"}
+    - {path: docs/decisions/topology-profile-decision.md, symbol: "What G2 decides for us"}
 
 - id: G2.4
   section: G2
@@ -431,7 +434,7 @@ clauses:
     declared absent collector is the pack's counter-example for the path's own
     point, and adding X-Road Metrics later closes it without a retrofit.
   evidence:
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "remains unmet"}
+    - {path: docs/production-delta.md, symbol: "no collector"}
 
 # -- G5 ----------------------------------------------------------------------
 
@@ -566,7 +569,7 @@ clauses:
     nothing to adapt. It gets its first real test when real applications
     arrive behind the same contracts.
   evidence:
-    - {path: docs/decisions/onboarding-path-gap-analysis.md, symbol: adapter}
+    - {path: apps/mock-registry/app.py, symbol: "Demo stand-in"}
 
 # -- G6 ----------------------------------------------------------------------
 
@@ -803,7 +806,7 @@ clauses:
   status: named-absence
   note: Add-on installed at G4, no collection layer. See G4.8.
   evidence:
-    - {path: docs/decisions/onboarding-alignment-design.md, symbol: "remains unmet"}
+    - {path: docs/production-delta.md, symbol: "no collector"}
 
 - id: S6.4
   section: "6"

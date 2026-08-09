@@ -29,7 +29,7 @@ cd "$PACK_DIR"
 
 # Before anything else: lib-stack.sh itself needs python3+PyYAML (yq_get)
 # and can shell out to docker compose, so a missing dependency has to be
-# caught here, not partway into sourcing it (D11).
+# caught here, not partway into sourcing it.
 scripts/preflight.sh
 
 . scripts/lib-stack.sh
