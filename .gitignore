@@ -22,6 +22,16 @@ hurl/compose.members.yml
 # FIXTURE, not a working artefact, and none of
 # the patterns above match them anyway (they live under tests/golden/, not
 # hurl/). Said explicitly here so nobody "fixes" that by widening a pattern.
+# Terraform's working directory (downloaded provider binaries, ~100 MB) and
+# any local state a laptop-side `apply` leaves behind -- real state lives in
+# the Spaces bucket (infra/terraform/backend.hcl). .terraform.lock.hcl is
+# deliberately NOT here: it pins the provider version CI resolves, and it
+# carries hashes for linux_amd64 as well as the two darwin arches, so it has
+# to be committed for CI's `terraform init` to verify anything.
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+
 # Local dev/test venv for apps/console (pytest/httpx/fastapi) -- the console
 # container installs its own deps in-image (apps/console/Dockerfile); this is
 # only for running apps/console/tests locally during development.

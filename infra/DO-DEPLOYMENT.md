@@ -1,0 +1,66 @@
+# Deploying the KP2 build pack on DigitalOcean — analysis
+
+**Verdict up front:** the simplest DigitalOcean shape for this pack is a single 16 GB Droplet running the pack exactly as it runs on a laptop — `docker compose` on one host, every port bound to loopback, reached over an SSH tunnel — provisioned by Terraform into a dedicated DO project and driven by an on-demand GitHub Actions workflow (`up` / `deploy` / `destroy`). No change to the pack itself is needed: the droplet is just a remote `docker-local` host, so `deployment.yaml`'s `target: docker-local` stays truthful and `hurl/generate.py` never has to learn a second target.
+
+Everything below is grounded in what the pack itself declares, chiefly `docs/deployment-targets.md` (the pack's own contract for "a target other than my laptop"), `runbook.md`, `scripts/preflight.sh`, and `docker-compose.yml`.
+
+## What the pack actually requires of a host
+
+The stack is X-Road 7.7.0: a Central Server, a Test CA, four Security Servers, two-to-three mock registries, and (behind the `demo` compose profile) the console and join-api. Measured steady state is **~11 GiB RAM** (`README.md`, confirmed by `preflight.sh`'s 12 GiB warning threshold), which makes 16 GB the practical floor for a host. A cold deploy — purge, containers up, the Hurl admin-API run, seed, acceptance — measures **~11–13 minutes** on the reference host, and `docs/deployment-targets.md` says to budget for the slow end on a new target. The healthchecks allow 10 minutes for containers to come healthy; on an undersized VM the correct response is a bigger droplet, not a healthcheck edit.
+
+Host software is exactly what `scripts/preflight.sh` checks: docker with the compose **v2 plugin** (the standalone v1 binary is explicitly rejected), jq, curl, python3 ≥ 3.9 with PyYAML, a SHA-256 tool, bash 4+, and a populated `.env`. All of it installs cleanly on stock Ubuntu 24.04, which is what the Terraform cloud-init does at boot. Preflight checks and warns; it never installs — so the droplet image has to arrive ready, and cloud-init is where that happens.
+
+Three less obvious requirements shape the design more than the package list does:
+
+**The whole monorepo must be on the droplet, with its `.git`.** `join-api` bind-mounts `../../..` (the monorepo root) read-write into its container and runs `git status --porcelain` against it before approving a join (`docker-compose.yml`, join-api stanza). Copying just the pack directory would break the join demo. The CI workflow therefore rsyncs the full checkout, `.git` included, to `/opt/kp2/repo/` on the droplet.
+
+**Everything binds to 127.0.0.1, and that is not negotiable while the Test CA exists.** `deployment.yaml`'s `network.bind: 127.0.0.1` is the pack's whole exposure model, and `scripts/lib-stack.sh` refuses a non-loopback bind outright while the `ca` service is in the compose set — `acknowledge_public_exposure: true` cannot override it, because `/testca/sign` signs any CSR unauthenticated and would otherwise be a public certificate factory for the federation's own trust anchor (`docs/deployment-targets.md`). This decides the access model for us: the DO firewall admits **only SSH**, and the console (:8090), CS UI (:4000) and join-api (:8091) are reached through an SSH tunnel. This is also the security posture the pack documents as correct ("reaching it from elsewhere is an SSH tunnel or a VPN, not a change here" — `deployment.yaml`). If you later want browser access without a tunnel, the pack-sanctioned road is a VPN (WireGuard/Tailscale on the droplet), never opening the ports.
+
+**Secrets are generated on the host and stay there.** `scripts/gen-secrets.sh` writes a real `.env` (mode 600) on the machine that deploys; `docs/deployment-targets.md` examines tmpfs and external stores and concludes `.env` on disk remains the right default for a demonstration, provided the host has no shared shell access — which a single-purpose droplet satisfies. So CI does not hold the X-Road secrets at all: it runs `gen-secrets.sh` remotely on first deploy and the secrets never leave the droplet. When the droplet is destroyed, they die with it, and the next `up` generates fresh ones — harmless, because a fresh droplet has no initialised token to mismatch.
+
+Two smaller points the pack pre-answers: **NTP** is mandatory (clock drift presents as certificate errors), and Ubuntu's systemd-timesyncd plus a `timedatectl set-ntp true` in cloud-init covers it; and **image pulls** go to Docker Hub and ghcr.io at deploy time, digest-pinned, so the droplet needs outbound internet (it has it) and `scripts/preload-images.sh` runs as an explicit early step so a pull failure surfaces before the expensive deploy starts.
+
+## Why not the other DigitalOcean options
+
+**App Platform** cannot run this: it is a stateful, multi-container, ~11 GiB compose topology with named volumes, a custom bridge network, host-relative bind mounts and containers that must talk to each other by compose service name. **DOKS (managed Kubernetes)** could run it in principle but means translating the whole compose file plus the Hurl bootstrap into manifests — a rewrite of the pack's sanctioned deploy path (`deploy.sh` delegates to `hurl/run-linkup.sh`, which itself shells `docker compose`). That contradicts both "simplest" and the pack's design, which deliberately supports exactly one topology. A single Droplet keeps the pack's entire verified surface — `preflight.sh` through `verify.sh --full` — working untouched.
+
+## The recommended architecture
+
+One Terraform root module (in `infra/terraform/`) creates four resources in a **dedicated DO project** (`digitalocean_project`, so everything KP2 is filed separately from anything else on the account, as you asked): an SSH deploy key, the droplet, and an SSH-only firewall. State lives in a **DigitalOcean Spaces bucket** via Terraform's S3 backend — needed because CI runners are stateless and `destroy` must find what `up` created. The droplet is `s-8vcpu-16gb` (8 vCPU / 16 GB / 320 GB SSD) in `fra1`, Ubuntu 24.04, with cloud-init installing docker-ce + compose plugin and the preflight package list at boot. The 320 GB disk comfortably holds the several-GB of X-Road images plus volumes.
+
+The GitHub Actions workflow (`.github/workflows/kp2-federation.yml`, at the monorepo root — GitHub reads workflows nowhere else) is a single manually-triggered job with three actions:
+
+**up** — `terraform apply` (creates or refreshes the droplet), wait for cloud-init, rsync the monorepo checkout across, then run the pack's own sequence remotely: `gen-secrets.sh` (first time only) → `preflight.sh` → `preload-images.sh` → `deploy.sh` → `seed.sh` → `acceptance.sh`. The job ends by printing the SSH tunnel command in the run summary. Expect ~20–25 minutes end to end (droplet boot + apt + image pulls + the ~13-minute deploy).
+
+**deploy** — same as up minus infra changes; reruns the pack deploy on the existing droplet (apply is a no-op when nothing changed).
+
+**destroy** — `terraform destroy`. The DO project and the state bucket survive; the droplet, its volumes, and its secrets do not.
+
+On-demand lifecycle fits this pack unusually well because the pack itself proves it: the `--full` reproducibility proof *is* "purge, cold redeploy, reseed, acceptance, unattended," and `docs/deployment-targets.md` establishes that restore-from-backup does not work across destroyed volumes anyway ("the conclusion is 'purge and redeploy,' not 'restore'"). An always-on droplet would spend $96/month keeping alive state the pack is explicitly designed to recreate in 13 minutes. The one thing destroy loses is joined members (e.g. a PTSB joined during a demo) — by design they re-register, and that re-registration is itself the demo.
+
+## Cost
+
+| Item | Rate | Typical month (on-demand) |
+| --- | --- | --- |
+| Droplet `s-8vcpu-16gb` | $96/mo · ~$0.143/hr | 4 × 4-hour demo sessions ≈ **$2.30** |
+| Spaces (Terraform state) | $5/mo flat subscription | **$5** |
+| Bandwidth / snapshots | in droplet allowance / none used | ~$0 |
+
+So roughly **$7/month** in on-demand use, versus ~$101/month always-on. (Prices checked against DigitalOcean's current pricing page, Aug 2026; DO bills per-second since Jan 2026, so short sessions are billed exactly.) If $5/month for state feels disproportionate, the alternatives are HCP Terraform's free tier as the backend, or accepting local state committed nowhere and losing CI-driven destroy — Spaces is the simplest durable option.
+
+## One-time setup checklist
+
+1. Create a DO API token (write) and a Spaces access key pair in the DO control panel, and create the state bucket (default name in `backend.hcl`: `kp2-terraform-state`, region `fra1` — bucket names are global, so rename it and update `backend.hcl`).
+2. Generate a deploy keypair: `ssh-keygen -t ed25519 -f kp2-deploy -N ""`.
+3. Add five GitHub repo secrets: `DO_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`, `KP2_SSH_PRIVATE_KEY`, `KP2_SSH_PUBLIC_KEY`.
+4. Run the workflow with `action: up`; when it goes green, open the tunnel printed in the run summary.
+
+## Risks and open edges
+
+The 16 GB droplet leaves ~4–5 GiB headroom over the measured steady state, which is fine for the standard topology but tight if a demo joins a member with its **own** Security Server (+~2.2 GiB per JVM, plus the CPU-contention risk `docs/production-delta.md` records). The join API already defaults new members to `hosted_on` an existing Security Server, which is the right default here too; if own-server joins are a planned part of the demonstration, size up to a 32 GB droplet ($0.29/hr — the on-demand economics barely notice).
+
+The firewall's SSH rule defaults to open-to-world because GitHub-hosted runners have no stable egress IPs. SSH is key-only (cloud-init/DO images disable password auth), so the practical risk is low for an ephemeral demo host; the tightening options, in effort order, are restricting `admin_cidrs` to your own IP and running `deploy` from your machine, a self-hosted runner with a fixed IP, or Tailscale on the droplet.
+
+Redeploys rsync with `--delete`, which protects `.env` and `out/` (excluded) but will revert `configs/member-*/` changes a live join wrote on the droplet if they were never committed — consistent with the pack's own view that git is the source of truth, but worth knowing before rsyncing over a droplet holding an uncommitted joined member.
+
+Finally, what this deployment is **not**: the pack says plainly it is demo-only, never production (`docs/production-delta.md` — Test CA, fixed CS UI credentials, single host). Nothing about moving it to DigitalOcean changes that, and the loopback-plus-tunnel posture is what keeps the demo honest on a public cloud.

@@ -1,0 +1,31 @@
+#cloud-config
+# Everything scripts/preflight.sh checks for, installed once at boot:
+# docker + compose v2 (plugin form, from Docker's own apt repo — the
+# standalone v1 binary does not satisfy preflight), jq, curl,
+# python3 >= 3.9 with PyYAML, sha256sum/bash4 (in Ubuntu base), git
+# (join-api runs `git status` inside its container against the mounted
+# checkout, but the deploy flow also uses git on the host).
+# CI waits on `cloud-init status --wait` before deploying.
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - ca-certificates
+  - curl
+  - jq
+  - git
+  - python3
+  - python3-yaml
+  - rsync
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - systemctl enable --now docker
+  - timedatectl set-ntp true
+  - mkdir -p /opt/kp2
