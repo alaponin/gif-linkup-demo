@@ -32,9 +32,9 @@ status:
 
 | Status | Clauses | Share |
 | --- | ---: | ---: |
-| implemented | 40 | 54% |
+| implemented | 41 | 55% |
 | simulated | 4 | 5% |
-| named absence | 26 | 35% |
+| named absence | 25 | 33% |
 | out of scope | 4 | 5% |
 | **total** | **74** | |
 
@@ -47,7 +47,7 @@ status:
 | P0.3 | Time-Stamping Authority | **simulated** |  | `hurl/templates/fragments/SS_TSA_POST.hurl.tmpl`<br>`docs/production-delta.md` (`Test CA`) |
 | P0.4 | Member classes defined | **implemented** | Single-class federation (GOV), asserted consistent between the join policy and the manifest at generate time. | `configs/x-road-bus/join-policy.yaml` (`member_class`)<br>`hurl/generate.py` (`check_join_policy`) |
 | P0.5 | Identifier and naming conventions published | **implemented** | Published as prose; only the identifier character set is enforced in code. The conventions-as-data file this was once planned as was not built, and was deliberately reversed (one rule, one place, no indirection). | `docs/conventions.md`<br>`apps/join-api/validate.py` (`_check_identifier_characters`) |
-| P0.6 | Building-block pattern register | **named absence** | An ExchangePattern enum exists and both providers set a value, but there is no register of recognised patterns and nothing validates the value. Tier 1 of the semantic layer is therefore classification without a vocabulary. | `apps/join-api/writer.py` (`never resolved`) |
+| P0.6 | Building-block pattern register | **implemented** | The ExchangePattern enum validates the value a service may carry; docs/pattern-register.md publishes what the values mean, each row anchored on a named GovStack specification at a pinned version. Tier 1 is classification with a vocabulary behind it. The register is hand-authored and deliberately not generated; what it does not do is check that the value a member chose is the right one. | `docs/pattern-register.md`<br>`apps/join-api/schema.py` (`ExchangePattern`) |
 
 ## §1 — The two-track shape
 
@@ -117,7 +117,7 @@ status:
 | # | Clause | Status | Note | Evidence |
 | --- | --- | --- | --- | --- |
 | G5.1 | Artefact 1 -- the service contract (OpenAPI), submitted to the OA | **implemented** | Fetched and parsed at validation time, not merely declared; operations are screened against the join policy's allowed methods. The contract is referenced by URL and is not copied into the onboarding record. | `apps/join-api/validate.py` (`_check_backend_reachability`)<br>`apps/join-api/validate.py` (`_check_allowed_methods`) |
-| G5.2 | Artefact 2 tier 1 -- which GovStack building-block pattern this exchange instantiates | **named absence** | Classified on the payload, validated against nothing. See P0.6. | `apps/join-api/schema.py` (`ExchangePattern`)<br>`apps/join-api/writer.py` (`never resolved`) |
+| G5.2 | Artefact 2 tier 1 -- which GovStack building-block pattern this exchange instantiates | **named absence** | The value is now a published vocabulary (P0.6, docs/pattern-register.md) and the enum constrains it, but the classification is still asserted on the payload rather than derived from or checked against the exchange it describes. A wrong pattern passes. | `apps/join-api/schema.py` (`ExchangePattern`)<br>`docs/pattern-register.md` |
 | G5.3 | Artefact 2 tier 2 -- the member's fields mapped onto the published sector vocabulary | **implemented** | Conformance, not presence: the entity must be a key in the published map and every declared field must be declared for that entity. The mapping is not written into the onboarding record. | `apps/join-api/validate.py` (`_check_purpose_limitation`)<br>`configs/semantic/semantic-map.yaml` |
 | G5.4 | Artefact 3 -- the SLA, signed | **implemented** | A published service without an SLA is rejected; one signed record per service is rendered into the member's onboarding folder. The values are illustrative, and the record is attached to the member rather than discoverable with the service. | `apps/join-api/validate.py` (`_check_sla_required`)<br>`onboarding/plr/03-sla/enrolment-api.md` |
 | G5.5 | Artefact 4 -- the access-control list, exactly the subjects the policy names | **implemented** | Every subject resolved against the manifest; self-grants rejected; applied one entry per subject. | `apps/join-api/validate.py` (`_check_acl_sanity`)<br>`onboarding/plr/05-registration.md` |
@@ -173,7 +173,7 @@ status:
 
 | # | Clause | Status | Note | Evidence |
 | --- | --- | --- | --- | --- |
-| S6a.1 | Tier 1 -- BB pattern, cross-sector | **named absence** | See P0.6 and G5.2 -- there is still no register to classify a service against, so the enum is a vocabulary and not a check. What changed is where the absence is visible: an unclassified service now says so on the face of its own catalogue entry, in words the reader can act on, rather than only as this row. A blank cell and an unclassified service look identical; the two are not. | `apps/join-api/schema.py` (`ExchangePattern`)<br>`apps/join-api/writer.py` (`cannot be found by pattern`)<br>`apps/join-api/tests/test_writer.py` (`test_render_catalogue_entry_names_an_unclassified_services_absence`) |
+| S6a.1 | Tier 1 -- BB pattern, cross-sector | **named absence** | See P0.6 and G5.2. The register now exists, so the absence has narrowed: what is missing is not the vocabulary but any check that a service's declared pattern is the correct one. An unclassified service says so on the face of its own catalogue entry, in words the reader can act on, rather than only as this row -- a blank cell and an unclassified service look identical, and the two are not. | `apps/join-api/schema.py` (`ExchangePattern`)<br>`apps/join-api/writer.py` (`cannot be found by pattern`)<br>`apps/join-api/tests/test_writer.py` (`test_render_catalogue_entry_names_an_unclassified_services_absence`) |
 | S6a.2 | Tier 2 -- sector entity anchored in sector standards | **implemented** |  | `configs/semantic/semantic-map.yaml` (`OneRoster`)<br>`apps/join-api/validate.py` (`_check_purpose_limitation`) |
 | S6a.3 | Tier 3 -- the member's own contract, checked at G5 | **implemented** |  | `configs/member-plr/plr.yaml` (`semantic`)<br>`apps/specs/plr-enrolment.openapi.yaml` |
 | S6a.4 | The catalogue entry carries the tier-1 classification so services are discoverable by pattern | **implemented** | Both tiers reach the entry: the sector entity with its anchor, and the exchange pattern, each rendered per service. The classification is one of exactly three fields no collector can recover later, because none of them are on the wire (production-delta.md's table) -- which is what makes it a registration-time obligation rather than a catalogue feature. An unclassified service renders the absence in its place, so the entry never implies a classification it does not have. Discoverability BY pattern still needs the register S6a.1 names; what this row asserts is that the value is captured and published where a reader meets it. | `apps/join-api/writer.py` (`Exchange pattern (tier 1)`)<br>`apps/join-api/tests/test_writer.py` (`test_render_catalogue_entry_carries_the_service_id_contract_and_acl`)<br>`onboarding/plr/04-catalogue/enrolment-api.md` (`digital_registries_lookup`)<br>`docs/production-delta.md` (`**Tier-1 BB pattern classification**`) |

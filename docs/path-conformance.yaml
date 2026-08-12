@@ -94,14 +94,17 @@ clauses:
 - id: P0.6
   section: "0"
   clause: Building-block pattern register
-  status: named-absence
+  status: implemented
   note: >-
-    An ExchangePattern enum exists and both providers set a value, but there
-    is no register of recognised patterns and nothing validates the value.
-    Tier 1 of the semantic layer is therefore classification without a
-    vocabulary.
+    The ExchangePattern enum validates the value a service may carry;
+    docs/pattern-register.md publishes what the values mean, each row anchored
+    on a named GovStack specification at a pinned version. Tier 1 is
+    classification with a vocabulary behind it. The register is hand-authored
+    and deliberately not generated; what it does not do is check that the
+    value a member chose is the right one.
   evidence:
-    - {path: apps/join-api/writer.py, symbol: "never resolved"}
+    - {path: docs/pattern-register.md}
+    - {path: apps/join-api/schema.py, symbol: ExchangePattern}
 
 # -- 1. The two-track shape --------------------------------------------------
 
@@ -453,10 +456,14 @@ clauses:
   section: G5
   clause: Artefact 2 tier 1 -- which GovStack building-block pattern this exchange instantiates
   status: named-absence
-  note: Classified on the payload, validated against nothing. See P0.6.
+  note: >-
+    The value is now a published vocabulary (P0.6, docs/pattern-register.md)
+    and the enum constrains it, but the classification is still asserted on
+    the payload rather than derived from or checked against the exchange it
+    describes. A wrong pattern passes.
   evidence:
     - {path: apps/join-api/schema.py, symbol: ExchangePattern}
-    - {path: apps/join-api/writer.py, symbol: "never resolved"}
+    - {path: docs/pattern-register.md}
 
 - id: G5.3
   section: G5
@@ -821,12 +828,12 @@ clauses:
   clause: Tier 1 -- BB pattern, cross-sector
   status: named-absence
   note: >-
-    See P0.6 and G5.2 -- there is still no register to classify a service
-    against, so the enum is a vocabulary and not a check. What changed is
-    where the absence is visible: an unclassified service now says so on the
-    face of its own catalogue entry, in words the reader can act on, rather
-    than only as this row. A blank cell and an unclassified service look
-    identical; the two are not.
+    See P0.6 and G5.2. The register now exists, so the absence has narrowed:
+    what is missing is not the vocabulary but any check that a service's
+    declared pattern is the correct one. An unclassified service says so on
+    the face of its own catalogue entry, in words the reader can act on,
+    rather than only as this row -- a blank cell and an unclassified service
+    look identical, and the two are not.
   evidence:
     - {path: apps/join-api/schema.py, symbol: ExchangePattern}
     - {path: apps/join-api/writer.py, symbol: "cannot be found by pattern"}

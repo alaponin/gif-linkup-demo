@@ -100,7 +100,8 @@ class ExchangePattern(str, Enum):
     """The contract shape a semantic exchange takes. The enum -- not
     a configs/x-road-bus/2.7.yaml policy key -- is
     deliberate ("the permissible values of a field are a schema
-    concern"), the same rule BackendAuth above already follows."""
+    concern"), the same rule BackendAuth above already follows.
+    Vocabulary: docs/pattern-register.md."""
 
     registration = "registration"
     digital_registries_lookup = "digital_registries_lookup"

@@ -182,10 +182,19 @@ shared field dictionary together realise GovStack's **Information Mediation**
 building block (GovStack subtopic 4.7) — a member joins the mediator once
 and reaches every other member's declared exchanges through it,
 rather than negotiating a bilateral integration per pair.
+The join API itself is an instance of GovStack's **Registration** building
+block — the payload is the eForm, `validate.py`'s checks are the eligibility
+determinants, operator approval is the registrar role, and the membership
+record is the issued credential — which is why joining an agency and a
+learner applying for a certificate run the same shape at two scales. What
+each tier-1 pattern label means, and the BB specification it anchors on, is
+`docs/pattern-register.md`.
 
 By design, KP2's slice is **Joget-free**: the member systems are mocks behind
 stable OpenAPI contracts — the seam where KP4's Joget DX apps plug in later
-without touching the X-Road configuration.
+without touching the X-Road configuration. `docs/kp4-seam.md` is that seam
+stated as a contract: what is frozen, the two shapes a Joget app can take,
+the data fixture it must serve, and the host it has to fit on.
 
 Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs,
 `kp-solution-verify` proves the pack runs. **Status: VERIFIED** —

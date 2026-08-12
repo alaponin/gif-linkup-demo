@@ -6,6 +6,10 @@
 #
 # Entity -> source anchor -> field list only: no
 # per-field element descriptions here -- the anchor is where those live.
+
+# A second, normative anchor for the same fields: GovStack Identity 2.0 §7.2's
+# OIDC standard claims. Three renames carry across --
+# date_of_birth -> birthdate, sex -> gender, region -> address.region.
 person:
   anchor: CEDS
   fields: [nin, given_name, family_name, date_of_birth, sex, region]
@@ -18,3 +22,8 @@ enrolment:
 award:
   anchor: CEDS
   fields: [nin, award_id, program, year]
+
+# The exchange assembles out/application-<nin>.json from these entities. Its
+# target form is a W3C VC 2.0 credentialSubject (Wallet BB) -- the KP4
+# certificate seam, not an entity here: no service publishes it.
+# Tier-1 pattern labels and their BB anchors: docs/pattern-register.md.

@@ -67,7 +67,12 @@ DOCUMENT 2 — configs/member-<key>/<key>.yaml:
     standards_portfolio_adopted, data_conformant (booleans), technical_contact
     (a name), and lawful_basis — only if this agency is consumer-only; a
     provider states its lawful basis per service instead (see (3) above),
-    and this field is then omitted here;
+    and this field is then omitted here. Open any lawful_basis value with one
+    of the six GDPR Article 6 terms — consent, contract, legal_obligation,
+    vital_interests, public_task, legitimate_interests (the Consent BB 1.3.0
+    enum) — then cite the instrument: "legal_obligation — National Identity
+    Decree Art. 12, purpose-limited to …". The leading term is guidance for
+    the reader, not a checked field;
 (6) for each service in (3): sla — Module 5.3's five terms
     (availability, response_time, support_hours, incident_response,
     change_notice) plus a signatory, reusing the same template for every
