@@ -85,13 +85,17 @@ check() { local id=$1 desc=$2 fn=$3
 
 # ---- 2.1 federation core -----------------------------------------------------
 CS_KEY=$(api_key ${XROAD_BIND}:4000 xrd secret)
+# Expected identity comes from the topology this suite already reads, never
+# from a literal here (manifest<->topology agreement is check_scenarios.py's).
+EXP_INSTANCE=$(jq -r .instance "$PACK_DIR/hurl/topology.json")
+EXP_CLASS=$(jq -r .member_class "$PACK_DIR/hurl/topology.json")
 check_21() {  # paths confirmed live at P0
   api GET ${XROAD_BIND}:4000 "$CS_KEY" /initialization/status \
-    | jq -e '.instance_identifier=="PROGRESSA"' >/dev/null &&
+    | jq -e --arg inst "$EXP_INSTANCE" '.instance_identifier==$inst' >/dev/null &&
   api GET ${XROAD_BIND}:4000 "$CS_KEY" /member-classes \
-    | jq -e 'map(.code)|index("GOV")!=null' >/dev/null
+    | jq -e --arg cls "$EXP_CLASS" 'map(.code)|index($cls)!=null' >/dev/null
 }
-check 2.1 "instance PROGRESSA, class GOV, trust services registered" check_21
+check 2.1 "instance $EXP_INSTANCE, class $EXP_CLASS, trust services registered" check_21
 
 # ---- add-ons: operational + environmental monitoring ---------
 # Server-level, not client-level -- xroad-monitor (environmental) and
@@ -323,12 +327,16 @@ check_262() { python3 "$PACK_DIR/scripts/assert_record.py" "$NIN" "$id_json" "$e
 check 2.6.2 "right learner — fields match the seeded record" check_262
 
 check_263() {  # asked once: citizen gives NIN only; bus pre-fills exactly the rest
-  python3 - "$id_json" "$en_json" <<'PY'
+  python3 - "$id_json" "$en_json" \
+           "$PACK_DIR/configs/x-road-bus/once-only-exchange.yaml" <<'PY'
 import json, sys
+import yaml
 idr, enr = json.loads(sys.argv[1]), json.loads(sys.argv[2])
-form = {"nin", "given_name", "family_name", "date_of_birth", "sex", "region",
-        "school", "level", "enrolment_year", "status"}
-citizen = {"nin"}
+# The form is the declared exchange, not a copy of it: editing asked_once
+# without editing the specs (or the reverse) now fails here.
+ao = yaml.safe_load(open(sys.argv[3]))["exchange"]["asked_once"]
+citizen = set(ao["citizen_provides"])
+form = citizen | set(ao["prefilled_from_bus"])
 # providers echo the nin as key confirmation; it is not a pre-fill
 prefilled = (set(idr) | set(enr)) - citizen
 assert prefilled == form - citizen, (

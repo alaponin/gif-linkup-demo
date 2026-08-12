@@ -89,3 +89,37 @@ value matches the pattern it was derived from — a check that a derived value
 matches its own derivation tests the code against itself, not the data — this
 convention is real and consistently applied, just not independently checked
 at request time the way the other three are.
+
+## Scenario values and machinery
+
+The four conventions above are about identifiers. This one is about where any
+scenario value is allowed to live at all.
+
+Progressa is a scenario. Its bindings — the instance and member class,
+the member set, semantic entities and their field lists, code lists, lawful
+bases, seed vocabulary, and the exchange definitions themselves — are
+declared in artefacts: `manifest.yaml`, `configs/`, `apps/data/`. Scripts,
+templates and checks **read** those artefacts; they never restate a value
+from one. A federation retargeted at another sector should change only the
+declarations.
+
+The test for a suspected literal is the one `join-policy.yaml` applies to a
+policy key: *can it be set to another value, and does something observably
+change — and if so, from where?* If the answer names an artefact, the literal
+is a copy and belongs gone. If it names nothing, the value is machinery, not
+a scenario binding, and it stays. `scripts/acceptance.sh` reads the instance
+and member class from `hurl/topology.json` and the asked-once form from
+`configs/x-road-bus/once-only-exchange.yaml` for exactly this reason: the
+check now proves the live federation matches the declaration, which a
+restated copy cannot do.
+
+**The one open exception**, stated rather than hidden: the education
+vocabulary in `scripts/gen_seed_data.py` — school names, levels, statuses,
+the name pools — is Python literals with no declared source. Retargeting the
+pack to another sector means editing that script. It is the largest remaining
+piece of this rule's unfinished work, and it is deliberately not closed here.
+
+There is no checker for this. The rule is enforced in review, like the
+comment discipline — a grep for "any value that could have been declared"
+has no honest pattern, and a checker that only knows today's literals would
+pass the moment someone wrote a new one.
