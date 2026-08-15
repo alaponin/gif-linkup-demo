@@ -4,8 +4,20 @@ variable "do_token" {
   sensitive   = true
 }
 
-variable "project_name" {
-  description = "Name of the dedicated DigitalOcean project everything is filed under."
+variable "do_project_name" {
+  description = <<-EOT
+    Name of an EXISTING DigitalOcean project to file the droplet under.
+    Terraform looks this project up, it does not create it: the project
+    must already exist in the control panel, and the lookup errors if the
+    name matches zero or more than one project. Terraform never renames
+    or deletes it — `destroy` only unfiles the droplet.
+  EOT
+  type        = string
+  default     = "ITU-KP"
+}
+
+variable "name_prefix" {
+  description = "Prefix for the droplet, SSH key and firewall names. Independent of the DO project name."
   type        = string
   default     = "kp2-linkup"
 }

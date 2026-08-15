@@ -4,7 +4,7 @@ Companion to `DO-DEPLOYMENT.md` (the analysis) and the scaffold in
 `infra/terraform/`, `infra/ci/remote-deploy.sh` and
 `.github/workflows/kp2-federation.yml`. That trio is the *what*; this document
 is the *how and in what order*, with a review of the scaffold folded in.
-Target shape, unchanged: one 16 GB Droplet in a dedicated DO project, the pack
+Target shape, unchanged: one 16 GB Droplet filed into the existing `ITU-KP` DO project, the pack
 running as plain `docker-local` behind an SSH tunnel, Terraform state in
 Spaces, and a manually-triggered GitHub Actions workflow with three actions
 (`up` / `deploy` / `destroy`).
@@ -104,7 +104,7 @@ export AWS_SECRET_ACCESS_KEY=<spaces secret>
 export TF_VAR_do_token=<do token>
 export TF_VAR_ssh_public_key="$(cat ~/path/to/kp2-deploy.pub)"
 terraform init -backend-config=backend.hcl
-terraform plan   # expect 4 resources: project, ssh key, droplet, firewall
+terraform plan   # expect 4 to add: ssh key, droplet, firewall, project assignment
 terraform apply
 ```
 
@@ -114,7 +114,7 @@ the droplet booted ready: `ssh -i ~/path/to/kp2-deploy root@$(terraform output
 -raw droplet_ip) cloud-init status --wait && docker compose version`. Leave the
 droplet up for Phase 3, or destroy it — either works, CI recreates at will.
 
-**Done when:** `apply` succeeds, the droplet appears inside the `kp2-linkup`
+**Done when:** `apply` succeeds, the droplet appears inside the `ITU-KP`
 DO project (not the default one), and `docker compose version` answers over
 SSH. **Rollback:** `terraform destroy` — the account is back to bucket-only.
 
@@ -195,7 +195,7 @@ appears surprisingly on someone's bill.
 - [ ] Phase 0: DO token, Spaces keys, deploy keypair in hand
 - [ ] Phase 1: state bucket created; bucket name in `backend.hcl`; five GitHub secrets set
 - [x] Phase 2 (no credentials needed): `terraform validate` green against the real provider, `fmt` clean, lock file pinned for `linux_amd64`
-- [ ] Phase 2 (needs credentials): `terraform apply`; droplet lands in the dedicated project; `docker compose version` over SSH
+- [ ] Phase 2 (needs credentials): `terraform apply`; droplet lands in the `ITU-KP` project; `docker compose version` over SSH
 - [x] Phase 3 (no credentials needed): workflow at `.github/workflows/kp2-federation.yml`, `infra/` committed on `main`
 - [ ] Phase 3 (needs credentials): `up` run green including `acceptance.sh`; tunnel command in run summary
 - [ ] Phase 4: `verify.sh --live` green on the droplet; hosted join → `ACTIVE, verified: true` → remove, all via tunnel
@@ -212,5 +212,5 @@ host** turning healthcheck timeouts into phantom federation defects
 `droplet_size` variable makes that a one-line change); **state loss** if the
 Spaces bucket is deleted with a droplet still alive (mitigated by habit, not
 code: destroy through the workflow, never delete the bucket first — recovery
-is manual droplet deletion in the DO console, which the dedicated project
+is manual droplet deletion in the DO console, which the `ITU-KP` project
 makes easy to spot).
