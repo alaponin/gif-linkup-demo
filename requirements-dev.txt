@@ -1,0 +1,13 @@
+# The pack's own test venv (scripts/verify.sh --fast), NOT what any
+# container runs -- apps/*/requirements.txt are the runtime pins, frozen
+# from the images with hashes. Those hashes resolve to linux wheels
+# (pydantic-core is platform-specific), so they cannot double as the dev
+# venv spec on a laptop. Versions here match what the images ship, minus
+# the hashes, so a test sees the same libraries the app does.
+#
+# Kept in sync by hand with apps/console/requirements.txt. pydantic and
+# starlette come in as fastapi's dependencies.
+pytest==9.1.1
+fastapi==0.140.0
+httpx==0.28.1
+PyYAML==6.0.3

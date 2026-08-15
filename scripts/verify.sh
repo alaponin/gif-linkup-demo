@@ -50,7 +50,16 @@ run_fast() {
   # actually lives.
 
   log "pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/"
-  [ -x "$PYTEST" ] || fail "$PYTEST not found -- set up a venv with pytest/httpx/fastapi/pyyaml (see apps/console/tests/ and tests/test_golden.py for what they need)."
+  # The venv is machine-local: gitignored, and the CI rsync excludes it
+  # from the droplet (a macOS venv is not a Linux one). So every machine
+  # that is not the laptop it was first built on -- CI droplet, fresh
+  # clone, workshop participant -- used to stop here and be told to build
+  # one by hand. Build it instead. ~30s once, nothing on every run after.
+  if [ ! -x "$PYTEST" ]; then
+    log "no .venv -- creating it from requirements-dev.txt (once)"
+    python3 -m venv "$PACK_DIR/.venv" || fail "python3 -m venv failed -- on Debian/Ubuntu the stdlib venv module ships separately: apt-get install python3-venv (infra/terraform/cloud-init.yaml installs it on the droplet)."
+    "$PYTEST" -m pip install -q -r "$PACK_DIR/requirements-dev.txt"
+  fi
   "$PYTEST" -m pytest "$PACK_DIR/tests" "$PACK_DIR/apps/console/tests" "$PACK_DIR/apps/join-api/tests" "$PACK_DIR/apps/mock-registry/tests" -q
 }
 
