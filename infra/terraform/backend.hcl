@@ -1,10 +1,11 @@
 # Partial backend config for DigitalOcean Spaces (S3-compatible).
 # Not secret — the access key pair comes from the environment
 # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), never from this file.
-# Create the bucket once, by hand or with a separate bootstrap apply:
-# it has to exist before the first `terraform init`.
+# The bucket has to exist before the first `terraform init`; this one was
+# created by hand in the control panel (fra1). Bucket names are global, so
+# a fork of this pack needs its own name here.
 
-bucket = "kp2-terraform-state" # must be globally unique — rename to yours
+bucket = "kp2-terraform-state"
 key    = "kp2-linkup/terraform.tfstate"
 
 # The s3 backend insists on an AWS region name; Spaces ignores it.

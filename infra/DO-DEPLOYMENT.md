@@ -50,7 +50,7 @@ So roughly **$7/month** in on-demand use, versus ~$101/month always-on. (Prices 
 
 ## One-time setup checklist
 
-1. Create a DO API token (write) and a Spaces access key pair in the DO control panel, and create the state bucket (default name in `backend.hcl`: `kp2-terraform-state`, region `fra1` — bucket names are global, so rename it and update `backend.hcl`).
+1. Create a DO API token (write) and a Spaces access key pair in the DO control panel, and create the state bucket (`kp2-terraform-state` in `fra1`, already created and set in `backend.hcl`; bucket names are global, so a fork needs its own).
 2. Generate a deploy keypair: `ssh-keygen -t ed25519 -f kp2-deploy -N ""`.
 3. Add five GitHub repo secrets: `DO_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`, `KP2_SSH_PRIVATE_KEY`, `KP2_SSH_PUBLIC_KEY`.
 4. Run the workflow with `action: up`; when it goes green, open the tunnel printed in the run summary.

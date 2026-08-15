@@ -71,18 +71,18 @@ Terraform ≥ 1.6.
 **Done when:** you hold four values — DO token, Spaces key ID + secret, and
 the keypair files.
 
-## Phase 1 — State bucket and GitHub secrets (~20 min, one-time)
+## Phase 1 — State bucket and GitHub secrets (~10 min left, one-time)
 
-Create the Terraform state bucket in Spaces (control panel → Spaces → Create
-bucket), region `fra1`. Bucket names are global, so pick your own —
-`kp2-terraform-state-<something>` — and put that name into
-`infra/terraform/backend.hcl`. Then add the five repository secrets in GitHub
+The state bucket is **done**: `kp2-terraform-state` in `fra1`, created by hand
+in the control panel and named in `infra/terraform/backend.hcl`. (Bucket names
+are global — a fork of this pack picks its own and edits that file.) What
+remain are the five repository secrets in GitHub
 (Settings → Secrets and variables → Actions): `DO_TOKEN`,
 `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`, `KP2_SSH_PRIVATE_KEY`
 (contents of `kp2-deploy`), `KP2_SSH_PUBLIC_KEY` (contents of
 `kp2-deploy.pub`).
 
-**Done when:** the bucket exists and all five secrets are set.
+**Done when:** all five secrets are set.
 
 ## Phase 2 — Local shakeout of the Terraform module (~30 min, recommended)
 
@@ -193,7 +193,8 @@ appears surprisingly on someone's bill.
 ## Acceptance checklist (the whole implementation, at a glance)
 
 - [ ] Phase 0: DO token, Spaces keys, deploy keypair in hand
-- [ ] Phase 1: state bucket created; bucket name in `backend.hcl`; five GitHub secrets set
+- [x] Phase 1a: state bucket `kp2-terraform-state` created in `fra1`, name set in `backend.hcl`
+- [ ] Phase 1b: five GitHub secrets set
 - [x] Phase 2 (no credentials needed): `terraform validate` green against the real provider, `fmt` clean, lock file pinned for `linux_amd64`
 - [ ] Phase 2 (needs credentials): `terraform apply`; droplet lands in the `ITU-KP` project; `docker compose version` over SSH
 - [x] Phase 3 (no credentials needed): workflow at `.github/workflows/kp2-federation.yml`, `infra/` committed on `main`
