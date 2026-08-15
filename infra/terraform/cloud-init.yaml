@@ -1,6 +1,6 @@
 #cloud-config
 # Everything scripts/preflight.sh checks for, installed once at boot:
-# docker + compose v2 (plugin form, from Docker's own apt repo — the
+# docker + compose v2 (plugin form, from Docker's own apt repo - the
 # standalone v1 binary does not satisfy preflight), jq, curl,
 # python3 >= 3.9 with PyYAML, sha256sum/bash4 (in Ubuntu base), git
 # (join-api runs `git status` inside its container against the mounted
