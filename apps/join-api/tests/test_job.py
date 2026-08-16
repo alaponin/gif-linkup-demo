@@ -675,6 +675,29 @@ def test_default_run_hurl_omits_cookie_flags_when_no_jar_is_given(monkeypatch):
     assert "--cookie-jar" not in captured["args"]
 
 
+def test_default_run_hurl_keeps_secrets_off_argv(monkeypatch):
+    """Variable VALUES (admin password, token PIN, session tokens) must
+    reach Hurl through a 0600 file, never through argv -- argv is readable
+    by any user on the box via /proc/<pid>/cmdline while the child runs."""
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        path = pathlib.Path(args[args.index("--variables-file") + 1])
+        captured["mode"] = path.stat().st_mode & 0o777
+        captured["text"] = path.read_text()
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(job.subprocess, "run", fake_run)
+
+    job._default_run_hurl("step", "GET http://x\n\nHTTP 200\n", {"ss_admin_password": "hunter2"})
+
+    assert "hunter2" not in " ".join(captured["args"])
+    assert "--variable" not in captured["args"]
+    assert captured["text"] == "ss_admin_password=hunter2\n"
+    assert captured["mode"] == 0o600
+
+
 def test_run_wires_a_shared_cookie_jar_only_for_the_real_default_run_hurl(monkeypatch):
     """run()'s own gating (`if run_hurl is _default_run_hurl`): the wiring
     must apply when the caller leaves run_hurl at its default -- the shape

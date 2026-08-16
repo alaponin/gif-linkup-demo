@@ -119,6 +119,21 @@ until [ "$(docker inspect -f '{{.State.Health.Status}}' cs ca ss-pdga ss-pnea ss
 done
 CONTAINERS_HEALTHY=$(date +%s)
 
+# --verbose, not --very-verbose: the latter prints full request BODIES, which
+# for the login and token-init scenarios means cs_admin_password,
+# ss_admin_password and token_pin land in the terminal on every deploy and in
+# GitHub Actions logs via infra/ci/remote-deploy.sh. That contradicts the
+# discipline gen-secrets.sh states in its own output ("Values are never
+# printed here"). --verbose keeps the request lines, headers, timings and
+# assert results -- everything the deploy is actually read for. Set
+# HURL_VERY_VERBOSE=1 to opt back into bodies when debugging a payload, on a
+# machine whose scrollback you own.
+HURL_VERBOSITY=--verbose
+if [ "${HURL_VERY_VERBOSE:-0}" = 1 ]; then
+  HURL_VERBOSITY=--very-verbose
+  log "HURL_VERY_VERBOSE=1 — request bodies (passwords, token PIN) will be printed"
+fi
+
 mkdir -p "$PACK_DIR/out"
 HURL_START=$(date +%s)
 log "driving the admin APIs (expect a stretch of HTTP errors and retries —"
@@ -129,7 +144,7 @@ log "global configuration propagation is asynchronous and takes minutes)"
   --file-root /hurl-files \
   --report-json /hurl-out/hurl-report \
   /hurl-src/.build/setup.hurl \
-  --very-verbose \
+  "$HURL_VERBOSITY" \
   --retry 12 \
   --retry-interval 10000
 HURL_END=$(date +%s)

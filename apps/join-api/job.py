@@ -586,8 +586,16 @@ def _default_run_hurl(
         args = [HURL_BIN, "--insecure"]
         if cookie_jar is not None:
             args += ["--cookie", str(cookie_jar), "--cookie-jar", str(cookie_jar)]
-        for name, value in variables.items():
-            args += ["--variable", f"{name}={value}"]
+        # --variables-file, not repeated --variable: the values include the
+        # admin password, the token PIN and live session tokens, and argv is
+        # world-readable through /proc/<pid>/cmdline for as long as the child
+        # runs. The file lives in this step's own mkdtemp directory (0700,
+        # removed in the finally below) and is written 0600 before anything
+        # is put in it.
+        vars_file = tmp / "step.vars"
+        vars_file.touch(mode=0o600)
+        vars_file.write_text("".join(f"{name}={value}\n" for name, value in variables.items()))
+        args += ["--variables-file", str(vars_file)]
         args += ["--report-json", str(report_dir), str(step_file)]
         proc = subprocess.run(args, capture_output=True, text=True, env=HURL_ENV)
         report_path = report_dir / "report.json"
