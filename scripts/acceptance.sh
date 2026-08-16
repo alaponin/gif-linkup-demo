@@ -95,7 +95,10 @@ check_21() {  # paths confirmed live at P0
   api GET ${XROAD_BIND}:4000 "$CS_KEY" /member-classes \
     | jq -e --arg cls "$EXP_CLASS" 'map(.code)|index($cls)!=null' >/dev/null
 }
-check 2.1 "instance $EXP_INSTANCE, class $EXP_CLASS, trust services registered" check_21
+# Description says only what check_21 asserts. The trust services
+# (Test CA, OCSP, TSA) are registered by hurl/templates/01-cs-trust-services.hurl.tmpl
+# at deploy time, but nothing here reads them back -- acceptance/federation-core.md.
+check 2.1 "instance $EXP_INSTANCE, member class $EXP_CLASS" check_21
 
 # ---- add-ons: operational + environmental monitoring ---------
 # Server-level, not client-level -- xroad-monitor (environmental) and

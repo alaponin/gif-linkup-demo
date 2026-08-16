@@ -58,4 +58,11 @@ provider Security Server's message log [confirm P0: message-log query].
 When this check passes, KP2 stops being a framework explained and becomes a
 framework that runs.
 
-Status: UNVERIFIED until this passes on the live stack (kp-solution-verify).
+Status: VERIFIED on the live stack. Every assertion above — the four
+layer-mapped ones, the additional 404 negative and field conformance — runs as
+`scripts/acceptance.sh`'s `2.6.1`-`2.6.6`, green in `scripts/verify.sh --full`
+from cold against the collapsed single topology. `docs/production-delta.md`
+records the run, including the two that are only convincing live: `2.6.4`'s
+denial arriving as the X-Road fault `Server.ServerProxy.AccessDenied` rather
+than a transport error, and `2.6.6` observed failing on a deliberately
+contract-violating response before passing clean again.
