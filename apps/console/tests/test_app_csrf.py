@@ -104,3 +104,29 @@ def test_get_exchange_also_requires_the_header(monkeypatch, tmp_path):
     assert resp.status_code == 403
     resp = client.get("/api/exchange/02831663233", headers={HEADER: "1"})
     assert resp.status_code != 403
+
+
+def test_every_api_route_but_health_carries_the_guard():
+    """The gap this sweep closes: the guard was opt-in per route, and
+    /api/topology, /api/learners, /api/acl and /api/heartbeat had never
+    opted in -- /api/acl doing an admin login and a read on every Security
+    Server per hit (reachable cross-origin via <img>), /api/heartbeat
+    postponing the watchdog reset on a cross-origin simple-form POST.
+    Asserted over the live route table rather than the source text, so a
+    route added anywhere is covered."""
+    unguarded = {
+        route.path
+        for route in app.app.routes
+        if getattr(route, "path", "").startswith("/api/")
+        and app._require_console_origin not in [d.call for d in route.dependant.dependencies]
+    }
+    assert unguarded == {"/api/health"}
+
+
+def test_heartbeat_and_acl_refuse_a_cross_origin_call(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    before = app._last_heartbeat
+    assert client.post("/api/heartbeat").status_code == 403
+    assert app._last_heartbeat == before  # the watchdog was not postponed
+    assert client.get("/api/acl").status_code == 403
+    assert client.get("/api/acl", headers={HEADER: "1"}).status_code == 200

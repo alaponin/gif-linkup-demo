@@ -31,9 +31,11 @@ function esc(value) {
 // Request boundary: every endpoint below requires this header --
 // a cross-origin form or <img> can't set it (a custom header on a
 // cross-origin fetch would need a CORS preflight this server never answers
-// with permission). Sent on every call, GET included, so the read endpoints
-// that trigger real bus calls (the two /api/exchange/* routes) are covered
-// too, not just the three that write.
+// with permission). Sent on every call, GET included, which is why the
+// server can require it on every /api/* route but /api/health (see
+// apps/console/app.py) -- the GETs with real side effects (the
+// /api/exchange/* bus calls, /api/acl's admin login per Security Server,
+// /api/topology's reachability probes) need it as much as the writes do.
 async function api(path, opts) {
   const merged = { ...opts, headers: { ...(opts && opts.headers), "X-KP2-Console": "1" } };
   const resp = await fetch(path, merged);

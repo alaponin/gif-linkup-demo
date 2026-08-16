@@ -239,12 +239,21 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)
 
 
+# EVERY /api/* route below carries _require_console_origin except this one.
+# /api/health is the single deliberate exemption: the Dockerfile HEALTHCHECK,
+# scripts/console.sh and verify.sh's console smoke all curl it with no
+# header, and it reads nothing and changes nothing. A new route without the
+# guard fails apps/console/tests/test_app_csrf.py's route sweep -- opting IN
+# per route is what left /api/acl (an admin login and a read on every
+# Security Server, per hit, reachable cross-origin via <img>) and
+# /api/heartbeat (a cross-origin simple-form POST postpones the watchdog
+# reset indefinitely) open.
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/api/topology")
+@app.get("/api/topology", dependencies=[Depends(_require_console_origin)])
 def get_topology():
     """The Truth topology plus a live reachability probe per server, so the
     page can show honestly that the federation is up before anyone types a
@@ -262,7 +271,7 @@ def get_topology():
     return {**TRUTH.topology, "security_servers": servers}
 
 
-@app.get("/api/learners")
+@app.get("/api/learners", dependencies=[Depends(_require_console_origin)])
 def get_learners():
     """A handful of seeded NINs: several present in both registries, and --
     labelled as such -- one present in PNIA but absent from PLR, which is
@@ -434,7 +443,7 @@ def _layer_sources() -> dict[str, list[str]]:
     return sources
 
 
-@app.get("/api/acl")
+@app.get("/api/acl", dependencies=[Depends(_require_console_origin)])
 def get_acl():
     """Configured vs live grants for every service the exchange depends on,
     plus whether the journal is dirty (a demo left mid-permission-toggle)."""
@@ -516,7 +525,7 @@ def post_reset():
     return result
 
 
-@app.post("/api/heartbeat")
+@app.post("/api/heartbeat", dependencies=[Depends(_require_console_origin)])
 def post_heartbeat():
     global _last_heartbeat
     _last_heartbeat = time.time()
