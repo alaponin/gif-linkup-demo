@@ -358,6 +358,117 @@ def test_apply_real_refuses_cleanly_on_a_leftover_onboarding_tree(tmp_path):
         writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
 
 
+def _tracked_status(repo_root: pathlib.Path) -> str:
+    """The same three paths apply_real's own dirty check watches. Scoped
+    deliberately: _copy_pack does not copy .gitignore, so in a throwaway repo
+    hurl/'s generated files are tracked and every generate.py run shows up as
+    a diff -- true for a SUCCESSFUL join too, so including them here would
+    assert something the transaction never promised."""
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "configs", "manifest.yaml", "onboarding"],
+        cwd=repo_root, capture_output=True, text=True, check=True,
+    ).stdout
+    print(status)  # only shown by pytest when the assertion below fails
+    return status.strip()
+
+
+def _committed_pack(tmp_path) -> tuple[pathlib.Path, pathlib.Path]:
+    """A throwaway repo holding a committed copy of the pack -- the state
+    apply_real demands before it will write anything."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+    return repo_root, pack
+
+
+def test_a_failed_apply_real_leaves_the_pack_exactly_as_it_found_it(tmp_path):
+    """The transaction. generate.py refusing the config used to leave
+    configs/member-<key>/ and manifest.yaml modified for a join that never
+    happened -- which then blocked every later approval on apply_real's own
+    dirty-checkout guard (docs/production-delta.md). git status is the
+    assertion, not a file-by-file comparison: it sees anything the join
+    touched, including files this test never thought to name."""
+    repo_root, pack = _committed_pack(tmp_path)
+    bad = _payload(
+        security_server={"code": "SS-BAD", "dns_name": "ss-bad", "hosted_on": "ss-does-not-exist"}
+    )
+
+    with pytest.raises(writer.GenerateFailure):
+        writer.apply_real(pack, "ptsb", bad, repo_root=repo_root)
+
+    assert _tracked_status(repo_root) == "", "a failed join left the tree dirty"
+    assert not (pack / "configs" / "member-ptsb").exists()
+    # hurl/'s files are gitignored, so git status above cannot see them --
+    # they are regenerated from the restored inputs, and must not name the
+    # member that failed.
+    assert "ptsb" not in (pack / "hurl" / "topology.json").read_text()
+
+
+def test_a_failed_apply_real_puts_a_retired_members_onboarding_tree_back(tmp_path):
+    """The rollback has to undo the rmtree render_onboarding_tree does when a
+    retired member re-joins -- otherwise a failed re-join destroys the very
+    retirement record the un-join was careful to keep."""
+    repo_root, pack = _committed_pack(tmp_path)
+    retired = pack / "onboarding" / "ptsb"
+    retired.mkdir(parents=True)
+    (retired / writer.RETIREMENT_FILE).write_text("retired earlier\n")
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "retirement", cwd=repo_root,
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("catalogue write failed")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(writer, "write_catalogue", boom)
+        with pytest.raises(RuntimeError):
+            writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+    assert (retired / writer.RETIREMENT_FILE).read_text() == "retired earlier\n"
+    assert _tracked_status(repo_root) == "", "a failed re-join left the tree dirty"
+
+
+def test_a_failed_restore_is_a_rollback_failure_carrying_the_original(tmp_path):
+    """The one case where a half-written join survives: the restore itself
+    failed. It must say so loudly and keep the original failure as __cause__,
+    not present itself as an ordinary refusal."""
+    repo_root, pack = _committed_pack(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("catalogue write failed")
+
+    def undo_boom(*args, **kwargs):
+        raise OSError("read-only file system")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(writer, "write_catalogue", boom)
+        mp.setattr(writer, "_restore", undo_boom)
+        with pytest.raises(writer.RollbackFailure) as exc_info:
+            writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+    assert "needs a human" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+def test_apply_real_removes_its_stash_directory(tmp_path):
+    tmp_root = pathlib.Path(tempfile.gettempdir())
+    before = set(tmp_root.glob("kp2-join-apply-*"))
+    repo_root, pack = _committed_pack(tmp_path)
+
+    writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+    assert set(tmp_root.glob("kp2-join-apply-*")) == before
+
+
 def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     repo_root = tmp_path / "repo"
     pack = repo_root / "pack"

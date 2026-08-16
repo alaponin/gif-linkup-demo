@@ -466,6 +466,14 @@ def list_requests(
 # whose thread is waiting on the lock reports queued: true.
 _JOB_LOCK = threading.Lock()
 
+# writer.apply_real is transactional (it restores every path it writes on any
+# failure), and that guarantee is only true one approval at a time: two
+# concurrent approvals interleave their writes to manifest.yaml, and then one
+# rollback reverts the other's entry. Not _JOB_LOCK -- that one is held for a
+# whole running job, and an approval must not wait minutes behind a live
+# federation walk to write four files.
+_APPLY_LOCK = threading.Lock()
+
 JOB_SECRETS = {
     "ss_admin_user": ADMIN_USER,
     "ss_admin_password": ADMIN_PASSWORD,
@@ -535,10 +543,12 @@ def approve_request(
 
     payload = schema.JoinPayload(**record["payload"])
     try:
-        writer.apply_real(
-            PACK_DIR, payload.code.lower(), payload,
-            request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
-        )
+        with _APPLY_LOCK:
+            writer.apply_real(
+                PACK_DIR, payload.code.lower(), payload,
+                request_id=request_id, decision_reference=decision_reference,
+                approved_at=approved_at,
+            )
     except writer.DirtyCheckoutError as exc:
         raise HTTPException(409, str(exc)) from exc
     except writer.GitCheckFailure as exc:
@@ -551,9 +561,23 @@ def approve_request(
         # approval (a race, however unlikely) -- also a clear 409, not a
         # raw 500.
         raise HTTPException(409, str(exc)) from exc
+    except writer.RollbackFailure as exc:
+        # The rare one: the write failed AND apply_real could not put the
+        # pack back, so the tree really does need a human. FAILED, not a
+        # rejection, and scrubbed for the same reason as GenerateFailure
+        # below -- the message can quote a subprocess that read .env.
+        message = job.scrub(str(exc), JOB_SECRETS)
+        record["state"] = "FAILED"
+        record["error"] = {"step": "config.write", "message": message}
+        record["decision_reference"] = decision_reference
+        _save_request(record)
+        raise HTTPException(500, message) from exc
     except writer.GenerateFailure as exc:
-        # The config was written but generate.py refused it -- the working
-        # tree now needs a human, so this is FAILED, not a rejection.
+        # The config was written and generate.py refused it. apply_real has
+        # already restored the pack, so nothing is left behind -- this stays
+        # FAILED rather than a rejection because an approval that got this
+        # far is a decision that was actuated and did not take, which the
+        # operator's queue has to show.
         # Scrubbed, like every other error path here: apply_real's generate.py
         # subprocess reads .env, so a traceback out of it could carry the
         # admin password or the token PIN, and this string is both persisted

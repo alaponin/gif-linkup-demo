@@ -466,6 +466,15 @@ are the easiest pair on the bus to confuse.
 - **A join refuses to start on an uncommitted `onboarding/`**, and
   `catalogue.yaml` is the first shared file a join writes there. Commit it
   after a join, or the next one stops with `DirtyCheckoutError`.
+- **A join that fails partway restores what it wrote.** `writer.apply_real`
+  snapshots `manifest.yaml`, `onboarding/catalogue.yaml`,
+  `configs/member-<key>/` and `onboarding/<key>/` before its first write and
+  puts them back on any failure, then re-runs `hurl/generate.py` over the
+  restored inputs. So a failed approval does not leave a dirty tree blocking
+  the next one. The single exception announces itself: `RollbackFailure`
+  (a 500, and `FAILED` on the request) means the restore itself failed and
+  the tree needs a human — check the four paths against git, then re-run
+  `hurl/generate.py`.
 
 ## Reaching the stack from another machine
 

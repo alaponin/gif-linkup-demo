@@ -563,11 +563,35 @@ pack's own exercise loop (join → un-join → join again, `exercises.md` 2 and
 canonical member — so the loop runs. Replace, not merge: a re-joined member
 must not carry the retirement record of the membership that ended. A
 leftover `onboarding/<key>/` *without* that file is still refused, now as a
-`MemberCollisionError` → 409 naming the directory and the two commands that
-undo the half-write (`git checkout -- manifest.yaml`, `rm -rf
-configs/member-<key>/`), rather than a raw 500. The non-atomicity itself
-stands: the real fix is one transactional write of everything a join
-touches, and that is a production-side item, not this one.
+`MemberCollisionError` → 409 naming the directory, rather than a raw 500.
+
+**And the non-atomicity itself is now compensated.** `apply_real` takes a
+pre-image of every path a join writes — `manifest.yaml`,
+`onboarding/catalogue.yaml`, `configs/member-<key>/`, `onboarding/<key>/` —
+before the first write, and restores it on any failure, then re-runs
+`generate.py` so `hurl/`'s derived files (which are gitignored, so no
+restore can bring them back) match the restored inputs again. A caller that
+catches any error from `apply_real` can assume the pack is as it was; the
+single exception is `RollbackFailure`, raised only when the restore ITSELF
+failed, which is the one case that still needs a human and says so.
+
+A copy under `/tmp`, deliberately, not `git checkout`/`git clean`: the
+join-api container's whole justification for `safe.directory = *`
+(`apps/join-api/Dockerfile`) is that every git call it makes is a read, and
+a rollback built on git would hand a container with the monorepo
+bind-mounted read-write the ability to delete a developer's uncommitted
+work if a pathspec were ever wrong. The copy needs no such capability and
+behaves identically in a checkout, on the droplet, and in a bare copy.
+
+Two ceilings remain, both named rather than hidden. The compensation is
+file-level, so a crash *between* the restore and the regenerate leaves a
+stale `hurl/`; and concurrency is handled by a lock (`app.py`'s
+`_APPLY_LOCK`), not by the filesystem — two approvals in one process
+serialise, two processes writing the same checkout do not. A single
+transactional write of the whole pack tree would close both, and the live
+bind mounts (`docker-compose.yml`) rule that out today: the pack directory
+is a mount target, so it cannot be swapped out from under a running
+container.
 
 ## The catalogue this pack builds, and the one it does not (G5.6, S6.2, S6a.4, S7.6)
 

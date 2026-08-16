@@ -88,6 +88,22 @@ class GitCheckFailure(Exception):
     uncaught and surface as a raw 500 instead of a clear refusal."""
 
 
+_ROLLBACK_FAILED = (
+    "the join for {key} failed AND restoring the pack failed -- this working tree "
+    "needs a human: check configs/member-{key}/, manifest.yaml, onboarding/{key}/ and "
+    "onboarding/catalogue.yaml against git, then re-run hurl/generate.py. "
+    "Restore failed with:\n{detail}"
+)
+
+
+class RollbackFailure(Exception):
+    """apply_real failed AND putting the tree back failed -- the only case
+    left where a half-written join survives on disk. Carries the original
+    failure as its __cause__ and names the paths a human has to look at:
+    unlike every other error here, nothing downstream can clean up after
+    this one."""
+
+
 class MemberCollisionError(Exception):
     """A directory this join needs to create is already there. Two shapes,
     one refusal: configs/member-<key>/ created between validation and
@@ -805,6 +821,66 @@ def dry_run_diff(pack_dir: pathlib.Path, key: str, payload: JoinPayload) -> str:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _written_paths(key: str) -> tuple[pathlib.PurePosixPath, ...]:
+    """Every path in the pack a single join creates or rewrites -- and so
+    every path a rolled-back join has to put back. hurl/'s generated files
+    (scenarios/, vars.env, topology.json, topology.sh, compose.members.yml)
+    are deliberately NOT here: they are derived from the two below it, never
+    edited, so a rollback re-derives them by running generate.py again
+    rather than carrying a copy of them around."""
+    return (
+        pathlib.PurePosixPath("manifest.yaml"),
+        CATALOGUE_PATH,
+        pathlib.PurePosixPath(f"configs/member-{key}"),
+        pathlib.PurePosixPath(f"onboarding/{key}"),
+    )
+
+
+def _snapshot(pack_dir: pathlib.Path, key: str, stash: pathlib.Path) -> dict:
+    """Pre-image of the four paths, taken before the first write. A path
+    that does not exist yet records None -- restoring it means deleting
+    whatever the failed join left there, not writing an empty file.
+
+    Deliberately NOT git: `git checkout`/`git clean` would put a delete
+    inside the join-api container, whose whole justification for
+    `safe.directory = *` (apps/join-api/Dockerfile) is that every git call
+    it makes is a read. A copy under /tmp needs no such capability, and
+    works the same in a checkout, on the droplet and in a bare copy."""
+    saved: dict = {}
+    for rel in _written_paths(key):
+        src = pack_dir / rel
+        if not src.exists():
+            saved[rel] = None
+            continue
+        dest = stash / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dest)
+        else:
+            shutil.copy2(src, dest)
+        saved[rel] = dest
+    return saved
+
+
+def _restore(pack_dir: pathlib.Path, saved: dict) -> None:
+    """Put every snapshotted path back exactly as it was. Delete-then-copy,
+    not overwrite: a directory that gained files (onboarding/<key>/'s
+    03-sla/, 04-catalogue/) is only back to its pre-image once the extra
+    files are gone."""
+    for rel, dest in saved.items():
+        target = pack_dir / rel
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+        if dest is None:
+            continue
+        if dest.is_dir():
+            shutil.copytree(dest, target)
+        else:
+            shutil.copy2(dest, target)
+
+
 def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
     try:
         rel = pack_dir.relative_to(repo_root)
@@ -850,6 +926,12 @@ def apply_real(
     --porcelain configs/ manifest.yaml onboarding/` is not clean --
     a join must never stack on top of uncommitted work of unclear provenance.
 
+    All-or-nothing: every path a join writes is snapshotted first
+    (_snapshot) and restored on any failure, with hurl/'s derived files
+    regenerated over the restored inputs. A caller that catches any error
+    from here can assume the pack is exactly as it was -- except
+    RollbackFailure, which is the one case where it is not.
+
     Called by app.py's POST /requests/{id}/approve, before the job starts --
     the point a request moves SUBMITTED -> APPROVED -> RUNNING. request_id is
     the approved request's own id, threaded through to
@@ -868,38 +950,90 @@ def apply_real(
             f"onboarding/ already has uncommitted changes -- commit "
             f"or discard them first:\n{dirty}"
         )
+    # Transactional from here: everything below either lands whole or is put
+    # back. apply_real is a sequence of writes with three failure points after
+    # the first one (generate.py rejecting the config, the onboarding tree,
+    # the catalogue), and a failure at any of them used to leave configs/ and
+    # manifest.yaml modified -- which then blocked every later join on the
+    # dirty-checkout guard above, for a join that never happened
+    # (docs/production-delta.md). The pre-image is a copy, not a git
+    # operation: see _snapshot.
+    #
+    # ponytail: file-level compensation, not a real transaction -- a crash
+    # BETWEEN the restore and the regenerate below still leaves a stale hurl/.
+    # The upgrade path is one transactional write of the whole pack tree,
+    # which the live bind mounts (docker-compose.yml) rule out today.
+    stash = pathlib.Path(tempfile.mkdtemp(prefix="kp2-join-apply-"))
     try:
-        _write_member(pack_dir, key, payload)
-    except FileExistsError as exc:
-        raise MemberCollisionError(
-            f"configs/member-{key}/ already exists -- another request for the same key was "
-            "approved between this request's validation and its approval"
-        ) from exc
-    proc = _run_generate(pack_dir / "hurl" / "generate.py")
-    if proc.returncode != 0:
-        raise GenerateFailure(proc.stderr, proc.returncode)
-    # Only after generate.py accepts the result -- a rejected/failed config
-    # write must not leave onboarding evidence for a member that was never
-    # actually created.
-    try:
-        render_onboarding_tree(
-            pack_dir, key, payload,
-            request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
-        )
-    except FileExistsError as exc:
-        # A leftover onboarding/<key>/ that is NOT a retired member's (that
-        # case is replaced above, in render_onboarding_tree) -- so something
-        # created the directory outside this API. A clear 409 naming it, not
-        # a raw 500: configs/ and manifest.yaml are already written by now,
-        # and the message has to say so or the next join just 409s on the
-        # dirty checkout with no explanation.
-        raise MemberCollisionError(
-            f"onboarding/{key}/ already exists and carries no {RETIREMENT_FILE} -- refusing to "
-            "overwrite a record this API did not write. configs/member-"
-            f"{key}/ and manifest.yaml were already written before this point: discard them "
-            f"(git checkout -- manifest.yaml; rm -rf configs/member-{key}/) before retrying."
-        ) from exc
-    # Last: the instance-wide catalogue is the first SHARED file a join
-    # touches, and it must never name a member whose own record failed to
-    # write.
-    write_catalogue(pack_dir)
+        saved = _snapshot(pack_dir, key, stash)
+        try:
+            try:
+                _write_member(pack_dir, key, payload)
+            except FileExistsError as exc:
+                raise MemberCollisionError(
+                    f"configs/member-{key}/ already exists -- another request for the same key "
+                    "was approved between this request's validation and its approval"
+                ) from exc
+            proc = _run_generate(pack_dir / "hurl" / "generate.py")
+            if proc.returncode != 0:
+                raise GenerateFailure(proc.stderr, proc.returncode)
+            # Only after generate.py accepts the result -- a rejected/failed
+            # config write must not leave onboarding evidence for a member
+            # that was never actually created.
+            try:
+                render_onboarding_tree(
+                    pack_dir, key, payload,
+                    request_id=request_id,
+                    decision_reference=decision_reference,
+                    approved_at=approved_at,
+                )
+            except FileExistsError as exc:
+                # A leftover onboarding/<key>/ that is NOT a retired member's
+                # (that case is replaced inside render_onboarding_tree) -- so
+                # something created the directory outside this API. A clear
+                # 409 naming it, not a raw 500. Everything this call had
+                # already written is rolled back below, so the message no
+                # longer has to hand out recovery commands.
+                raise MemberCollisionError(
+                    f"onboarding/{key}/ already exists and carries no {RETIREMENT_FILE} -- "
+                    "refusing to overwrite a record this API did not write. Nothing was left "
+                    "behind: remove or rename that directory, then approve again."
+                ) from exc
+            # Last: the instance-wide catalogue is the first SHARED file a
+            # join touches, and it must never name a member whose own record
+            # failed to write.
+            write_catalogue(pack_dir)
+        except BaseException as exc:
+            try:
+                _restore(pack_dir, saved)
+                # hurl/'s generated files are derived, never snapshotted, so
+                # after a restore they still describe the member that just
+                # failed. Re-run generate.py over the restored inputs:
+                # acceptance.sh, member.sh and join-agent.sh all read
+                # hurl/topology.json, and a stale one is worse than the
+                # half-write this undoes.
+                regenerated = _run_generate(pack_dir / "hurl" / "generate.py")
+            except Exception as undo_exc:
+                raise RollbackFailure(
+                    _ROLLBACK_FAILED.format(
+                        key=key, detail=f"{type(undo_exc).__name__}: {undo_exc}"
+                    )
+                ) from exc
+            if regenerated.returncode != 0:
+                # The four tracked paths ARE back -- what failed is rebuilding
+                # the derived files FROM them, so generate.py rejects a state
+                # that pre-dates this join (an empty configs/member-<key>/,
+                # say). Not a rollback failure, and not this join's doing:
+                # note it on the original error rather than replacing it with
+                # a scarier one. stderr is left out on purpose -- generate.py
+                # reads .env, so its output can carry the token PIN, and a
+                # note travels into logs no caller scrubs (job.scrub).
+                exc.add_note(
+                    f"rolled back cleanly, but `python3 hurl/generate.py` then exited "
+                    f"{regenerated.returncode} over the RESTORED inputs -- the pack was "
+                    "already in a state generate.py rejects. Run it by hand to see why; "
+                    "hurl/ is stale until it passes."
+                )
+            raise
+    finally:
+        shutil.rmtree(stash, ignore_errors=True)
