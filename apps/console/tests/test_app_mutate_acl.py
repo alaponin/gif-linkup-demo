@@ -6,6 +6,7 @@ handling) journalled a false transition, and reset()'s reversal then
 corrupted the real ACL. No network, no Docker -- PACK_DIR points at the
 existing test fixtures; the admin session is monkeypatched."""
 import asyncio
+import contextlib
 import os
 import pathlib
 import sys
@@ -265,3 +266,40 @@ def test_concurrent_first_hits_still_open_one_session(monkeypatch):
         sessions = list(pool.map(app._admin_session, ["ss-plr"] * 4))
     assert logins == ["ss-plr"]
     assert len(set(id(s) for s in sessions)) == 1
+
+
+def test_the_watchdog_survives_a_failing_reset_and_retries(monkeypatch, tmp_path):
+    """The watchdog's whole job is to un-dirty the journal so acceptance.sh
+    does not refuse an hour later with "the federation is mid-demo". reset()
+    logs into every Security Server, so one transiently unreachable server
+    raised out of the while-loop and ended the task for the life of the
+    process -- silently: nothing awaits it. The failure it exists to prevent
+    became permanent. It must log, stay in the loop, and reset once the
+    server answers again."""
+    app.JOURNAL = app.journal_mod.Journal(tmp_path / "journal.json")
+    app.JOURNAL.append_pending(app.journal_mod.JournalEntry(
+        ts=1.0, action="revoke", ss="ss-pnia", client_id="PROGRESSA:GOV:PNIA:IDENTITY",
+        subject="PROGRESSA:GOV:PNEA:EXAMS", service_code="identity-api", prior_state="granted",
+    ))
+    monkeypatch.setattr(app, "WATCHDOG_POLL_S", 0.01)
+    monkeypatch.setattr(app, "HEARTBEAT_TIMEOUT_S", 0)
+    calls = []
+
+    def flaky_reset():
+        calls.append(1)
+        raise RuntimeError("ss-pnia unreachable")
+
+    monkeypatch.setattr(app, "_reset_locked", flaky_reset)
+
+    async def scenario():
+        task = asyncio.create_task(app._watchdog())
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if len(calls) >= 3:
+                break
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+    assert len(calls) >= 3, f"watchdog stopped retrying after {len(calls)} attempt(s)"

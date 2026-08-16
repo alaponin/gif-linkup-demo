@@ -62,7 +62,11 @@ reproducibility proof run.
   directory: it carries the real `.env`, `out/`, the `.venv` and ~25 MB of
   darwin-only Terraform provider binary, all gitignored and all of which a
   Finder zip copies anyway. Give a clone rather than an archive when the
-  session includes the join demo — `join-api` needs the monorepo's `.git`.
+  session includes the join demo — `join-api` needs the monorepo's `.git`,
+  and the pack has to sit at
+  `<repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack` inside it
+  (`scripts/preflight.sh` refuses any other layout; `runbook.md`
+  Prerequisites says what breaks and why).
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three tiers,
   chosen by the tool, not by whoever is typing. `--fast` (static checks, the
   ship gate, exposure, the test suite — no running containers, no network)

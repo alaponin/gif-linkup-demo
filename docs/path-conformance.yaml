@@ -977,7 +977,7 @@ clauses:
     revoked, which is what the retirement exit test is about.
   evidence:
     - {path: apps/join-api/writer.py, symbol: render_retirement_record}
-    - {path: apps/join-api/app.py, symbol: "99-retirement.md"}
+    - {path: apps/join-api/app.py, symbol: writer.RETIREMENT_FILE}
 
 - id: S7.9
   section: "7"

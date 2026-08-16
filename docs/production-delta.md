@@ -543,20 +543,31 @@ with one. An automatic policy has no equivalent call and so no equivalent
 field; the evidence gap the path should name is in the *pack's own* audit
 layer, not the Central Server's.
 
-**A defect found live, incidental to the question asked.**
+**A defect found live, incidental to the question asked — since fixed.**
 `writer.apply_real` (`apps/join-api/writer.py`) is not atomic: it writes
 `configs/<member>/` and `manifest.yaml` before calling
-`render_onboarding_tree`, which does a bare `onboarding_dir.mkdir(parents=True)`
+`render_onboarding_tree`, which did a bare `onboarding_dir.mkdir(parents=True)`
 with no `exist_ok=True`. Re-joining a member whose `onboarding/<key>/`
 directory still exists (the normal state right after that member's own
 retirement — retirement does not delete it, by design, it *is* the
-retirement record) throws `FileExistsError`, returns an uncaught 500, and
-leaves `configs/` and `manifest.yaml` genuinely modified and uncommitted —
-which then blocks every subsequent join attempt via the same dirty-checkout
-guard that was supposed to prevent exactly this kind of half-done
-The workaround is by hand (`git checkout -- manifest.yaml`, then remove the
-untracked `configs/member-<key>/`); it is not fixed in code, and it is real
-and reproducible on the current `main`.
+retirement record) threw `FileExistsError`, returned an uncaught 500, and
+left `configs/` and `manifest.yaml` genuinely modified and uncommitted —
+which then blocked every subsequent join attempt via the same dirty-checkout
+guard that was supposed to prevent exactly this kind of half-done state. The
+pack's own exercise loop (join → un-join → join again, `exercises.md` 2 and
+4) walked straight into it.
+
+`render_onboarding_tree` now recognises a retired member's tree by its
+`99-retirement.md` (`writer.RETIREMENT_FILE`) and replaces it — the same
+`shutil.rmtree` `scripts/render_onboarding.py` already used to re-render a
+canonical member — so the loop runs. Replace, not merge: a re-joined member
+must not carry the retirement record of the membership that ended. A
+leftover `onboarding/<key>/` *without* that file is still refused, now as a
+`MemberCollisionError` → 409 naming the directory and the two commands that
+undo the half-write (`git checkout -- manifest.yaml`, `rm -rf
+configs/member-<key>/`), rather than a raw 500. The non-atomicity itself
+stands: the real fix is one transactional write of everything a join
+touches, and that is a production-side item, not this one.
 
 ## The catalogue this pack builds, and the one it does not (G5.6, S6.2, S6a.4, S7.6)
 

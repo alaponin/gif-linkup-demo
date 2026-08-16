@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import csv
 import dataclasses
+import logging
 import os
 import pathlib
 import re
@@ -53,6 +54,10 @@ JOIN_TOKEN_MISSING = (
 MUTABLE_SERVICE = "identity-api"
 HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
+
+# uvicorn configures the root handlers, so this lands in `docker logs console`
+# with no setup of our own.
+_LOG = logging.getLogger("kp2.console")
 
 # _mutate_acl is reached from `def` (not
 # `async def`) endpoints, so FastAPI runs it in a threadpool -- two
@@ -207,6 +212,12 @@ def _reset_locked() -> dict:
         return journal_mod.reset(JOURNAL, _admin_session, TRUTH.expected_acl, TRUTH.topology)
 
 
+def _log_task_exception(task: asyncio.Task) -> None:
+    """done-callback for the fire-and-forget startup reset."""
+    if not task.cancelled() and task.exception() is not None:
+        _LOG.error("startup reset failed: %r -- the watchdog reconciles from here", task.exception())
+
+
 async def _watchdog() -> None:
     """Belt and braces: a demo that silently leaves the
     ACL revoked and makes acceptance.sh fail an hour later for an
@@ -222,7 +233,18 @@ async def _watchdog() -> None:
     while True:
         await asyncio.sleep(WATCHDOG_POLL_S)
         if time.time() - _last_heartbeat > HEARTBEAT_TIMEOUT_S and JOURNAL.is_dirty():
-            await asyncio.to_thread(_reset_locked)
+            try:
+                await asyncio.to_thread(_reset_locked)
+            except Exception:  # noqa: BLE001 -- see below
+                # reset() logs into every Security Server (xroad.py raises on
+                # a failed login), so one unreachable server used to end this
+                # task for the lifetime of the process -- silently, since
+                # nothing awaits it. The journal then stays dirty forever and
+                # acceptance.sh refuses with "the federation is mid-demo":
+                # exactly the failure this watchdog exists to prevent. Log
+                # and stay in the loop; the next poll retries.
+                _LOG.exception("watchdog reset failed -- retrying in %ss", WATCHDOG_POLL_S)
+                continue
             _last_heartbeat = time.time()
 
 
@@ -244,6 +266,11 @@ async def _lifespan(app: FastAPI):
         # underlying federation any less dirty -- it only makes the
         # console slower to admit it is up.
         startup_reset_task = asyncio.create_task(asyncio.to_thread(_reset_locked))
+        # Fire-and-forget: nothing awaits this task, so an exception inside it
+        # is swallowed by asyncio and never printed. The watchdog still
+        # reconciles afterwards, but only a log line says why the journal was
+        # still dirty when it did.
+        startup_reset_task.add_done_callback(_log_task_exception)
     watchdog_task = asyncio.create_task(_watchdog())
     yield
     watchdog_task.cancel()

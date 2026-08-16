@@ -178,9 +178,15 @@ def test_no_withdrawn_document_is_cited_by_a_tracked_file():
     above exist to prevent, one level up. Git-tracked files only: working
     notes kept locally (docs/decisions/superpowers/, gitignored) may still
     refer to whatever they were written against."""
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=PACK, capture_output=True, text=True, check=True
-    ).stdout.split("\0")
+    # "Git-tracked files only" has no meaning outside a work tree -- an
+    # unpacked archive of the pack tracks nothing, and `git ls-files` there
+    # exits 128 and used to fail this test as if a citation were stale.
+    tracked_proc = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=PACK, capture_output=True, text=True
+    )
+    if tracked_proc.returncode != 0:
+        pytest.skip(f"not a git work tree -- nothing to enumerate: {tracked_proc.stderr.strip()}")
+    tracked = tracked_proc.stdout.split("\0")
     here = pathlib.Path(__file__).resolve()
     stale: dict[str, list[str]] = {}
     for rel in tracked:

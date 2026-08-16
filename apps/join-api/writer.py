@@ -89,9 +89,13 @@ class GitCheckFailure(Exception):
 
 
 class MemberCollisionError(Exception):
-    """A member directory with this key was created between validation and
+    """A directory this join needs to create is already there. Two shapes,
+    one refusal: configs/member-<key>/ created between validation and
     approval -- the race _write_member's own comment names as the only way
-    its `mkdir(parents=True)` (not exist_ok) can raise FileExistsError.
+    its `mkdir(parents=True)` (not exist_ok) can raise FileExistsError; and
+    a leftover onboarding/<key>/ that carries no RETIREMENT_FILE, so it is
+    not a retired member re-joining (render_onboarding_tree replaces that
+    one) but a tree this API did not write.
     validate.py's collision check already refused any request
     whose key collided with an existing configs/member-<key>/ at submission
     time; this catches the (unlikely) case where a second request for the
@@ -512,6 +516,12 @@ _RETIREMENT_REVERSAL_SENTENCE = (
 )
 
 
+# The filename is load-bearing in two places now: app.py writes it at exit,
+# and render_onboarding_tree reads it back to tell a retired member's tree
+# (replace it) from a leftover this API did not write (refuse).
+RETIREMENT_FILE = "99-retirement.md"
+
+
 def render_retirement_record(key: str, retired_at: str, request_id: str) -> str:
     """99-retirement.md -- written only at exit. Written by
     apps/join-api/app.py's DELETE /members/{key} handler once job.unjoin()
@@ -573,6 +583,20 @@ def render_onboarding_tree(
     that ever passes request_id, and it always passes decision_reference/
     approved_at alongside it."""
     onboarding_dir = target_dir / "onboarding" / key
+    if (onboarding_dir / RETIREMENT_FILE).exists():
+        # A retired member re-joining. An un-join deliberately leaves
+        # onboarding/<key>/ behind -- app.py writes 99-retirement.md INTO it,
+        # it *is* the retirement record -- so the pack's own exercise loop
+        # (join, un-join, join the same member again) lands here, and a bare
+        # mkdir made it FileExistsError after apply_real had already written
+        # configs/ and manifest.yaml, wedging every later join behind the
+        # dirty-checkout guard (docs/production-delta.md recorded it).
+        # Semantics: replace, do not merge. The old tree describes a
+        # membership that has ended; keeping its 99-retirement.md beside the
+        # new record would render a member that is both active and retired.
+        # Same call scripts/render_onboarding.py already makes to re-render a
+        # canonical member's tree, for the same reason.
+        shutil.rmtree(onboarding_dir)
     onboarding_dir.mkdir(parents=True)
     (onboarding_dir / "00-gates.md").write_text(
         render_gates_table(bool(payload.services), admitted=request_id is not None)
@@ -857,10 +881,24 @@ def apply_real(
     # Only after generate.py accepts the result -- a rejected/failed config
     # write must not leave onboarding evidence for a member that was never
     # actually created.
-    render_onboarding_tree(
-        pack_dir, key, payload,
-        request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
-    )
+    try:
+        render_onboarding_tree(
+            pack_dir, key, payload,
+            request_id=request_id, decision_reference=decision_reference, approved_at=approved_at,
+        )
+    except FileExistsError as exc:
+        # A leftover onboarding/<key>/ that is NOT a retired member's (that
+        # case is replaced above, in render_onboarding_tree) -- so something
+        # created the directory outside this API. A clear 409 naming it, not
+        # a raw 500: configs/ and manifest.yaml are already written by now,
+        # and the message has to say so or the next join just 409s on the
+        # dirty checkout with no explanation.
+        raise MemberCollisionError(
+            f"onboarding/{key}/ already exists and carries no {RETIREMENT_FILE} -- refusing to "
+            "overwrite a record this API did not write. configs/member-"
+            f"{key}/ and manifest.yaml were already written before this point: discard them "
+            f"(git checkout -- manifest.yaml; rm -rf configs/member-{key}/) before retrying."
+        ) from exc
     # Last: the instance-wide catalogue is the first SHARED file a join
     # touches, and it must never name a member whose own record failed to
     # write.

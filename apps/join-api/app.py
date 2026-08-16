@@ -689,7 +689,7 @@ def _run_unjoin(request_id: str) -> None:
         # every time): a repeat DELETE that reaches here just rewrites the
         # same file, which is cheap and simpler than guarding it.
         key = record["payload"]["code"].lower()
-        (PACK_DIR / "onboarding" / key / "99-retirement.md").write_text(
+        (PACK_DIR / "onboarding" / key / writer.RETIREMENT_FILE).write_text(
             writer.render_retirement_record(key, record["retired_at"], record["id"])
         )
 

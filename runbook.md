@@ -17,7 +17,19 @@ Everything below is the engineering depth under those three.
 
 ## Prerequisites
 
-- Run `scripts/preflight.sh` first -- checks for Docker, Docker Compose v2,
+- **A `git` clone of the monorepo, with the pack at
+  `<repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack`.** Not an unpacked
+  zip of the pack alone, and not the pack moved elsewhere: `join-api`
+  bind-mounts `../../..` as `/repo` and its approval step runs `git status`
+  against that root before it writes anything, so every join approval fails
+  outside this layout — while the federation itself deploys, which is what
+  makes the failure confusing rather than obvious. `scripts/verify.sh
+  --fast` additionally expects the sibling `ITU-Giga-KP-Plugin` checkout
+  beside that root for the ship gate; without it the gate is skipped with a
+  warning and the rest of the tier still runs. `scripts/preflight.sh`
+  refuses on the layout, in words.
+- Run `scripts/preflight.sh` first -- checks all of the above plus Docker,
+  Docker Compose v2,
   `jq`, `curl`, `python3` 3.9+ with PyYAML, a SHA-256 tool, and bash 4+, and
   reports every gap at once rather than one at a time as the deploy hits
   each of them. Checks only -- it prints the install line for each

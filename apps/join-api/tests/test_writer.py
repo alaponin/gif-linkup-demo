@@ -304,6 +304,60 @@ def test_apply_real_refuses_cleanly_on_a_member_directory_collision(tmp_path):
         writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
 
 
+def test_apply_real_re_joins_a_retired_member_over_its_retirement_record(tmp_path):
+    """The pack's own exercise loop: join, un-join, join the same member
+    again. An un-join keeps onboarding/<key>/ -- it writes 99-retirement.md
+    INTO it -- so the second join used to hit a bare mkdir, raise
+    FileExistsError AFTER configs/ and manifest.yaml were already written,
+    and wedge every later approval behind the dirty-checkout guard. The
+    retired tree is replaced, not merged: a re-joined member must not carry
+    a retirement record for the membership that ended."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    # Committed with the seed: the retirement record is what an un-join left
+    # behind and the operator committed -- apply_real's own dirty check
+    # refuses anything else before it looks at the tree at all.
+    retired = pack / "onboarding" / "ptsb"
+    retired.mkdir(parents=True)
+    (retired / writer.RETIREMENT_FILE).write_text("retired earlier\n")
+    (retired / "00-gates.md").write_text("stale\n")
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+
+    writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+    assert not (retired / writer.RETIREMENT_FILE).exists()
+    assert (retired / "00-gates.md").read_text() != "stale\n"
+    assert (pack / "configs" / "member-ptsb" / "ptsb.yaml").exists()
+
+
+def test_apply_real_refuses_cleanly_on_a_leftover_onboarding_tree(tmp_path):
+    """A directory that is NOT a retired member's -- no 99-retirement.md, so
+    this API did not write it. Refused as a MemberCollisionError (app.py's
+    409) naming the leftover, never a raw 500."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    (pack / "onboarding" / "ptsb").mkdir(parents=True)
+    (pack / "onboarding" / "ptsb" / "notes.md").write_text("not this API's\n")
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+
+    with pytest.raises(writer.MemberCollisionError, match="onboarding/ptsb/"):
+        writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
+
+
 def test_apply_real_writes_for_real_once_the_copy_is_committed(tmp_path):
     repo_root = tmp_path / "repo"
     pack = repo_root / "pack"

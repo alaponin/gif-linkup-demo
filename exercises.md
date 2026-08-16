@@ -229,6 +229,14 @@ curl -X DELETE -H "X-KP2-Console: 1" \
 - The catalogue row is gone; tab 5 no longer lists `awards-api`.
 - `onboarding/ptsb/` is **retained**, and gains `99-retirement.md`. The
   record of a member that left is not itself deleted.
+- **Running the loop again is fine.** Re-submitting PTSB (exercise 2 a
+  second time) replaces that retired `onboarding/ptsb/` wholesale — a
+  re-joined member must not carry the retirement record of the membership
+  that ended, so `99-retirement.md` goes with it. Commit the un-join first,
+  as below: the approval refuses on a dirty checkout before it writes
+  anything. If a join ever does die mid-write, `git status` shows what it
+  got as far as, and `git checkout -- manifest.yaml && rm -rf
+  configs/member-ptsb/` puts it back.
 - Canonical members are refused before anything happens, naming the reason.
   Try it: `DELETE /members/pnia` changes nothing.
 - The next join against a dirty checkout fails with `DirtyCheckoutError` —

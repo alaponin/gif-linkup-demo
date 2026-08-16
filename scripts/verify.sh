@@ -25,15 +25,34 @@ SHIP_GATE="$PACK_DIR/../../ITU-Giga-KP-Plugin/skills/kp-solution-verify/scripts/
 PYTEST="$PACK_DIR/.venv/bin/python3"
 
 log()  { printf '\033[1;34m[verify]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[verify WARN]\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31m[verify FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 
 run_fast() {
   log "check_scenarios.py"
   python3 "$PACK_DIR/hurl/check_scenarios.py"
 
-  log "ship gate (kp-solution-verify --ready)"
-  [ -f "$SHIP_GATE" ] || fail "ship gate not found at $SHIP_GATE -- this pack's --fast tier depends on the sibling ITU-Giga-KP-Plugin checkout being present, not an external dependency to skip quietly."
-  python3 "$SHIP_GATE" "$PACK_DIR" --ready
+  # Run directly, not only through the ship gate's <pack>/<tool>/check_*.py
+  # auto-discovery: the gate lives in a SIBLING repository, and this pack's
+  # own prompt checks must not disappear along with it when someone runs from
+  # a copy that has no sibling (the same standalone layout preflight.sh
+  # refuses for the deploy path). Cheap enough to run twice when both are here.
+  log "prompts/check_prompts.py"
+  python3 "$PACK_DIR/prompts/check_prompts.py"
+
+  if [ -f "$SHIP_GATE" ]; then
+    log "ship gate (kp-solution-verify --ready)"
+    python3 "$SHIP_GATE" "$PACK_DIR" --ready
+  else
+    # Skipped, loudly, rather than failed at the front door: without the
+    # sibling checkout a learner could not run --fast AT ALL, including the
+    # ~1000 tests that need nothing external. What is lost is real and is
+    # named, not implied.
+    warn "ship gate NOT RUN -- kp-solution-verify not found at $SHIP_GATE."
+    warn "  This tier is weaker than the one CI runs: pack structure, README/manifest"
+    warn "  conformance and cross-document claims went unchecked. Everything else below still ran."
+    warn "  Clone the monorepo with its sibling ITU-Giga-KP-Plugin checkout for the full gate (runbook.md Prerequisites)."
+  fi
 
   log "check-exposure.sh"
   "$PACK_DIR/scripts/check-exposure.sh"
