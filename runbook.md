@@ -86,7 +86,8 @@ doing at each one. It refuses if a federation is already deployed.
    2.6 is the framework's acceptance: the once-only exchange resolves, the right
    learner returns, nothing is asked twice, and the unauthorised caller is denied.
 5. **Demonstrate (optional)** — `scripts/console.sh up`
-   A one-page demo console (counter / inspector / permissions tabs) at
+   A one-page demo console (five tabs: 1 · Ask once, 2 · How it worked,
+   3 · Who's allowed, 4 · Join a member, 5 · What's on the bus) at
    `http://localhost:8090` for a non-technical audience — not a module, not part
    of acceptance, and never production (`docs/production-delta.md`). It really
    revokes and grants the `identity-api` ACL live, journals every change, and

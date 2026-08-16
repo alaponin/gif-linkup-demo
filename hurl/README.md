@@ -84,11 +84,13 @@ same PACK-not-HURL_DIR distinction already documented at line 32 for
 The golden corpus (below) is what makes editing a template safe: every
 change is checked against a byte-exact baseline before it can be trusted.
 
-`generate.py` is 1085 lines; `main()` is 521 lines. `grep -n '{{{{' hurl/generate.py`
-returns nothing — no quadrupled-brace Hurl block survives. 16 `.hurl.tmpl`
-files exist: 5 scenario templates plus 11 single-purpose fragments under
-`hurl/templates/fragments/`. Most of what remains in `main()` is not Hurl
-emission at all — it's the member/service loops, and the
+`grep -n '{{{{' hurl/generate.py` returns nothing — no quadrupled-brace
+Hurl block survives. The templates are the scenario shells at the top of
+`hurl/templates/` plus single-purpose fragments under
+`hurl/templates/fragments/` (`find hurl/templates -name '*.hurl.tmpl' | wc -l`
+if you want the number; it is not written down here, because a written-down
+count is wrong from the first template added and nothing fails when it is).
+Most of what remains in `main()` is not Hurl emission at all — it's the member/service loops, and the
 `topology.json`/`topology.sh`/`compose.members.yml` generation, neither of
 which moving f-string Hurl blocks into templates touches.
 
@@ -137,8 +139,12 @@ captures do not cross file boundaries).
 - **`probe`** (a template path, or `None`) is set only where a step's 409
   behaviour on repeat is ambiguous — most of the registry is not: a repeat
   either conflicts cleanly (`409`, this pack's proven default) or is
-  naturally idempotent. Audited counts: 3 read-only, 10
-  `409`-safe, 8 ambiguous (probed), 0 unsafe to repeat. The 8 probes were written, then run live against a real
+  naturally idempotent. The audit that established this is in each step's own
+  `probe`/`unsafe_to_repeat` declaration, and `tests/test_steps.py` asserts
+  both that no step is `unsafe_to_repeat` and that every declared probe
+  template exists — read the registry for the current split rather than a
+  tally here, which would be wrong the first time a step is added. The probes
+  were written, then run live against a real
   deployed federation (`docker run` the pinned `hurl` image directly against
   a real Central Server and Security Server, not just re-derived from the
   OpenAPI spec) — one endpoint guess turned out wrong
@@ -185,7 +191,7 @@ with an undefined variable or a drifted credential cannot pass `--ready`.
 
 Host-run scripts (`hurl/generate.py`, `hurl/check_scenarios.py`,
 `scripts/gen_seed_data.py`, `scripts/assert_record.py`,
-`scripts/mkfixture.py`, and `scripts/lib.sh`'s inline `yq_get`) run under
+`scripts/mkfixture.py`, and `scripts/lib-core.sh`'s inline `yq_get`) run under
 whatever `python3` resolves to on the operator's machine — not a container,
 which is why they used to avoid 3.9+ idioms (`str.removeprefix`, etc.):
 `generate.py` had a comment claiming "host runs system python3.7.9".
@@ -204,8 +210,9 @@ installed".
 **Decision: raise the floor to 3.9+.** This deletes the invisible
 host-vs-container idiom rule — both sides
 now support `removeprefix`/`removesuffix` — and CI's `python-version` moves
-off an EOL 3.7 pin (`.github/workflows/kp2-fast.yml`) that would eventually
-stop being satisfiable on hosted runner images at all. The
+off an EOL 3.7 pin — in a CI workflow this pack does not carry, since the
+monorepo root owns every workflow and GitHub reads them nowhere else — that
+would eventually stop being satisfiable on hosted runner images at all. The
 `scripts/check-python-floor.sh` lint once queued
 is withdrawn: there is no longer a restriction for it to enforce.
 Cost, paid honestly: an operator on a stock Mac whose `python3` still

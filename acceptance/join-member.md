@@ -45,7 +45,7 @@ this check closes.
      call, routed through an *unauthorized* subsystem's own Security Server
      with `X-Road-Client` set to that subsystem's identity, is denied with
      the SPECIFIC X-Road access-denied error (`Server.ServerProxy.AccessDenied`)
-     — not a transport failure, not a plain 404. This mirrors `acceptance/2.6.md`'s 2.6.4/
+     — not a transport failure, not a plain 404. This mirrors `acceptance/once-only-exchange.md`'s 2.6.4/
      2.6.5 mechanics exactly (see `scripts/acceptance.sh`'s `check_264`/
      `check_265`): the denial must come from the provider-side ACL, proving
      the join did not just register a name but actually put a reachable,

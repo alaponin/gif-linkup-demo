@@ -11,7 +11,7 @@ production-grade form of subtopic 5.6's AI usage tip.
 Everything before this produced a federation with registered members and published
 services. This module wires the proving exchange itself: the two cross-server calls
 PNEA makes, the fields each pre-fills, the once-only assertion, and the negative
-check. Its config is what `acceptance/2.6.md` executes.
+check. Its config is what `acceptance/once-only-exchange.md` executes.
 
 ## Prompt (copy-paste ready)
 

@@ -39,7 +39,7 @@ This is not a fifth acceptance module alongside 2.1–2.6: it is the check 2.2�
 `hurl/topology.json` says is actually deployed — so a joined member added
 through `prompts/member.md` has a real, documented acceptance from the moment
 it exists, not an implicit one nobody wrote down. 2.6 stays the framework's
-headline, education-specific check (`acceptance/2.6.md`) and is not
+headline, education-specific check (`acceptance/once-only-exchange.md`) and is not
 generalised — the once-only exchange it proves is Progressa's story to tell,
 not every member's.
 

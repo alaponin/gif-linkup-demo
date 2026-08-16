@@ -31,7 +31,7 @@ HTTP 200
 
 # Grant PROGRESSA:GOV:PNEA:EXAMS access to enrolment-api -- and nobody else.
 # The omission is deliberate: PROGRESSA:GOV:PLR:ENROLMENT is left out so the negative check in
-# acceptance/2.6.md proves the ACL, not an accident of configuration.
+# acceptance/once-only-exchange.md proves the ACL, not an accident of configuration.
 POST https://{{ss_plr_host}}:4000/api/v1/clients/{{ss_plr_client_id}}/service-clients/PROGRESSA:GOV:PNEA:EXAMS/access-rights
 X-XSRF-TOKEN: {{ss_plr_xsrf_token}}
 {
