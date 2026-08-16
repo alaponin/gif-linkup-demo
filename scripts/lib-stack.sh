@@ -53,6 +53,19 @@ export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
 export XROAD_CS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.cs_digest)
 export XROAD_SS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.ss_digest)
 export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
+
+# Both demo images run as `nobody` (their Dockerfiles), but console mounts
+# ./out and join-api mounts the whole checkout READ-WRITE -- and on the droplet
+# that tree is root-owned, because the workflow rsyncs it with --chown=root:root
+# to satisfy git's dubious-ownership check. A `nobody` process cannot write a
+# root-owned tree: join-api died on its first mkdir of out/join, and the
+# console's ACL journal would have died the same way on the first revoke.
+# Docker Desktop's macOS bind mounts virtualise ownership, which is why neither
+# ever failed on a laptop or in --fast. So those two services run as whoever
+# runs this script -- root on the droplet, the developer on a laptop -- which
+# is in both cases the owner of the checkout they write to.
+export KP2_HOST_UID=$(id -u)
+export KP2_HOST_GID=$(id -g)
 # A non-loopback bind publishes, with no authentication, the X-Road proxy
 # ports (X-Road-Client is a self-asserted header, not a credential), the
 # admin UIs, and the Test CA's signing endpoint -- see the message below.

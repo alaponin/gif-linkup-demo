@@ -160,6 +160,9 @@ services:
     # read-only. out/ is the one read-write mount, for the ACL journal.
     build: ./apps/console
     container_name: console
+    # Runs as the owner of the read-write bind mount below, overriding the
+    # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID.
+    user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8090:8000"]
@@ -208,6 +211,9 @@ services:
     # revisited per task.
     build: ./apps/join-api
     container_name: join-api
+    # Runs as the owner of the read-write bind mount below, overriding the
+    # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID.
+    user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8091:8000"]
