@@ -308,18 +308,19 @@ def test_the_un_join_render_path_escapes_every_record_derived_field():
         assert expected in src, f"expected {expected!r} in app.js's un-join render path"
 
 
-def test_an_own_server_active_record_gets_the_known_defect_explanation():
-    """An own-server join's bring-up spends the retry budget on the
-    propagation wait before the reachability check runs, so `verified: false`
-    there is a known demo defect that never flips -- not the generic "not yet"
-    a hosted join's false means. Rendering both the same way trains an
-    operator to distrust a correct join, or to wait for a flag that will never
-    come."""
+def test_an_active_record_with_verified_false_reports_a_real_failure():
+    """Since join.r1_verify got its own R1_RETRY_BUDGET, an own-server join
+    reaches `verified: true` like a hosted one, so `verified: false` at
+    ACTIVE means the reachability call really did not pass -- one line for
+    both shapes, carrying job.py's `verified_by` reason (escaped: it can
+    quote a backend response). The old "known demo defect for own-server
+    joins, this flag never flips" text trained operators to ignore a real
+    failure."""
     src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
-    assert "payload.security_server && payload.security_server.own_server" in src
-    assert "2.7.r1" in src
-    # The hosted case must keep its own, different line.
-    assert "the reachability check has not passed yet" in src
+    assert "the reachability check did not pass" in src
+    assert "esc(record.verified_by)" in src
+    assert "never flips" not in src
+    assert "payload.security_server && payload.security_server.own_server" not in src
 
 
 def test_the_join_tab_offers_the_submit_command_but_no_submit_route():

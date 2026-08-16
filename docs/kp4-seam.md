@@ -56,9 +56,17 @@ constraints shape what a KP4 member may declare:
   federation admits, and it has to be made before the payload is written.
 - **Hosting defaults to `hosted_on`** an existing Security Server. That is
   the right default on a single-host demonstration: zero extra containers.
-- **Own-server joins report `verified: false`,** and that flag never flips —
-  the real answer is acceptance check 2.7.r1 against the running member, not
-  the flag. `docs/production-delta.md` records why.
+- **Own-server joins do reach `ACTIVE, verified: true`,** but not in one
+  pass: the request parks at `BLOCKED` until the member's own Security Server
+  is healthy (`scripts/join-agent.sh <key>`), and a `POST .../resume` then
+  runs the bring-up and `join.r1_verify` — roughly two minutes, well inside
+  the step's own `R1_RETRY_BUDGET` (540s, separate from the run's shared
+  budget so a long `ss.client_register` propagation wait cannot eat it). An
+  `ACTIVE` request still sitting at `verified: false` therefore reports a
+  real failure — an X-Road fault, or a response whose fields do not match the
+  declared contract — not the expected end state. The live check behind the
+  flag is acceptance `2.7.r1(<code>.<service>)`;
+  `docs/production-delta.md` records the timings.
 
 ## The data contract
 

@@ -765,17 +765,14 @@ function renderJoinRequest(record) {
       html += `<div class="join-note">${esc(record.note)}</div>`;
     } else if (record.verified) {
       html += `<div class="join-verified ok">verified: true &mdash; a real r1 call reached the backend</div>`;
-    } else if (payload.security_server && payload.security_server.own_server) {
-      // An own-server join's bring-up spends the retry budget on the
-      // propagation wait before the reachability check runs, so the flag is
-      // false for a reason that is not a broken join -- and never flips
-      // afterwards. A hosted join reaching false IS genuinely pending.
-      html += `<div class="join-verified pending">verified: false &mdash; known demo defect for `
-        + `own-server joins, not a broken join: the bring-up's propagation wait spends the retry `
-        + `budget before the reachability check runs. <code>scripts/acceptance.sh</code>'s 2.7.r1 `
-        + `check a minute later is the real answer; this flag never flips afterwards.</div>`;
     } else {
-      html += `<div class="join-verified pending">verified: false &mdash; the reachability check has not passed yet</div>`;
+      // Own-server and hosted joins read the same here: since join.r1_verify
+      // got its own R1_RETRY_BUDGET, an own-server join reaches
+      // verified: true too, so false means the reachability call really did
+      // not pass. job.py's verified_by says which shape (runbook.md).
+      html += `<div class="join-verified pending">verified: false &mdash; the reachability check did not pass`
+        + (record.verified_by ? `: ${esc(record.verified_by)}` : ``)
+        + `</div>`;
     }
     // uncommitted is bool | null (apps/join-api/app.py's _live_uncommitted):
     // null means the git check itself failed -- fails toward SHOWING a
