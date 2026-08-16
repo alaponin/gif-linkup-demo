@@ -20,7 +20,7 @@ workflow step and one GitHub secret.
 ## 1. The design in one paragraph
 
 nginx runs on the droplet host (apt package, not a compose service), listens on :443 with a
-Let's Encrypt IP certificate and `auth_basic`, and proxies exclusively to `127.0.0.1:8090`.
+Let's Encrypt IP certificate and `auth_basic`, and proxies exclusively to `127.0.0.1:8090` (plus, per §7, three applicant routes to join-api on `127.0.0.1:8091`).
 Port 80 serves only the ACME webroot and a redirect to HTTPS. The DO firewall opens 80 and
 443 alongside the existing 22. The basic-auth credential is a **pre-hashed** bcrypt htpasswd
 line held as a GitHub secret — CI never sees the cleartext; the operator generates it locally
@@ -78,6 +78,8 @@ The site config is **staged but not enabled** at boot. Between `terraform apply`
 publish step, :443 has no listener and :80 serves nothing — an exposure window of zero.
 
 ### 2.3 `infra/nginx/kp2-console.conf` (new) — the whole exposure surface
+
+(As shipped this file also carries §7's `/join/` locations; the console half is below.)
 
 ```nginx
 # The ONLY public route into the droplet besides SSH. Proxies one loopback
@@ -187,7 +189,7 @@ all other ports unchanged.* One paragraph, not a new document.
 
 ## 3. What "public" now means, precisely
 
-Reachable by anyone: the TLS handshake, an HTTP 401, and the ACME webroot. Reachable by
+Reachable by anyone: the TLS handshake, an HTTP 401, and the ACME webroot — plus, since §7, join-api's three applicant routes under `/join/`, which answer 401 themselves without a bearer token. Reachable by
 password holders: the full console — topology view, exchange demo, ACL grant/revoke/reset,
 and the join tab when `KP2_JOIN_OPERATOR_TOKEN` is set (per the decision, the audience gets
 the real console, mutations included; the blast radius of those mutations is the pack's own:
@@ -320,7 +322,157 @@ nginx config, 1 publish script (~25 lines), 1 workflow step, 1 GitHub secret, 1 
 paragraph. Removing anything that remains drops one of TLS, auth, the running console, or
 the audit trail — i.e., the plan is at its floor.
 
-## 7. Sources
+## 7. Extending the same front door to join-api (implemented)
+
+**Decision implemented:** join-api (`apps/join-api`, droplet port 8091) is reachable from the
+internet as well, so a remote applicant can submit a join request from their own machine —
+the live-proof demo without a tunnel. Only the **applicant surface** is public; the operator
+surface stays where it already works (the console's join tab and the SSH tunnel).
+
+### 7.1 What join-api brings (and the console doesn't)
+
+Unlike the console, join-api arrives with real authentication of its own: two bearer tokens
+from `gen-secrets.sh` (`KP2_JOIN_APPLICANT_TOKEN`, `KP2_JOIN_OPERATOR_TOKEN`), checked with
+`secrets.compare_digest`, role-asymmetric by design ("an applicant cannot approve"), plus the
+same `x-kp2-console` request-boundary header and Origin-vs-Host check the console uses. Every
+route except `GET /health` requires a token. So the public question was not "how do we add
+auth" but "which of its routes deserve an internet path at all."
+
+### 7.2 The Authorization-header collision — why no basic auth here
+
+nginx `auth_basic` and join-api's bearer tokens both live in the `Authorization` header; a
+client cannot send `Basic` and `Bearer` at once. Basic-authing the join-api path would
+therefore *break its real authentication*. Consequence: the `/join/` locations carry
+`auth_basic off;` and rely on join-api's own tokens — which are stronger than the console's
+shared password anyway (generated, role-scoped, constant-time compared). This is also why
+join-api is a **path prefix on the same 443 server** rather than being folded under the
+console's basic-auth umbrella.
+
+### 7.3 Public surface: applicant routes only
+
+The routes split cleanly by role, and the operator half already has two working paths — the
+console's join tab (which calls join-api server-side over the `linkup` network with the
+operator token) and the SSH tunnel. Exposing operator routes publicly would add a third path
+whose only new property is that a leaked operator token becomes internet-exploitable —
+approve writes real configs, `DELETE /members/{key}` walks a live un-join, resume drives the
+job runner. So nginx publishes exactly three routes and 404s the rest, in
+`infra/nginx/kp2-console.conf`:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=join:10m rate=6r/m;
+
+location = /join/requests {
+    limit_except POST { deny all; }       # GET /requests is the operator queue -- not public
+    auth_basic off;
+    limit_req zone=join burst=3 nodelay;  # submission is expensive: 13 checks, a spec fetch, a generate.py dry run
+    rewrite ^/join(/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8091;
+    proxy_set_header Host $host;
+    proxy_read_timeout 120s;
+}
+location ~ ^/join/requests/[A-Za-z0-9_-]+$ {   # GET /requests/{id}: applicant polls its outcome
+    limit_except GET { deny all; }
+    auth_basic off;
+    limit_req zone=general burst=20 nodelay;
+    rewrite ^/join(/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8091;
+    proxy_set_header Host $host;
+}
+location = /join/catalogue {                   # discovery, applicant-token-gated upstream
+    limit_except GET { deny all; }
+    auth_basic off;
+    limit_req zone=general burst=20 nodelay;
+    rewrite ^/join(/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8091;
+    proxy_set_header Host $host;
+}
+location /join/ { auth_basic off; return 404; } # everything else: the operator surface
+```
+
+The regex location cannot match `/requests/{id}/approve` (the trailing `$`), so even a valid
+operator token arriving from the internet hits the catch-all's 404, not join-api. That
+catch-all is why the 404 is literal: without it `/join/requests/{id}/approve` would fall
+through to `location /` and be answered by the *console* (a basic-auth 401), which is safe but
+says the wrong thing. Defence in depth: join-api's own token check still exists behind all of
+this, for the day someone edits these locations.
+`tests/test_infra_nginx_join_surface.py` pins the invariant — no location in this file may
+reach `approve`, `resume`, `reject`, or `/members`.
+
+A remote applicant's whole toolkit is then:
+
+```bash
+curl -X POST https://<droplet-ip>/join/requests \
+  -H "Authorization: Bearer $KP2_JOIN_APPLICANT_TOKEN" \
+  -H "X-KP2-Console: 1" -H "Content-Type: application/json" \
+  -d @join-request.json
+curl https://<droplet-ip>/join/requests/<id> \
+  -H "Authorization: Bearer $KP2_JOIN_APPLICANT_TOKEN" -H "X-KP2-Console: 1"
+```
+
+(The `X-KP2-Console: 1` header is join-api's own request-boundary requirement — script
+clients send it like `scripts/console.sh reset` already does. `GET /join/catalogue` takes the
+same two headers.)
+
+### 7.4 Deltas to the rest of this plan
+
+`console-publish.sh` gained one line before the nginx reload — `scripts/join.sh up` — because
+join-api, like the console, is a `demo`-profile service nothing in the remote flow starts;
+without it the `/join/` locations would serve 502. Ordering stays fail-closed: join-api comes
+up before the site is enabled, and if `join.sh up` fails, `set -e` stops publish and :443
+never enables (the console is not published either — the conservative failure, acceptable for
+a demo flow). Note `acceptance.sh` cycles join-api down and back up during checks; publish
+runs after acceptance, so ordering is safe. Token distribution is operational, not
+infrastructural: the applicant token lives in the droplet's `.env` (never in CI), and the
+operator hands it to the remote participant out of band — the publish step's own summary
+prints the `ssh ... grep KP2_JOIN_APPLICANT_TOKEN .env` command for exactly this. Rotation =
+edit `.env`, `join.sh up` again. Everything else — cert, firewall, workflow — was already in
+place; join-api rides the console's front door with no workflow change at all.
+
+### 7.5 Security analysis of the addition
+
+**SSRF via `spec_url` is the sharpest new edge.** Submission's check 9
+(`validate.py:_check_backend_reachability`) fetches the *applicant-supplied* `spec_url` and
+then connects to the fetched spec's `servers[].url` — from inside the droplet/`linkup`
+network. A malicious applicant-token holder can aim that at internal targets (`cs:4000`,
+`ss-*:8080`, the DO metadata service at 169.254.169.254) and read back parse results, error
+strings, and the derived `endpoint_baseline`. Verdict: **accepted, documented** — the token
+audience is known and small, the readable internal surfaces are demo services, cloud-init
+carries no secrets, and an egress-filtering sidecar or URL allowlist would be real
+engineering for a demo. But it is the reason the applicant token must be treated as a
+credential, not a courtesy: shared per participant, per session, rotated after.
+
+**Resource abuse, bounded.** Each submission synchronously copies the pack, runs
+`generate.py`, and writes an `out/join/*.json` record forever (nothing expires records). The
+6 r/min rate zone plus token-gating makes queue/disk spam a non-issue at demo scale; the
+records surviving is a feature (they are the demo's evidence trail).
+
+**What did NOT get more exposed.** Approve/reject/resume/un-join — the paths that write
+configs, run git, and mutate the live federation — remain reachable only via the console
+(basic auth + server-side operator token) or the tunnel. The repo-mounted-read-write property
+of the join-api container (its `../../..:/repo` bind) is untouched by this change and stays
+shielded behind the operator boundary. `GET /health` under `/join/` would be the one
+unauthenticated route; it is simply not proxied.
+
+### 7.6 Over-engineering check on the addition
+
+Rejected: a second TLS port or subdomain-style split (buys separation the path prefix already
+provides); mTLS or per-applicant client certs (an IP-cert demo handing out CA-signed client
+certs has lost the plot); an SSRF egress proxy/allowlist (see verdict above); exposing the
+operator surface "for symmetry" (symmetry is not a requirement — asymmetry is literally the
+module's teaching point); a queue-record TTL/cleanup job (records are evidence, disk is
+320 GB, droplet lives hours); and running nginx in CI to probe the routes (the string-level
+test over the config file is the cheap part that survives refactors). The addition as shipped
+is four nginx locations, one rate zone, one line in the publish script, one test, and this
+section.
+
+### 7.7 Rollback
+
+In effort order: `scripts/join.sh down` on the droplet (the `/join/` locations then serve 502
+— applicant surface dark, console untouched); remove the `/join/` locations and re-run publish
+(join-api stays up for the console's tab, internet path gone); `git revert` of this change;
+`terraform destroy` (everything gone, including both tokens' exposure).
+
+## 8. Sources
 
 - [Let's Encrypt: 6-day and IP address certificates generally available (Jan 2026)](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)
 - [Let's Encrypt: six-day and IP certs in certbot ≥ 5.4 — flags and webroot example (Mar 2026)](https://letsencrypt.org/2026/03/11/shorter-certs-certbot)

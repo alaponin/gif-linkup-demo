@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publish the console at https://<droplet-ip> behind basic auth (see
-# infra/CONSOLE-EXPOSURE.md). Runs ON THE DROPLET, after
+# Publish the console at https://<droplet-ip> behind basic auth, and
+# join-api's applicant surface at https://<droplet-ip>/join/ behind its own
+# bearer tokens (see infra/CONSOLE-EXPOSURE.md). Runs ON THE DROPLET, after
 # remote-deploy.sh, as its own workflow step -- not appended to
 # remote-deploy.sh, whose "acceptance only" early exit would skip it on
 # exactly the most common invocation.
@@ -22,6 +23,13 @@ IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/addres
 #    acceptance and never starts the demo-profile console, so without this
 #    :443 would open onto a 502.
 "$PACK/scripts/console.sh" up
+
+# 1b. join-api serves the public /join/ applicant surface
+#     (CONSOLE-EXPOSURE.md section 7) -- demo-profile like the console,
+#     started by nothing else in the remote flow. Its two bearer tokens
+#     exist because remote-deploy.sh's gen-secrets.sh append run creates
+#     any missing KP2_JOIN_* keys.
+"$PACK/scripts/join.sh" up
 
 # 2. Auth material before any listener that could serve the console.
 install -m 640 -g www-data /dev/null /etc/nginx/kp2.htpasswd
@@ -46,3 +54,5 @@ ln -sf /etc/nginx/sites-available/kp2-console.conf /etc/nginx/sites-enabled/kp2-
 nginx -t && systemctl reload nginx
 
 echo "console published: https://$IP (basic auth)"
+echo "join-api applicant surface: https://$IP/join/ (bearer token; fetch with:"
+echo "  ssh root@$IP \"grep KP2_JOIN_APPLICANT_TOKEN $PACK/.env\")"
