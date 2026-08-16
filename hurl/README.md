@@ -78,8 +78,8 @@ gitignored `hurl/scenarios/`.
 
 Templates are always read from the real pack checkout, never from `--out`'s
 redirected output directory — `generate.py`'s `TEMPLATES` constant makes the
-same PACK-not-HURL_DIR distinction already documented at line 32 for
-`manifest.yaml` and `configs/`.
+same PACK-not-HURL_DIR distinction already documented at `generate.py`'s
+`HURL_DIR` definition for `manifest.yaml` and `configs/`.
 
 The golden corpus (below) is what makes editing a template safe: every
 change is checked against a byte-exact baseline before it can be trusted.

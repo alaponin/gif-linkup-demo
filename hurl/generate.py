@@ -409,7 +409,7 @@ def sub(tpl: str, **kw) -> str:
 # Templates are source, not output: always read from the real pack, never
 # from HURL_DIR, which main() reassigns under --out (tests/test_golden.py
 # only). Same distinction generate.py already draws for manifest.yaml and
-# configs/ at line 32.
+# configs/ at the HURL_DIR definition.
 TEMPLATES = PACK / "hurl" / "templates"
 
 

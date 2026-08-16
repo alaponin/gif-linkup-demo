@@ -40,9 +40,9 @@ from schema import BackendAuth, JoinPayload
 # The one piece of "existing federation state" the checks need that manifest.
 # yaml does not carry: every existing member's Security Server code/dns_name/
 # hosted_on. Read the same way hurl/generate.py's discover_members() finds
-# member directories (hurl/generate.py ~line 191) -- collision (check 3) and
-# hosting (check 6) are the only checks that need it, so this loads only the
-# security_server block, not a full member config parse.
+# member directories -- collision (check 3) and hosting (check 6) are the only
+# checks that need it, so this loads only the security_server block, not a full
+# member config parse.
 
 
 def load_existing_security_servers(pack_dir: str | pathlib.Path) -> dict[str, dict]:
@@ -102,7 +102,7 @@ def _default_check_reachable(url: str) -> None:
 class ValidationContext:
     payload: JoinPayload
     manifest: dict
-    policy: dict  # configs/x-road-bus/2.7.yaml's join: block only
+    policy: dict  # configs/x-road-bus/join-policy.yaml's join: block only
     existing_servers: dict[str, dict]  # key -> {code, dns_name, hosted_on}
     semantic_map: dict  # configs/semantic/semantic-map.yaml -- entity -> {anchor, fields}
     fetch_spec: Callable[[str], str] = _default_fetch_spec
@@ -137,11 +137,11 @@ class RejectionError(Exception):
 
 
 def _check_key_derivation(ctx: ValidationContext) -> str | None:
-    """key == code.lower() -- discover_members()
-    (hurl/generate.py ~line 191) already enforces exactly this agreement
-    between a config directory's key and its identity.members entry, and
-    fails loudly at generate time otherwise. Enforced here too, at request
-    time, against the stricter constraint the key must actually satisfy:
+    """key == code.lower() -- hurl/generate.py's discover_members() already
+    enforces exactly this agreement between a config directory's key and its
+    identity.members entry, and fails loudly at generate time otherwise.
+    Enforced here too, at request time, against the stricter constraint the
+    key must actually satisfy:
     configs/member-<key>/ becomes a directory name and
     hurl/check_scenarios.py's scenario_member_re expects [a-z0-9]+."""
     # [a-z0-9]+ here is deliberately narrower than _check_identifier_characters'
@@ -225,14 +225,14 @@ def _check_not_canonical(ctx: ValidationContext) -> str | None:
 
 
 def _check_hosting(ctx: ValidationContext) -> str | None:
-    """Reproduces resolve_hosted_on_map()'s (hurl/generate.py ~line 243) two
-    hard failures at request time -- unknown host, hosting chain -- plus the
-    hosting decision itself.
+    """Reproduces hurl/generate.py's resolve_hosted_on_map() two hard failures
+    at request time -- unknown host, hosting chain -- plus the hosting decision
+    itself.
 
     join.default_hosting: hosted_on no longer means "own-server requests are
     rejected". Plan C gave this pack a real own-server code path
     (job.py's build_sequence own-server branch, scripts/join-agent.sh), so
-    the key now means what configs/x-road-bus/2.7.yaml's own comment always
+    the key now means what configs/x-road-bus/join-policy.yaml's own comment always
     said it meant -- "a join defaults to hosting; own_server must be asked
     for": a request that asks for NEITHER is rejected, and one that sets
     security_server.own_server: true is an own-server join. The fail-safe is
@@ -319,7 +319,7 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
     """Conformance check against configs/semantic/semantic-map.yaml (closes
     Publishing a service AND
     granting another subsystem access to it is an exchange -- this pack's
-    own convention for one (configs/member-pnia/2.5.yaml's semantic: block)
+    own convention for one (configs/member-pnia/pnia.yaml's semantic: block)
     is to document it, and now to declare a real entity from the Module 4
     semantic map: semantic.entity must be a key in the map, and every
     semantic.fields entry must be declared for that entity there. This
@@ -335,7 +335,7 @@ def _check_purpose_limitation(ctx: ValidationContext) -> str | None:
             "this join publishes a service and grants another subsystem "
             "access to it, which makes it a provenance-tracked exchange -- a "
             "semantic: block (entity, key, fields) is required, matching "
-            "this pack's existing convention (configs/member-pnia/2.5.yaml)"
+            "this pack's existing convention (configs/member-pnia/pnia.yaml)"
         )
     entity_fields = (ctx.semantic_map.get(semantic.entity) or {}).get("fields")
     if entity_fields is None:
@@ -422,7 +422,7 @@ def _check_allowed_methods(ctx: ValidationContext) -> str | None:
                     return (
                         f"service {svc.code!r}'s OpenAPI spec declares "
                         f"{method.upper()} {path}, outside join.allowed_methods "
-                        f"{sorted(allowed)} (configs/x-road-bus/2.7.yaml) -- a "
+                        f"{sorted(allowed)} (configs/x-road-bus/join-policy.yaml) -- a "
                         "joined member may publish read-only services"
                     )
     return None

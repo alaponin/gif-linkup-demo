@@ -313,9 +313,9 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
                      then the SIGN key, then registration, the order
                      hurl/steps.py's comment says is load-bearing. Every step
                      runs against the HOST's server, with the HOST's session.
-      own_server  -- build_ss_file()'s sequence verbatim (hurl/generate.py
-                     ~line 461), the same cold-deploy bring-up every canonical
-                     member got, against the joining member's OWN server:
+      own_server  -- build_ss_file()'s sequence verbatim, the same cold-deploy
+                     bring-up every canonical member got, against the joining
+                     member's OWN server:
                      bringup_init, the AUTH key, the SIGN key, CS
                      registration, activation, the timestamping service, then
                      the client. Two reads cold deploy gets for free from

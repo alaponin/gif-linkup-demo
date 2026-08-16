@@ -1,6 +1,6 @@
 """apps/join-api/schema.py -- the join payload's shape. Mirrors what
 prompts/member.md already produces by hand into
-configs/member-<key>/<key>.yaml (see configs/member-pnia/2.5.yaml for the
+configs/member-<key>/<key>.yaml (see configs/member-pnia/pnia.yaml for the
 committed shape this typed model is standing in for): member identity, a
 Security Server descriptor, the services it publishes (omitted entirely for
 a consume-only member), an optional semantic block, the required backend-auth
@@ -32,7 +32,7 @@ class _Strict(BaseModel):
 
 class BackendAuth(str, Enum):
     """How the joining member's own backend authenticates calls
-    from the Security Server. The enum -- not a configs/x-road-bus/2.7.yaml
+    from the Security Server. The enum -- not a configs/x-road-bus/join-policy.yaml
     policy key -- is deliberate ("the permissible values of a field
     are a schema concern")."""
 
@@ -49,7 +49,7 @@ class SecurityServer(_Strict):
     hosted_on: str | None = None
     # Plan C: this member brings up its OWN Security Server (job.py's
     # own-server branch). Deliberately an EXPLICIT opt-in rather
-    # than inferred from an absent hosted_on -- configs/x-road-bus/2.7.yaml's
+    # than inferred from an absent hosted_on -- configs/x-road-bus/join-policy.yaml's
     # join.default_hosting: hosted_on says in as many words that "own_server
     # must be asked for", and a payload that simply forgot hosted_on would
     # otherwise become a silent own-server join that sits in BLOCKED waiting
@@ -79,7 +79,7 @@ class Service(_Strict):
     code: str
     spec_url: str
     # Consumer subsystems this service's ACL grants, PROGRESSA/GOV/<CODE>/
-    # <SUBSYSTEM> form -- configs/member-pnia/2.5.yaml's own access: shape.
+    # <SUBSYSTEM> form -- configs/member-pnia/pnia.yaml's own access: shape.
     access: list[str] = Field(default_factory=list)
     # The decree article this exchange relies on, or "consent" --
     # free text, "[confirm: cite the decree article]" where a demo has no
@@ -98,7 +98,7 @@ class Service(_Strict):
 
 class ExchangePattern(str, Enum):
     """The contract shape a semantic exchange takes. The enum -- not
-    a configs/x-road-bus/2.7.yaml policy key -- is
+    a configs/x-road-bus/join-policy.yaml policy key -- is
     deliberate ("the permissible values of a field are a schema
     concern"), the same rule BackendAuth above already follows.
     Vocabulary: docs/pattern-register.md."""

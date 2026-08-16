@@ -49,8 +49,8 @@ from schema import JoinPayload, MemberRequirements, SecurityServer, Semantic, Se
 
 # Everything hurl/generate.py's main() reads via load()/discover_members()/
 # TEMPLATES/read_env() (hurl/generate.py: PACK/HURL_DIR/ENV_PATH at the top,
-# discover_members() ~line 191, TEMPLATES ~line 421, read_env() ~line 301) --
-# configs/, manifest.yaml, deployment.yaml, the whole hurl/ tree (generate.py
+# discover_members(), TEMPLATES, read_env()) -- configs/, manifest.yaml,
+# deployment.yaml, the whole hurl/ tree (generate.py
 # itself, steps.py it imports, hurl/templates/), and .env for read_env()'s
 # XROAD_* values. Not apps/, prompts/, .git, or anything Docker/deployment-
 # only -- generate.py never touches those.
@@ -116,7 +116,7 @@ def _copy_pack(pack_dir: pathlib.Path, dest: pathlib.Path) -> None:
 
 def render_member_config(key: str, payload: JoinPayload) -> str:
     """configs/member-<key>/<key>.yaml, in the shape prompts/member.md
-    produces (see configs/member-pnia/2.5.yaml for the committed precedent),
+    produces (see configs/member-pnia/pnia.yaml for the committed precedent),
     plus the backend:, member_requirements: and requested_access: blocks.
     Deliberately omits type, forwarding URL, enabled,
     tls_verify -- generate.py never reads them and a copy here would drift

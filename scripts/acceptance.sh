@@ -538,10 +538,10 @@ PY
 # The real ids this section can emit -- 2.7.1 always, plus one 2.7.r1(...)/
 # 2.7.deny(...) pair per row above. Built before deciding whether to run, so
 # _selection_touches_27() can test each one with _id_matches() itself (the
-# file's own hierarchical-prefix rule, ~line 27) instead of a parallel,
-# narrower `case` pattern -- the earlier version only
-# recognised a SELECT_ARG that itself started with "2.7", so a coarser
-# `--only 2` (which _id_matches() says SHOULD match every id under module 2,
+# file's own hierarchical-prefix rule) instead of a parallel, narrower `case`
+# pattern -- the earlier version only recognised a SELECT_ARG that itself
+# started with "2.7", so a coarser `--only 2` (which _id_matches() says SHOULD
+# match every id under module 2,
 # same as it already does for 2.1/2.6) silently skipped this whole section
 # with no SKIP log line to say so.
 _27_IDS=(2.7.1)

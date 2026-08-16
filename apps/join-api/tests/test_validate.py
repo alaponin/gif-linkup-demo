@@ -233,7 +233,7 @@ def test_not_canonical_rejects_the_owner_code_even_though_its_not_an_identity_me
 
 def test_hosting_rejects_a_request_that_asks_for_neither_hosting_nor_its_own_server():
     """join.default_hosting: hosted_on means "a join defaults to hosting;
-    own_server must be asked for" (configs/x-road-bus/2.7.yaml's own comment).
+    own_server must be asked for" (configs/x-road-bus/join-policy.yaml's own comment).
     An own-server join is a real code path, so the reason
     this is still a rejection is the fail-safe, not the missing feature: a
     payload that simply forgot hosted_on must not silently become an

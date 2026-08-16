@@ -758,7 +758,7 @@ function renderJoinRequest(record) {
     html += renderJoinSteps(record);
     // A consume-only join never runs join.r1_verify (job.py's own
     // build_sequence), so `verified` stays unset -- job.py writes an
-    // explanatory `note` instead (~job.py line 704), and the generic
+    // explanatory `note` instead, and the generic
     // "reachability check has not passed yet" line would be actively
     // misleading there (nothing is pending; there is nothing to verify).
     if (record.note) {
