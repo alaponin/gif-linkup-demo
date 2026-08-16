@@ -40,17 +40,32 @@ resource "digitalocean_droplet" "kp2" {
   tags       = ["kp2", "demo", "ephemeral"]
 }
 
-# SSH in, nothing else in. Ubuntu's systemd-timesyncd keeps NTP happy
-# (docs/deployment-targets.md, "Require NTP"); outbound stays open for
-# apt, Docker Hub and ghcr.io image pulls.
+# SSH in, plus 80/443 for the published console. Ubuntu's
+# systemd-timesyncd keeps NTP happy (docs/deployment-targets.md, "Require
+# NTP"); outbound stays open for apt, Docker Hub and ghcr.io image pulls.
 resource "digitalocean_firewall" "kp2" {
-  name        = "${var.name_prefix}-ssh-only"
+  name        = "${var.name_prefix}-fw"
   droplet_ids = [digitalocean_droplet.kp2.id]
 
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
     source_addresses = var.admin_cidrs
+  }
+
+  # Console exposure (infra/CONSOLE-EXPOSURE.md): 80 is ACME
+  # validation + redirect only; 443 is nginx -> auth_basic -> 127.0.0.1:8090.
+  # Nothing else is proxied; every other service remains loopback + tunnel.
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "80"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "443"
+    source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
   outbound_rule {

@@ -20,6 +20,7 @@ packages:
   - python3-yaml
   - python3-venv
   - rsync
+  - nginx
 
 runcmd:
   - install -m 0755 -d /etc/apt/keyrings
@@ -30,4 +31,13 @@ runcmd:
   - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   - systemctl enable --now docker
   - timedatectl set-ntp true
+  # Console exposure (infra/CONSOLE-EXPOSURE.md): nginx is installed
+  # but serves nothing at boot - infra/ci/console-publish.sh copies the
+  # site configs in and enables them, in an order that never exposes the
+  # console before auth and TLS material exist. Ubuntu 24.04's apt certbot
+  # is too old for IP certificates; those need >= 5.4, hence the snap.
+  - rm -f /etc/nginx/sites-enabled/default
+  - systemctl reload nginx
+  - snap install --classic certbot
+  - ln -sf /snap/bin/certbot /usr/bin/certbot
   - mkdir -p /opt/kp2
