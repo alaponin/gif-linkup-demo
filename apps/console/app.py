@@ -162,8 +162,29 @@ def _semantic_fields_for(member_code: str) -> list[str]:
     return cfg.get("semantic", {}).get("fields", [])
 
 
+# One session per Security Server for the life of the process, not one per
+# API hit. Every hit used to POST /login again, and a login is a SERVER-SIDE
+# admin-UI session: /api/acl alone logs into every Security Server, the page
+# polls it every 30s, and a two-hour demo therefore opened hundreds of
+# sessions on the same admin UIs whose concurrent-session behaviour
+# runbook.md already warns about. AdminSession re-logs-in by itself on a 401,
+# so a session the server expires is replaced on the next call rather than
+# breaking it.
+#
+# The lock is held across the login (up to 10s) so two threadpool workers
+# racing on a cold cache cannot each open one: serialising the rare cold path
+# is cheaper than the duplicate sessions it prevents, and every later call
+# takes the lock only long enough to read the dict.
+_SESSIONS: dict[str, xroad.AdminSession] = {}
+_SESSION_LOCK = threading.Lock()
+
+
 def _admin_session(host: str) -> xroad.AdminSession:
-    return xroad.AdminSession(host, ADMIN_USER, ADMIN_PASSWORD)
+    with _SESSION_LOCK:
+        session = _SESSIONS.get(host)
+        if session is None:
+            session = _SESSIONS[host] = xroad.AdminSession(host, ADMIN_USER, ADMIN_PASSWORD)
+        return session
 
 
 def _subsystem_for_service(service_code: str) -> dict:
@@ -234,6 +255,7 @@ async def _lifespan(app: FastAPI):
     # harmlessly, under the same lock.
     if startup_reset_task is not None:
         startup_reset_task.cancel()
+    xroad.SHARED_CLIENT.close()
 
 
 app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)
@@ -261,8 +283,10 @@ def get_topology():
     servers = []
     for ss in TRUTH.topology["security_servers"]:
         try:
-            resp = httpx.Client(verify=False, timeout=3.0).get(
-                f"https://{ss['host']}:{ss['ui_port']}"
+            # The shared pool, not a client per server per poll: this
+            # endpoint is polled every 30s and never closed one of them.
+            resp = xroad.SHARED_CLIENT.get(
+                f"https://{ss['host']}:{ss['ui_port']}", timeout=3.0
             )
             reachable = resp.status_code == 200
         except httpx.HTTPError:

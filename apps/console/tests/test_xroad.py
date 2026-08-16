@@ -220,3 +220,62 @@ def test_exchange_transport_failure_is_not_misclassified_as_denial():
     assert results[0].denied is False
     assert results[0].status_code is None
     assert "connection refused" in results[0].error
+
+
+def test_expired_session_re_logs_in_and_retries_once():
+    """What makes app.py's per-host session cache safe: the server can drop
+    the session at any point, and the next call has to recover rather than
+    surface a 401 to the page."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/login":
+            return _login_response(request)
+        # 401 on the first API call only -- the retry after re-login succeeds.
+        if calls.count("/api/v1/clients/X/service-clients") == 1:
+            return httpx.Response(401, request=request)
+        return httpx.Response(200, json=[{"id": "PROGRESSA:GOV:PNEA:EXAMS"}], request=request)
+
+    session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert session.read_subjects("X") == ["PROGRESSA:GOV:PNEA:EXAMS"]
+    assert calls.count("/login") == 2  # the initial login, then one re-login
+
+
+def test_a_403_is_not_retried():
+    """403 means authenticated and refused. Logging in again would neither
+    fix it nor explain it, and would double the sessions on a server that is
+    already saying no."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/login":
+            return _login_response(request)
+        return httpx.Response(403, request=request)
+
+    session = AdminSession("ss-plr", "xrd", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert session.get("/clients/X/service-clients").status_code == 403
+    assert calls.count("/login") == 1
+
+
+def test_exchange_defaults_to_the_shared_pool(monkeypatch):
+    """The leak this replaced: exchange() built a fresh, never-closed
+    httpx.Client on every call, and the counter tab calls it per lookup."""
+    import xroad
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    monkeypatch.setattr(xroad, "SHARED_CLIENT", httpx.Client(transport=httpx.MockTransport(handler)))
+    results = xroad.exchange(
+        "http://ss-pdga:8080/r1",
+        [{"service": "identity-api", "r1_path": "/persons/{nin}"}],
+        "02831663233",
+        "PROGRESSA:GOV:PDGA:MANAGEMENT",
+    )
+    assert [r.status_code for r in results] == [200]
+    assert seen == ["http://ss-pdga:8080/r1/persons/02831663233"]

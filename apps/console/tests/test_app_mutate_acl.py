@@ -230,3 +230,38 @@ def test_lifespan_shutdown_does_not_hang_with_a_dirty_journal(monkeypatch, tmp_p
 
     elapsed = asyncio.run(asyncio.wait_for(scenario(), timeout=2))
     assert elapsed < 1.0, f"shutdown took {elapsed:.2f}s -- cancel() waited on the blocked thread"
+
+
+def test_admin_session_is_created_once_per_host(monkeypatch):
+    """/api/acl logs into every Security Server, the page polls it every 30s,
+    and each login is a server-side admin-UI session -- so the sessions have
+    to be reused, not re-opened per hit."""
+    logins = []
+
+    class _CountingSession:
+        def __init__(self, host, user, password):
+            logins.append(host)
+
+    monkeypatch.setattr(app.xroad, "AdminSession", _CountingSession)
+    monkeypatch.setattr(app, "_SESSIONS", {})
+    first = app._admin_session("ss-plr")
+    assert app._admin_session("ss-plr") is first
+    app._admin_session("ss-pnia")
+    assert logins == ["ss-plr", "ss-pnia"]
+
+
+def test_concurrent_first_hits_still_open_one_session(monkeypatch):
+    """Two threadpool workers racing on a cold cache must not each log in."""
+    logins = []
+
+    class _SlowSession:
+        def __init__(self, host, user, password):
+            time.sleep(0.05)  # widen the race the lock has to close
+            logins.append(host)
+
+    monkeypatch.setattr(app.xroad, "AdminSession", _SlowSession)
+    monkeypatch.setattr(app, "_SESSIONS", {})
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        sessions = list(pool.map(app._admin_session, ["ss-plr"] * 4))
+    assert logins == ["ss-plr"]
+    assert len(set(id(s) for s in sessions)) == 1

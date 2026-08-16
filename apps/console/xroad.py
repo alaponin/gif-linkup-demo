@@ -19,6 +19,17 @@ import time
 
 import httpx
 
+# One pooled client for every call this container makes, instead of a fresh
+# httpx.Client per AdminSession and per exchange() -- those were never
+# closed, so a console left open for a demo accumulated one connection pool
+# per poll (the page polls /api/topology and /api/acl every 30s) until the
+# garbage collector happened to reap them. Reusing one pool also keeps the
+# TLS handshake off every repeat call. httpx.Client is thread-safe, which
+# matters here: FastAPI runs this app's sync endpoints in a threadpool.
+# Per-request `timeout=` still overrides this default where a caller wants a
+# shorter one (app.py's reachability probe).
+SHARED_CLIENT = httpx.Client(verify=False, timeout=10.0)
+
 
 class AdminSession:
     """Session-login client for one Security Server's admin API (:4000).
@@ -31,28 +42,48 @@ class AdminSession:
 
     def __init__(self, host: str, user: str, password: str, *, client: httpx.Client | None = None):
         self.host = host
-        self._client = client or httpx.Client(verify=False, timeout=10.0)
+        self._user = user
+        self._password = password
+        self._client = client or SHARED_CLIENT
+        self._login()
+
+    def _login(self) -> None:
+        """A login is a SERVER-SIDE session on that Security Server's admin
+        UI, not just a cookie here -- so this is deliberately called once
+        per host and then reused (app.py caches the session), rather than
+        once per API hit. The admin UI's own concurrent-session behaviour
+        (runbook.md's "Admin UIs": sessions in one browser log each other
+        out) is why piling up logins is worth avoiding and not merely
+        untidy."""
         resp = self._client.post(
-            f"https://{host}:4000/login",
-            data={"username": user, "password": password},
+            f"https://{self.host}:4000/login",
+            data={"username": self._user, "password": self._password},
         )
         resp.raise_for_status()
         token = resp.cookies.get("XSRF-TOKEN")
         if not token:
-            raise RuntimeError(f"AdminSession: no XSRF-TOKEN cookie from {host}'s /login")
+            raise RuntimeError(f"AdminSession: no XSRF-TOKEN cookie from {self.host}'s /login")
         self._xsrf = token
 
+    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Retries ONCE after a fresh login on 401, which is what makes a
+        long-lived cached session safe: the server can expire it out from
+        under us at any point, and the alternative (log in per call) is the
+        accumulation this class exists to avoid. 401 only -- 403 is how the
+        admin API answers a request that authenticated fine and was refused
+        anyway, and re-logging-in would neither fix nor explain that."""
+        url = f"https://{self.host}:4000/api/v1{path}"
+        resp = self._client.request(method, url, headers={"X-XSRF-TOKEN": self._xsrf}, **kwargs)
+        if resp.status_code == 401:
+            self._login()
+            resp = self._client.request(method, url, headers={"X-XSRF-TOKEN": self._xsrf}, **kwargs)
+        return resp
+
     def get(self, path: str) -> httpx.Response:
-        return self._client.get(
-            f"https://{self.host}:4000/api/v1{path}", headers={"X-XSRF-TOKEN": self._xsrf}
-        )
+        return self._request("GET", path)
 
     def post(self, path: str, json_body: dict | None = None) -> httpx.Response:
-        return self._client.post(
-            f"https://{self.host}:4000/api/v1{path}",
-            json=json_body,
-            headers={"X-XSRF-TOKEN": self._xsrf},
-        )
+        return self._request("POST", path, json=json_body)
 
     # -- ACL operations -- all four verified against the running stack, not
     # just the OpenAPI model.
@@ -136,7 +167,7 @@ def exchange(
     boundary, not this library function. A
     second check here would be a second place to keep in sync.
     """
-    client = http_client or httpx.Client(verify=False, timeout=10.0)
+    client = http_client or SHARED_CLIENT
     results: list[CallResult] = []
     for call in calls:
         url = entrypoint.rstrip("/") + call["r1_path"].format(nin=nin)
