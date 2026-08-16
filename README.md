@@ -6,22 +6,45 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 
 - **Track:** interoperability
 - **Depends on:** none (foundation)
-- **First time here?** `scripts/demo.sh` stands the federation up from zero in
-  about ten minutes, naming each step as it runs it. Then `exercises.md` —
-  five exercises over the operations `runbook.md` documents, each with the
-  observations to expect: break and restore the once-only proof, join a
-  member, catch a published contract drifting, un-join, and watch the
-  reproducibility proof run.
-- **Stand it up:** see `runbook.md` — start with `scripts/preflight.sh`
-  (checks the host has what the pack needs; installs nothing), then
-  `scripts/gen-secrets.sh` (writes a real `.env`; `.env.example` is a
-  placeholder template and cannot work by itself). An older `.env` missing
-  `KP2_JOIN_APPLICANT_TOKEN`/`KP2_JOIN_OPERATOR_TOKEN` still deploys — those
-  two are interpolated with `${VAR:-}`, so their absence costs the join demo,
-  not the federation: `join-api` refuses to start and the console's join tab
-  renders the remedy instead of a queue. Re-run `scripts/gen-secrets.sh` with
-  no flags to append just the two missing keys (no `--force`, no PIN/password
-  rotation, safe against a running federation)
+
+## Requirements
+
+- **Docker ≥ 24 with Compose v2 ≥ 2.24**, plus `git`, `curl`, `jq`, `python3`
+  3.9+ with PyYAML, a SHA-256 tool and bash 4+. `scripts/preflight.sh` checks
+  every one of them at once and installs nothing.
+- **~11 GiB RAM** in steady state, measured live (`docker stats --no-stream`:
+  four Security Servers ~2.2–2.3 GiB each, Central Server ~1.8 GiB, Test CA
+  ~88 MiB, two mock providers ~32 MiB each). Fits a 16 GB host.
+- **~15 GB free disk:** ~4.6 GB of pinned images (Security Server Sidecar
+  2.31 GB, pulled once and shared by all four servers; Central Server 1.78 GB;
+  Test CA 542 MB), ~1 GB of locally built mock / console / join-api images,
+  ~1.4 GB of named volumes once deployed, and Docker build cache above that.
+- **4 CPU cores or more.** Unmeasured, unlike the figures above: five JVMs run
+  concurrently, and a narrower host stretches the ~13-minute cold `--full`
+  rather than breaking it.
+- **A git clone of the monorepo**, with this pack at
+  `10-Knowledge-Products/KP2-GIF/KP2-build-pack/`. `join-api` bind-mounts the
+  monorepo root and its `.git`, and `scripts/package.sh` builds from `git
+  archive` — an unzipped copy stands the federation up fine, but not the join
+  demo.
+
+## Quickstart
+
+```
+scripts/demo.sh            # preflight, .env, deploy, seed, acceptance, console -- ~10 min from zero
+scripts/verify.sh --live   # re-prove it after a change
+scripts/teardown.sh        # stop; volumes survive (--purge only for a from-zero rebuild)
+```
+
+`demo.sh` names each step as it runs it and refuses if a federation is already
+deployed; step 1 is `scripts/gen-secrets.sh`, which writes the real `.env`
+(`.env.example` is a placeholder template and cannot work by itself). Then
+`exercises.md` — five exercises over the operations `runbook.md` documents,
+each with the observations to expect: break and restore the once-only proof,
+join a member, catch a published contract drifting, un-join, and watch the
+reproducibility proof run.
+
+- **Stand it up (the long way):** `runbook.md`
 - **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
   Progressa identifiers that are the KP3/KP4 join keys)
@@ -40,63 +63,14 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   darwin-only Terraform provider binary, all gitignored and all of which a
   Finder zip copies anyway. Give a clone rather than an archive when the
   session includes the join demo — `join-api` needs the monorepo's `.git`.
-- **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
-  tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
-  `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,
-  no federation, but the Docker CLI is required: `check-exposure.sh` reads
-  the *rendered* Compose config, profiles and `${VAR}` interpolation
-  resolved, which is what makes it worth having, and that read needs
-  neither a running Docker daemon nor `.env`, see `tests/test_tiers.py`)
-  **~50s** for the full test suite (no running containers, no network; `--full`
-  runs this tier inside `hurl/run-linkup.sh`, so every test added here is
-  also added to the reproducibility proof);
-  `--live`
-  (`--fast`, then `acceptance.sh` against a running stack; refuses rather
-  than deploying one if nothing is reachable)
-  **~80s** against the standard topology;
-  `--full` (purge, deploy, seed, acceptance, console smoke — the
-  reproducibility proof) **~13 min** cold against the standard topology (four
-  Security Servers, no lite/full split): container start-up plus the Hurl
-  admin-API run make up the bulk of the deploy time, with `--fast`,
-  teardown, seeding, acceptance and the console smoke pass around it. RAM:
-  **~11 GiB** measured live (`docker stats --no-stream` steady state: four
-  Security Servers ~2.2–2.3 GiB each, Central Server ~1.8 GiB, Test CA
-  ~88 MiB, two mock providers ~32 MiB each), including the operational- and
-  environmental-monitoring add-ons' acceptance check, which cost nothing
-  extra to deploy since they ship on the Sidecar image this pack already
-  uses. See `docs/production-delta.md` for what a join and un-join do to
-  Central-Server state.
-
-  There is one topology — no lite/full split to develop against or measure
-  separately. **When to run which:** `--fast` after every change, because it
-  is the one always cheap enough to run every time; `--live` once a change
-  is finished, which proves it against a running federation rather than
-  statically; `--full` before handing the pack to anyone, as the
-  reproducibility proof rather than a routine step. Whenever you record that
-  something was verified, say which tier backed it — a `--fast` claim and a
-  `--full` one are different claims.
-  **`--live` does not itself perform a real member join**
-  (`acceptance/join-member.md`'s checks discover already-joined members
-  generically and pass vacuously when none exist — they never submit,
-  approve, or unjoin one; unjoin is discovered from `out/join/*.json`'s
-  `RETIRED` records). A real hosted join
-  (`apps/join-api`, `POST /requests` → approve → `ACTIVE, verified: true`)
-  takes on the order of a minute end to end, and an own-server join takes
-  roughly **~2–3 minutes after the member's server is up** (plus 76–100s to
-  stand the server up, plus whatever `BLOCKED` really costs, which in
-  production is days) — comfortably under the ~2-minute threshold past
-  which `--live` "stops being the run-it-when-a-task-is-done tier it is
-  documented as." So **`--live` stays vacuous-by-default**, and a real join
-  is a deliberate, separate, manual procedure (`runbook.md`'s "Join via the
-  API (automated)"), not something bolted onto the routine `--live` tier.
-
-  A hosted join (PTSB, `awards-api` published and granted to PNEA:EXAMS)
-  reaches `ACTIVE, verified: true` in well under two minutes and un-joins
-  back to `RETIRED` in a few seconds. An own-server join (same PTSB
-  identity, `security_server.own_server: true`) reaches `BLOCKED` almost
-  immediately, then `ACTIVE, verified: true` once its Security Server is
-  brought up and resumed — see `docs/production-delta.md`'s own record of
-  this flow for full detail.
+- **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three tiers,
+  chosen by the tool, not by whoever is typing. `--fast` (static checks, the
+  ship gate, exposure, the test suite — no running containers, no network)
+  **~50s**; `--live` (`--fast`, then `acceptance.sh` against a running stack)
+  **~80s**; `--full` (purge, deploy, seed, acceptance, console smoke — the
+  reproducibility proof) **~13 min** cold against the standard topology. Which
+  tier to run when, what each does and does not prove, and why `--live` never
+  performs a real member join: `runbook.md`, "Verifying a change".
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — X-Road
 version pins, network bind, and (`cs_digest`/`ss_digest`/`testca_tag`) the

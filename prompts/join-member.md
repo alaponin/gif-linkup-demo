@@ -98,4 +98,4 @@ the federation's own config, not a free choice each time this prompt runs.
   refuses a policy whose `member_class` disagrees with the federation's own.
 - **Live** (`--live`): exercised by any join;
   `acceptance/join-member.md` asserts against whatever has joined and passes
-  vacuously when nothing has (README.md's `--live` tier note).
+  vacuously when nothing has (`runbook.md`, "Verifying a change").

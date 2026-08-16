@@ -32,6 +32,13 @@ Everything below is the engineering depth under those three.
   topology: no smaller alternative to opt into — an earlier 5-server
   topology including MoEYS measured ~13 GB before MoEYS was retired.
 - `curl`, `jq`, `python3` on the workstation.
+- An older `.env` missing `KP2_JOIN_APPLICANT_TOKEN`/`KP2_JOIN_OPERATOR_TOKEN`
+  still deploys: those two are interpolated with `${VAR:-}`, so their absence
+  costs the join demo, not the federation — `join-api` refuses to start and the
+  console's join tab renders the remedy instead of a queue. `preflight.sh` warns
+  about it; re-run `scripts/gen-secrets.sh` with no flags to append just the two
+  missing keys (no `--force`, no PIN/password rotation, safe against a running
+  federation).
 - **Host clock synchronised (NTP).** X-Road signs and timestamps every
   message; a drifting clock produces failures that present as certificate
   errors, not time errors. Check before deploying, don't just assume it:
@@ -88,6 +95,63 @@ doing at each one. It refuses if a federation is already deployed.
    `scripts/console.sh {down|reset|status}` manages it; `acceptance.sh` itself
    refuses to run while its journal is dirty, with a message telling you to
    `scripts/console.sh reset` first.
+
+## Verifying a change
+
+`scripts/verify.sh --fast|--live|--full` — three tiers, chosen by the tool,
+not by whoever is typing.
+
+- **`--fast`** — static checks, the ship gate, exposure, and
+  `pytest tests/ apps/console/tests/ apps/join-api/tests/
+  apps/mock-registry/tests/`. **~50s.** No running containers, no network, no
+  federation — but the Docker CLI *is* required: `check-exposure.sh` reads the
+  *rendered* Compose config, profiles and `${VAR}` interpolation resolved,
+  which is what makes it worth having, and that read needs neither a running
+  Docker daemon nor `.env` (`tests/test_tiers.py`). `--full` runs this tier
+  inside `hurl/run-linkup.sh`, so every test added here is also added to the
+  reproducibility proof.
+- **`--live`** — `--fast`, then `acceptance.sh` against a running stack;
+  refuses rather than deploying one if nothing is reachable. **~80s** against
+  the standard topology.
+- **`--full`** — purge, deploy, seed, acceptance, console smoke: the
+  reproducibility proof. **~13 min** cold against the standard topology (four
+  Security Servers; there is one topology, no lite/full split to develop
+  against or measure separately). Container start-up plus the Hurl admin-API
+  run make up the bulk of the deploy time, with `--fast`, teardown, seeding,
+  acceptance and the console smoke pass around it. RAM and disk: README.md's
+  Requirements. The operational- and environmental-monitoring add-ons'
+  acceptance check is included and costs nothing extra to deploy — they ship
+  on the Sidecar image this pack already uses. See
+  `docs/production-delta.md` for what a join and un-join do to Central-Server
+  state.
+
+**When to run which:** `--fast` after every change, because it is the one
+always cheap enough to run every time; `--live` once a change is finished,
+which proves it against a running federation rather than statically; `--full`
+before handing the pack to anyone, as the reproducibility proof rather than a
+routine step. Whenever you record that something was verified, say which tier
+backed it — a `--fast` claim and a `--full` one are different claims.
+
+**`--live` does not itself perform a real member join.**
+`acceptance/join-member.md`'s checks discover already-joined members
+generically and pass vacuously when none exist — they never submit, approve,
+or unjoin one (unjoin is discovered from `out/join/*.json`'s `RETIRED`
+records). A real hosted join (`apps/join-api`, `POST /requests` → approve →
+`ACTIVE, verified: true`) takes on the order of a minute end to end, which is
+inside the ~2-minute threshold past which `--live` would stop being the
+run-it-when-a-task-is-done tier it is documented as. An own-server join is not:
+it takes roughly **~2–3 minutes after the member's server is up**, plus 76–100s
+to stand that server up, plus whatever `BLOCKED` really costs — days, in
+production. So **`--live` stays vacuous-by-default**, and a real join is a
+deliberate, separate, manual procedure ("Join via the API (automated)", below),
+not something bolted onto the routine `--live` tier.
+
+A hosted join (PTSB, `awards-api` published and granted to PNEA:EXAMS) reaches
+`ACTIVE, verified: true` in well under two minutes and un-joins back to
+`RETIRED` in a few seconds. An own-server join (same PTSB identity,
+`security_server.own_server: true`) reaches `BLOCKED` almost immediately, then
+`ACTIVE, verified: true` once its Security Server is brought up and resumed —
+see `docs/production-delta.md`'s own record of this flow for full detail.
 
 ## Admin UIs (manual fallback)
 
@@ -182,9 +246,8 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   `GET /requests/{id}` (or watch the tab; it polls itself) until `state` is
   `ACTIVE` — a hosted join with one published service and one ACL grant
   takes on the order of a minute end to end (approve to `ACTIVE, verified:
-  true`), comfortably under the ~2-minute threshold past which `--live`
-  would stop being cheap enough to run routinely (see README.md's `--live`
-  tier note).
+  true`), inside the ~2-minute threshold past which `--live` would stop being
+  cheap enough to run routinely ("Verifying a change", above).
   - **Recovering a `FAILED` job:** the record's `error` names the step and
     the last thing observed. Fix the underlying cause (a real federation
     problem, not usually this API's own code — see the OCSP trap below),
