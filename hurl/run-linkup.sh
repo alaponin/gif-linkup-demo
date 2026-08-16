@@ -111,9 +111,18 @@ log "waiting for containers to report healthy"
 # Bounded, not open-ended: hurl/compose.hurl.yml's own healthcheck budget is
 # retries:120 at 5s (600s) per server -- wait a little past that, then fail
 # clearly instead of hanging forever on a container that never recovers.
+# The server list is SS_ORDER (hurl/topology.sh, generated from configs/ +
+# manifest.yaml and sourced by lib-stack.sh), never a hand-kept copy: it used
+# to omit ss-pnia, so the one bounded wait that exists to survive a slow
+# restart did not cover it -- a slow ss-pnia hit the Hurl run's own
+# depends_on/handshake instead of this loop's clear failure. SS_ORDER also
+# already includes a joined member's own Security Server, which
+# `up -d` above brings up from hurl/compose.members.yml and which
+# hurl/generate.py gives the same healthcheck as the canonical four.
+_HEALTH_TARGETS=(cs ca "${SS_ORDER[@]}")
 _HEALTH_WAITED=0
-until [ "$(docker inspect -f '{{.State.Health.Status}}' cs ca ss-pdga ss-pnea ss-plr 2>/dev/null | sort -u)" = "healthy" ]; do
-  [ "$_HEALTH_WAITED" -ge 660 ] && fail "cs/ca/ss-pdga/ss-pnea/ss-plr did not all report healthy within 660s -- docker ps to see which"
+until [ "$(docker inspect -f '{{.State.Health.Status}}' "${_HEALTH_TARGETS[@]}" 2>/dev/null | sort -u)" = "healthy" ]; do
+  [ "$_HEALTH_WAITED" -ge 660 ] && fail "${_HEALTH_TARGETS[*]} did not all report healthy within 660s -- docker ps to see which"
   sleep 2
   _HEALTH_WAITED=$((_HEALTH_WAITED + 2))
 done
