@@ -34,6 +34,12 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   narrative document disagrees with it, it wins** — that divergence is what
   once let findings be recorded as closed by files that never existed.
 - **Design records:** `docs/decisions/` — reasoning, never status
+- **Hand it to someone:** `scripts/package.sh` — a zip (or `.tar.gz`) built with
+  `git archive`, so it holds what a fresh clone would. Never zip the working
+  directory: it carries the real `.env`, `out/`, the `.venv` and ~25 MB of
+  darwin-only Terraform provider binary, all gitignored and all of which a
+  Finder zip copies anyway. Give a clone rather than an archive when the
+  session includes the join demo — `join-api` needs the monorepo's `.git`.
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three
   tiers, chosen by the tool, not by whoever is typing. `--fast` (static checks, the ship gate, exposure,
   `pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/` — no running containers, no network,

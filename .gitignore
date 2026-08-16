@@ -34,8 +34,19 @@ infra/terraform/*.tfstate.backup
 
 # Local dev/test venv for apps/console (pytest/httpx/fastapi) -- the console
 # container installs its own deps in-image (apps/console/Dockerfile); this is
-# only for running apps/console/tests locally during development.
-.venv/
+# only for running apps/console/tests locally during development. The glob,
+# not a bare `.venv/`: Finder's duplicate-on-copy leaves `.venv 2/` beside it,
+# which the exact pattern did not match.
+.venv*/
+
+# Editor, OS and tool droppings. None of these are ever part of the pack, and
+# .DS_Store in particular is created by merely LOOKING at a folder in Finder,
+# so it reappears constantly. tests/test_tree_hygiene.py refuses these (and
+# Finder's "<name> 2" duplicates) in the working tree as well, because
+# gitignoring a file only keeps it out of git -- it still ships in a
+# folder-copy or zip. Package with scripts/package.sh, which uses git archive.
+.DS_Store
+.pytest_cache/
 
 # Working plans and their notes. They record how a change was arrived at, which
 # is useful while making it and noise once it has landed -- the change itself,
