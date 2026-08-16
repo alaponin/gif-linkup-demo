@@ -31,6 +31,7 @@ import shutil
 import subprocess
 
 import pytest
+import yaml
 
 PACK = pathlib.Path(__file__).resolve().parent.parent
 GOLDEN = pathlib.Path(__file__).resolve().parent / "golden"
@@ -161,3 +162,110 @@ def test_generate_matches_golden_deployment(tmp_path):
 def test_generate_matches_golden_hosted_fixture(tmp_path):
     actual = _generate_hosted_fixture(tmp_path)
     _assert_trees_equal(actual, GOLDEN / "hosted-fixture" / "generated")
+
+
+# -- fixture/real config drift ------------------------------------------------
+#
+# The hosted-fixture member configs are a COPY of the real configs/, so they
+# drift. They already have: sla: and member_requirements: were dropped from
+# the copies at some point and nobody noticed, because hurl/generate.py --
+# the only thing this fixture is fed to -- reads neither.
+#
+# That is harmless exactly as long as it stays true, and nothing was watching
+# the "as long as". Both fields ARE read, by scripts/render_onboarding.py; the
+# day this fixture is pointed at anything but generate.py, their absence stops
+# being decoration and starts being a wrong test. The tests below draw the
+# line explicitly: the fields generate.py reads must match the real configs
+# exactly, and the fields it does not read may be absent -- but only the two
+# that are absent today. A third one going missing is new drift and fails.
+
+# What hurl/generate.py actually reads out of a member config -- confirmed
+# against discover_members() (key/identity agreement), resolve_hosted_on_map()
+# (security_server.hosted_on), build_ss_file()/build_service_file()/
+# build_hosted_client() and main()'s member_service_block(). Anything here is
+# load-bearing for this fixture; anything not here is decoration as far as
+# generate.py is concerned.
+_LOAD_BEARING = frozenset({"module", "building_block", "security_server", "services", "client", "consumes", "semantic"})
+
+# The two decoration fields the fixture copies are allowed to omit, and who
+# does read them. Extend this ONLY with the consumer named -- an entry with no
+# reader is a field that should have been deleted from the real config too.
+_MAY_BE_ABSENT = {
+    "member_requirements": "scripts/render_onboarding.py",
+    "sla": "scripts/render_onboarding.py (per service)",
+}
+
+# The single deliberate difference: PNEA's fixture copy sets hosted_on, which
+# is the entire reason the fixture exists (no canonical member sets it, so
+# resolve_hosted_on_map()'s explicit branch is otherwise unreachable).
+_INTENDED_DELTAS = {("pnea", "security_server", "hosted_on"): "ss-plr"}
+
+_FIXTURE_CONFIGS = GOLDEN / "hosted-fixture" / "member-configs"
+
+
+def _member_config_pairs():
+    for fixture_path in sorted((_FIXTURE_CONFIGS / "configs").glob("member-*/*.yaml")):
+        key = fixture_path.parent.name.removeprefix("member-")
+        real_path = PACK / fixture_path.relative_to(_FIXTURE_CONFIGS)
+        yield key, yaml.safe_load(real_path.read_text()), yaml.safe_load(fixture_path.read_text())
+
+
+def test_hosted_fixture_configs_carry_every_field_generate_py_reads():
+    """The load-bearing half must match the real configs exactly, so the
+    golden corpus keeps describing the real pack. The one permitted delta is
+    PNEA's hosted_on -- declared, not merely tolerated."""
+    for key, real, fixture in _member_config_pairs():
+        for field in sorted(_LOAD_BEARING & set(real)):
+            expected = real[field]
+            if field == "services":
+                # sla: lives inside each service block; compare the rest.
+                expected = [{k: v for k, v in s.items() if k not in _MAY_BE_ABSENT} for s in expected]
+            if (key, field) == ("pnea", "security_server"):
+                expected = {**expected, **{
+                    sub: value for (k, f, sub), value in _INTENDED_DELTAS.items()
+                    if (k, f) == (key, field)
+                }}
+            assert fixture.get(field) == expected, (
+                f"tests/golden/hosted-fixture/member-configs/configs/member-{key}/ has drifted "
+                f"from the real configs/member-{key}/ in {field!r}, which hurl/generate.py READS "
+                "-- the golden corpus no longer describes the real pack. Sync the fixture and "
+                "regenerate with scripts/regen-golden.sh."
+            )
+
+
+def test_hosted_fixture_omits_only_the_documented_decoration_fields():
+    """The other half of the same contract: catch a NEW field going missing.
+    If generate.py ever starts reading one of the omitted fields, move it out
+    of _MAY_BE_ABSENT and into _LOAD_BEARING -- the test above then demands it
+    back in the fixture."""
+    for key, real, fixture in _member_config_pairs():
+        absent = set(real) - set(fixture)
+        assert absent <= set(_MAY_BE_ABSENT), (
+            f"member-{key}'s fixture copy is missing {sorted(absent - set(_MAY_BE_ABSENT))}, which is "
+            "new drift. If generate.py does not read it, document it in _MAY_BE_ABSENT with the "
+            "script that does; otherwise copy the field back."
+        )
+        for service in real.get("services", []):
+            fixture_service = next(
+                (s for s in fixture.get("services", []) if s.get("code") == service["code"]), None
+            )
+            assert fixture_service is not None, f"member-{key} fixture is missing service {service['code']}"
+            missing = set(service) - set(fixture_service)
+            assert missing <= set(_MAY_BE_ABSENT), (
+                f"member-{key}'s service {service['code']} is missing {sorted(missing - set(_MAY_BE_ABSENT))} "
+                "in the fixture copy -- new drift."
+            )
+
+
+def test_the_hosted_fixture_delta_is_the_one_it_exists_for():
+    """PNEA's hosted_on is the fixture's whole reason to exist. If it is ever
+    dropped, both golden tests keep passing while silently covering nothing --
+    resolve_hosted_on_map()'s explicit branch goes untested again."""
+    fixtures = {key: fixture for key, _real, fixture in _member_config_pairs()}
+    assert fixtures["pnea"]["security_server"].get("hosted_on") == "ss-plr"
+    for key, fixture in fixtures.items():
+        if key != "pnea":
+            assert "hosted_on" not in fixture["security_server"], (
+                f"member-{key} now sets hosted_on in the fixture too -- the corpus no longer "
+                "isolates the single hosted member the test claims to cover."
+            )
