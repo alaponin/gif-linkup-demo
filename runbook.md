@@ -236,6 +236,42 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
 
   Start `join-api` with `scripts/join.sh up` first if it is not running —
   `scripts/acceptance.sh` stops it when it finishes.
+- **Remediating drift:** `scripts/member.sh refresh <key>` — detect, review,
+  refresh, in that order. X-Road reloads a service description only on an
+  explicit refresh, so a backend someone edited in a browser drifts from
+  what the federation publishes until an operator acts. This is the act.
+
+  It is a separate subcommand and not a `--fix` flag on `drift`, because the
+  two are different kinds of thing: `drift` is a read that works against a
+  federation that is not even running, while `refresh` authenticates to a
+  Security Server's admin API and mutates federation state. It runs from the
+  same place, for the same networking reason:
+
+  ```
+  docker compose exec join-api \
+    bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh refresh <key>
+  ```
+
+  **What it refuses.** Before refreshing anything it re-runs the
+  `join.allowed_methods` check `validate.py` applies at join time, against
+  the spec as served *now*. A member whose spec has grown a `POST` is
+  refused, in full, with the offending operations named: a refresh makes the
+  federation *publish* the current contract, it does not make the current
+  contract *approved*. A contract that has moved beyond what the member was
+  admitted on is a re-admission decision, not a refresh.
+
+  **What it records.** The act is appended to the member's join record as a
+  `refreshes:` entry (timestamp plus the endpoint set each service serves
+  after the refresh). `endpoint_baseline` is never touched — it is evidence
+  of the contract the member was *admitted* on, and refreshing does not
+  re-admit anybody. `drift` then reports both facts: still drifted from
+  join (permanently, and correctly), and clean since the last refresh —
+  which is the half that clears, so the warning means something again.
+
+  **What it does not do.** Review. A changed field set, a changed lawful
+  basis or a changed SLA passes this command untouched; the only policy it
+  re-applies is `allowed_methods`. The organisational review around it is
+  the operator's, and `docs/production-delta.md` says so.
 - **Join via the API (automated):** `scripts/join.sh {up|down|status}`
   starts/stops the join API itself (`profile: demo`, like the console) at
   `http://localhost:8091`. Submit a payload matching `apps/join-api/schema.py`

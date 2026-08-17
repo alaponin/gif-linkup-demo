@@ -187,11 +187,34 @@ data.)
   member.
 - Run from inside, the output is an **endpoint diff** against the baseline
   captured at join time (`out/join/*.json`):
-  `awards-api: DRIFT` with `+ /awards/{nin}/history`. An unchanged spec
-  reports `no drift (1 endpoint(s), unchanged since join)`.
+  `awards-api: DRIFT since join` with `+ /awards/{nin}/history`, and the
+  remedy named. An unchanged spec reports
+  `no drift (1 endpoint(s), unchanged since join)`.
 - It reads `out/join/*.json` and the live spec URL directly — no auth, no
   HTTP to the join API. The API only has to be *running* here because its
   container is the one on the `linkup` network with the pack mounted.
+
+**Then remedy it.** Detecting a drifted contract and leaving the federation
+publishing the old one is half a job:
+
+```
+docker compose exec join-api \
+  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh refresh ptsb
+docker compose exec join-api \
+  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift ptsb
+```
+
+- `refresh` makes X-Road re-read the description (it reloads on explicit
+  refresh only), then records the act on the join record.
+- The second `drift` now says `DRIFT since join` **and** `clean since the
+  last refresh`. Both are true, and the pairing is the point: the member's
+  contract has permanently moved from the one it was admitted on — that is
+  evidence, and it never clears — while the operator's *outstanding work* is
+  now zero, so the command exits 0.
+- **Try adding a `post:` to the spec and refreshing again.** It refuses, and
+  names the operation. A refresh publishes the current contract; it does not
+  approve one. Admitting a write endpoint is a new join decision, which is
+  exactly the line `join.allowed_methods` draws.
 
 **Cleanup:** `git checkout apps/specs/ptsb-awards.openapi.yaml`.
 

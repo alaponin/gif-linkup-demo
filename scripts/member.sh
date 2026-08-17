@@ -11,6 +11,7 @@ usage() {
 Usage: scripts/member.sh list
        scripts/member.sh remove <key>
        scripts/member.sh drift <key>
+       scripts/member.sh refresh <key>
 
   list          Print the deployed member set (key, origin, server, ports),
                 read from hurl/topology.json.
@@ -28,7 +29,19 @@ Usage: scripts/member.sh list
                 works whether or not it is even running. Fails clearly if
                 '<key>' has no ACTIVE out/join/*.json record to compare
                 against (never joined through the API, or joined before this
-                feature existed).
+                feature existed). Reports drift since JOIN and, once
+                'refresh' has run, drift since the last refresh -- the
+                second is what a remediated member's warning clears from.
+  refresh <key> Make the federation re-read the member's published OpenAPI
+                specs (X-Road reloads a service description only on an
+                explicit refresh), then record the act on the member's join
+                record. This one DOES authenticate to a Security Server's
+                admin API and DOES mutate federation state -- deliberately a
+                separate subcommand rather than a flag on 'drift', which
+                must stay something you can run against a federation that is
+                not even up. It refuses if the spec as served now declares
+                operations outside join.allowed_methods: a refresh publishes
+                the current contract, it does not approve it.
 
 There is no "add": run prompts/member.md against an agency brief instead.
 USAGE
@@ -147,6 +160,14 @@ import yaml
 member_dir, key, record_json = sys.argv[1], sys.argv[2], sys.argv[3]
 record = json.loads(record_json)
 baseline = record.get("endpoint_baseline") or {}
+# The join-time baseline is never re-derived -- it is evidence of the contract
+# this member was ADMITTED on. `refresh` amends the record instead, so there
+# are two questions to answer, not one: has the contract moved since join
+# (always true once it has moved, and it should stay true), and has it moved
+# since the operator last remediated. The second is the one that clears.
+refreshes = record.get("refreshes") or []
+last_refresh = refreshes[-1] if refreshes else None
+refresh_baseline = (last_refresh or {}).get("endpoints") or {}
 
 yaml_files = sorted(glob.glob(os.path.join(member_dir, "*.yaml")))
 if not yaml_files:
@@ -177,24 +198,207 @@ for svc in services:
         print(f"{code}: no join-time baseline for this service (published after join?) "
               f"-- current endpoints: {sorted(current_paths)}")
         continue
-    added, removed = sorted(current_paths - base_paths), sorted(base_paths - current_paths)
+
+    def _diff(reference):
+        return sorted(current_paths - reference), sorted(reference - current_paths)
+
+    added, removed = _diff(base_paths)
     if not added and not removed:
         print(f"{code}: no drift ({len(current_paths)} endpoint(s), unchanged since join)")
         continue
-    any_drift = True
-    print(f"{code}: DRIFT")
+
+    # Drifted from join. Whether that is an OPEN problem depends on what the
+    # operator did about it: a recorded refresh is the federation having been
+    # made to publish this contract, so the actionable diff is against that.
+    print(f"{code}: DRIFT since join")
     for p in added:
         print(f"  + {p}")
     for p in removed:
         print(f"  - {p}")
+    if code not in refresh_baseline:
+        any_drift = True
+        if last_refresh:
+            print(f"  (the last refresh, {last_refresh['at']}, did not cover this service)")
+        else:
+            print(f"  the federation still publishes the join-time contract -- "
+                  f"remedy with: scripts/member.sh refresh {key}")
+        continue
+    r_added, r_removed = _diff(set(refresh_baseline[code]))
+    if not r_added and not r_removed:
+        print(f"  clean since the last refresh ({last_refresh['at']}) -- the federation "
+              f"publishes what this spec serves today")
+        continue
+    any_drift = True
+    print(f"  and DRIFT since the last refresh ({last_refresh['at']}):")
+    for p in r_added:
+        print(f"    + {p}")
+    for p in r_removed:
+        print(f"    - {p}")
+    print(f"  remedy with: scripts/member.sh refresh {key}")
 
 sys.exit(1 if any_drift else 0)
 PY
 }
 
+cmd_refresh() {
+  local key=${1:?"refresh needs a member key -- see: scripts/member.sh"}
+  local dir="$PACK_DIR/configs/member-$key"
+  [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to refresh"
+
+  # lib-stack.sh, not just lib-core.sh: this subcommand authenticates to a
+  # Security Server's admin API and mutates federation state, so it needs
+  # .env, XROAD_BIND and the api_key/api session helpers. Sourced HERE rather
+  # than at the top of this file on purpose -- `drift` is documented as "no
+  # auth, no HTTP to the join API, works whether or not it is even running",
+  # and lib-stack.sh's credential refusal would end that.
+  . "$PACK_DIR/scripts/lib-stack.sh"
+
+  local topo="$PACK_DIR/hurl/topology.json"
+  [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
+
+  # subsystem id (the admin API's client id), the SS hosting it, and that
+  # server's host-mapped admin port -- the same file cmd_list reads.
+  local resolved
+  resolved=$(python3 - "$topo" "$key" <<'PY'
+import json, sys
+topo = json.load(open(sys.argv[1]))
+key = sys.argv[2]
+sub = next((s for s in topo["subsystems"] if s["member_code"].lower() == key.lower()), None)
+if sub is None:
+    sys.exit(f"member.sh refresh: '{key}' is not in hurl/topology.json -- regenerate, or check the key")
+ports = {s["host"]: s["host_ui_port"] for s in topo["security_servers"]}
+host = sub["hosted_on"]
+if host not in ports:
+    sys.exit(f"member.sh refresh: {key}'s Security Server '{host}' has no host-mapped admin port in hurl/topology.json")
+print(f"{sub['id']}\t{host}\t{ports[host]}")
+PY
+) || exit 1
+  local client_id host ui
+  IFS=$'\t' read -r client_id host ui <<<"$resolved"
+
+  local jar
+  jar=$(api_key "$XROAD_BIND:$ui" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD") \
+    || fail "could not log in to $host's admin API at $XROAD_BIND:$ui -- is the federation running?"
+
+  local descriptions
+  descriptions=$(api GET "$XROAD_BIND:$ui" "$jar" "/clients/${client_id}/service-descriptions") \
+    || fail "could not read $client_id's service descriptions from $host"
+
+  # The governance half, before anything is published: re-run the SAME
+  # allowed-methods check apps/join-api/validate.py applies at join time,
+  # against the spec as it is served NOW. A refresh makes the federation
+  # publish the current contract; it does not make the current contract
+  # approved. Refusing here is what keeps this a governance tool rather than
+  # a convenience that launders an unreviewed write endpoint onto the bus.
+  local plan
+  plan=$(python3 - "$PACK_DIR/configs/x-road-bus/join-policy.yaml" "$descriptions" <<'PY'
+import json, sys, urllib.request
+
+import yaml
+
+policy = (yaml.safe_load(open(sys.argv[1])) or {}).get("join") or {}
+allowed = {m.upper() for m in (policy.get("allowed_methods") or [])}
+descriptions = json.loads(sys.argv[2])
+methods = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+
+rows, refused = [], []
+for desc in descriptions:
+    url = desc.get("url")
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            spec = yaml.safe_load(resp.read()) or {}
+    except Exception as exc:
+        sys.exit(f"member.sh refresh: could not fetch the published spec at {url}: {exc}\n"
+                 f"  (a docker-internal demo hostname is only reachable from inside the linkup "
+                 f"network -- run this from a container on it, e.g. docker compose exec join-api)")
+    paths = sorted((spec.get("paths") or {}).keys())
+    for path, operations in (spec.get("paths") or {}).items():
+        for method in operations or {}:
+            if method.lower() in methods and method.upper() not in allowed:
+                refused.append(f"{method.upper()} {path} (service description {desc.get('id')}, {url})")
+    for svc in desc.get("services") or []:
+        rows.append({"id": desc.get("id"), "url": url,
+                     "service": svc.get("service_code") or svc.get("id"), "paths": paths})
+    if not (desc.get("services") or []):
+        rows.append({"id": desc.get("id"), "url": url, "service": None, "paths": paths})
+
+if refused:
+    sys.exit("member.sh refresh: REFUSED -- the spec as served now declares operations "
+             "outside join.allowed_methods " + str(sorted(allowed)) + ":\n  "
+             + "\n  ".join(refused)
+             + "\n\nA refresh publishes the current contract; it does not approve it. This "
+               "member's contract has changed beyond what it was admitted on -- that is a "
+               "re-admission decision (an operator review, then a new join), not a refresh.")
+print(json.dumps(rows))
+PY
+) || exit 1
+
+  local ids
+  ids=$(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(sorted({str(r["id"]) for r in json.load(sys.stdin)})))')
+  [ -n "$ids" ] || { log "$key: no service descriptions published -- nothing to refresh"; return 0; }
+
+  local desc_id
+  while read -r desc_id; do
+    api PUT "$XROAD_BIND:$ui" "$jar" "/service-descriptions/${desc_id}/refresh" >/dev/null \
+      || fail "refresh of service description $desc_id on $host failed"
+    log "refreshed service description $desc_id on $host"
+  done <<<"$ids"
+
+  # Record the act as an AMENDMENT. endpoint_baseline is never touched: it is
+  # evidence of the contract this member was admitted on, and refreshing the
+  # federation does not re-admit anybody. cmd_drift then reports both facts --
+  # drift since join, and drift since this refresh -- instead of a warning
+  # that can never clear.
+  python3 - "$PACK_DIR/out/join" "$key" "$plan" <<'PY'
+import datetime, glob, json, os, sys
+
+join_dir, key, plan = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+best, best_path = None, None
+for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
+    try:
+        rec = json.load(open(path))
+    except Exception:
+        continue
+    if rec.get("state") != "ACTIVE":
+        continue
+    if (rec.get("payload") or {}).get("code", "").lower() != key.lower():
+        continue
+    if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
+        best, best_path = rec, path
+if best is None:
+    print(f"{key}: refreshed, but no ACTIVE out/join/*.json record to amend -- "
+          f"drift has no per-refresh baseline to compare against.", file=sys.stderr)
+    sys.exit(0)
+
+endpoints = {}
+for row in plan:
+    if row["service"]:
+        endpoints[row["service"]] = row["paths"]
+best.setdefault("refreshes", []).append({
+    "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "endpoints": endpoints,
+})
+# Same atomic temp-and-rename apps/join-api/app.py's _save_request uses: a
+# reader must never see a half-written record.
+tmp = best_path + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(best, fh, indent=2)
+os.replace(tmp, best_path)
+print(f"recorded the refresh on {os.path.basename(best_path)} "
+      f"({len(endpoints)} service(s)); endpoint_baseline untouched")
+PY
+
+  log "$key: the federation now publishes the contract these specs serve today."
+  log "  What this did NOT do: approve it. The allowed-methods check above is the only"
+  log "  policy re-applied; a changed field set, a changed lawful basis or a changed SLA"
+  log "  is an operator review, and this command cannot stand in for one."
+}
+
+
 case "${1:-}" in
-  list)   cmd_list ;;
-  remove) shift; cmd_remove "$@" ;;
-  drift)  shift; cmd_drift "$@" ;;
-  *)      usage; exit 1 ;;
+  list)    cmd_list ;;
+  remove)  shift; cmd_remove "$@" ;;
+  drift)   shift; cmd_drift "$@" ;;
+  refresh) shift; cmd_refresh "$@" ;;
+  *)       usage; exit 1 ;;
 esac
