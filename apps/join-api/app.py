@@ -18,7 +18,9 @@ apps/console/app.py (see that file's own docstring)."""
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -26,6 +28,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -135,6 +138,79 @@ def require_operator(request: Request) -> str:
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
     raise HTTPException(403, "operator token required for this endpoint")
+
+
+# -- rate limit and store quota ------------------------------------------------
+#
+# The join API can register federation members, and had no limit of any kind
+# on how often it would be asked to (docs/production-delta.md). What follows
+# is the demo-sized answer: an in-process token bucket per bearer token, no
+# slowapi, no Redis, nothing shared between replicas -- because there are no
+# replicas. The production side of that row stays open on purpose: a
+# distributed quota and abuse monitoring are not this.
+#
+# The numbers live here, next to their use, the same way job.py keeps
+# RETRY_BUDGET -- NOT in configs/x-road-bus/join-policy.yaml. A rate limit is
+# a property of this service instance (its memory, its disk), not of a join,
+# so that file would be the wrong scope for it regardless of value, exactly
+# as its own comment says of approval mode.
+#
+# 30/minute is deliberately generous: scripts/acceptance.sh's 2.7 section
+# submits nothing at all (it reads /health and /catalogue), and exercises.md's
+# join/un-join loop submits a handful, so nothing this pack itself does comes
+# near the limit. It bounds a script gone wrong, not a demonstration.
+RATE_LIMIT_CAPACITY = 30
+RATE_LIMIT_REFILL_PER_MINUTE = 30
+
+# The other half of the same worry: out/join/ is a directory of files on local
+# disk, which is what this pack has instead of a datastore. A submission is
+# refused once that directory holds this many records -- the remedy is naming
+# in the message, because there is no eviction policy here and inventing one
+# would be pretending the directory is a database.
+STORE_QUOTA = 200
+
+# token sha256 -> (tokens left, monotonic time that count was computed at).
+# Keyed by digest rather than by the credential itself so a traceback, a
+# repr() or a memory dump of this dict does not carry a live token.
+_BUCKETS: dict[str, tuple[float, float]] = {}
+_BUCKET_LOCK = threading.Lock()
+# Indirected so tests can drive refill without sleeping. Nothing else
+# reassigns it.
+_clock = time.monotonic
+
+
+def _take_token(bucket_key: str) -> float | None:
+    """None if the caller may proceed; otherwise the seconds until it may."""
+    per_second = RATE_LIMIT_REFILL_PER_MINUTE / 60.0
+    now = _clock()
+    with _BUCKET_LOCK:
+        left, last = _BUCKETS.get(bucket_key, (float(RATE_LIMIT_CAPACITY), now))
+        left = min(float(RATE_LIMIT_CAPACITY), left + (now - last) * per_second)
+        if left < 1.0:
+            _BUCKETS[bucket_key] = (left, now)
+            return (1.0 - left) / per_second
+        _BUCKETS[bucket_key] = (left - 1.0, now)
+        return None
+
+
+def rate_limit(request: Request) -> None:
+    """One bucket per bearer token, so the applicant and operator credentials
+    cannot exhaust each other's budget -- and, once per-agency tokens exist,
+    neither can two agencies. Applied to the two POSTs that drive the
+    federation (submit, resume). Reads stay unlimited: discovery
+    (GET /catalogue) is what a body deciding whether to join uses, and
+    approve/reject are already operator-gated and 409-guarded by state."""
+    wait = _take_token(hashlib.sha256(_bearer_token(request).encode()).hexdigest())
+    if wait is None:
+        return
+    raise HTTPException(
+        429,
+        f"rate limit: this credential may make {RATE_LIMIT_REFILL_PER_MINUTE} of these "
+        f"requests per minute (burst {RATE_LIMIT_CAPACITY}). Retry in "
+        f"{math.ceil(wait)}s, or slow the caller down -- this endpoint registers "
+        "federation members.",
+        headers={"Retry-After": str(max(1, math.ceil(wait)))},
+    )
 
 
 app = FastAPI(title="KP2 member-join API")
@@ -256,6 +332,7 @@ def submit_request(
     raw: dict,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
+    _rate: None = Depends(rate_limit),
 ) -> dict:
     """Validate synchronously (eleven per-request checks plus
     lawful_basis, sla_required and spec_url_origin, additions beyond those
@@ -270,6 +347,20 @@ def submit_request(
     an unrecognised key) is check 1 ("schema") -- validate() itself does
     `JoinPayload(**raw)` and turns a pydantic.ValidationError into
     RejectionError("schema", ...), so nothing here hand-rolls that check."""
+    # The disk-backed store's own ceiling, checked before validation does any
+    # work (or any fetching). out/join/ is a directory of files, not a
+    # datastore: nothing evicts, nothing rotates, and a request record is
+    # evidence, so the honest response to a full one is to refuse and say
+    # where to look -- not to invent a retention policy for it here.
+    held = sum(1 for _ in _requests_dir().glob("*.json"))
+    if held >= STORE_QUOTA:
+        raise HTTPException(
+            429,
+            f"out/join/ already holds {held} request records, the limit this "
+            f"service accepts ({STORE_QUOTA}). Nothing is evicted automatically -- "
+            "each record is the evidence of a decision. Archive or remove the "
+            "settled ones (REJECTED and RETIRED) from out/join/ and retry.",
+        )
     request_id = secrets.token_urlsafe(8)
     submitted_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -604,6 +695,7 @@ def resume_request(
     request_id: str,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    _rate: None = Depends(rate_limit),
 ) -> dict:
     """Re-run from last_completed_step. Only from FAILED or BLOCKED --
     resuming a RUNNING job would put two runners on one

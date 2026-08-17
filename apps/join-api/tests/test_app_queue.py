@@ -46,6 +46,9 @@ def _git(*args: str, cwd: pathlib.Path) -> None:
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # Each test gets its own budget: the limiter's buckets are module-level
+    # state and a suite is not a caller (app.py's rate_limit).
+    app_module._BUCKETS.clear()
     repo_root = tmp_path / "repo"
     pack = repo_root / "a" / "b" / "pack"  # apply_real defaults repo_root to parents[2]
     writer._copy_pack(REAL_PACK_DIR, pack)

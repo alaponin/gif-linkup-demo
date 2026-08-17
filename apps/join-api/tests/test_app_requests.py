@@ -47,6 +47,9 @@ def client(tmp_path):
     """A fresh temp copy of the pack per test, with app_module's globals
     pointed at it -- writer.dry_run_diff only ever reads REAL_PACK_DIR once,
     to seed this copy (writer._copy_pack), same as every writer.py test."""
+    # Each test gets its own budget: the limiter's buckets are module-level
+    # state and a suite is not a caller (app.py's rate_limit).
+    app_module._BUCKETS.clear()
     pack = tmp_path / "pack"
     writer._copy_pack(REAL_PACK_DIR, pack)
     app_module.PACK_DIR = pack
