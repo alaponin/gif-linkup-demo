@@ -245,114 +245,161 @@ cmd_refresh() {
   local dir="$PACK_DIR/configs/member-$key"
   [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to refresh"
 
-  # lib-stack.sh, not just lib-core.sh: this subcommand authenticates to a
-  # Security Server's admin API and mutates federation state, so it needs
-  # .env, XROAD_BIND and the api_key/api session helpers. Sourced HERE rather
-  # than at the top of this file on purpose -- `drift` is documented as "no
-  # auth, no HTTP to the join API, works whether or not it is even running",
-  # and lib-stack.sh's credential refusal would end that.
-  . "$PACK_DIR/scripts/lib-stack.sh"
+  # lib-core.sh only, like every other subcommand here -- deliberately NOT
+  # lib-stack.sh. Its api_key/api helpers are curl, and this command has to
+  # run from inside the linkup network (see the address note below), where
+  # there is no curl: the join-api image is python:3.12-slim. cmd_drift
+  # already answers exactly this with urllib, and so does this. Admin
+  # credentials come from the environment, which is where that container
+  # already has them; a host-side run falls back to .env.
+  if [ -z "${XROAD_ADMIN_PASSWORD:-}" ] && [ -f "$PACK_DIR/.env" ]; then
+    set -a; . "$PACK_DIR/.env"; set +a
+  fi
+  [ -n "${XROAD_ADMIN_PASSWORD:-}" ] || fail "XROAD_ADMIN_PASSWORD is unset and $PACK_DIR/.env has none -- refresh authenticates to a Security Server's admin API."
 
   local topo="$PACK_DIR/hurl/topology.json"
   [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
 
-  # subsystem id (the admin API's client id), the SS hosting it, and that
-  # server's host-mapped admin port -- the same file cmd_list reads.
-  local resolved
-  resolved=$(python3 - "$topo" "$key" <<'PY'
-import json, sys
-topo = json.load(open(sys.argv[1]))
-key = sys.argv[2]
-sub = next((s for s in topo["subsystems"] if s["member_code"].lower() == key.lower()), None)
-if sub is None:
-    sys.exit(f"member.sh refresh: '{key}' is not in hurl/topology.json -- regenerate, or check the key")
-ports = {s["host"]: s["host_ui_port"] for s in topo["security_servers"]}
-host = sub["hosted_on"]
-if host not in ports:
-    sys.exit(f"member.sh refresh: {key}'s Security Server '{host}' has no host-mapped admin port in hurl/topology.json")
-print(f"{sub['id']}\t{host}\t{ports[host]}")
-PY
-) || exit 1
-  local client_id host ui
-  IFS=$'\t' read -r client_id host ui <<<"$resolved"
-
-  local jar
-  jar=$(api_key "$XROAD_BIND:$ui" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD") \
-    || fail "could not log in to $host's admin API at $XROAD_BIND:$ui -- is the federation running?"
-
-  local descriptions
-  descriptions=$(api GET "$XROAD_BIND:$ui" "$jar" "/clients/${client_id}/service-descriptions") \
-    || fail "could not read $client_id's service descriptions from $host"
-
-  # The governance half, before anything is published: re-run the SAME
-  # allowed-methods check apps/join-api/validate.py applies at join time,
-  # against the spec as it is served NOW. A refresh makes the federation
-  # publish the current contract; it does not make the current contract
-  # approved. Refusing here is what keeps this a governance tool rather than
-  # a convenience that launders an unreviewed write endpoint onto the bus.
-  local plan
-  plan=$(python3 - "$PACK_DIR/configs/x-road-bus/join-policy.yaml" "$descriptions" <<'PY'
-import json, sys, urllib.request
+  python3 - "$topo" "$key" "$PACK_DIR/configs/x-road-bus/join-policy.yaml" "$PACK_DIR/out/join" \
+           "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" <<'PY'
+import datetime, glob, http.cookiejar, json, os, ssl, sys, urllib.parse, urllib.request
 
 import yaml
 
-policy = (yaml.safe_load(open(sys.argv[1])) or {}).get("join") or {}
-allowed = {m.upper() for m in (policy.get("allowed_methods") or [])}
-descriptions = json.loads(sys.argv[2])
-methods = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+topo_path, key, policy_path, join_dir, admin_user, admin_password = sys.argv[1:7]
 
-rows, refused = [], []
+# -- resolve ------------------------------------------------------------------
+# The IN-NETWORK address (host:ui_port), never the host-mapped one. This
+# command has to run from a container on the linkup network anyway -- the
+# member's spec_url is a docker-internal hostname and the allowed-methods
+# check below fetches it -- and from there 127.0.0.1:<host_ui_port> is
+# nothing at all (confirmed live: connection refused). One address, one
+# runtime, and it is the same one cmd_drift already documents.
+topo = json.load(open(topo_path))
+sub = next((s for s in topo["subsystems"] if s["member_code"].lower() == key.lower()), None)
+if sub is None:
+    sys.exit(f"member.sh refresh: '{key}' is not in hurl/topology.json -- regenerate, or check the key")
+host = sub["hosted_on"]
+ui = next((s["ui_port"] for s in topo["security_servers"] if s["host"] == host), None)
+if ui is None:
+    sys.exit(f"member.sh refresh: {key}'s Security Server '{host}' is not in hurl/topology.json")
+client_id = sub["id"]
+
+NETWORK_HINT = ("  (this has to run from a container on the linkup network -- "
+                "docker compose exec join-api -- the same place scripts/member.sh drift runs)")
+
+# -- session ------------------------------------------------------------------
+# X-Road's admin API authenticates by SESSION LOGIN, not an API key: POST
+# /login with form params, keep the JSESSIONID cookie, and send the
+# XSRF-TOKEN cookie's value back as an X-XSRF-TOKEN header on every call
+# (docs/decisions/xroad-770-notes.md section 1). Certificate verification is
+# off for the same reason run-linkup.sh passes --insecure: the Test CA's
+# certificates are self-signed.
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(
+    urllib.request.HTTPSHandler(context=ctx), urllib.request.HTTPCookieProcessor(jar)
+)
+base = f"https://{host}:{ui}"
+try:
+    opener.open(base + "/login",
+                data=urllib.parse.urlencode({"username": admin_user, "password": admin_password}).encode(),
+                timeout=15)
+except Exception as exc:
+    sys.exit(f"member.sh refresh: could not log in to {host}'s admin API at {base}: {exc}\n" + NETWORK_HINT)
+xsrf = next((c.value for c in jar if c.name == "XSRF-TOKEN"), None)
+if xsrf is None:
+    sys.exit(f"member.sh refresh: {host} accepted the login but set no XSRF-TOKEN cookie")
+
+
+def api(method, path, body=None):
+    req = urllib.request.Request(
+        base + "/api/v1" + path, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"X-XSRF-TOKEN": xsrf, "Content-Type": "application/json"},
+    )
+    try:
+        with opener.open(req, timeout=60) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        # X-Road's admin API says WHY in the body ({"status":409,"error":
+        # {"code":"..."}}); urllib's str(HTTPError) is just the status line,
+        # so a bare raise here would report "HTTP Error 500:" and nothing
+        # else. Found exactly that way.
+        raise RuntimeError(f"HTTP {exc.code} {exc.reason}: {exc.read().decode(errors='replace')[:400]}") from None
+    return json.loads(raw) if raw else None
+
+
+try:
+    descriptions = api("GET", f"/clients/{urllib.parse.quote(client_id, safe='')}/service-descriptions")
+except Exception as exc:
+    sys.exit(f"member.sh refresh: could not read {client_id}'s service descriptions from {host}: {exc}")
+if not descriptions:
+    print(f"{key}: no service descriptions published on {host} -- nothing to refresh")
+    sys.exit(0)
+
+# -- the governance check, BEFORE anything is published ------------------------
+# The same allowed-methods rule apps/join-api/validate.py applies at join
+# time, re-run against the spec as it is served NOW. A refresh makes the
+# federation PUBLISH the current contract; it does not make the current
+# contract APPROVED. Refusing here is what keeps this a governance tool
+# rather than a convenience that launders an unreviewed write endpoint onto
+# the bus.
+allowed = {m.upper() for m in ((yaml.safe_load(open(policy_path)) or {}).get("join") or {}).get("allowed_methods", [])}
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+
+served, refused = {}, []
 for desc in descriptions:
     url = desc.get("url")
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        with urllib.request.urlopen(url, timeout=15) as resp:
             spec = yaml.safe_load(resp.read()) or {}
     except Exception as exc:
-        sys.exit(f"member.sh refresh: could not fetch the published spec at {url}: {exc}\n"
-                 f"  (a docker-internal demo hostname is only reachable from inside the linkup "
-                 f"network -- run this from a container on it, e.g. docker compose exec join-api)")
-    paths = sorted((spec.get("paths") or {}).keys())
-    for path, operations in (spec.get("paths") or {}).items():
+        sys.exit(f"member.sh refresh: could not fetch the published spec at {url}: {exc}\n" + NETWORK_HINT)
+    paths = spec.get("paths") or {}
+    served[desc["id"]] = (url, sorted(paths))
+    for path, operations in paths.items():
         for method in operations or {}:
-            if method.lower() in methods and method.upper() not in allowed:
-                refused.append(f"{method.upper()} {path} (service description {desc.get('id')}, {url})")
-    for svc in desc.get("services") or []:
-        rows.append({"id": desc.get("id"), "url": url,
-                     "service": svc.get("service_code") or svc.get("id"), "paths": paths})
-    if not (desc.get("services") or []):
-        rows.append({"id": desc.get("id"), "url": url, "service": None, "paths": paths})
+            if method.lower() in HTTP_METHODS and method.upper() not in allowed:
+                refused.append(f"{method.upper()} {path}  (service description {desc['id']}, {url})")
 
 if refused:
-    sys.exit("member.sh refresh: REFUSED -- the spec as served now declares operations "
-             "outside join.allowed_methods " + str(sorted(allowed)) + ":\n  "
-             + "\n  ".join(refused)
-             + "\n\nA refresh publishes the current contract; it does not approve it. This "
-               "member's contract has changed beyond what it was admitted on -- that is a "
-               "re-admission decision (an operator review, then a new join), not a refresh.")
-print(json.dumps(rows))
-PY
-) || exit 1
+    sys.exit(
+        "member.sh refresh: REFUSED -- the spec as served now declares operations outside "
+        f"join.allowed_methods {sorted(allowed)}:\n  " + "\n  ".join(refused) +
+        "\n\nA refresh publishes the current contract; it does not approve it. This member's "
+        "contract has moved beyond what it was admitted on, which is a re-admission decision "
+        "(an operator review, then a new join) -- not a refresh."
+    )
 
-  local ids
-  ids=$(printf '%s' "$plan" | python3 -c 'import json,sys; print("\n".join(sorted({str(r["id"]) for r in json.load(sys.stdin)})))')
-  [ -n "$ids" ] || { log "$key: no service descriptions published -- nothing to refresh"; return 0; }
+# -- refresh -------------------------------------------------------------------
+for desc in descriptions:
+    try:
+        # The body is not optional: this endpoint answers 415 without one and
+        # 500 with an empty one (both confirmed live against 7.7.0). It is
+        # the same ignore_warnings the pack's own Hurl templates already
+        # pass on every admin-API write that offers it.
+        api("PUT", f"/service-descriptions/{desc['id']}/refresh", {"ignore_warnings": True})
+    except Exception as exc:
+        sys.exit(f"member.sh refresh: refresh of service description {desc['id']} on {host} failed: {exc}")
+    print(f"refreshed service description {desc['id']} ({served[desc['id']][0]})")
 
-  local desc_id
-  while read -r desc_id; do
-    api PUT "$XROAD_BIND:$ui" "$jar" "/service-descriptions/${desc_id}/refresh" >/dev/null \
-      || fail "refresh of service description $desc_id on $host failed"
-    log "refreshed service description $desc_id on $host"
-  done <<<"$ids"
+# -- record the act ------------------------------------------------------------
+# An AMENDMENT. endpoint_baseline is never touched: it is evidence of the
+# contract this member was ADMITTED on, and refreshing the federation does
+# not re-admit anybody. cmd_drift then reports both facts -- drift since
+# join, and drift since this refresh -- instead of a warning that can never
+# clear.
+endpoints = {}
+for desc in descriptions:
+    _url, paths = served[desc["id"]]
+    for svc in desc.get("services") or []:
+        code = svc.get("service_code") or svc.get("id")
+        if code:
+            endpoints[code] = paths
 
-  # Record the act as an AMENDMENT. endpoint_baseline is never touched: it is
-  # evidence of the contract this member was admitted on, and refreshing the
-  # federation does not re-admit anybody. cmd_drift then reports both facts --
-  # drift since join, and drift since this refresh -- instead of a warning
-  # that can never clear.
-  python3 - "$PACK_DIR/out/join" "$key" "$plan" <<'PY'
-import datetime, glob, json, os, sys
-
-join_dir, key, plan = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
 best, best_path = None, None
 for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
     try:
@@ -365,15 +412,12 @@ for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
         continue
     if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
         best, best_path = rec, path
+
 if best is None:
-    print(f"{key}: refreshed, but no ACTIVE out/join/*.json record to amend -- "
+    print(f"{key}: refreshed, but there is no ACTIVE out/join/*.json record to amend -- "
           f"drift has no per-refresh baseline to compare against.", file=sys.stderr)
     sys.exit(0)
 
-endpoints = {}
-for row in plan:
-    if row["service"]:
-        endpoints[row["service"]] = row["paths"]
 best.setdefault("refreshes", []).append({
     "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "endpoints": endpoints,
@@ -389,9 +433,8 @@ print(f"recorded the refresh on {os.path.basename(best_path)} "
 PY
 
   log "$key: the federation now publishes the contract these specs serve today."
-  log "  What this did NOT do: approve it. The allowed-methods check above is the only"
-  log "  policy re-applied; a changed field set, a changed lawful basis or a changed SLA"
-  log "  is an operator review, and this command cannot stand in for one."
+  log "  What this did NOT do: approve it. allowed_methods is the only policy re-applied;"
+  log "  a changed field set, lawful basis or SLA is an operator review this cannot stand in for."
 }
 
 
