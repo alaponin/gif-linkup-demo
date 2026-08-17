@@ -258,8 +258,9 @@ def submit_request(
     _role: str = Depends(require_applicant),
 ) -> dict:
     """Validate synchronously (eleven per-request checks plus
-    lawful_basis and sla_required, additions beyond those eleven --
-    validate.py's own module docstring: check 5 moved to generate-time),
+    lawful_basis, sla_required and spec_url_origin, additions beyond those
+    eleven -- validate.py's own module docstring: check 5 moved to
+    generate-time),
     then either persist
     a REJECTED record or -- on success -- write the candidate config to a
     throwaway copy of the pack, run its generate.py, and persist a SUBMITTED
@@ -295,7 +296,7 @@ def submit_request(
     try:
         diff = writer.dry_run_diff(PACK_DIR, key, payload)
     except writer.GenerateFailure as exc:
-        # Every one of the thirteen per-request checks passed, but generate.py itself still
+        # Every one of the fourteen per-request checks passed, but generate.py itself still
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
         # record, never a bare 500 -- submission always

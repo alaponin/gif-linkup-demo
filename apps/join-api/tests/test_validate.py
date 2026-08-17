@@ -1,14 +1,19 @@
 """Unit tests for apps/join-api/validate.py -- twelve
-checks, plus lawful_basis and sla_required, for
-thirteen total. Pure functions over fixture dicts for checks 2-8 and 12;
+checks, plus lawful_basis, sla_required and spec_url_origin, for
+fourteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
 Check 9 (backend reachability) is the one place this suite does real I/O,
 deliberately: a local http.server thread stands in for "inside the linkup
 network", and fixtures/specs/unreachable.yaml's
-servers.url (127.0.0.1:1, a privileged port nothing listens on) is a real
+servers.url (port 1, a privileged port nothing listens on) is a real
 connection attempt that fails fast, not a mocked-away one -- mocking it
 would defeat the point of the check.
+
+The fixture specs name `app-ptsb` because check 9a (spec_url_origin) refuses
+IP literals outright, whatever join.spec_url_hosts says. Only the NAME is
+substituted, by _resolve_to_loopback below -- the connection attempt itself
+is still validate.py's own, against the thread above.
 """
 from __future__ import annotations
 
@@ -74,7 +79,18 @@ POLICY = {
     "approval": "explicit",
     "default_hosting": "hosted_on",
     "allowed_methods": ["GET"],
+    "spec_url_hosts": ["app-ptsb"],
 }
+
+
+def _resolve_to_loopback(url: str) -> None:
+    """Stands in for the linkup network's own DNS, and nothing else: the host
+    name is rewritten to the loopback address the module's http.server is
+    actually bound to, then validate.py's real check_reachable runs against
+    it. Substituting the name rather than the whole call is what keeps
+    "the reachability half must always be a real attempt" true -- an
+    unreachable fixture still fails by failing to connect."""
+    validate_module._default_check_reachable(url.replace("app-ptsb", "127.0.0.1"))
 
 # Deliberately does not include every canonical member -- only plr and pnia
 # have "existing config on disk" in this fixture set, which is what lets
@@ -136,12 +152,12 @@ def _payload(**overrides) -> dict:
 
 
 def _run(raw: dict, *, manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS,
-         semantic_map=SEMANTIC_MAP, **kw):
+         semantic_map=SEMANTIC_MAP, check_reachable=_resolve_to_loopback, **kw):
     # validate() returns (payload, ValidationContext) -- the
     # context's fetched_specs feeds module 2.7's join-time drift baseline --
     # every caller in this file wants just the payload.
     payload, _ctx = validate(raw, manifest=manifest, policy=policy, existing_servers=existing_servers,
-                              semantic_map=semantic_map, **kw)
+                              semantic_map=semantic_map, check_reachable=check_reachable, **kw)
     return payload
 
 
@@ -391,6 +407,92 @@ def test_sla_required_accepts_a_consumer_only_member_with_no_services():
     assert payload.services == []
 
 
+# -- check 9a: spec_url origin (the SSRF guard) --------------------------------
+#
+# This API fetches spec_url from a container that holds JOB_SECRETS and can
+# reach every Security Server's admin API on :4000. Every case below is a URL
+# that must never reach httpx.get() -- so each one is asserted to fail at
+# spec_url_origin, BEFORE backend_reachability, which is the check that would
+# have done the fetching.
+
+
+def _publishing(spec_url: str) -> dict:
+    return _payload(
+        services=[{"code": "awards-api", "spec_url": spec_url, "lawful_basis": "consent",
+                   "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
+        semantic={"entity": "person", "key": "nin", "fields": ["nin"]},
+    )
+
+
+def _never_fetched(url):
+    raise AssertionError(f"spec_url_origin let {url!r} through to a real fetch")
+
+
+@pytest.mark.parametrize("spec_url", [
+    "file:///pack/.env",                       # this container's own secrets
+    "ftp://app-ptsb/spec.yaml",                # not an HTTP fetch at all
+    "app-ptsb:8000/spec.yaml",                 # schemeless
+    "http://cs:4000/api/v1/clients",           # the Central Server's admin API
+    "http://ss-plr:4000/api/v1/keys",          # a Security Server's admin API
+    "http://127.0.0.1:4000/",                  # loopback, by address
+    "http://169.254.169.254/latest/meta-data/",  # cloud metadata
+    "http://[::1]:4000/",                      # loopback, IPv6 literal
+    "http://localhost:8091/health",            # this API itself, by name
+    "http://evil.example.com/spec.yaml",       # a host nobody declared
+])
+def test_spec_url_origin_refuses_before_anything_is_fetched(spec_url):
+    _rejects(_publishing(spec_url), "spec_url_origin", fetch_spec=_never_fetched)
+
+
+def test_an_allowlisted_host_is_fetched_normally():
+    """The other half: the guard has to let a legitimate submission through,
+    or it is not a guard, it is an outage."""
+    payload = _run(_publishing("http://app-ptsb:8000/openapi.yaml"),
+                   fetch_spec=_fetch_fixture("clean.yaml"))
+    assert payload.services[0].code == "awards-api"
+
+
+def test_a_policy_with_no_allowlist_fetches_nothing():
+    """Fail closed. An absent join.spec_url_hosts is not "allow anything" --
+    hurl/generate.py permits the key to be absent, so this is the only thing
+    standing between a policy file that predates the key and an unrestricted
+    fetch."""
+    policy = {k: v for k, v in POLICY.items() if k != "spec_url_hosts"}
+    err = _rejects(_publishing("http://app-ptsb:8000/spec.yaml"), "spec_url_origin",
+                   policy=policy, fetch_spec=_never_fetched)
+    assert "spec_url_hosts" in err.message
+
+
+def test_the_backend_url_inside_the_spec_is_judged_by_the_same_rule():
+    """The delta row names spec_url; servers[].url is equally
+    applicant-controlled and fetched from the same container. Closing only
+    one of the two is theatre -- an applicant who cannot point spec_url at
+    the admin plane can still serve a spec that does."""
+    spec = yaml.safe_dump({
+        "openapi": "3.0.0",
+        "info": {"title": "t", "version": "1"},
+        "servers": [{"url": "http://cs:4000"}],
+        "paths": {"/awards/{nin}": {"get": {"responses": {"200": {}}}}},
+    })
+    err = _rejects(_publishing("http://app-ptsb:8000/spec.yaml"), "backend_reachability",
+                   fetch_spec=lambda url: spec,
+                   check_reachable=lambda url: (_ for _ in ()).throw(
+                       AssertionError(f"connected to {url!r} despite the origin rule")))
+    assert "cs" in err.message and "spec_url_hosts" in err.message
+
+
+def test_neither_fetch_follows_redirects():
+    """The allowlist is checked once, before the fetch. A 302 from an
+    allowlisted host to http://cs:4000 would walk straight past it, so the
+    no-redirect behaviour is pinned rather than inherited from httpx's
+    current default."""
+    source = (pathlib.Path(__file__).resolve().parent.parent / "validate.py").read_text()
+    calls = [line.strip() for line in source.splitlines() if "httpx.get(" in line]
+    assert calls, "validate.py no longer fetches with httpx -- re-point this test"
+    for call in calls:
+        assert "follow_redirects=False" in call, call
+
+
 # -- check 9: backend reachability ----------------------------------------------
 
 
@@ -399,7 +501,7 @@ def test_backend_reachability_rejects_an_unreachable_servers_url():
                                 "access": ["PROGRESSA/GOV/PNEA/EXAMS"], "sla": _sla()}],
                     semantic={"entity": "person", "key": "nin", "fields": ["nin"]})
     err = _rejects(raw, "backend_reachability", fetch_spec=_fetch_fixture("unreachable.yaml"))
-    assert "127.0.0.1:1" in err.message
+    assert "app-ptsb:1" in err.message
 
 
 def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
@@ -584,6 +686,7 @@ def test_a_real_validate_run_persists_contract_fields_on_the_context():
         ),
         manifest=MANIFEST, policy=POLICY, existing_servers=EXISTING_SERVERS,
         semantic_map=SEMANTIC_MAP, fetch_spec=_fetch_fixture("with_contract.yaml"),
+        check_reachable=_resolve_to_loopback,
     )
     declared, required = ctx.contract_fields["awards-api"]
     assert declared == frozenset({"id", "title", "note"})

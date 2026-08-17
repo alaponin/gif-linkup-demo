@@ -38,8 +38,63 @@ def test_the_committed_join_policy_yaml_passes_against_the_real_manifest():
     check_join_policy(config, manifest)  # does not raise
 
 
-def test_exactly_three_keys_are_recognised():
-    assert JOIN_POLICY_KEYS == {"member_class", "default_hosting", "allowed_methods"}
+def test_exactly_four_keys_are_recognised():
+    assert JOIN_POLICY_KEYS == {
+        "member_class", "default_hosting", "allowed_methods", "spec_url_hosts",
+    }
+
+
+# -- spec_url_hosts: the fourth key -------------------------------------------
+#
+# It is the allowlist apps/join-api/validate.py judges an applicant's spec_url
+# against before fetching it from a container that holds the federation's
+# admin credentials. Its VALUE is validate.py's to apply; its SHAPE is checked
+# here, because a bare string would silently make every character of a
+# hostname an "allowed host" and fail nothing.
+
+
+def test_the_committed_policy_lists_the_hosts_compose_actually_runs():
+    """An allowlist naming hosts that do not exist rejects every real join;
+    one that has drifted from the mock backends rejects the pack's own
+    fixture. Both are caught here rather than at the next live join."""
+    config = yaml.safe_load((PACK / "configs/x-road-bus/join-policy.yaml").read_text())
+    compose = (PACK / "docker-compose.yml").read_text()
+    hosts = config["join"]["spec_url_hosts"]
+    assert hosts, "an empty allowlist means validate.py refuses every join"
+    for host in hosts:
+        assert f"container_name: {host}" in compose, (
+            f"join.spec_url_hosts names {host!r}, which docker-compose.yml does not run"
+        )
+
+
+def test_a_spec_url_hosts_that_is_a_bare_string_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="spec_url_hosts"):
+        check_join_policy({"join": {"spec_url_hosts": "app-ptsb"}}, GOV_MANIFEST)
+
+
+def test_an_empty_spec_url_hosts_list_is_a_hard_failure():
+    """Empty is not "allow everything" and not "allow nothing by accident" --
+    it is a misconfiguration, said at generate time. validate.py fails closed
+    on it too, at request time, for a policy file this never saw."""
+    with pytest.raises(SystemExit, match="spec_url_hosts"):
+        check_join_policy({"join": {"spec_url_hosts": []}}, GOV_MANIFEST)
+
+
+def test_a_non_string_entry_in_spec_url_hosts_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="spec_url_hosts"):
+        check_join_policy({"join": {"spec_url_hosts": ["app-ptsb", 8000]}}, GOV_MANIFEST)
+
+
+def test_a_well_formed_spec_url_hosts_passes():
+    check_join_policy({"join": {"spec_url_hosts": ["app-ptsb"]}}, GOV_MANIFEST)
+
+
+def test_an_absent_spec_url_hosts_passes_generate_time():
+    """Absent is not a generate-time failure: the key is optional here, and
+    validate.py fails closed at request time rather than letting an
+    unrestricted fetch through. Stated as a test so "absent is allowed here"
+    is a decision, not an oversight."""
+    check_join_policy({"join": {"member_class": "GOV"}}, GOV_MANIFEST)
 
 
 def test_an_undeclared_fourth_key_is_a_hard_failure():

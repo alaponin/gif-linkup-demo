@@ -3,15 +3,22 @@
 # produced (the prompt was added after the fact, in the same curriculum
 # register as every other module).
 #
-# Exactly three keys. Do not add a fourth: an earlier draft invented
+# Exactly four keys. Do not add a fifth: an earlier draft invented
 # max_services, require_semantic_for_provenance and backend_auth and all
 # three were deleted because nothing applied them -- "a block
 # the generator silently ignores is worse than no block at all: it reads as
 # configuration and is decoration" (hurl/generate.py's check_policy()
 # docstring, and now also check_join_policy(), which hard-fails
-# hurl/generate.py at generate time if a fourth key ever appears here). The
-# test for a new key, before adding one: can it be set to another value, and
-# does something observably change?
+# hurl/generate.py at generate time if an undeclared key ever appears here).
+# The test for a new key, before adding one: can it be set to another value,
+# and does something observably change?
+#
+# spec_url_hosts is the fourth, admitted against exactly that test: change
+# the list and a join whose spec_url names a host no longer on it is
+# REJECTED at check 9a instead of fetched (apps/join-api/validate.py's
+# _check_spec_url_origin). It is a join property -- what a joining member is
+# allowed to point this federation at -- so this file is the right scope for
+# it, unlike approval mode below.
 #
 # approval mode is NOT a key here, on purpose -- it is a property of how the
 # Central Server was deployed, not of a join request, so this file is the
@@ -24,3 +31,12 @@ join:
   member_class: GOV          # Progressa's federation admits government bodies only
   default_hosting: hosted_on # a join defaults to hosting; own_server must be asked for
   allowed_methods: [GET]     # a joined member publishes read services only (§2.3)
+  # Hosts a submitted spec_url (and the servers[].url inside the spec it
+  # returns) may name. The join API fetches both from a container that holds
+  # the federation's admin credentials and can reach every Security Server's
+  # admin API on :4000, so an unrestricted URL there is an SSRF into the
+  # admin plane (docs/production-delta.md). These three are the mock
+  # backends docker-compose.yml actually runs; a real federation lists the
+  # joining agencies' own hosts. Host names only -- IP literals are refused
+  # outright, whatever this list says.
+  spec_url_hosts: [app-pnia, app-plr, app-ptsb]

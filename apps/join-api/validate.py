@@ -1,17 +1,21 @@
 """apps/join-api/validate.py -- eleven of the twelve checks required
-before a join request can be approved, plus two more that go
-beyond that (lawful_basis and sla_required) -- thirteen
+before a join request can be approved, plus three more that go
+beyond that (lawful_basis, sla_required and spec_url_origin) -- fourteen
 per-request checks in total. Check 5 (member class) moved to
 hurl/generate.py's check_join_policy() -- a generate-time structural check,
 not a per-request one -- see the comment above where _check_member_class
 used to be; this module runs the other eleven, plus
-lawful_basis and sla_required. Pure functions over a payload, the manifest,
-the join policy and a fetched OpenAPI document -- no X-Road, no containers,
-no job. Checks run in the exact order listed (1 schema ..
-12 identifier characters, minus 5); the two additional checks run alongside them
-(see _CHECKS below for where), and the first failure of any of them raises
-RejectionError(check, message) naming the check, which is what a REJECTED
-request carries.
+lawful_basis, sla_required and spec_url_origin. Pure functions over a
+payload, the manifest, the join policy and a fetched OpenAPI document -- no
+X-Road, no containers, no job. Checks run in the exact order listed (1 schema
+.. 12 identifier characters, minus 5); the three additional checks run
+alongside them (see _CHECKS below for where), and the first failure of any of
+them raises RejectionError(check, message) naming the check, which is what a
+REJECTED request carries.
+
+spec_url_origin is numbered 9a rather than given a number of its own: it is
+the guard on check 9's own fetch, and it is only meaningful immediately
+above it.
 
 Two things this module deliberately does NOT do, both on purpose:
   - it never sets origin. schema.JoinPayload has no such field; wherever a
@@ -26,8 +30,10 @@ Two things this module deliberately does NOT do, both on purpose:
 from __future__ import annotations
 
 import dataclasses
+import ipaddress
 import pathlib
 import re
+import urllib.parse
 from typing import Callable
 
 import httpx
@@ -84,8 +90,15 @@ def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
 # be a real attempt (the backend_reachability check).
 
 
+# follow_redirects=False in both: httpx's own default today, pinned here
+# because the spec_url_origin check below is only worth having if the host it
+# approved is the host that is actually contacted. A 302 to http://cs:4000
+# from an applicant-controlled URL walks straight past an allowlist that was
+# checked once, before the fetch -- so the no-redirect behaviour is stated
+# rather than inherited, and a future httpx default change (or a
+# well-meaning edit) cannot silently reopen it.
 def _default_fetch_spec(url: str) -> str:
-    resp = httpx.get(url, timeout=5.0)
+    resp = httpx.get(url, timeout=5.0, follow_redirects=False)
     resp.raise_for_status()
     return resp.text
 
@@ -95,7 +108,7 @@ def _default_check_reachable(url: str) -> None:
     # exchange succeeded, which is what "resolve and connect to it"
     # asks for. No raise_for_status(): endpoint correctness is not
     # this check's job, only reachability.
-    httpx.get(url, timeout=5.0)
+    httpx.get(url, timeout=5.0, follow_redirects=False)
 
 
 @dataclasses.dataclass
@@ -520,6 +533,89 @@ def contract_fields(spec: dict) -> tuple[frozenset[str], frozenset[str]]:
     return declared, required
 
 
+# -- check 9a: the origin of every URL this API fetches ------------------------
+#
+# spec_url is an applicant-controlled string, fetched from inside the join-api
+# container -- which holds JOB_SECRETS (admin user, admin password, token PIN)
+# and can reach every Security Server's admin API on :4000. So is the
+# servers[].url inside the document that fetch returns. Both are judged here,
+# by the same function: this check runs immediately BEFORE
+# backend_reachability so spec_url is judged before the first byte is fetched,
+# and backend_reachability calls the same function again for servers[].url,
+# which does not exist until after that fetch.
+#
+# The primary control is join.spec_url_hosts (configs/x-road-bus/
+# join-policy.yaml). The scheme and IP-literal refusals below are defence in
+# depth: they hold even if that list is later widened carelessly, which is
+# exactly how an allowlist stops being one. Rejecting every IP literal covers
+# loopback, link-local and the cloud metadata address 169.254.169.254 in one
+# rule rather than three that can each be forgotten -- an allowlist entry is a
+# HOSTNAME, and a member that can only be named by its address has not been
+# through the naming this federation runs on.
+
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+
+def _origin_error(label: str, url: str, policy: dict) -> str | None:
+    """None if `url` may be fetched from this container; a rejection message
+    otherwise. Pure string work -- no DNS, no connection, so it is safe to
+    call before any I/O and cheap to call twice."""
+    allowed = policy.get("spec_url_hosts")
+    if not isinstance(allowed, list) or not allowed:
+        return (
+            "configs/x-road-bus/join-policy.yaml declares no join.spec_url_hosts "
+            "-- this API refuses to fetch any applicant-supplied URL without an "
+            "allowlist to judge it against (it runs in a container holding the "
+            "federation's admin credentials). Add the key and redeploy"
+        )
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        return (
+            f"{label} {url!r} uses scheme {parsed.scheme or '(none)'!r} -- only "
+            f"{sorted(_ALLOWED_SCHEMES)} are fetched (a file:// or schemeless URL "
+            "reads this container's own filesystem, not the member's backend)"
+        )
+    host = parsed.hostname
+    if not host:
+        return f"{label} {url!r} names no host"
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return (
+            f"{label} {url!r} names an IP address rather than a host name. "
+            "Addresses are refused outright -- loopback, link-local and the "
+            "cloud metadata address 169.254.169.254 among them -- regardless of "
+            "join.spec_url_hosts; name a host on that list instead"
+        )
+    if host.lower() == "localhost" or host.lower().endswith(".localhost"):
+        return (
+            f"{label} {url!r} names {host!r}, which resolves inside this "
+            "container -- the join API's own process and its credentials, never "
+            "the member's backend"
+        )
+    if host not in allowed:
+        return (
+            f"{label} {url!r} names host {host!r}, which is not in "
+            f"join.spec_url_hosts {sorted(allowed)} (configs/x-road-bus/"
+            "join-policy.yaml) -- this URL is fetched from a container that "
+            "holds the federation's admin credentials and can reach every "
+            "Security Server's admin API, so only declared hosts are contacted"
+        )
+    return None
+
+
+def _check_spec_url_origin(ctx: ValidationContext) -> str | None:
+    """Every service's spec_url, judged before backend_reachability fetches
+    any of them."""
+    for svc in ctx.payload.services:
+        error = _origin_error(f"service {svc.code!r}'s spec_url", svc.spec_url, ctx.policy)
+        if error:
+            return error
+    return None
+
+
 def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     """Fetch spec_url, parse servers.url, resolve-and-connect to it from
     inside the linkup network. Catches the
@@ -542,6 +638,16 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
                 f"OpenAPI spec for service {svc.code!r} at {svc.spec_url} "
                 "declares no servers[].url"
             )
+        # The same origin rule as check 9a, applied to the OTHER
+        # applicant-controlled URL -- one that only exists after the fetch
+        # above, so it cannot be judged in that check. The rejection is
+        # reported as backend_reachability because that is the check that
+        # would have made the connection.
+        error = _origin_error(
+            f"service {svc.code!r}'s servers[].url (in {svc.spec_url})", backend_url, ctx.policy
+        )
+        if error:
+            return error
         try:
             ctx.check_reachable(backend_url)
         except Exception as exc:  # noqa: BLE001 -- any connect failure is a rejection
@@ -559,7 +665,10 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 # minus check 5 (member_class), which has no per-request implementation --
 # see the comment above where _check_member_class used to be -- plus
 # lawful_basis and sla_required, neither one of the original twelve,
-# inserted after purpose_limitation since all three inspect payload.services.
+# inserted after purpose_limitation since all three inspect payload.services,
+# plus spec_url_origin immediately before backend_reachability, where it has
+# to be: it is the guard on that check's own fetch, and a guard that runs
+# after the fetch guards nothing.
 # Check 1 (schema) happens in validate() itself, before a ValidationContext
 # can even be built.
 _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
@@ -571,6 +680,7 @@ _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("purpose_limitation", _check_purpose_limitation),
     ("lawful_basis", _check_lawful_basis),
     ("sla_required", _check_sla_required),
+    ("spec_url_origin", _check_spec_url_origin),
     ("backend_reachability", _check_backend_reachability),
     ("allowed_methods", _check_allowed_methods),
     ("backend_auth_declared", _check_backend_auth_declared),
@@ -588,9 +698,9 @@ def validate(
     fetch_spec: Callable[[str], str] = _default_fetch_spec,
     check_reachable: Callable[[str], None] = _default_check_reachable,
 ) -> tuple[JoinPayload, ValidationContext]:
-    """Runs all thirteen per-request checks (eleven, minus check 5,
-    plus lawful_basis and sla_required -- see _CHECKS' own comment) in
-    order. Returns
+    """Runs all fourteen per-request checks (eleven, minus check 5,
+    plus lawful_basis, sla_required and spec_url_origin -- see _CHECKS' own
+    comment) in order. Returns
     (validated JoinPayload, the ValidationContext checks ran against) on
     success -- the context is returned too because the backend_reachability
     check populates ctx.fetched_specs with every service's parsed OpenAPI

@@ -354,7 +354,9 @@ def check_policy(core: dict) -> None:
 # is the code that actually applies join: policy at request time); this is
 # purely the same "no undeclared decoration" guard check_policy() already
 # applies to the bus policy above.
-JOIN_POLICY_KEYS = frozenset({"member_class", "default_hosting", "allowed_methods"})
+JOIN_POLICY_KEYS = frozenset(
+    {"member_class", "default_hosting", "allowed_methods", "spec_url_hosts"}
+)
 
 
 def check_join_policy(join_config: dict, manifest: dict) -> None:
@@ -382,6 +384,23 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
             f"unrecognised key(s) {sorted(extra)} -- apps/join-api/validate.py "
             f"only enforces {sorted(JOIN_POLICY_KEYS)}. Either implement "
             "enforcement for the new key or remove it."
+        )
+    # The one shape assertion that belongs at generate time rather than in
+    # validate.py: spec_url_hosts is a security control (it is the only thing
+    # standing between an applicant-controlled URL and the admin plane -- see
+    # validate.py's _origin_error), and a typo that makes it a bare string
+    # would make every hostname's characters an "allowed host" without
+    # failing anything. validate.py fails closed on a missing or empty list
+    # at request time; this fails loudly at generate time on a malformed one.
+    hosts = join.get("spec_url_hosts")
+    if hosts is not None and (
+        not isinstance(hosts, list) or not hosts or not all(isinstance(h, str) and h for h in hosts)
+    ):
+        raise SystemExit(
+            "generate.py: configs/x-road-bus/join-policy.yaml join.spec_url_hosts "
+            f"must be a non-empty list of host names (found: {hosts!r}) -- it is the "
+            "allowlist apps/join-api/validate.py judges an applicant's spec_url "
+            "against before fetching it from a credential-holding container."
         )
     policy_class = join.get("member_class")
     federation_class = manifest["identity"]["member_class"]
