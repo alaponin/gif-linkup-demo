@@ -640,19 +640,25 @@ clauses:
   clause: >-
     Exit test -- the member is absent everywhere AND its message-log records
     remain retrievable for the statutory retention period
-  status: named-absence
+  status: simulated
   note: >-
     The absence half is asserted, including from the shared host's token with
-    every other member's key still present. The retention half is inverted:
-    teardown deletes the archive volume, with the consequence stated in prose
-    beside the instruction rather than prevented. The absence half now has
-    its own artefact -- onboarding/<key>/99-retirement.md, written at exit
-    -- and names the retention half there too, as a deliberately separate,
-    still-unmet question; this clause stays named-absence because the
-    retention half genuinely is one.
+    every other member's key still present, and has its own artefact --
+    onboarding/<key>/99-retirement.md, written at exit. The retention half is
+    no longer inverted: retire_instruction() now prints an export of the
+    message-log archive to out/retired/kp2-<key>-archive.tar.gz BEFORE the
+    docker volume rm that used to be the whole instruction, so following the
+    printed block preserves the records instead of destroying them.
+    Simulated, not implemented, and the distinction is the honest one: a
+    tarball on the Docker host has no expiry, no access control and no
+    off-host copy, and nothing verifies the operator ran the command. A real
+    retention regime is a policy and a storage commitment, which this pack
+    cannot make -- what it can do is stop the demo from teaching the
+    deletion.
   evidence:
     - {path: acceptance/join-member.md, symbol: RETIRED}
     - {path: runbook.md, symbol: retention}
+    - {path: apps/join-api/job.py, symbol: retire_instruction}
     - {path: apps/join-api/writer.py, symbol: render_retirement_record}
 
 # -- 3. The technical sequence -----------------------------------------------

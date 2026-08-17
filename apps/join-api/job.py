@@ -1286,6 +1286,16 @@ REVERSAL_ABSENT: dict[str, Callable[[JobStep, dict, dict], bool]] = {
 }
 
 
+# The image the export step below runs `tar` in. Deliberately the same
+# python:3.12-slim digest apps/join-api/Dockerfile already pins (asserted by
+# tests/test_job.py) rather than alpine: the operator running this has the
+# image on the host already, and the digest-pin discipline this pack holds
+# for every other image should not lapse in a command it prints for someone
+# else to paste. Nothing in the command is Python -- only `tar`, which the
+# image carries.
+TAR_IMAGE = "python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de"
+
+
 def retire_instruction(payload: JoinPayload) -> dict | None:
     """What the operator must do by hand for an own-server
     member, because this API never gets a Docker socket (the same split
@@ -1294,20 +1304,41 @@ def retire_instruction(payload: JoinPayload) -> dict | None:
     residue is the SIGN key the walk deletes instead (Step 4b).
 
     The three volume names are hurl/generate.py's own, written into
-    hurl/compose.members.yml's generated `volumes:` block."""
+    hurl/compose.members.yml's generated `volumes:` block.
+
+    The export line comes FIRST, before the deletes, and that ordering is
+    the point: kp2-<key>-archive is the message-log archive, subject to a
+    statutory retention period a retirement does not end (onboarding path
+    §2 GX). Exporting a tarball is not a retention regime -- a real one is a
+    storage commitment with its own access control and expiry -- but it is
+    the difference between a retirement that keeps its evidence and one that
+    destroys it. A hosted member gets no instruction here because its
+    message-log records live in the HOST's archive volume, which survives
+    the un-join untouched; its retention story is the host's."""
     if not _own_server(payload):
         return None
     key = payload.code.lower()
     dns = payload.security_server.dns_name
     volumes = [f"kp2-{key}-db", f"kp2-{key}-conf", f"kp2-{key}-archive"]
+    archive_export = f"out/retired/kp2-{key}-archive.tar.gz"
     return {
         "container": dns,
         "volumes": volumes,
+        "archive_export": archive_export,
         "message": (
             f"{payload.code} owned its own Security Server. This API does not touch Docker -- "
             f"run this on the Docker host to finish the un-join:\n"
+            f"  mkdir -p out/retired\n"
+            f"  docker run --rm -v kp2-{key}-archive:/from -v \"$PWD/out/retired:/to\" \\\n"
+            f"    {TAR_IMAGE} tar czf /to/kp2-{key}-archive.tar.gz -C /from .\n"
             f"  docker rm -f {dns}\n"
             f"  docker volume rm {' '.join(volumes)}\n"
+            f"The first command exports the message-log archive to {archive_export} BEFORE the "
+            f"volume is deleted: the message log is subject to a statutory retention period that "
+            f"this retirement does not end, and deleting kp2-{key}-archive without it converts a "
+            f"retirement into an evidence gap. A tarball on the Docker host is not a retention "
+            f"regime -- that is a storage and access-control commitment -- but it is what this "
+            f"pack can honestly do.\n"
             f"Left in place, {dns}'s database, /etc/xroad and archive volumes survive "
             f"teardown and a later member reusing this key inherits them."
         ),

@@ -1461,6 +1461,29 @@ def test_an_own_server_un_join_skips_the_sign_key_and_names_the_three_volumes():
     assert "docker volume rm" in instruction["message"]
 
 
+def test_the_archive_is_exported_before_the_volume_holding_it_is_deleted():
+    """The retention step. An instruction that deletes kp2-<key>-archive and
+    only then mentions retention is an evidence gap with a footnote -- the
+    export has to be a command, above the delete, or the operator pastes the
+    block and the message log is gone."""
+    instruction = job.retire_instruction(_own_payload())
+    assert instruction["archive_export"] == "out/retired/kp2-ptsb-archive.tar.gz"
+    message = instruction["message"]
+    export_at = message.index("tar czf /to/kp2-ptsb-archive.tar.gz")
+    delete_at = message.index("docker volume rm")
+    assert export_at < delete_at, "the export must come BEFORE the delete, not after it"
+    assert "-v kp2-ptsb-archive:/from" in message
+
+
+def test_the_export_runs_the_image_this_pack_already_pins():
+    """One digest, two consumers: an operator is handed a pinned image, and
+    it is one the host already has because join-api itself is built FROM it.
+    If the Dockerfile's pin moves, this instruction hands out a digest that
+    is nowhere else in the pack."""
+    dockerfile = (REAL_PACK_DIR / "apps" / "join-api" / "Dockerfile").read_text()
+    assert f"FROM {job.TAR_IMAGE}" in dockerfile
+
+
 def test_the_volume_names_are_the_ones_generate_py_actually_writes():
     """One naming rule, two consumers: if hurl/generate.py's compose.members.yml
     volume block is renamed, this instruction becomes wrong silently."""

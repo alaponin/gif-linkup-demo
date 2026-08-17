@@ -384,15 +384,33 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   - **A member with its OWN Security Server leaves two Docker commands
     behind.** The API never touches Docker (same split as
     `scripts/join-agent.sh`), so the record carries the instruction and you
-    run it: `docker rm -f <dns>` then `docker volume rm kp2-<key>-db
-    kp2-<key>-conf kp2-<key>-archive`. Skip it and the next member to reuse
-    that key inherits the old database and `/etc/xroad`.
-    **On retention:** deleting `kp2-<key>-archive` is correct for this demo,
-    where nothing needs the message log after teardown — but in production
-    the message log is subject to a statutory
-    retention period, and doing the same deletion before that period elapses
-    converts a retirement into an evidence gap (onboarding path §2 GX). This
-    pack implements no archival step; it only names the gap.
+    run it — four commands, in the order the record prints them: export the
+    archive, `docker rm -f <dns>`, then `docker volume rm kp2-<key>-db
+    kp2-<key>-conf kp2-<key>-archive`. Skip the deletes and the next member
+    to reuse that key inherits the old database and `/etc/xroad`.
+    **On retention:** the *first* command is the retention step, and it comes
+    before the deletes on purpose:
+
+    ```
+    mkdir -p out/retired
+    docker run --rm -v kp2-<key>-archive:/from -v "$PWD/out/retired:/to" \
+      python:3.12-slim@sha256:<the digest the record prints> \
+      tar czf /to/kp2-<key>-archive.tar.gz -C /from .
+    ```
+
+    `kp2-<key>-archive` is the message-log archive. The message log is
+    subject to a statutory retention period that this retirement does not
+    end, and deleting the volume before that period elapses converts a
+    retirement into an evidence gap (onboarding path §2 GX). The tarball
+    under `out/retired/` is what this pack can honestly do about that: it
+    preserves the evidence, and it is **not** a retention regime — a real one
+    is a storage and access-control commitment with its own expiry, off this
+    Docker host, which remains production's to build. The record carries the
+    output path as `retire_instruction.archive_export` so it can be checked
+    without reading the message.
+    A **hosted** member gets no instruction at all here: its message-log
+    records live in its host's archive volume, which the un-join never
+    touches. That member's retention story is the host's, not the leaver's.
   - **A hosted member leaves a SIGN key behind** on somebody else's Security
     Server — `REGISTERED`, active, good OCSP, and nothing in X-Road's admin
     API ever collects it (`docs/decisions/xroad-770-notes.md` §11). Deleting it is part
