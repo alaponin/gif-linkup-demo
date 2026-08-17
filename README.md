@@ -77,7 +77,9 @@ reproducibility proof run.
   performs a real member join: `runbook.md`, "Verifying a change".
 
 What's here: `deployment.yaml` (the analyst-facing deployment spec — X-Road
-version pins, network bind, and (`cs_digest`/`ss_digest`/`testca_tag`) the
+version pins, network bind, the proxy authorization-cache period every
+Security Server boots with (`server_conf_cache_period`, rendered into
+`hurl/local.ini`), and (`cs_digest`/`ss_digest`/`testca_tag`) the
 digest pins that back them; `.env` carries only secrets), `docker-compose.yml`
 (X-Road 7.7.0: Central Server, Test CA, four Security Servers — PDGA plus
 PNEA, PLR and PNIA each on their own; MoEYS is retired),

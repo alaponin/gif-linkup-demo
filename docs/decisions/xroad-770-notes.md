@@ -115,8 +115,10 @@ default almost exactly.
 It is a genuine `local.ini` setting (`[proxy] server-conf-cache-period =
 <seconds>`), not a compose/env-var knob — the sidecar image has no generic
 environment-variable-to-ini mechanism for it. This pack sets it to **5**
-seconds for every Security Server via `xroad-demo-local.ini`, bind-mounted
-over `/etc/xroad/conf.d/local.ini` in `docker-compose.yml`. Re-measured
+seconds for every Security Server via `deployment.yaml`'s
+`xroad.server_conf_cache_period`, which `hurl/generate.py` renders into
+`hurl/local.ini` and `docker-compose.yml` bind-mounts over
+`/etc/xroad/conf.d/local.ini`. Re-measured
 under the override, same 5-run methodology: **4.5s–5.6s**. A demo can
 afford trading a little proxy CPU for a faster-to-reflect ACL change; a
 production federation should not tune this down without understanding the

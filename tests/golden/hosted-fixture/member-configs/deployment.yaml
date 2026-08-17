@@ -25,3 +25,4 @@ xroad:
   # '{{index .RepoDigests 0}}'), not from a fresh pull.
   cs_digest: "noble-7.7.0@sha256:679ef9969b963505a79d52e933b7f34d65517ccc2746aa6097aee3893e2b0b42"
   ss_digest: "7.7.0@sha256:5fb081414b6654d7c6ac8b92d398e7d5df0123d1efb04111af5a578b55fb3d54"
+  server_conf_cache_period: 5

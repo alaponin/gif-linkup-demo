@@ -67,7 +67,7 @@ services:
       - ss-pdga-db:/var/lib/postgresql/16/main
       - ss-pdga-conf:/etc/xroad
       - ss-pdga-archive:/var/lib/xroad
-      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
+      - ./hurl/local.ini:/etc/xroad/conf.d/local.ini
 
   ss-pnea:
     # PNEA — consumer (PROGRESSA/GOV/PNEA:EXAMS).
@@ -78,7 +78,7 @@ services:
       - ss-pnea-db:/var/lib/postgresql/16/main
       - ss-pnea-conf:/etc/xroad
       - ss-pnea-archive:/var/lib/xroad
-      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
+      - ./hurl/local.ini:/etc/xroad/conf.d/local.ini
 
   ss-plr:
     # PLR — provider (PROGRESSA/GOV/PLR:ENROLMENT).
@@ -89,7 +89,7 @@ services:
       - ss-plr-db:/var/lib/postgresql/16/main
       - ss-plr-conf:/etc/xroad
       - ss-plr-archive:/var/lib/xroad
-      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
+      - ./hurl/local.ini:/etc/xroad/conf.d/local.ini
 
   ss-pnia:
     # PNIA — provider (PROGRESSA/GOV/PNIA:IDENTITY).
@@ -104,7 +104,7 @@ services:
       - ss-pnia-db:/var/lib/postgresql/16/main
       - ss-pnia-conf:/etc/xroad
       - ss-pnia-archive:/var/lib/xroad
-      - ./xroad-demo-local.ini:/etc/xroad/conf.d/local.ini
+      - ./hurl/local.ini:/etc/xroad/conf.d/local.ini
 
   app-pnia:
     # Mock identity registry behind ss-pnia.

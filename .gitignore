@@ -17,6 +17,10 @@ hurl/vars.env
 hurl/topology.json
 hurl/topology.sh
 hurl/compose.members.yml
+# Every Security Server's /etc/xroad/conf.d/local.ini, rendered from
+# deployment.yaml's xroad.server_conf_cache_period (was the hand-written
+# xroad-demo-local.ini).
+hurl/local.ini
 # tests/golden/'s corpora (deployment/, hosted-fixture/generated/) hold files
 # with these same names, generated from
 # a fixed, fake tests/golden/env.fixture -- but they are a committed test
