@@ -261,6 +261,33 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   takes on the order of a minute end to end (approve to `ACTIVE, verified:
   true`), inside the ~2-minute threshold past which `--live` would stop being
   cheap enough to run routinely ("Verifying a change", above).
+  - **Issuing an agency its own credential:** `KP2_JOIN_APPLICANT_TOKEN` is
+    shared by every applicant, which is fine for a demo and wrong the moment
+    two agencies are real: nothing on a request says who sent it, and
+    revoking one agency revokes all of them. The operator can issue a named
+    credential instead:
+
+    ```
+    curl -X POST -H "X-KP2-Console: 1" \
+         -H "Authorization: Bearer $KP2_JOIN_OPERATOR_TOKEN" \
+         -H "Content-Type: application/json" -d '{"agency": "ptsb"}' \
+         http://localhost:8091/tokens
+    ```
+
+    The value comes back **once** — the API stores only its SHA-256, so
+    there is no way to read it again; a lost token is revoked and reissued,
+    not recovered. `GET /tokens` lists who holds one and since when (names
+    and dates, never hashes) and `DELETE /tokens/{agency}` revokes, taking
+    effect on the very next request. A request submitted on an issued token
+    records `submitted_by: <agency>`, which survives revocation — the record
+    is evidence of a decision, and revoking a credential does not unmake the
+    submission it was used for. An issued token is an *applicant*
+    credential: it can submit and read, never approve.
+
+    The shared token stays, and the console keeps using it. This is the
+    per-agency-credential half of `docs/production-delta.md`'s row; the mTLS
+    half is not built, and a production federation should disable the shared
+    credential entirely.
   - **Recovering a `FAILED` job:** the record's `error` names the step and
     the last thing observed. Fix the underlying cause (a real federation
     problem, not usually this API's own code — see the OCSP trap below),

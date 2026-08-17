@@ -106,12 +106,14 @@ def _require_console_origin(request: Request) -> None:
 
 
 # Bearer-token auth: two roles, applicant and
-# operator, each its own token from scripts/gen-secrets.sh. Deliberately no
-# per-request ownership: in a demo where one person plays both roles it is
-# machinery guarding a boundary nobody crosses, and restoring it later (a
-# `submitted_by` field and one comparison) is cheap if the module is ever
-# run with genuinely separate applicant/operator actors. The *asymmetry* is
-# the teaching point: an applicant cannot approve.
+# operator, each its own token from scripts/gen-secrets.sh, plus any number
+# of named applicant credentials the operator issues (POST /tokens below).
+# Deliberately still no per-request OWNERSHIP: in a demo where one person
+# plays both roles it is machinery guarding a boundary nobody crosses. The
+# `submitted_by` field that restoring it needs now exists and is recorded;
+# what is missing is the one comparison, and it stays missing until the
+# module is run with genuinely separate applicant/operator actors. The
+# *asymmetry* is the teaching point: an applicant cannot approve.
 def _bearer_token(request: Request) -> str:
     header = request.headers.get("authorization", "")
     scheme, _, value = header.partition(" ")
@@ -120,14 +122,79 @@ def _bearer_token(request: Request) -> str:
     return value
 
 
+# -- issued applicant tokens ---------------------------------------------------
+#
+# One shared KP2_JOIN_APPLICANT_TOKEN for every applicant is a demo shortcut
+# with a real cost: nothing on a request says WHICH agency submitted it, and
+# revoking one agency's access revokes everyone's
+# (docs/production-delta.md). The operator can now issue a named credential
+# per agency instead. The shared token stays -- it is the console's
+# server-side credential and the zero-setup demo path -- so this is an
+# addition to the token model, not a replacement of it. mTLS, which is what
+# that delta row actually asks for in production, is still out of scope.
+#
+# out/join-tokens.json, NOT out/join/tokens.json: out/join/ is globbed for
+# request records (_recover_interrupted_jobs, the store quota,
+# scripts/member.sh drift), and a second kind of document in that directory
+# would be counted as a join request by all three.
+_TOKEN_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+
+
+def _tokens_path() -> pathlib.Path:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    return OUT_DIR / "join-tokens.json"
+
+
+def _token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _load_tokens() -> list[dict]:
+    path = _tokens_path()
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_tokens(tokens: list[dict]) -> None:
+    # Same atomic temp-file-and-rename as _save_request: a reader must never
+    # see a half-written credential store and conclude a token was revoked.
+    path = _tokens_path()
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(tokens, indent=2))
+    os.replace(tmp, path)
+
+
+def _issued_token_name(token: str) -> str | None:
+    """The agency an issued token belongs to, or None. Read from disk on
+    every call rather than cached: revocation has to take effect on the next
+    request, and this is a small local file, not a datastore."""
+    digest = _token_digest(token)
+    for entry in _load_tokens():
+        if secrets.compare_digest(entry.get("sha256", ""), digest):
+            return entry["name"]
+    return None
+
+
 def require_applicant(request: Request) -> str:
     """Applicant may read any request -- any valid token, applicant
-    or operator, satisfies this dependency. Used by read/submit routes."""
+    or operator, satisfies this dependency. Used by read/submit routes.
+
+    Three credentials, tried in that order: the operator token, the shared
+    applicant token, then any token the operator has issued to a named
+    agency. An issued token resolves to "applicant:<name>", which is what
+    POST /requests records as submitted_by."""
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
     if secrets.compare_digest(token, APPLICANT_TOKEN):
         return "applicant"
+    name = _issued_token_name(token)
+    if name is not None:
+        return f"applicant:{name}"
     raise HTTPException(403, "token does not match either configured role")
 
 
@@ -219,6 +286,80 @@ app = FastAPI(title="KP2 member-join API")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# -- token administration (operator only) --------------------------------------
+
+
+@app.post("/tokens", status_code=201)
+def issue_token(
+    body: dict,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Issue a named applicant credential for one agency.
+
+    The plaintext is in this response and nowhere else: only
+    {name, sha256, issued_at} is persisted, and the value is never logged --
+    the same rule this module's docstring states for the admin credentials.
+    An operator who loses it revokes the name and issues a new one; there is
+    no retrieval endpoint, because a store that can return a credential is a
+    store that can leak one."""
+    agency = (body or {}).get("agency")
+    if not isinstance(agency, str) or not _TOKEN_NAME_RE.fullmatch(agency):
+        raise HTTPException(
+            400,
+            "agency is required and must be 1-64 characters of letters, digits, "
+            "'-' or '_' (it names the credential and becomes a URL path segment "
+            "on DELETE /tokens/{name})",
+        )
+    tokens = _load_tokens()
+    if any(entry["name"] == agency for entry in tokens):
+        raise HTTPException(
+            409,
+            f"a token is already issued to {agency!r} -- revoke it first "
+            f"(DELETE /tokens/{agency}) rather than issuing a second one, so "
+            "one name always means one live credential",
+        )
+    value = secrets.token_urlsafe(24)
+    tokens.append({
+        "name": agency,
+        "sha256": _token_digest(value),
+        "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    })
+    _save_tokens(tokens)
+    return {"agency": agency, "token": value,
+            "note": "shown once -- this API stores only its sha256"}
+
+
+@app.get("/tokens")
+def list_tokens(
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Who holds a credential and since when. Never the hashes: a hash is
+    still a credential-shaped secret, and an offline guess against a
+    24-byte token is only impossible while the hash is not in hand."""
+    return {"tokens": [{"agency": entry["name"], "issued_at": entry["issued_at"]}
+                       for entry in _load_tokens()]}
+
+
+@app.delete("/tokens/{agency}")
+def revoke_token(
+    agency: str,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+) -> dict:
+    """Revocation. Takes effect on the next request -- require_applicant
+    reads the store rather than caching it. The join requests this agency
+    already submitted are untouched: they are the record of a decision, and
+    they keep naming it in submitted_by."""
+    tokens = _load_tokens()
+    remaining = [entry for entry in tokens if entry["name"] != agency]
+    if len(remaining) == len(tokens):
+        raise HTTPException(404, f"no token issued to {agency!r}")
+    _save_tokens(remaining)
+    return {"agency": agency, "revoked": True}
 
 
 @app.get("/catalogue")
@@ -331,7 +472,7 @@ def _load_join_policy() -> dict:
 def submit_request(
     raw: dict,
     _origin: None = Depends(_require_console_origin),
-    _role: str = Depends(require_applicant),
+    role: str = Depends(require_applicant),
     _rate: None = Depends(rate_limit),
 ) -> dict:
     """Validate synchronously (eleven per-request checks plus
@@ -363,6 +504,14 @@ def submit_request(
         )
     request_id = secrets.token_urlsafe(8)
     submitted_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # Which agency's credential this arrived on, when it arrived on an issued
+    # one. None for the shared applicant token and for the operator, because
+    # neither identifies anybody -- recording "applicant" there would be a
+    # field that looks like attribution and is not. This is the field this
+    # module's auth comment says per-request ownership would need; it is
+    # recorded, not yet enforced on -- the demo's one-person-two-roles
+    # ergonomics stay.
+    submitted_by = role.split(":", 1)[1] if role.startswith("applicant:") else None
 
     try:
         payload, vctx = validate.validate(
@@ -377,6 +526,7 @@ def submit_request(
             "id": request_id,
             "state": "REJECTED",
             "submitted_at": submitted_at,
+            "submitted_by": submitted_by,
             "payload": raw,
             "rejection": {"check": exc.check, "message": exc.message},
         }
@@ -396,6 +546,7 @@ def submit_request(
             "id": request_id,
             "state": "REJECTED",
             "submitted_at": submitted_at,
+            "submitted_by": submitted_by,
             "payload": raw,
             "rejection": {
                 "check": "generate_dry_run",
@@ -414,6 +565,7 @@ def submit_request(
         "id": request_id,
         "state": "SUBMITTED",
         "submitted_at": submitted_at,
+        "submitted_by": submitted_by,
         "payload": payload.model_dump(mode="json"),
         "diff": diff,
         # The join-time drift baseline: each published service's
