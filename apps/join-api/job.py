@@ -550,6 +550,42 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
 # -- execution ----------------------------------------------------------------
 
 
+# Variable names whose values are credentials. _is_secret() already covers
+# the session tokens (*_xsrf_token); these are the three that come from .env
+# and generate.py. Used for one thing only: refusing to route a credential
+# onto argv if it is ever multi-line -- see _split_variables.
+_CREDENTIAL_VARS = frozenset({"token_pin", "ss_admin_password", "cs_admin_password"})
+
+
+def _split_variables(variables: dict[str, str]) -> tuple[dict, dict]:
+    """(what the 0600 variables file can carry, what has to go on argv).
+
+    The split is by what Hurl's line-based variables file can REPRESENT, not
+    by preference: a value containing a newline cannot be written there at
+    all. Everything else -- which is every credential, since a PIN, a
+    password and an XSRF token are single-line by construction -- stays in
+    the file.
+
+    A multi-line credential would therefore land on argv, which is the exact
+    thing the file exists to prevent. It cannot happen today; if it ever
+    does, this raises rather than publishing it to /proc/<pid>/cmdline."""
+    file_vars: dict = {}
+    argv_vars: dict = {}
+    for name, value in variables.items():
+        if "\n" not in str(value):
+            file_vars[name] = value
+            continue
+        if _is_secret(name) or name in _CREDENTIAL_VARS:
+            raise ValueError(
+                f"job.py: {name} is a credential and is multi-line, so it can go "
+                "neither in Hurl's variables file (no newline escape) nor on argv "
+                "(world-readable through /proc/<pid>/cmdline). Refusing to run this "
+                "step rather than leak it."
+            )
+        argv_vars[name] = value
+    return file_vars, argv_vars
+
+
 def _default_run_hurl(
     label: str, body: str, variables: dict[str, str], *, cookie_jar: pathlib.Path | None = None
 ) -> dict:
@@ -592,10 +628,26 @@ def _default_run_hurl(
         # runs. The file lives in this step's own mkdtemp directory (0700,
         # removed in the finally below) and is written 0600 before anything
         # is put in it.
+        #
+        # The one exception is not a preference, it is the format's own
+        # ceiling: Hurl's variables file is LINE-BASED with no escape for a
+        # newline. A bare multi-line value makes its second line parse as a
+        # new variable name, and quoting does not rescue it -- confirmed
+        # against the pinned hurl binary, which answers "Missing value for
+        # variable <ns3:configuration>!" and "Value should end with a double
+        # quote" respectively. Exactly one variable here is multi-line, and
+        # it is load-bearing: gconf_anchor, the global configuration anchor
+        # cs.anchor captures as a body and ss.bringup_init posts to the
+        # Security Server. It goes on argv, where it is a single element and
+        # parses fine -- and it is public by construction (every joining
+        # member downloads it), not a credential.
+        file_vars, argv_vars = _split_variables(variables)
         vars_file = tmp / "step.vars"
         vars_file.touch(mode=0o600)
-        vars_file.write_text("".join(f"{name}={value}\n" for name, value in variables.items()))
+        vars_file.write_text("".join(f"{name}={value}\n" for name, value in file_vars.items()))
         args += ["--variables-file", str(vars_file)]
+        for name, value in argv_vars.items():
+            args += ["--variable", f"{name}={value}"]
         args += ["--report-json", str(report_dir), str(step_file)]
         proc = subprocess.run(args, capture_output=True, text=True, env=HURL_ENV)
         report_path = report_dir / "report.json"

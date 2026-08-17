@@ -698,6 +698,50 @@ def test_default_run_hurl_keeps_secrets_off_argv(monkeypatch):
     assert captured["mode"] == 0o600
 
 
+def _run_hurl_capturing(monkeypatch, variables):
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        if "--variables-file" in args:
+            captured["text"] = pathlib.Path(args[args.index("--variables-file") + 1]).read_text()
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(job.subprocess, "run", fake_run)
+    job._default_run_hurl("step", "GET http://x\n\nHTTP 200\n", variables)
+    return captured
+
+
+# The global configuration anchor, shortened. cs.anchor captures it as a
+# `body` and ss.bringup_init posts it -- the one multi-line variable this
+# pack has, and the reason the two tests below exist.
+ANCHOR = '<?xml version="1.0" encoding="UTF-8"?>\n<ns3:configuration>\n</ns3:configuration>'
+
+
+def test_a_multi_line_variable_never_goes_into_the_variables_file(monkeypatch):
+    """Hurl's --variables-file is line-based and has NO escape for a newline:
+    a bare multi-line value makes line 2 parse as a variable NAME ("Missing
+    value for variable <ns3:configuration>!"), and quoting does not rescue it
+    ("Value should end with a double quote"). Both confirmed against the
+    pinned hurl binary. So a multi-line value has to reach Hurl on argv,
+    where it is a single element and parses fine."""
+    captured = _run_hurl_capturing(monkeypatch, {"gconf_anchor": ANCHOR, "member_class": "GOV"})
+    assert f"gconf_anchor={ANCHOR}" in captured["args"]
+    assert "gconf_anchor" not in captured.get("text", "")
+    # Everything that CAN go in the file still does -- the split is by what
+    # the format can carry, not a licence to put anything on argv.
+    assert captured["text"] == "member_class=GOV\n"
+
+
+def test_a_multi_line_secret_is_refused_rather_than_routed_onto_argv(monkeypatch):
+    """The file exists because argv is world-readable through
+    /proc/<pid>/cmdline. A PIN, a password and an XSRF token are single-line
+    by construction, so this can only fire if that stops being true -- and
+    then it must fail loudly, not quietly publish a credential."""
+    with pytest.raises(ValueError, match="token_pin"):
+        _run_hurl_capturing(monkeypatch, {"token_pin": "12\n34"})
+
+
 def test_run_wires_a_shared_cookie_jar_only_for_the_real_default_run_hurl(monkeypatch):
     """run()'s own gating (`if run_hurl is _default_run_hurl`): the wiring
     must apply when the caller leaves run_hurl at its default -- the shape
