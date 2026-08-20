@@ -925,12 +925,12 @@ def add_refresh(
     single-writer path that fallback exists beside, not a replacement for
     it. Evidence-appending, not a state transition: no state-machine gate,
     mirroring the direct-write fallback's own lack of one."""
-    endpoints = (body or {}).get("endpoints")
-    if not isinstance(endpoints, dict):
-        raise HTTPException(400, "endpoints is required and must be an object of {service_code: [path, ...]}")
     record = _load_request(db, request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
+    endpoints = (body or {}).get("endpoints")
+    if not isinstance(endpoints, dict):
+        raise HTTPException(400, "endpoints is required and must be an object of {service_code: [path, ...]}")
     record.setdefault("refreshes", []).append({
         "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "endpoints": endpoints,

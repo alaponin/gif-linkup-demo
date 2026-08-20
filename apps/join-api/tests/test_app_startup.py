@@ -89,8 +89,11 @@ def test_the_swept_record_can_then_be_resumed_through_the_api():
 
 
 def test_a_non_running_record_is_left_untouched_by_the_sweep():
-    active = _read("active-job")
-    assert active["id"] == "active-job" and active["state"] == "ACTIVE"
+    assert _read("active-job") == {
+        "id": "active-job",
+        "state": "ACTIVE",
+        "submitted_at": "2026-01-01T00:00:00+00:00",
+    }
     assert _read("failed-job") == {
         "id": "failed-job",
         "state": "FAILED",

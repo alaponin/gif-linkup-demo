@@ -154,6 +154,30 @@ def test_a_revoked_token_stops_working_on_the_next_request(client):
     assert client.get("/catalogue", headers=_bearer(token)).status_code == 403
 
 
+def test_an_expired_token_is_rejected_on_the_next_request(client):
+    """expires_at is enforced in require_applicant (plan §1.4). Backdating
+    the row via a raw UPDATE is simpler and faster than sleeping past a real
+    expiry, and exercises the same comparison a real expiry would."""
+    resp = client.post("/tokens", json={"agency": "ptsb", "expires_in_days": 1}, headers=OPERATOR)
+    assert resp.status_code == 201, resp.text
+    token = resp.json()["token"]
+    assert client.get("/catalogue", headers=_bearer(token)).status_code == 200
+    conn = _conn()
+    conn.execute("UPDATE tokens SET expires_at = ? WHERE name = ?", ("2000-01-01T00:00:00+00:00", "ptsb"))
+    conn.commit()
+    assert client.get("/catalogue", headers=_bearer(token)).status_code == 403
+
+
+def test_reissuing_a_revoked_name_is_still_refused(client):
+    """plan §1.4's ruling: a revoked name cannot be reused -- the issuance
+    stays on the books as evidence rather than being cleared for reuse."""
+    _issue(client, "ptsb")
+    client.request("DELETE", "/tokens/ptsb", headers=OPERATOR)
+    resp = client.post("/tokens", json={"agency": "ptsb"}, headers=OPERATOR)
+    assert resp.status_code == 409
+    assert "revoked" in resp.json()["detail"]
+
+
 def test_revoking_a_name_nobody_holds_is_a_404(client):
     assert client.request("DELETE", "/tokens/nobody", headers=OPERATOR).status_code == 404
 

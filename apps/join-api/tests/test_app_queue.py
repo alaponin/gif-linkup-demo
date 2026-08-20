@@ -300,3 +300,51 @@ def test_reject_never_starts_a_job(client):
     record = _submit(client)
     client.post(f"/requests/{record['id']}/reject", json={"reason": "no"}, headers=OPERATOR)
     assert started == []
+
+
+# -- POST /requests/{id}/refreshes ----------------------------------------------
+# scripts/member.sh refresh's API-first path (plan §1.3) -- Task 4 wires the
+# caller, this task only owns the endpoint.
+
+
+def test_refresh_appends_an_amendment_and_returns_the_updated_record(client):
+    record = _submit(client)
+    resp = client.post(
+        f"/requests/{record['id']}/refreshes",
+        json={"endpoints": {"IDENTITY": ["/v1/verify"]}},
+        headers=OPERATOR,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == record["id"]
+    assert len(body["refreshes"]) == 1
+    assert body["refreshes"][0]["endpoints"] == {"IDENTITY": ["/v1/verify"]}
+    assert "at" in body["refreshes"][0]
+
+    # Persisted, not just echoed back.
+    follow_up = client.get(f"/requests/{record['id']}", headers=OPERATOR)
+    assert follow_up.json()["refreshes"] == body["refreshes"]
+
+
+def test_refresh_on_an_unknown_id_is_404_even_with_a_bad_body(client):
+    """load-or-404 runs before body validation, matching every other
+    /requests/{id} route in this file -- a malformed body against a
+    nonexistent id must read as "no such request", not "bad body"."""
+    resp = client.post("/requests/does-not-exist/refreshes", json={"endpoints": "not-a-dict"}, headers=OPERATOR)
+    assert resp.status_code == 404
+
+
+def test_refresh_rejects_a_non_dict_endpoints_field(client):
+    record = _submit(client)
+    resp = client.post(
+        f"/requests/{record['id']}/refreshes", json={"endpoints": "not-a-dict"}, headers=OPERATOR
+    )
+    assert resp.status_code == 400
+
+
+def test_refresh_is_operator_only(client):
+    record = _submit(client)
+    resp = client.post(
+        f"/requests/{record['id']}/refreshes", json={"endpoints": {}}, headers=APPLICANT
+    )
+    assert resp.status_code == 403

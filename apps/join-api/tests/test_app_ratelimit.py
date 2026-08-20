@@ -112,6 +112,24 @@ def test_the_refusal_says_when_to_come_back(client):
     assert int(resp.headers["Retry-After"]) >= 1
 
 
+def test_a_rate_limit_refusal_is_logged_via_log_refusal(client):
+    """plan §1.5: every 429 refusal appends a request_events row (request_id
+    NULL, actor = a digest prefix of the bearer token, never the token
+    itself) -- "the nothing watches the refusals gap gets a first, queryable
+    answer." Query it back through the raw table rather than store.py (which
+    has no reader for this, by design -- log_refusal is write-only)."""
+    for _ in range(app_module.RATE_LIMIT_CAPACITY):
+        _submit(client)
+    assert _submit(client).status_code == 429
+    row = _conn().execute(
+        "SELECT request_id, actor, event FROM request_events WHERE event = 'rate_limit'"
+    ).fetchone()
+    assert row is not None
+    assert row["request_id"] is None
+    assert len(row["actor"]) == app_module._REFUSAL_ACTOR_DIGEST_LEN
+    assert row["actor"] != app_module.APPLICANT_TOKEN
+
+
 def test_the_bucket_refills_over_time(client, clock):
     for _ in range(app_module.RATE_LIMIT_CAPACITY):
         _submit(client)
