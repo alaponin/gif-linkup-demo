@@ -33,6 +33,10 @@ from starlette.requests import Request  # noqa: E402
 CONSOLE_HEADER = "X-KP2-Console"
 
 
+def _conn():
+    return app.store.connect(app.store.init(app.OUT_DIR))
+
+
 def _request(headers: dict[str, str]) -> Request:
     scope = {
         "type": "http",
@@ -62,18 +66,18 @@ def test_health_response_never_carries_a_credential():
 
 def test_require_applicant_accepts_the_applicant_token():
     req = _request({"authorization": "Bearer test-applicant-token"})
-    assert app.require_applicant(req) == "applicant"
+    assert app.require_applicant(req, _conn()) == "applicant"
 
 
 def test_require_applicant_accepts_the_operator_token_too():
     req = _request({"authorization": "Bearer test-operator-token"})
-    assert app.require_applicant(req) == "operator"
+    assert app.require_applicant(req, _conn()) == "operator"
 
 
 def test_require_applicant_rejects_an_unknown_token():
     req = _request({"authorization": "Bearer not-a-real-token"})
     try:
-        app.require_applicant(req)
+        app.require_applicant(req, _conn())
         assert False, "expected HTTPException"
     except app.HTTPException as exc:
         assert exc.status_code == 403
@@ -82,7 +86,7 @@ def test_require_applicant_rejects_an_unknown_token():
 def test_require_applicant_rejects_a_missing_header():
     req = _request({})
     try:
-        app.require_applicant(req)
+        app.require_applicant(req, _conn())
         assert False, "expected HTTPException"
     except app.HTTPException as exc:
         assert exc.status_code == 401

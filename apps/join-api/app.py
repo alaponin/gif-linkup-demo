@@ -17,14 +17,15 @@ once, never returned in a response or logged -- same rule as
 apps/console/app.py (see that file's own docstring)."""
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
-import json
 import math
 import os
 import pathlib
 import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -45,11 +46,42 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import job  # noqa: E402
 import schema  # noqa: E402
+import store  # noqa: E402
 import validate  # noqa: E402
 import writer  # noqa: E402
 
 PACK_DIR = pathlib.Path(os.environ.get("PACK_DIR", "/pack"))
 OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
+
+# -- the store connection --------------------------------------------------
+# sqlite3.Connection objects are not safe to share across threads
+# (check_same_thread=True), and this process has two execution contexts that
+# touch the store: FastAPI's request handlers, and the background daemon
+# threads _start_job/_start_unjoin launch. Each gets its own connection,
+# opened where it runs, never handed across a thread boundary (plan
+# docs/plans/join-datastore-sqlite-plan.md, store.py's own docstring).
+#
+# _conn() resolves against the CURRENT OUT_DIR on every call, not a path
+# cached at import time: this file's own test fixtures reassign
+# app_module.OUT_DIR per test for isolation (the same pattern the old
+# file-backed _requests_dir() relied on by re-reading the OUT_DIR global on
+# every call), and store.init() is idempotent, so re-running it here is the
+# cheap way to keep that working for the store too.
+
+
+def _conn(*, readonly: bool = False) -> sqlite3.Connection:
+    return store.connect(store.init(OUT_DIR), readonly=readonly)
+
+
+def get_conn():
+    """FastAPI dependency: one connection per request, closed on the way
+    out."""
+    conn = _conn()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
 
 # Held server-side only, exactly like apps/console's ADMIN_USER/ADMIN_PASSWORD.
 # This is the one place credentials enter the process; job.py receives them as
@@ -133,68 +165,40 @@ def _bearer_token(request: Request) -> str:
 # addition to the token model, not a replacement of it. mTLS, which is what
 # that delta row actually asks for in production, is still out of scope.
 #
-# out/join-tokens.json, NOT out/join/tokens.json: out/join/ is globbed for
-# request records (_recover_interrupted_jobs, the store quota,
-# scripts/member.sh drift), and a second kind of document in that directory
-# would be counted as a join request by all three.
+# Tokens live in the same SQLite store as request records now (store.py's
+# `tokens` table) -- see the store wiring below. Keeping them out of
+# out/join/ used to matter because that directory was globbed for request
+# records; with one DB and two separate tables a token row can never be
+# miscounted as a request row by construction.
 _TOKEN_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-
-
-def _tokens_path() -> pathlib.Path:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    return OUT_DIR / "join-tokens.json"
 
 
 def _token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _load_tokens() -> list[dict]:
-    path = _tokens_path()
-    if not path.exists():
-        return []
-    try:
-        return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return []
-
-
-def _save_tokens(tokens: list[dict]) -> None:
-    # Same atomic temp-file-and-rename as _save_request: a reader must never
-    # see a half-written credential store and conclude a token was revoked.
-    path = _tokens_path()
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(tokens, indent=2))
-    os.replace(tmp, path)
-
-
-def _issued_token_name(token: str) -> str | None:
-    """The agency an issued token belongs to, or None. Read from disk on
-    every call rather than cached: revocation has to take effect on the next
-    request, and this is a small local file, not a datastore."""
-    digest = _token_digest(token)
-    for entry in _load_tokens():
-        if secrets.compare_digest(entry.get("sha256", ""), digest):
-            return entry["name"]
-    return None
-
-
-def require_applicant(request: Request) -> str:
+def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> str:
     """Applicant may read any request -- any valid token, applicant
     or operator, satisfies this dependency. Used by read/submit routes.
 
     Three credentials, tried in that order: the operator token, the shared
     applicant token, then any token the operator has issued to a named
     agency. An issued token resolves to "applicant:<name>", which is what
-    POST /requests records as submitted_by."""
+    POST /requests records as submitted_by. A row that is revoked or expired
+    (plan §1.4) is treated as no match, same as a token nobody ever issued --
+    falls through to the 403 below, exactly like today's
+    revocation-takes-effect-on-next-request behaviour, with expiry added."""
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
     if secrets.compare_digest(token, APPLICANT_TOKEN):
         return "applicant"
-    name = _issued_token_name(token)
-    if name is not None:
-        return f"applicant:{name}"
+    row = store.find_token(db, _token_digest(token))
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if row is not None and row["revoked_at"] is None and (
+        row["expires_at"] is None or row["expires_at"] > now
+    ):
+        return f"applicant:{row['name']}"
     raise HTTPException(403, "token does not match either configured role")
 
 
@@ -229,11 +233,11 @@ def require_operator(request: Request) -> str:
 RATE_LIMIT_CAPACITY = 30
 RATE_LIMIT_REFILL_PER_MINUTE = 30
 
-# The other half of the same worry: out/join/ is a directory of files on local
-# disk, which is what this pack has instead of a datastore. A submission is
-# refused once that directory holds this many records -- the remedy is naming
-# in the message, because there is no eviction policy here and inventing one
-# would be pretending the directory is a database.
+# The other half of the same worry: the join store holds every request
+# record ever submitted, and nothing evicts. A submission is refused once it
+# holds this many records -- the remedy is naming in the message, because
+# there is no eviction policy here and inventing one would be pretending
+# this is a production-sized retention story.
 STORE_QUOTA = 200
 
 # token sha256 -> (tokens left, monotonic time that count was computed at).
@@ -260,7 +264,18 @@ def _take_token(bucket_key: str) -> float | None:
         return None
 
 
-def rate_limit(request: Request) -> None:
+# How much of a bearer token's sha256 digest is worth recording against a
+# 429 refusal (plan §1.5): enough to correlate repeat offenders across
+# request_events rows, never the full digest and never the plaintext -- a
+# hash is still a credential-shaped secret (this file's own /tokens rule).
+_REFUSAL_ACTOR_DIGEST_LEN = 12
+
+
+def _refusal_actor(request: Request) -> str:
+    return hashlib.sha256(_bearer_token(request).encode()).hexdigest()[:_REFUSAL_ACTOR_DIGEST_LEN]
+
+
+def rate_limit(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> None:
     """One bucket per bearer token, so the applicant and operator credentials
     cannot exhaust each other's budget -- and, once per-agency tokens exist,
     neither can two agencies. Applied to the two POSTs that drive the
@@ -270,6 +285,7 @@ def rate_limit(request: Request) -> None:
     wait = _take_token(hashlib.sha256(_bearer_token(request).encode()).hexdigest())
     if wait is None:
         return
+    store.log_refusal(db, actor=_refusal_actor(request), event="rate_limit")
     raise HTTPException(
         429,
         f"rate limit: this credential may make {RATE_LIMIT_REFILL_PER_MINUTE} of these "
@@ -296,15 +312,19 @@ def issue_token(
     body: dict,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Issue a named applicant credential for one agency.
 
     The plaintext is in this response and nowhere else: only
-    {name, sha256, issued_at} is persisted, and the value is never logged --
-    the same rule this module's docstring states for the admin credentials.
-    An operator who loses it revokes the name and issues a new one; there is
-    no retrieval endpoint, because a store that can return a credential is a
-    store that can leak one."""
+    {name, sha256, issued_at, expires_at} is persisted, and the value is
+    never logged -- the same rule this module's docstring states for the
+    admin credentials. An operator who loses it revokes the name and issues
+    a new one; there is no retrieval endpoint, because a store that can
+    return a credential is a store that can leak one.
+
+    `expires_in_days` is optional (plan §1.4): absent means no expiry, same
+    as today's default."""
     agency = (body or {}).get("agency")
     if not isinstance(agency, str) or not _TOKEN_NAME_RE.fullmatch(agency):
         raise HTTPException(
@@ -313,21 +333,25 @@ def issue_token(
             "'-' or '_' (it names the credential and becomes a URL path segment "
             "on DELETE /tokens/{name})",
         )
-    tokens = _load_tokens()
-    if any(entry["name"] == agency for entry in tokens):
+    expires_in_days = (body or {}).get("expires_in_days")
+    if expires_in_days is not None and (not isinstance(expires_in_days, int) or isinstance(expires_in_days, bool) or expires_in_days <= 0):
+        raise HTTPException(400, "expires_in_days must be a positive integer when present")
+    value = secrets.token_urlsafe(24)
+    try:
+        store.issue_token(db, agency, _token_digest(value), expires_in_days=expires_in_days)
+    except store.NameAlreadyUsed as exc:
+        if exc.revoked:
+            raise HTTPException(
+                409,
+                f"{agency!r} was already used and revoked -- choose a different name "
+                "(revoked names cannot be reissued; the issuance stays on the books as evidence)",
+            ) from exc
         raise HTTPException(
             409,
             f"a token is already issued to {agency!r} -- revoke it first "
             f"(DELETE /tokens/{agency}) rather than issuing a second one, so "
             "one name always means one live credential",
-        )
-    value = secrets.token_urlsafe(24)
-    tokens.append({
-        "name": agency,
-        "sha256": _token_digest(value),
-        "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    })
-    _save_tokens(tokens)
+        ) from exc
     return {"agency": agency, "token": value,
             "note": "shown once -- this API stores only its sha256"}
 
@@ -336,12 +360,16 @@ def issue_token(
 def list_tokens(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
-    """Who holds a credential and since when. Never the hashes: a hash is
-    still a credential-shaped secret, and an offline guess against a
-    24-byte token is only impossible while the hash is not in hand."""
-    return {"tokens": [{"agency": entry["name"], "issued_at": entry["issued_at"]}
-                       for entry in _load_tokens()]}
+    """Who holds a credential, since when, and whether it has been revoked
+    (plan §1.4). Never the hashes: a hash is still a credential-shaped
+    secret, and an offline guess against a 24-byte token is only impossible
+    while the hash is not in hand."""
+    return {"tokens": [
+        {"agency": entry["name"], "issued_at": entry["issued_at"], "revoked_at": entry["revoked_at"]}
+        for entry in store.list_tokens(db)
+    ]}
 
 
 @app.delete("/tokens/{agency}")
@@ -349,16 +377,16 @@ def revoke_token(
     agency: str,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Revocation. Takes effect on the next request -- require_applicant
     reads the store rather than caching it. The join requests this agency
     already submitted are untouched: they are the record of a decision, and
-    they keep naming it in submitted_by."""
-    tokens = _load_tokens()
-    remaining = [entry for entry in tokens if entry["name"] != agency]
-    if len(remaining) == len(tokens):
+    they keep naming it in submitted_by. A soft-delete (revoked_at set), not
+    a row removal -- the issuance stays on the books as evidence (plan
+    §1.4)."""
+    if not store.revoke_token(db, agency):
         raise HTTPException(404, f"no token issued to {agency!r}")
-    _save_tokens(remaining)
     return {"agency": agency, "revoked": True}
 
 
@@ -382,79 +410,62 @@ def get_catalogue(
 
 
 # -- request persistence -------------------------------------------------------
-# out/join/<request-id>.json, the same OUT_DIR convention apps/console/
-# journal.py already uses for out/console-acl-journal.json. One file per
-# request, carrying every state it has been through (seven, including
-# BLOCKED: an own-server join waits in it for the member's own
-# Security Server) and the job's own record: last_completed_step, the
-# non-secret captures (context), verified, queued, retry_budget_left,
-# {step, message} on FAILED, and {step, server, message} on BLOCKED.
+# The join-api's own SQLite store (apps/join-api/store.py) now owns every
+# request record; this section keeps only the id charset check, a
+# trust-boundary guard on caller input that stays in app.py by design
+# (store.py's own docstring, plan §1.2) -- request_id comes off the URL path
+# and would otherwise reach a query unchecked.
 
 _REQUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
-def _requests_dir() -> pathlib.Path:
-    d = OUT_DIR / "join"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def _save_request(record: dict) -> None:
-    # Atomic on POSIX, same pattern as journal.py's _write: a temp file
-    # beside the target, renamed on -- a reader never sees a partial write.
-    path = _requests_dir() / f"{record['id']}.json"
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(record, indent=2))
-    os.replace(tmp, path)
-
-
-def _load_request(request_id: str) -> dict | None:
-    # request_id came off the URL path and becomes a filename below --
-    # reject anything outside secrets.token_urlsafe's own charset before it
-    # ever reaches the filesystem (trust-boundary input, not a cosmetic
-    # check: a path-traversal-shaped id must 404, not read outside out/join/).
+def _load_request(db: sqlite3.Connection, request_id: str) -> dict | None:
+    """The charset check + store.load_request(), together -- request_id
+    comes off a URL path in every caller, so this pairing is repeated at
+    every /requests/{id} route rather than trusted to remember on its own."""
     if not _REQUEST_ID_RE.fullmatch(request_id):
         return None
-    path = _requests_dir() / f"{request_id}.json"
-    if not path.exists():
-        return None
-    return json.loads(path.read_text())
+    return store.load_request(db, request_id)
 
 
-def _recover_interrupted_jobs() -> None:
-    """A job's record can be stuck at RUNNING forever if the process running
-    it stops mid-job -- scripts/join.sh down, a rebuild, or even
-    acceptance.sh's own 2.7 section (which brings join-api up and back down
-    around its checks). job.run() itself already resumes correctly from any
-    record carrying last_completed_step (see its own docstring), but
-    resume_request only accepts FAILED or BLOCKED -- never RUNNING, so two
-    runners can never land on one live job -- so a record left at RUNNING is
-    otherwise
-    unrecoverable through this API except by hand-editing out/join/<id>.json.
+# A job's record can be stuck at RUNNING forever if the process running it
+# stops mid-job -- scripts/join.sh down, a rebuild, or even acceptance.sh's
+# own 2.7 section (which brings join-api up and back down around its
+# checks). job.run() itself already resumes correctly from any record
+# carrying last_completed_step (see its own docstring), but resume_request
+# only accepts FAILED or BLOCKED -- never RUNNING, so two runners can never
+# land on one live job -- so a record left at RUNNING is otherwise
+# unrecoverable through this API. store.recover_interrupted() sweeps every
+# such row to FAILED, in one transaction, once at import time: this process
+# is, by construction, not the one that was running that job -- if it were
+# still running, this module would not be re-executing from the top.
+#
+# Kept at module level, self-invoking on import, exactly like the file-backed
+# sweep it replaces -- NOT a FastAPI @app.on_event("startup") handler.
+# apps/join-api/tests/test_app_startup.py depends on "importing this module
+# runs the sweep" (it loads app.py via importlib.util.spec_from_file_location
+# specifically to trigger this side effect), asserting on state immediately
+# after exec_module, before any TestClient exists.
+with contextlib.closing(_conn()) as _startup_conn:
+    store.recover_interrupted(_startup_conn)
 
-    Run once, at import time: this process is,
-    by construction, not the one that was running that job -- if it were
-    still running, this module would not be re-executing from the top. Every
-    record still marked RUNNING therefore belongs to a run that died with
-    this process (or an earlier one) and never got to report itself FAILED;
-    rewriting it to FAILED here makes the existing FAILED-only resume path
-    able to pick it back up."""
-    for path in sorted(_requests_dir().glob("*.json")):
-        try:
-            record = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if record.get("state") != "RUNNING":
-            continue
-        record["state"] = "FAILED"
-        record["error"] = {
-            "step": record.get("last_completed_step"),
-            "message": "interrupted by a join-api restart",
-        }
-        _save_request(record)
-
-
-_recover_interrupted_jobs()
+    # Migration refusal (plan §2): if out/join/*.json request files still
+    # exist beside a DB that holds none, this process must refuse to start
+    # rather than silently serve out of an empty store while evidence sits
+    # unmigrated next to it. scripts/migrate-join-store.py (a later task)
+    # is the remedy; this check only needs to name it.
+    _stale_requests_dir = OUT_DIR / "join"
+    if (
+        _stale_requests_dir.is_dir()
+        and any(_stale_requests_dir.glob("*.json"))
+        and store.count_requests(_startup_conn) == 0
+    ):
+        raise RuntimeError(
+            f"{_stale_requests_dir} still holds *.json request records that have not "
+            f"been migrated into the SQLite store ({store.db_path(OUT_DIR)}). Run "
+            "scripts/migrate-join-store.py before starting join-api, so this process "
+            "never silently half-reads two stores."
+        )
 
 
 def _load_manifest() -> dict:
@@ -471,9 +482,11 @@ def _load_join_policy() -> dict:
 @app.post("/requests", status_code=201)
 def submit_request(
     raw: dict,
+    request: Request,
     _origin: None = Depends(_require_console_origin),
     role: str = Depends(require_applicant),
     _rate: None = Depends(rate_limit),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Validate synchronously (eleven per-request checks plus
     lawful_basis, sla_required and spec_url_origin, additions beyond those
@@ -488,19 +501,19 @@ def submit_request(
     an unrecognised key) is check 1 ("schema") -- validate() itself does
     `JoinPayload(**raw)` and turns a pydantic.ValidationError into
     RejectionError("schema", ...), so nothing here hand-rolls that check."""
-    # The disk-backed store's own ceiling, checked before validation does any
-    # work (or any fetching). out/join/ is a directory of files, not a
-    # datastore: nothing evicts, nothing rotates, and a request record is
-    # evidence, so the honest response to a full one is to refuse and say
+    # The store's own ceiling, checked before validation does any work (or
+    # any fetching). Nothing evicts, nothing rotates, and a request record is
+    # evidence, so the honest response to a full store is to refuse and say
     # where to look -- not to invent a retention policy for it here.
-    held = sum(1 for _ in _requests_dir().glob("*.json"))
+    held = store.count_requests(db)
     if held >= STORE_QUOTA:
+        store.log_refusal(db, actor=_refusal_actor(request), event="quota")
         raise HTTPException(
             429,
-            f"out/join/ already holds {held} request records, the limit this "
+            f"the join store already holds {held} request records, the limit this "
             f"service accepts ({STORE_QUOTA}). Nothing is evicted automatically -- "
             "each record is the evidence of a decision. Archive or remove the "
-            "settled ones (REJECTED and RETIRED) from out/join/ and retry.",
+            "settled ones (REJECTED and RETIRED) and retry.",
         )
     request_id = secrets.token_urlsafe(8)
     submitted_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -530,7 +543,7 @@ def submit_request(
             "payload": raw,
             "rejection": {"check": exc.check, "message": exc.message},
         }
-        _save_request(record)
+        store.save_request(db, record, actor=role, event="rejected", detail={"check": exc.check})
         return record
 
     key = payload.code.lower()
@@ -558,7 +571,7 @@ def submit_request(
                 + job.scrub(exc.stderr, JOB_SECRETS),
             },
         }
-        _save_request(record)
+        store.save_request(db, record, actor=role, event="rejected", detail={"check": "generate_dry_run"})
         return record
 
     record = {
@@ -588,7 +601,7 @@ def submit_request(
             for code, (declared, required) in vctx.contract_fields.items()
         },
     }
-    _save_request(record)
+    store.save_request(db, record, actor=role, event="submitted")
     return record
 
 
@@ -597,6 +610,7 @@ def get_request(
     request_id: str,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_applicant),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """The whole record, which also carries last_completed_step, the job
     context's captures, verified, and the failing step + last error when
@@ -604,7 +618,7 @@ def get_request(
     (test_app_requests.py asserts GET round-trips POST's response
     byte-for-byte) -- the derived, operator-only view (_record_view below)
     lives on GET /requests instead, not here."""
-    record = _load_request(request_id)
+    record = _load_request(db, request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     return record
@@ -687,18 +701,13 @@ def _record_view(record: dict) -> dict:
 def list_requests(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """The operator queue: every persisted request, newest first,
     each enriched via _record_view. Operator-only, unlike GET /requests/{id}
     -- an applicant reads its own outcome by id (the "own request
     only" restriction was dropped, but the queue-wide view is still an operator tool)."""
-    records = []
-    for path in sorted(_requests_dir().glob("*.json")):
-        try:
-            records.append(json.loads(path.read_text()))
-        except (OSError, json.JSONDecodeError):
-            continue
-    records.sort(key=lambda r: r.get("submitted_at", ""), reverse=True)
+    records = sorted(store.list_requests(db), key=lambda r: r.get("submitted_at", ""), reverse=True)
     return {"requests": [_record_view(r) for r in records]}
 
 
@@ -726,19 +735,24 @@ JOB_SECRETS = {
 
 
 def _run_job(request_id: str) -> None:
-    with _JOB_LOCK:
-        record = _load_request(request_id)
+    # This is a background thread, never the request thread -- it opens and
+    # closes its own connection rather than sharing the request-scoped one
+    # FastAPI's Depends(get_conn) hands a route handler, since
+    # sqlite3.Connection objects aren't safe to share across threads.
+    with contextlib.closing(_conn()) as conn, _JOB_LOCK:
+        record = _load_request(conn, request_id)
         if record is None:  # deleted while queued
             return
         try:
-            job.run(record, PACK_DIR, secrets=JOB_SECRETS, save=_save_request)
+            job.run(record, PACK_DIR, secrets=JOB_SECRETS,
+                    save=lambda r: store.save_request(conn, r, actor="system", event="job"))
         except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
             record["state"] = "FAILED"
             record["error"] = {
                 "step": record.get("last_completed_step"),
                 "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
             }
-            _save_request(record)
+            store.save_request(conn, record, actor="system", event="state:*->FAILED")
 
 
 def _start_job(request_id: str) -> None:
@@ -751,6 +765,7 @@ def approve_request(
     body: dict | None = None,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Operator approval: write the config for real (on APPROVED,
     before any live mutation), then start the job. 202, not 200: the job runs
@@ -763,7 +778,7 @@ def approve_request(
     the decision it is actuating. `decision_reference` is untyped like
     reject_request's `body`, not a schema.py model -- this is evidence, not
     another auth layer, so a required non-empty string is the whole check."""
-    record = _load_request(request_id)
+    record = _load_request(db, request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     if record["state"] != "SUBMITTED":
@@ -814,7 +829,7 @@ def approve_request(
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": message}
         record["decision_reference"] = decision_reference
-        _save_request(record)
+        store.save_request(db, record, actor="operator", event="state:SUBMITTED->FAILED")
         raise HTTPException(500, message) from exc
     except writer.GenerateFailure as exc:
         # The config was written and generate.py refused it. apply_real has
@@ -830,14 +845,14 @@ def approve_request(
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": stderr}
         record["decision_reference"] = decision_reference
-        _save_request(record)
+        store.save_request(db, record, actor="operator", event="state:SUBMITTED->FAILED")
         raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
     record["approved_at"] = approved_at
     record["decision_reference"] = decision_reference
     record["queued"] = _JOB_LOCK.locked()
-    _save_request(record)
+    store.save_request(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
     _start_job(request_id)
     return record
 
@@ -848,6 +863,7 @@ def resume_request(
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
     _rate: None = Depends(rate_limit),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Re-run from last_completed_step. Only from FAILED or BLOCKED --
     resuming a RUNNING job would put two runners on one
@@ -858,13 +874,13 @@ def resume_request(
     now-existing Security Server and carries on. A resume that finds it still
     absent re-enters BLOCKED rather than failing, as many times as it takes --
     which is why this is not a state that expires."""
-    record = _load_request(request_id)
+    record = _load_request(db, request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     if record["state"] not in ("FAILED", "BLOCKED"):
         raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED or BLOCKED")
     record["queued"] = _JOB_LOCK.locked()
-    _save_request(record)
+    store.save_request(db, record, actor="operator", event="resume")
     _start_job(request_id)
     return record
 
@@ -875,13 +891,14 @@ def reject_request(
     body: dict | None = None,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Operator rejection with a reason (the console's operator tab).
     Only from SUBMITTED -- once a request is APPROVED the config is already
     written and a job may be running or done; rejecting at that point isn't
     "this join should not happen", it's un-joining, which is DELETE
     /members/{key} (Plan C, not this endpoint)."""
-    record = _load_request(request_id)
+    record = _load_request(db, request_id)
     if record is None:
         raise HTTPException(404, f"no join request {request_id!r}")
     if record["state"] != "SUBMITTED":
@@ -890,7 +907,35 @@ def reject_request(
     record["state"] = "REJECTED"
     record["rejection"] = {"check": "operator", "message": reason}
     record["rejected_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    _save_request(record)
+    store.save_request(db, record, actor="operator", event="rejected")
+    return record
+
+
+@app.post("/requests/{request_id}/refreshes")
+def add_refresh(
+    request_id: str,
+    body: dict,
+    _origin: None = Depends(_require_console_origin),
+    _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    """Append a drift-refresh amendment to a request record (plan §1.3).
+    `scripts/member.sh refresh` tries this endpoint first, and falls back to
+    a direct DB write only when join-api is not running -- this is the
+    single-writer path that fallback exists beside, not a replacement for
+    it. Evidence-appending, not a state transition: no state-machine gate,
+    mirroring the direct-write fallback's own lack of one."""
+    endpoints = (body or {}).get("endpoints")
+    if not isinstance(endpoints, dict):
+        raise HTTPException(400, "endpoints is required and must be an object of {service_code: [path, ...]}")
+    record = _load_request(db, request_id)
+    if record is None:
+        raise HTTPException(404, f"no join request {request_id!r}")
+    record.setdefault("refreshes", []).append({
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "endpoints": endpoints,
+    })
+    store.save_request(db, record, actor="operator", event="refresh")
     return record
 
 
@@ -902,7 +947,7 @@ def reject_request(
 # Keyed by member KEY, not by request id -- "retire PTSB" is the operator's
 # question, and the request id that joined it is an implementation detail
 # nobody kept. The record it walks is found the same way scripts/member.sh
-# drift already finds a member's join-time baseline (_member_record below).
+# drift already finds a member's join-time baseline (store.member_record()).
 
 # The key becomes a manifest lookup AND an argv element for member.sh, which
 # does `rm -r "$PACK_DIR/configs/member-$key"`. subprocess is called with a
@@ -911,43 +956,26 @@ def reject_request(
 # key_derivation check already constrains a joining member's key to.
 _MEMBER_KEY_RE = re.compile(r"[a-z0-9]+")
 
-
-def _member_record(key: str) -> dict | None:
-    """The job record to walk backwards for `key`: the newest ACTIVE or
-    RETIRING one whose payload code matches. Same discovery scripts/member.sh
-    drift does for the same reason -- nothing indexes out/join/ by member, and
-    nothing enforces one record per member, so pick the newest rather than
-    assume. RETIRING is included so that re-issuing the DELETE resumes an
-    interrupted walk instead of 404ing on a member whose record has already
-    left ACTIVE."""
-    best = None
-    for path in sorted(_requests_dir().glob("*.json")):
-        try:
-            record = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if record.get("state") not in ("ACTIVE", "RETIRING"):
-            continue
-        if (record.get("payload") or {}).get("code", "").lower() != key:
-            continue
-        if best is None or record.get("submitted_at", "") > best.get("submitted_at", ""):
-            best = record
-    return best
+# store.member_record(db, key) replaces the hand-rolled newest-ACTIVE/RETIRING
+# scan that used to live here -- one indexed query (requests_by_member) over
+# the same discovery scripts/member.sh drift does for the same reason.
 
 
 def _run_unjoin(request_id: str) -> None:
-    with _JOB_LOCK:
-        record = _load_request(request_id)
+    # Background thread, own connection -- see _run_job's comment.
+    with contextlib.closing(_conn()) as conn, _JOB_LOCK:
+        record = _load_request(conn, request_id)
         if record is None:
             return
         try:
-            job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS, save=_save_request)
+            job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS,
+                       save=lambda r: store.save_request(conn, r, actor="system", event="unjoin"))
         except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
             record["error"] = {
                 "step": record.get("last_reversed_step"),
                 "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
             }
-            _save_request(record)
+            store.save_request(conn, record, actor="system", event="state:*->RETIRING(error)")
             return
         if record.get("state") != "RETIRED":
             return  # the walk stopped; record["error"] says where. DELETE again to resume.
@@ -997,7 +1025,8 @@ def _run_unjoin(request_id: str) -> None:
             # entry to delete, and nothing to forget to delete. Its own
             # onboarding/<key>/ record stays as evidence of what was revoked.
             writer.write_catalogue(PACK_DIR)
-        _save_request(record)
+        store.save_request(conn, record, actor="system",
+                            event="config_removed" if record.get("config_removed") else "state:RETIRED->RETIRING")
 
 
 def _start_unjoin(request_id: str) -> None:
@@ -1009,6 +1038,7 @@ def retire_member(
     key: str,
     _origin: None = Depends(_require_console_origin),
     _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Un-join a member: reverse its live federation presence, then remove its
     config. 202 and the record, like approve -- the walk runs past this
@@ -1043,7 +1073,7 @@ def retire_member(
             "them. Only a member with origin: joined can leave.",
         )
 
-    record = _member_record(key)
+    record = store.member_record(db, key)
     if record is None:
         raise HTTPException(
             404,
@@ -1060,6 +1090,6 @@ def retire_member(
     # what is left for them whether or not they come back for the final record.
     record["retire_instruction"] = job.retire_instruction(schema.JoinPayload(**record["payload"]))
     record["queued"] = _JOB_LOCK.locked()
-    _save_request(record)
+    store.save_request(db, record, actor="operator", event="state:ACTIVE->RETIRING")
     _start_unjoin(record["id"])
     return record

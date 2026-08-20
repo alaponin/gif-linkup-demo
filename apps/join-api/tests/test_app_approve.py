@@ -12,6 +12,7 @@ fixtures, in test_job.py.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import pathlib
 import subprocess
@@ -41,6 +42,11 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+
+
+def _conn():
+    return app_module.store.connect(app_module.store.init(app_module.OUT_DIR))
+
 
 # Every approve call now needs a decision_reference -- the
 # minute identifier and date the demo cannot supply a real one for, in the
@@ -144,7 +150,7 @@ def test_approve_without_a_decision_reference_is_rejected(client):
     assert "5.3" in detail
     # No write happened -- the check runs before the config is touched.
     assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
-    assert app_module._load_request(record["id"])["state"] == "SUBMITTED"
+    assert app_module.store.load_request(_conn(), record["id"])["state"] == "SUBMITTED"
 
 
 def test_approve_with_a_blank_decision_reference_is_rejected(client):
@@ -189,10 +195,10 @@ def test_resume_is_only_possible_from_failed(client):
     resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
     assert resp.status_code == 409
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "FAILED"
     stored["last_completed_step"] = "ss.client_add"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
     resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
     assert resp.status_code == 202
     assert started == [record["id"]]
@@ -204,10 +210,10 @@ def test_resume_is_also_the_exit_from_blocked(client):
     scripts/join-agent.sh, then resumes, and job.run() polls the server it
     just stood up."""
     record = _submit(client)
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "BLOCKED"
     stored["last_completed_step"] = "cs.anchor"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
     resp = client.post(f"/requests/{record['id']}/resume", headers=OPERATOR)
     assert resp.status_code == 202
     assert started == [record["id"]]
@@ -227,8 +233,8 @@ def test_a_generate_failure_is_scrubbed_before_it_is_returned_or_persisted(clien
     resp = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert resp.status_code == 409
     assert pin not in resp.text
-    assert pin not in (app_module._requests_dir() / f"{record['id']}.json").read_text()
-    assert app_module._load_request(record["id"])["state"] == "FAILED"
+    assert pin not in json.dumps(app_module.store.load_request(_conn(), record["id"]))
+    assert app_module.store.load_request(_conn(), record["id"])["state"] == "FAILED"
 
 
 def test_a_git_check_failure_is_a_409_not_a_500(client, monkeypatch):

@@ -40,6 +40,10 @@ OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
 DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
 
+def _conn():
+    return app_module.store.connect(app_module.store.init(app_module.OUT_DIR))
+
+
 def _git(*args: str, cwd: pathlib.Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
 
@@ -159,9 +163,9 @@ def test_active_record_carries_the_uncommitted_flag(client):
     approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "ACTIVE"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
 
     body = client.get("/requests", headers=OPERATOR).json()["requests"]
     entry = next(r for r in body if r["id"] == record["id"])
@@ -189,9 +193,9 @@ def test_uncommitted_check_failure_reads_as_unknown_not_committed(client, monkey
     approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "ACTIVE"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
 
     def boom(*args, **kwargs):
         raise FileNotFoundError("git")
@@ -212,9 +216,9 @@ def test_uncommitted_check_nonzero_git_exit_also_reads_as_unknown(client, monkey
     approve = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR)
     assert approve.status_code == 202
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "ACTIVE"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
 
     import subprocess as real_subprocess
 

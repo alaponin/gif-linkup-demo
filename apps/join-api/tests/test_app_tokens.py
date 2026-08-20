@@ -44,6 +44,10 @@ APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
 
 
+def _conn():
+    return app_module.store.connect(app_module.store.init(app_module.OUT_DIR))
+
+
 @pytest.fixture
 def client(tmp_path):
     app_module._BUCKETS.clear()
@@ -70,10 +74,15 @@ def _issue(client, agency: str = "ptsb") -> str:
 def test_issuing_returns_the_value_once_and_stores_only_its_hash(client):
     """A store that can return a credential is a store that can leak one."""
     token = _issue(client, "ptsb")
-    stored = json.loads((app_module.OUT_DIR / "join-tokens.json").read_text())
+    stored = app_module.store.list_tokens(_conn())
     assert [entry["name"] for entry in stored] == ["ptsb"]
     assert token not in json.dumps(stored)
-    assert stored[0]["sha256"] == app_module._token_digest(token)
+    # store.list_tokens() deliberately never returns sha256 (it backs the
+    # read-only GET /tokens route) -- a raw query is the simplest way to
+    # check the hash without growing store.py's production surface for a
+    # test-only need.
+    row = _conn().execute("SELECT sha256 FROM tokens WHERE name = ?", ("ptsb",)).fetchone()
+    assert row["sha256"] == app_module._token_digest(token)
     assert "issued_at" in stored[0]
 
 
@@ -222,13 +231,15 @@ def test_a_revoked_agency_keeps_its_name_on_the_requests_it_made(client):
                       headers=OPERATOR).json()["submitted_by"] == "ptsb"
 
 
-# -- the store lives outside the request directory -----------------------------
+# -- tokens and requests never collide -----------------------------------------
 
 
 def test_the_token_store_is_not_mistaken_for_a_join_request(client):
-    """out/join/ is globbed for request records by _recover_interrupted_jobs,
-    the store quota and scripts/member.sh drift. A second kind of document in
-    there would be counted as a join request by all three."""
+    """One SQLite database, two separate tables: a token row can never be
+    miscounted as a request row by construction -- unlike the old
+    out/join/*.json + out/join-tokens.json layout, where a second kind of
+    document in out/join/ would have been globbed as a join request by
+    _recover_interrupted_jobs, the store quota and scripts/member.sh drift
+    alike."""
     _issue(client, "ptsb")
-    assert (app_module.OUT_DIR / "join-tokens.json").exists()
-    assert list((app_module.OUT_DIR / "join").glob("*.json")) == []
+    assert app_module.store.count_requests(_conn()) == 0

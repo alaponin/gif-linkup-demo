@@ -13,7 +13,6 @@ name.
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import pathlib
 import sys
@@ -42,6 +41,13 @@ REAL_PACK_DIR = pathlib.Path(__file__).resolve().parents[3]
 CONSOLE_HEADER = "X-KP2-Console"
 APPLICANT = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
 OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+
+
+def _conn():
+    # store.init() (not just db_path()) so a test can seed the store before
+    # any HTTP request has gone through the app and created the schema --
+    # idempotent, so this is cheap even when the app has already done it.
+    return app_module.store.connect(app_module.store.init(app_module.OUT_DIR))
 
 
 class _Clock:
@@ -168,13 +174,16 @@ def test_an_unauthenticated_caller_never_reaches_the_bucket(client):
 
 def test_a_full_out_join_refuses_new_submissions_naming_the_remedy(client, monkeypatch):
     monkeypatch.setattr(app_module, "STORE_QUOTA", 3)
-    records = app_module._requests_dir()
+    conn = _conn()
     for i in range(3):
-        (records / f"seed{i}.json").write_text(json.dumps({"id": f"seed{i}"}))
+        app_module.store.save_request(
+            conn, {"id": f"seed{i}", "state": "SUBMITTED", "submitted_at": "2026-01-01T00:00:00+00:00"},
+            actor="system", event="test-seed",
+        )
     resp = _submit(client)
     assert resp.status_code == 429
     detail = resp.json()["detail"]
-    assert "out/join/" in detail and "3" in detail
+    assert "join store" in detail and "3" in detail
 
 
 def test_the_quota_is_checked_before_validation_does_any_work(client, monkeypatch):
@@ -191,5 +200,8 @@ def test_the_quota_is_checked_before_validation_does_any_work(client, monkeypatc
 
 def test_below_the_quota_a_submission_is_accepted(client, monkeypatch):
     monkeypatch.setattr(app_module, "STORE_QUOTA", 2)
-    (app_module._requests_dir() / "seed.json").write_text(json.dumps({"id": "seed"}))
+    app_module.store.save_request(
+        _conn(), {"id": "seed", "state": "SUBMITTED", "submitted_at": "2026-01-01T00:00:00+00:00"},
+        actor="system", event="test-seed",
+    )
     assert _submit(client).status_code == 201

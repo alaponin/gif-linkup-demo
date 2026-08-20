@@ -44,6 +44,11 @@ OPERATOR = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
 # approve now requires a decision_reference (test_app_approve.py).
 DECISION = {"decision_reference": "[confirm: cite the Steering Committee minute reference and date]"}
 
+
+def _conn():
+    return app_module.store.connect(app_module.store.init(app_module.OUT_DIR))
+
+
 started: list[str] = []
 
 
@@ -110,11 +115,11 @@ def _joined(client, **payload_overrides) -> dict:
     record = client.post("/requests", json=payload, headers=APPLICANT).json()
     assert record["state"] == "SUBMITTED", record
     assert client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR).status_code == 202
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     stored["state"] = "ACTIVE"
     stored["last_completed_step"] = "join.r1_verify"
     stored["verified"] = True
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
     return stored
 
 
@@ -181,7 +186,7 @@ def test_a_joined_member_goes_retiring_and_starts_the_walk(client):
     assert body["state"] == "RETIRING"
     assert body["id"] == record["id"]
     assert started == [record["id"]]
-    assert app_module._load_request(record["id"])["state"] == "RETIRING"
+    assert app_module.store.load_request(_conn(), record["id"])["state"] == "RETIRING"
 
 
 def test_a_joined_member_with_no_active_record_is_a_404_that_says_why(client):
@@ -189,9 +194,9 @@ def test_a_joined_member_with_no_active_record_is_a_404_that_says_why(client):
     entry but no step sequence to walk backwards -- scripts/member.sh remove is
     the answer there, and the message says so."""
     _joined(client)
-    stored = app_module._member_record("ptsb")
+    stored = app_module.store.member_record(_conn(), "ptsb")
     stored["state"] = "FAILED"
-    app_module._save_request(stored)
+    app_module.store.save_request(_conn(), stored, actor="system", event="test-seed")
     resp = client.request("DELETE", "/members/ptsb", headers=OPERATOR)
     assert resp.status_code == 404
     assert "scripts/member.sh remove" in resp.json()["detail"]
@@ -202,8 +207,8 @@ def test_the_newest_matching_record_wins_when_a_member_joined_more_than_once(cli
     the same choice for the same reason)."""
     first = _joined(client)
     stale = dict(first, id="older", submitted_at="2000-01-01T00:00:00+00:00")
-    app_module._save_request(stale)
-    assert app_module._member_record("ptsb")["id"] == first["id"]
+    app_module.store.save_request(_conn(), stale, actor="system", event="test-seed")
+    assert app_module.store.member_record(_conn(), "ptsb")["id"] == first["id"]
 
 
 def test_re_issuing_the_delete_on_a_retiring_record_resumes_it(client):
@@ -270,7 +275,7 @@ def test_a_completed_walk_delegates_the_config_half_to_member_sh(client, monkeyp
 
     app_module._run_unjoin(record["id"])
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     assert stored["state"] == "RETIRED", stored.get("error")
     assert stored["config_removed"] is True
     assert not (app_module.PACK_DIR / "configs" / "member-ptsb").exists()
@@ -316,7 +321,7 @@ def test_a_second_delete_does_not_re_run_member_sh_on_a_completed_retirement(cli
     _stub_walk(monkeypatch)
     client.request("DELETE", "/members/ptsb", headers=OPERATOR)
     app_module._run_unjoin(record["id"])
-    assert app_module._load_request(record["id"])["config_removed"] is True
+    assert app_module.store.load_request(_conn(), record["id"])["config_removed"] is True
 
     calls: list[list[str]] = []
     real_run = app_module.subprocess.run
@@ -326,7 +331,7 @@ def test_a_second_delete_does_not_re_run_member_sh_on_a_completed_retirement(cli
     app_module._run_unjoin(record["id"])  # the queued second DELETE
 
     assert calls == [], "member.sh was re-run on an already-removed member"
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     assert stored["state"] == "RETIRED"
     assert stored["error"] is None
 
@@ -342,7 +347,7 @@ def test_a_member_sh_failure_leaves_the_record_retiring_and_says_so(client, monk
     shutil.rmtree(app_module.PACK_DIR / "configs" / "member-ptsb")
     app_module._run_unjoin(record["id"])
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     assert stored["state"] == "RETIRING"
     assert stored["error"]["step"] == "config.remove"
     assert "member.sh" in stored["error"]["message"]
@@ -368,7 +373,7 @@ def test_a_crashing_walk_records_the_failure_instead_of_leaving_it_silent(client
     client.request("DELETE", "/members/ptsb", headers=OPERATOR)
     app_module._run_unjoin(record["id"])
 
-    stored = app_module._load_request(record["id"])
+    stored = app_module.store.load_request(_conn(), record["id"])
     assert stored["state"] == "RETIRING"
     assert "kaboom" in stored["error"]["message"]
     # Scrubbed like every other persisted error message.
