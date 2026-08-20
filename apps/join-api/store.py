@@ -273,9 +273,10 @@ def list_tokens(conn: sqlite3.Connection) -> list[dict]:
 
 def revoke_token(conn: sqlite3.Connection, name: str) -> bool:
     """True if a row was found (and updated), False if no row with that name
-    exists. Revoking an already-revoked name is a no-op returning True --
-    simpler than preserving the first revocation timestamp, and which
-    timestamp survives a double-revoke isn't load-bearing here."""
+    exists. Revoking an already-revoked name still returns True and
+    overwrites revoked_at with this call's timestamp -- simpler than
+    preserving the first revocation time, and which timestamp survives a
+    double-revoke isn't load-bearing here."""
     with conn:
         row = conn.execute("SELECT name FROM tokens WHERE name = ?", (name,)).fetchone()
         if row is None:
