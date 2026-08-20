@@ -149,7 +149,9 @@ backed it — a `--fast` claim and a `--full` one are different claims.
 `acceptance/join-member.md`'s checks discover already-joined members
 generically and pass vacuously when none exist — they never submit, approve,
 or unjoin one (unjoin is discovered from the join store's newest `RETIRED`
-record for the member). A real hosted join (`apps/join-api`, `POST /requests` → approve →
+record for the member — `scripts/acceptance.sh`'s own 2.7 un-join discovery
+still globs the now-unused `out/join/` directly and needs the same cutover;
+tracked as a follow-up, not part of this change). A real hosted join (`apps/join-api`, `POST /requests` → approve →
 `ACTIVE, verified: true`) takes on the order of a minute end to end, which is
 inside the ~2-minute threshold past which `--live` would stop being the
 run-it-when-a-task-is-done tier it is documented as. An own-server join is not:

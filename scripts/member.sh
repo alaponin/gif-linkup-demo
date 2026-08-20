@@ -247,20 +247,16 @@ cmd_refresh() {
   # run from inside the linkup network (see the address note below), where
   # there is no curl: the join-api image is python:3.12-slim. cmd_drift
   # already answers exactly this with urllib, and so does this. Admin
-  # credentials come from the environment, which is where that container
-  # already has them; a host-side run falls back to .env.
-  if [ -z "${XROAD_ADMIN_PASSWORD:-}" ] && [ -f "$PACK_DIR/.env" ]; then
-    set -a; . "$PACK_DIR/.env"; set +a
+  # credentials (and, for recording the act, the operator token -- plan
+  # §1.3) come from the environment, which is where that container already
+  # has them; a host-side run falls back to .env. One sourcing block,
+  # triggered if EITHER is still unset -- sourcing unconditionally here
+  # would clobber an operator's deliberately-exported XROAD_ADMIN_PASSWORD
+  # with .env's value the moment KP2_JOIN_OPERATOR_TOKEN alone was missing.
+  if [ -z "${XROAD_ADMIN_PASSWORD:-}" ] || [ -z "${KP2_JOIN_OPERATOR_TOKEN:-}" ]; then
+    [ -f "$PACK_DIR/.env" ] && { set -a; . "$PACK_DIR/.env"; set +a; }
   fi
   [ -n "${XROAD_ADMIN_PASSWORD:-}" ] || fail "XROAD_ADMIN_PASSWORD is unset and $PACK_DIR/.env has none -- refresh authenticates to a Security Server's admin API."
-
-  # Recording the act needs the operator token too (plan §1.3: API-first,
-  # direct-write fallback) -- same .env fallback, independent of whether the
-  # admin-password sourcing above already ran (it's conditioned on
-  # XROAD_ADMIN_PASSWORD, not this token).
-  if [ -z "${KP2_JOIN_OPERATOR_TOKEN:-}" ] && [ -f "$PACK_DIR/.env" ]; then
-    set -a; . "$PACK_DIR/.env"; set +a
-  fi
   [ -n "${KP2_JOIN_OPERATOR_TOKEN:-}" ] || fail "KP2_JOIN_OPERATOR_TOKEN is unset and $PACK_DIR/.env has none -- refresh records the act through the join API (or the join store directly)."
 
   local topo="$PACK_DIR/hurl/topology.json"
@@ -421,6 +417,10 @@ join_api = "http://join-api:8000"
 headers = {"Authorization": f"Bearer {operator_token}", "X-KP2-Console": "1"}
 try:
     urllib.request.urlopen(join_api + "/health", timeout=3)
+    api_up = True
+except urllib.error.HTTPError:
+    # An answered HTTP request, even a non-2xx one, proves the process is up
+    # and listening -- only a connection-level failure below means "down."
     api_up = True
 except Exception:
     api_up = False
