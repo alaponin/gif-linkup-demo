@@ -250,11 +250,22 @@ cmd_refresh() {
   # credentials (and, for recording the act, the operator token -- plan
   # §1.3) come from the environment, which is where that container already
   # has them; a host-side run falls back to .env. One sourcing block,
-  # triggered if EITHER is still unset -- sourcing unconditionally here
-  # would clobber an operator's deliberately-exported XROAD_ADMIN_PASSWORD
-  # with .env's value the moment KP2_JOIN_OPERATOR_TOKEN alone was missing.
+  # triggered if EITHER is still unset -- but `.` re-executes every
+  # assignment in .env unconditionally once it runs, so the gate alone only
+  # decides WHETHER .env is read, not which variables survive it. Save
+  # whichever of the two was already set, source, then restore it --
+  # otherwise an operator's deliberately-exported XROAD_ADMIN_PASSWORD gets
+  # silently overwritten by .env's value the moment KP2_JOIN_OPERATOR_TOKEN
+  # alone was the one missing.
   if [ -z "${XROAD_ADMIN_PASSWORD:-}" ] || [ -z "${KP2_JOIN_OPERATOR_TOKEN:-}" ]; then
-    [ -f "$PACK_DIR/.env" ] && { set -a; . "$PACK_DIR/.env"; set +a; }
+    if [ -f "$PACK_DIR/.env" ]; then
+      _prior_admin_password="${XROAD_ADMIN_PASSWORD:-}"
+      _prior_operator_token="${KP2_JOIN_OPERATOR_TOKEN:-}"
+      set -a; . "$PACK_DIR/.env"; set +a
+      [ -n "$_prior_admin_password" ] && XROAD_ADMIN_PASSWORD="$_prior_admin_password"
+      [ -n "$_prior_operator_token" ] && KP2_JOIN_OPERATOR_TOKEN="$_prior_operator_token"
+      unset _prior_admin_password _prior_operator_token
+    fi
   fi
   [ -n "${XROAD_ADMIN_PASSWORD:-}" ] || fail "XROAD_ADMIN_PASSWORD is unset and $PACK_DIR/.env has none -- refresh authenticates to a Security Server's admin API."
   [ -n "${KP2_JOIN_OPERATOR_TOKEN:-}" ] || fail "KP2_JOIN_OPERATOR_TOKEN is unset and $PACK_DIR/.env has none -- refresh records the act through the join API (or the join store directly)."
