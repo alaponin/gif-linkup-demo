@@ -35,3 +35,11 @@ xroad:
   # docs/production-delta.md. A production federation sizes this deliberately
   # -- start from 60.
   server_conf_cache_period: 5
+
+datastore:
+  # Where join-api keeps request records and issued tokens.
+  # sqlite (default): out/join-store/join-store.sqlite3, single host, single
+  # process -- matches docker-local. postgres: see docs/plans/
+  # join-datastore-postgres-digitalocean-plan.md; DSN comes from .env
+  # (KP2_JOIN_DB_URL), never from this file.
+  kind: sqlite

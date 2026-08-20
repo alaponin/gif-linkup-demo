@@ -148,8 +148,8 @@ backed it — a `--fast` claim and a `--full` one are different claims.
 **`--live` does not itself perform a real member join.**
 `acceptance/join-member.md`'s checks discover already-joined members
 generically and pass vacuously when none exist — they never submit, approve,
-or unjoin one (unjoin is discovered from `out/join/*.json`'s `RETIRED`
-records). A real hosted join (`apps/join-api`, `POST /requests` → approve →
+or unjoin one (unjoin is discovered from the join store's newest `RETIRED`
+record for the member). A real hosted join (`apps/join-api`, `POST /requests` → approve →
 `ACTIVE, verified: true`) takes on the order of a minute end to end, which is
 inside the ~2-minute threshold past which `--live` would stop being the
 run-it-when-a-task-is-done tier it is documented as. An own-server join is not:
@@ -219,8 +219,9 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
 - **Drift:** `scripts/member.sh drift <key>` — re-fetches a joined member's
   *current* OpenAPI spec and diffs its endpoint set against the baseline
   captured at join time. No auth, no HTTP to the join
-  API — reads `out/join/*.json` and the live spec URL directly, works
-  whether or not `join-api` is even running. The spec URL is an
+  API — opens `out/join-store/join-store.sqlite3` read-only and reads the
+  live spec URL directly, works whether or not `join-api` is even running (a
+  read-only, WAL-mode SQLite open needs no running writer). The spec URL is an
   internal `linkup`-network hostname (`app-<key>:8000`), so this needs to
   run from inside that network (or from any other container already on
   `linkup`) if a plain host-side run reports "nodename nor servname
@@ -272,6 +273,14 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   basis or a changed SLA passes this command untouched; the only policy it
   re-applies is `allowed_methods`. The organisational review around it is
   the operator's, and `docs/production-delta.md` says so.
+- **Backup / inspect the join store:** `sqlite3
+  out/join-store/join-store.sqlite3 "VACUUM INTO 'backup.sqlite3'"` while the
+  API is up is safe — WAL readers don't block a VACUUM INTO. `teardown.sh`
+  never touches this database (parity with today's `out/join/` survival). To
+  inspect it: `sqlite3 out/join-store/join-store.sqlite3 .schema`, or a
+  sample query like `sqlite3 out/join-store/join-store.sqlite3 "SELECT id,
+  state, member_key, submitted_at FROM requests ORDER BY submitted_at DESC
+  LIMIT 10"`.
 - **Join via the API (automated):** `scripts/join.sh {up|down|status}`
   starts/stops the join API itself (`profile: demo`, like the console) at
   `http://localhost:8091`. Submit a payload matching `apps/join-api/schema.py`

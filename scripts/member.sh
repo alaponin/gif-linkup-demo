@@ -27,7 +27,7 @@ Usage: scripts/member.sh list
                 endpoint set against the baseline captured at join time.
                 No auth, no HTTP to the join API --
                 works whether or not it is even running. Fails clearly if
-                '<key>' has no ACTIVE out/join/*.json record to compare
+                '<key>' has no ACTIVE join-store record to compare
                 against (never joined through the API, or joined before this
                 feature existed). Reports drift since JOIN and, once
                 'refresh' has run, drift since the last refresh -- the
@@ -121,36 +121,33 @@ cmd_drift() {
   local dir="$PACK_DIR/configs/member-$key"
   [ -d "$dir" ] || fail "no configs/member-$key/ -- nothing to check"
 
-  # The join-time baseline lives in the job context, i.e. the
-  # most recently-submitted ACTIVE out/join/*.json record whose payload.code
-  # matches this key (case-insensitively) -- nothing enforces there is only
-  # ever one, so pick the newest on ambiguity rather than assume. A member
-  # added by hand via prompts/member.md, or one whose join predates this
-  # feature, has no such record: fail clearly here, the same house style
-  # cmd_remove uses for its canonical-member refusal, rather than crash on a
-  # missing file further down.
+  # The join-time baseline lives in the join store -- the most recently
+  # submitted ACTIVE record whose payload.code matches this key
+  # (case-insensitively) -- nothing enforces there is only ever one, so pick
+  # the newest on ambiguity rather than assume. A member added by hand via
+  # prompts/member.md, or one whose join predates this feature, has no such
+  # record: fail clearly here, the same house style cmd_remove uses for its
+  # canonical-member refusal, rather than crash further down. Opened
+  # read-only (file:...?mode=ro): no auth, no HTTP to the join API, works
+  # whether or not it is even running -- a WAL-mode database needs no
+  # running writer for a read (plan §1.3).
+  local db="$PACK_DIR/out/join-store/join-store.sqlite3"
+  [ -f "$db" ] || fail "no join store at $db -- join-api has not run yet (it creates the schema at startup), or state has not been migrated (scripts/migrate-join-store.py)."
   local record_json
-  record_json=$(python3 - "$PACK_DIR/out/join" "$key" <<'PY'
-import glob, json, os, sys
+  record_json=$(python3 - "$db" "$key" <<'PY'
+import sqlite3, sys
 
-join_dir, key = sys.argv[1], sys.argv[2]
-best = None
-for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
-    try:
-        rec = json.load(open(path))
-    except Exception:
-        continue
-    if rec.get("state") != "ACTIVE":
-        continue
-    code = (rec.get("payload") or {}).get("code", "")
-    if code.lower() != key.lower():
-        continue
-    if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
-        best = rec
-print(json.dumps(best) if best is not None else "")
+db_path, key = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+row = conn.execute(
+    "SELECT record FROM requests WHERE member_key = ? AND state = 'ACTIVE' "
+    "ORDER BY submitted_at DESC LIMIT 1",
+    (key.lower(),),
+).fetchone()
+print(row[0] if row else "")
 PY
 )
-  [ -n "$record_json" ] || fail "no ACTIVE out/join/*.json record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
+  [ -n "$record_json" ] || fail "no ACTIVE join-store record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
 
   python3 - "$dir" "$key" "$record_json" <<'PY'
 import glob, json, os, sys, urllib.request
@@ -257,16 +254,26 @@ cmd_refresh() {
   fi
   [ -n "${XROAD_ADMIN_PASSWORD:-}" ] || fail "XROAD_ADMIN_PASSWORD is unset and $PACK_DIR/.env has none -- refresh authenticates to a Security Server's admin API."
 
+  # Recording the act needs the operator token too (plan §1.3: API-first,
+  # direct-write fallback) -- same .env fallback, independent of whether the
+  # admin-password sourcing above already ran (it's conditioned on
+  # XROAD_ADMIN_PASSWORD, not this token).
+  if [ -z "${KP2_JOIN_OPERATOR_TOKEN:-}" ] && [ -f "$PACK_DIR/.env" ]; then
+    set -a; . "$PACK_DIR/.env"; set +a
+  fi
+  [ -n "${KP2_JOIN_OPERATOR_TOKEN:-}" ] || fail "KP2_JOIN_OPERATOR_TOKEN is unset and $PACK_DIR/.env has none -- refresh records the act through the join API (or the join store directly)."
+
   local topo="$PACK_DIR/hurl/topology.json"
   [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
 
-  python3 - "$topo" "$key" "$PACK_DIR/configs/x-road-bus/join-policy.yaml" "$PACK_DIR/out/join" \
-           "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" <<'PY'
-import datetime, glob, http.cookiejar, json, os, ssl, sys, urllib.parse, urllib.request
+  python3 - "$topo" "$key" "$PACK_DIR/configs/x-road-bus/join-policy.yaml" \
+           "$PACK_DIR/out/join-store/join-store.sqlite3" \
+           "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" <<'PY'
+import datetime, http.cookiejar, json, os, sqlite3, ssl, sys, urllib.parse, urllib.request
 
 import yaml
 
-topo_path, key, policy_path, join_dir, admin_user, admin_password = sys.argv[1:7]
+topo_path, key, policy_path, db_path, admin_user, admin_password, operator_token = sys.argv[1:8]
 
 # -- resolve ------------------------------------------------------------------
 # The IN-NETWORK address (host:ui_port), never the host-mapped one. This
@@ -392,6 +399,13 @@ for desc in descriptions:
 # not re-admit anybody. cmd_drift then reports both facts -- drift since
 # join, and drift since this refresh -- instead of a warning that can never
 # clear.
+#
+# API-first, direct-write fallback (plan §1.3): join-api is the sole writer
+# to the join store while it is running; a direct write here is safe
+# precisely when it is not, because then it's the only writer. This
+# container already runs on the `linkup` network for the admin-API calls
+# above (see NETWORK_HINT), so join-api is reachable at its Compose service
+# name.
 endpoints = {}
 for desc in descriptions:
     _url, paths = served[desc["id"]]
@@ -400,36 +414,75 @@ for desc in descriptions:
         if code:
             endpoints[code] = paths
 
-best, best_path = None, None
-for path in sorted(glob.glob(os.path.join(join_dir, "*.json"))):
+no_record_msg = (f"{key}: refreshed, but there is no ACTIVE join-store record to amend -- "
+                  f"drift has no per-refresh baseline to compare against.")
+
+join_api = "http://join-api:8000"
+headers = {"Authorization": f"Bearer {operator_token}", "X-KP2-Console": "1"}
+try:
+    urllib.request.urlopen(join_api + "/health", timeout=3)
+    api_up = True
+except Exception:
+    api_up = False
+
+if api_up:
+    req = urllib.request.Request(join_api + "/requests", headers=headers)
     try:
-        rec = json.load(open(path))
-    except Exception:
-        continue
-    if rec.get("state") != "ACTIVE":
-        continue
-    if (rec.get("payload") or {}).get("code", "").lower() != key.lower():
-        continue
-    if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
-        best, best_path = rec, path
-
-if best is None:
-    print(f"{key}: refreshed, but there is no ACTIVE out/join/*.json record to amend -- "
-          f"drift has no per-refresh baseline to compare against.", file=sys.stderr)
-    sys.exit(0)
-
-best.setdefault("refreshes", []).append({
-    "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    "endpoints": endpoints,
-})
-# Same atomic temp-and-rename apps/join-api/app.py's _save_request uses: a
-# reader must never see a half-written record.
-tmp = best_path + ".tmp"
-with open(tmp, "w") as fh:
-    json.dump(best, fh, indent=2)
-os.replace(tmp, best_path)
-print(f"recorded the refresh on {os.path.basename(best_path)} "
-      f"({len(endpoints)} service(s)); endpoint_baseline untouched")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            requests_list = json.loads(resp.read())["requests"]
+    except Exception as exc:
+        sys.exit(f"member.sh refresh: could not read {join_api}/requests: {exc}")
+    best = None
+    for rec in requests_list:
+        if rec.get("state") != "ACTIVE":
+            continue
+        if (rec.get("payload") or {}).get("code", "").lower() != key.lower():
+            continue
+        if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
+            best = rec
+    if best is None:
+        print(no_record_msg, file=sys.stderr)
+        sys.exit(0)
+    body = json.dumps({"endpoints": endpoints}).encode()
+    req = urllib.request.Request(
+        f"{join_api}/requests/{best['id']}/refreshes", method="POST", data=body,
+        headers={**headers, "Content-Type": "application/json"},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=15)
+    except urllib.error.HTTPError as exc:
+        sys.exit(f"member.sh refresh: POST {join_api}/requests/{best['id']}/refreshes failed: "
+                  f"HTTP {exc.code} {exc.read().decode(errors='replace')[:400]}")
+    print(f"recorded the refresh via the join API ({len(endpoints)} service(s)); "
+          f"endpoint_baseline untouched")
+else:
+    if not os.path.exists(db_path):
+        print(no_record_msg, file=sys.stderr)
+        sys.exit(0)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT id, record FROM requests WHERE member_key = ? AND state = 'ACTIVE' "
+        "ORDER BY submitted_at DESC LIMIT 1",
+        (key.lower(),),
+    ).fetchone()
+    if row is None:
+        print(no_record_msg, file=sys.stderr)
+        sys.exit(0)
+    best_id, best = row[0], json.loads(row[1])
+    best.setdefault("refreshes", []).append({
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "endpoints": endpoints,
+    })
+    conn.execute("UPDATE requests SET record = ? WHERE id = ?", (json.dumps(best), best_id))
+    # Audit trail parity with store.save_request's own writes (plan §1.5) --
+    # append-only table, no triggers to worry about since this only inserts.
+    conn.execute(
+        "INSERT INTO request_events (request_id, at, actor, event) VALUES (?, ?, 'operator', 'refresh:direct-write')",
+        (best_id, datetime.datetime.now(datetime.timezone.utc).isoformat()),
+    )
+    conn.commit()
+    print(f"recorded the refresh directly -- join-api is not running "
+          f"({len(endpoints)} service(s)); endpoint_baseline untouched")
 PY
 
   log "$key: the federation now publishes the contract these specs serve today."

@@ -186,12 +186,12 @@ data.)
   from a container on that network. It is not a bug and not a misconfigured
   member.
 - Run from inside, the output is an **endpoint diff** against the baseline
-  captured at join time (`out/join/*.json`):
+  captured at join time (the join store, `out/join-store/join-store.sqlite3`):
   `awards-api: DRIFT since join` with `+ /awards/{nin}/history`, and the
   remedy named. An unchanged spec reports
   `no drift (1 endpoint(s), unchanged since join)`.
-- It reads `out/join/*.json` and the live spec URL directly — no auth, no
-  HTTP to the join API. The API only has to be *running* here because its
+- It opens the join store read-only and reads the live spec URL directly —
+  no auth, no HTTP to the join API. The API only has to be *running* here because its
   container is the one on the `linkup` network with the pack mounted.
 
 **Then remedy it.** Detecting a drifted contract and leaving the federation
