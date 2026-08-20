@@ -6,6 +6,7 @@ already uses (see test_writer.py/test_job.py for the house idiom).
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import sqlite3
 import sys
@@ -56,6 +57,27 @@ def test_init_is_idempotent(tmp_path):
         assert store.count_requests(conn) == 0
     finally:
         conn.close()
+
+
+def test_init_recovers_a_file_that_exists_with_no_schema(tmp_path):
+    """The crash window: a process died between store.connect() creating the
+    file and executescript() running, leaving a zero-table file behind. init
+    must detect the missing schema (not just the missing file) and create it
+    -- and still chmod 0600, since the earlier crash may have left a looser
+    mode."""
+    path = store.db_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sqlite3.connect(path).close()  # file exists, zero tables -- the crash artefact
+    os.chmod(path, 0o644)
+
+    store.init(tmp_path)
+
+    conn = store.connect(path)
+    try:
+        assert store.count_requests(conn) == 0  # would raise OperationalError pre-fix
+    finally:
+        conn.close()
+    assert (path.stat().st_mode & 0o777) == 0o600
 
 
 def test_init_writes_the_schema_version_row(tmp_path):
@@ -321,6 +343,20 @@ def test_issue_token_sets_expiry_when_given(tmp_path):
         conn.close()
 
 
+def test_issue_token_expires_in_days_zero_means_already_expired_not_no_expiry(tmp_path):
+    """expires_in_days=0 is present, not absent -- plan §1.4 says *absent*
+    means no expiry. A naive `if expires_in_days` truthiness test would take
+    0 for the no-expiry branch; this asserts it does not."""
+    conn = _conn(tmp_path)
+    try:
+        store.issue_token(conn, "zero", "h0", expires_in_days=0)
+        found = store.find_token(conn, "h0")
+        assert found["expires_at"] is not None
+        assert found["expires_at"] == found["issued_at"]
+    finally:
+        conn.close()
+
+
 def test_issue_token_raises_on_duplicate_active_name(tmp_path):
     conn = _conn(tmp_path)
     try:
@@ -344,6 +380,44 @@ def test_issue_token_raises_on_reissue_of_a_revoked_name(tmp_path):
         assert exc_info.value.revoked is True
     finally:
         conn.close()
+
+
+def test_issue_token_translates_a_concurrent_duplicate_insert_to_name_already_used(tmp_path):
+    """The race the pre-check alone can't catch: two callers both pass the
+    SELECT before either INSERTs. Reproduced by having a second connection
+    insert the colliding row at the exact moment issue_token's own INSERT is
+    about to run -- the INSERT that follows must fail on the UNIQUE
+    constraint, and issue_token must translate that into NameAlreadyUsed
+    rather than let the raw sqlite3.IntegrityError escape (Task 2's
+    `except NameAlreadyUsed: return 409` would otherwise see an unhandled
+    500). A subclassed Connection.execute is the interception point --
+    sqlite3.Connection is an immutable builtin type, so instance/class
+    monkeypatching of `execute` is not available; subclassing is."""
+    path = store.init(tmp_path)
+    other = store.connect(path)
+
+    class RacingConnection(sqlite3.Connection):
+        raced = False
+
+        def execute(self, sql, *args, **kwargs):
+            if not RacingConnection.raced and sql.strip().startswith("INSERT INTO tokens"):
+                RacingConnection.raced = True
+                with other:
+                    other.execute(
+                        "INSERT INTO tokens (name, sha256, issued_at, expires_at, revoked_at) "
+                        "VALUES ('race', 'winner-hash', '2026-01-01T00:00:00+00:00', NULL, NULL)"
+                    )
+            return super().execute(sql, *args, **kwargs)
+
+    conn = sqlite3.connect(path, factory=RacingConnection)
+    conn.row_factory = sqlite3.Row
+    try:
+        with pytest.raises(store.NameAlreadyUsed) as exc_info:
+            store.issue_token(conn, "race", "loser-hash")
+        assert exc_info.value.revoked is False
+    finally:
+        conn.close()
+        other.close()
 
 
 def test_list_tokens_returns_every_row(tmp_path):
@@ -376,12 +450,19 @@ def test_revoke_token_returns_false_for_an_unknown_name(tmp_path):
         conn.close()
 
 
-def test_revoke_token_twice_is_idempotent(tmp_path):
+def test_revoke_token_twice_overwrites_revoked_at_with_the_second_call(tmp_path):
+    """Not idempotent in the state it leaves: both calls return True, but
+    the second overwrites revoked_at with its own timestamp rather than
+    preserving the first revocation time (store.py's own docstring says so
+    -- this asserts the behaviour it documents, not just the return value)."""
     conn = _conn(tmp_path)
     try:
         store.issue_token(conn, "ptsb", "hash1")
         assert store.revoke_token(conn, "ptsb") is True
+        first = store.find_token(conn, "hash1")["revoked_at"]
         assert store.revoke_token(conn, "ptsb") is True
+        second = store.find_token(conn, "hash1")["revoked_at"]
+        assert second >= first
     finally:
         conn.close()
 

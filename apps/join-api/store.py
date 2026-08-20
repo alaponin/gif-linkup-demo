@@ -106,19 +106,32 @@ def connect(path: pathlib.Path, *, readonly: bool = False) -> sqlite3.Connection
 
 def init(out_dir: pathlib.Path) -> pathlib.Path:
     """Create the DB file and full schema if absent. Idempotent -- safe to
-    call every process startup. Returns the DB path."""
+    call every process startup. Returns the DB path.
+
+    Gated on SCHEMA presence, not file presence: connect() below creates an
+    empty file as a side effect of merely opening it, so a file-existence
+    check would see that empty file on the next call and skip
+    executescript() forever -- the crash-between-create-and-schema window
+    (process dies right after this function's own connect() call, before
+    the file had tables). sqlite_master is queried for it directly."""
     path = db_path(out_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    is_new = not path.exists()
+    was_new = not path.exists()  # only for the chmod decision below
     conn = connect(path)
     try:
-        if is_new:
+        has_schema = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='requests'"
+        ).fetchone() is not None
+        if not has_schema:
             conn.executescript(_SCHEMA)
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
             conn.commit()
     finally:
         conn.close()
-    if is_new:
+    # 0600 whenever this call is the one that (re)created the schema, not
+    # just on a brand-new file -- a half-created file from an earlier crash
+    # existed (and may already carry a looser mode) but never got chmod'd.
+    if was_new or not has_schema:
         os.chmod(path, 0o600)  # the container umask isn't trusted (plan §3)
     return path
 
@@ -245,16 +258,28 @@ class NameAlreadyUsed(Exception):
 
 def issue_token(conn: sqlite3.Connection, name: str, sha256: str, *,
                  expires_in_days: int | None = None) -> None:
+    # Cheap pre-check for the common case -- gives .revoked without a second
+    # round trip. Not the actual safety net: two concurrent callers can both
+    # pass this before either INSERTs, so the INSERT below carries its own
+    # UNIQUE-constraint fallback, translated to the same exception type,
+    # rather than letting a raw sqlite3.IntegrityError reach Task 2's
+    # `except NameAlreadyUsed` handler.
     existing = conn.execute("SELECT revoked_at FROM tokens WHERE name = ?", (name,)).fetchone()
     if existing is not None:
         raise NameAlreadyUsed(name, revoked=existing["revoked_at"] is not None)
     issued_at = datetime.now(timezone.utc)
-    expires_at = (issued_at + timedelta(days=expires_in_days)).isoformat() if expires_in_days else None
-    with conn:
-        conn.execute(
-            "INSERT INTO tokens (name, sha256, issued_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)",
-            (name, sha256, issued_at.isoformat(), expires_at),
-        )
+    # expires_in_days=0 is present, not absent -- plan §1.4 says *absent*
+    # means no expiry, so this must not fall into the same branch as None.
+    expires_at = (issued_at + timedelta(days=expires_in_days)).isoformat() if expires_in_days is not None else None
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO tokens (name, sha256, issued_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)",
+                (name, sha256, issued_at.isoformat(), expires_at),
+            )
+    except sqlite3.IntegrityError:
+        row = conn.execute("SELECT revoked_at FROM tokens WHERE name = ?", (name,)).fetchone()
+        raise NameAlreadyUsed(name, revoked=row is not None and row["revoked_at"] is not None) from None
 
 
 def find_token(conn: sqlite3.Connection, sha256: str) -> dict | None:
