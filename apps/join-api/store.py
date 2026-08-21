@@ -21,6 +21,17 @@ Nothing in this module does the id/name charset checks (`_REQUEST_ID_RE`,
 `_TOKEN_NAME_RE`) -- those stay in app.py as trust-boundary checks on
 caller input, same division of responsibility as today. This module only
 guarantees parameterised SQL.
+
+**Import discipline**: `psycopg`/`yaml` are NOT imported at module level --
+two existing host-side pure-SQLite consumers (`scripts/migrate-join-store.py`,
+repo-root `tests/test_member_drift.py`) already `import store` expecting it
+to stay usable with only the stdlib on a host that never touches Postgres.
+Every function that needs `psycopg` or `yaml` does its own `import` as its
+first line instead -- cheap after the first real import (cached in
+sys.modules), and it means `import store` and every SQLite-path function
+still work with neither package installed; only actually calling into a
+Postgres-only path raises (a plain ModuleNotFoundError naming the missing
+package, exactly when that path is used, not before).
 """
 from __future__ import annotations
 
@@ -32,11 +43,6 @@ import sqlite3
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
-
-import psycopg
-import yaml
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 
 SCHEMA_VERSION = 1
 
@@ -118,6 +124,7 @@ def _mask_dsn(dsn: str) -> str:
     >>> _mask_dsn("not a dsn ??")
     '<unparseable DSN>'
     """
+    import psycopg  # lazy -- see module docstring's "Import discipline"
     try:
         parts = psycopg.conninfo.conninfo_to_dict(dsn)
     except Exception:
@@ -184,7 +191,20 @@ def _pg_connect(dsn: str, *, readonly: bool = False) -> psycopg.Connection:
     Any connection failure is re-raised with the password masked (`raise ...
     from None` drops the original exception's __context__/__cause__ too, so
     it can't resurface via traceback formatting either), so a bad DSN never
-    lands a plaintext password in a log line or traceback.
+    lands a plaintext password in a log line or traceback. The re-raised
+    message DOES include type(exc).__name__ and str(exc) (and .sqlstate when
+    the underlying error has one) -- libpq's connection-error text (DNS
+    failure, auth failure, TLS/cert failure, firewall/trusted-sources
+    rejection, ...) does not echo the password, only _mask_dsn(dsn) ever
+    could, so surfacing it is safe *alongside* the masking, not instead of
+    it. Against a real cluster, connection failure is the expected
+    first-run failure mode -- without the real cause, every one of those is
+    indistinguishable from every other one.
+
+    Import discipline: `psycopg` is imported lazily right here, not at
+    module level (see the module docstring) -- this function (and
+    _mask_dsn, called below) are the only things in the Postgres connect
+    path that need it.
 
     autocommit=True deliberately, unlike psycopg's own default: psycopg (like
     every PEP 249 DBAPI) opens an implicit transaction before ANY statement,
@@ -203,10 +223,13 @@ def _pg_connect(dsn: str, *, readonly: bool = False) -> psycopg.Connection:
     atomicity (save_request's upsert + event insert, issue_token's
     check-then-insert) -- entering it takes the connection out of autocommit
     for the block and commits for real at the end."""
+    import psycopg  # lazy -- see module docstring's "Import discipline"
     try:
-        conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=True)
-    except Exception:
-        raise RuntimeError(f"postgres connection failed: {_mask_dsn(dsn)}") from None
+        conn = psycopg.connect(dsn, row_factory=psycopg.rows.dict_row, autocommit=True)
+    except Exception as exc:
+        sqlstate = getattr(exc, "sqlstate", None)
+        cause = f"{type(exc).__name__}: {exc}" + (f" [sqlstate={sqlstate}]" if sqlstate else "")
+        raise RuntimeError(f"postgres connection failed ({cause}), dsn={_mask_dsn(dsn)}") from None
     if readonly:
         conn.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
     return conn
@@ -284,7 +307,9 @@ def _pg_init(db_url: str) -> None:
             applied = set()
             if exists:
                 applied = {row["version"] for row in conn.execute("SELECT version FROM schema_version").fetchall()}
-            for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
+            # Numeric-prefixed files only ("001_init.sql", ...) -- these are
+            # the once-ever, schema_version-gated table-creation migrations.
+            for migration in sorted(_MIGRATIONS_DIR.glob("[0-9]*_*.sql")):
                 version = int(migration.name.split("_", 1)[0])
                 if version in applied:
                     continue
@@ -293,6 +318,14 @@ def _pg_init(db_url: str) -> None:
                 # several ;-separated statements -- including dollar-quoted
                 # DO blocks -- in one call, same as sqlite3.executescript().
                 conn.execute("INSERT INTO schema_version (version) VALUES (%s)", (version,))
+            # grants.sql: NOT numbered, NOT gated by schema_version -- run on
+            # every store.init() call, every process startup, so GRANTs that
+            # couldn't apply yet (roles not provisioned) are retried instead
+            # of being permanently skipped once table creation is recorded as
+            # applied. See grants.sql's own header for the full reasoning.
+            grants_file = _MIGRATIONS_DIR / "grants.sql"
+            if grants_file.exists():
+                conn.execute(grants_file.read_text())
     finally:
         conn.close()
 
@@ -338,6 +371,8 @@ def save_request(conn, record: dict, *, actor: str, event: str,
                 (record["id"], _now(), actor, event, json.dumps(detail) if detail is not None else None),
             )
         return
+    import psycopg  # lazy -- see module docstring's "Import discipline"
+    Jsonb = psycopg.types.json.Jsonb
     with conn.transaction():
         conn.execute(
             """
@@ -378,6 +413,8 @@ def log_refusal(conn, actor: str, event: str, detail: dict | None = None) -> Non
                 (_now(), actor, event, json.dumps(detail) if detail is not None else None),
             )
         return
+    import psycopg  # lazy -- see module docstring's "Import discipline"
+    Jsonb = psycopg.types.json.Jsonb
     with conn.transaction():
         conn.execute(
             "INSERT INTO request_events (request_id, at, actor, event, detail) VALUES (NULL, %s, %s, %s, %s)",
@@ -460,6 +497,8 @@ def recover_interrupted(conn) -> None:
                     (record["id"], at, "system", "state:RUNNING->FAILED", None),
                 )
         return
+    import psycopg  # lazy -- see module docstring's "Import discipline"
+    Jsonb = psycopg.types.json.Jsonb
     with conn.transaction():
         rows = conn.execute("SELECT record FROM requests WHERE state = 'RUNNING'").fetchall()
         at = _now()
@@ -533,6 +572,7 @@ def issue_token(conn, name: str, sha256: str, *,
             row = conn.execute("SELECT revoked_at FROM tokens WHERE name = ?", (name,)).fetchone()
             raise NameAlreadyUsed(name, revoked=row is not None and row["revoked_at"] is not None) from None
         return
+    import psycopg  # lazy -- see module docstring's "Import discipline"
     existing = conn.execute("SELECT revoked_at FROM tokens WHERE name = %s", (name,)).fetchone()
     if existing is not None:
         raise NameAlreadyUsed(name, revoked=existing["revoked_at"] is not None)
@@ -667,7 +707,19 @@ def apply_lock(conn):
     inside the `with` block (e.g. store.save_request(conn, ...) -- its own
     internal `with conn.transaction():` nests as a savepoint of this one)
     and let apply_lock's exit commit it all atomically; don't call
-    conn.commit()/conn.rollback() yourself inside the block."""
+    conn.commit()/conn.rollback() yourself inside the block.
+
+    **Failure-contract asymmetry callers must know about**: on SQLite,
+    apply_lock is a mutex only -- each write inside the `with` block commits
+    on its own (every store.py write function commits itself, e.g.
+    save_request's own `with conn:`), so if something raises partway
+    through, whatever was already written stays written. On Postgres,
+    apply_lock is a mutex PLUS one enclosing transaction -- an exception
+    anywhere in the `with apply_lock(conn):` block rolls back *everything*
+    written inside it, not just the step that failed. Same lock name, same
+    call shape, different all-or-nothing guarantee. Task 2 (app.py's
+    approval-apply critical section, the one caller of apply_lock) needs to
+    know which behavior it's relying on."""
     if isinstance(conn, sqlite3.Connection):
         with _APPLY_LOCK:
             yield
@@ -704,6 +756,7 @@ def _resolve_backend() -> tuple[str, str | None, pathlib.Path, pathlib.Path]:
     """PACK_DIR/OUT_DIR default the same as app.py; datastore.kind comes
     from deployment.yaml the same way app.py resolves it at startup (missing
     file -> "sqlite", same as many of app.py's own test fixtures)."""
+    import yaml  # lazy -- see module docstring's "Import discipline"
     pack_dir = pathlib.Path(os.environ.get("PACK_DIR", "/pack"))
     out_dir = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
     try:
@@ -788,6 +841,7 @@ def _cmd_check(_args) -> None:
         match no ACTIVE (not RETIRING -- a retiring member's manifest entry
         outliving its last ACTIVE record is expected, not drift) record.
     "clean" when both lists are empty."""
+    import yaml  # lazy -- see module docstring's "Import discipline"
     _kind, _db_url, pack_dir, _out_dir = _resolve_backend()
     conn = _cli_connect(readonly=True)
     try:

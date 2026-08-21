@@ -1,9 +1,9 @@
 -- apps/join-api/migrations/001_init.sql -- the Postgres equivalent of
 -- store.py's _SCHEMA (SQLite). Applied by store.init() itself (see
--- store.py's _pg_migrate), inside pg_advisory_xact_lock('kp2-migrate') --
+-- store.py's _pg_init), inside pg_advisory_xact_lock('kp2-migrate') --
 -- no Alembic, no migration framework. Idempotency and version bookkeeping
 -- (the schema_version INSERT) are store.py's job, not this file's: this
--- file is pure DDL/grants, executed once per version by Python, which
+-- file is pure table-creation DDL, executed once ever by Python, which
 -- records the version afterwards. Do NOT add an INSERT INTO schema_version
 -- here -- it would double up with store.py's own bookkeeping insert.
 --
@@ -12,6 +12,18 @@
 -- migration file per version, so tracking "which files have I run" is the
 -- natural fit and needs no UPDATE statement later. Pick one, be consistent:
 -- this is it.
+--
+-- GRANTs are deliberately NOT in this file -- see grants.sql. They used to
+-- be, wrapped in a pg_roles-existence check so a run before provisioning
+-- created joinapi/joinapi_ro wouldn't hard-fail. But that check living
+-- inside a once-ever, schema_version-gated migration meant the skip was
+-- permanent: if 001_init.sql ran before those roles existed, schema_version
+-- recorded version 1 as applied, and no later store.init() call would ever
+-- re-attempt the GRANTs -- even though request_events' only append-only
+-- enforcement (no UPDATE/DELETE granted to joinapi) depends on them having
+-- actually run. grants.sql runs unconditionally on every store.init() call
+-- instead, so provisioning creating the roles later gets picked up the next
+-- time the process (re)starts.
 CREATE TABLE schema_version (
   version    INTEGER PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -55,32 +67,3 @@ CREATE TABLE tokens (
   expires_at TIMESTAMPTZ,
   revoked_at TIMESTAMPTZ
 );
-
--- Role creation (CREATE ROLE joinapi / joinapi_ro) is a provisioning-time
--- concern (Terraform/doctl, a later task), not this migration's job. These
--- GRANTs assume the roles already exist; wrapped in a pg_roles check so this
--- migration does not hard-fail against a database where they aren't created
--- yet (e.g. a local throwaway Postgres used only for pytest) -- it emits a
--- NOTICE and skips instead. Whoever runs provisioning afterwards is expected
--- to re-run store.init() (idempotent) or issue the GRANTs by hand once the
--- roles exist.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'joinapi') THEN
-    GRANT SELECT, INSERT ON request_events TO joinapi;
-    -- no UPDATE, no DELETE, to anyone but the cluster's admin role.
-    GRANT SELECT, INSERT, UPDATE ON requests, tokens TO joinapi;  -- no DELETE, no DDL
-    ALTER ROLE joinapi SET statement_timeout = '10s';
-  ELSE
-    RAISE NOTICE 'role "joinapi" does not exist yet -- skipping its GRANTs (provisioning creates it)';
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'joinapi_ro') THEN
-    GRANT SELECT ON requests, request_events, tokens TO joinapi_ro;
-  ELSE
-    RAISE NOTICE 'role "joinapi_ro" does not exist yet -- skipping its GRANTs (provisioning creates it)';
-  END IF;
-END $$;
