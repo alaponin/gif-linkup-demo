@@ -528,9 +528,9 @@ secret — export it as `TF_VAR_do_token` rather than putting it on the
 command line with `-var`, the same reason `$KP2_JOIN_DB_URL` never reaches
 argv in the export/import scripts below (`ps auxww` shows any local user
 the full command line for as long as `apply` runs); `droplet_id` isn't a
-secret and stays on argv as `-var`, matching `infra/IMPLEMENTATION-PLAN.md`
-and `variables.tf`'s own `do_token` description, which already document
-`TF_VAR_do_token` as the convention:
+secret and stays on argv as `-var`, matching `infra`'s own implementation
+plan and `variables.tf`'s own `do_token` description, which already
+document `TF_VAR_do_token` as the convention:
 
 ```
 cd infra/terraform-db
