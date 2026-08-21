@@ -47,8 +47,14 @@ MASKED_DSN=$(printf '%s' "$KP2_JOIN_DB_URL" | sed -E 's#(://[^:/@]+:)[^@]*(@)#\1
 log "importing $DUMP_FILE into: $MASKED_DSN"
 log "this OVERWRITES whatever is already in that database -- run only against an empty cluster (plan §6.3's provision-time import)"
 
+# $KP2_JOIN_DB_URL is NOT passed as an argv here, same reason as
+# join-store-export.sh's pg_dump call -- docker-compose.yml already injects
+# it into join-api's own environment, so `sh -c '... "$KP2_JOIN_DB_URL"'`
+# reads it from inside the container instead of exposing it in this host
+# process's argv (visible via `ps auxww` for the run's duration otherwise,
+# which would defeat the masking above).
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
   -v "$DUMP_FILE:/tmp/kp2-join-import.dump:ro" \
-  join-api pg_restore -d "$KP2_JOIN_DB_URL" /tmp/kp2-join-import.dump
+  join-api sh -c 'exec pg_restore -d "$KP2_JOIN_DB_URL" /tmp/kp2-join-import.dump'
 
 log "import complete: $DUMP_FILE -> $MASKED_DSN"

@@ -60,9 +60,17 @@ DUMP_FILE="$DEST_DIR/kp2_join.dump"
 # confirmed live that `docker compose run`'s own container-lifecycle
 # messages ("Creating...", "Created...") land on stderr, not stdout, so
 # this redirect captures exactly the dump and nothing else.
+#
+# $KP2_JOIN_DB_URL is NOT passed as an argv here -- docker-compose.yml
+# already injects it into join-api's own environment (its `environment:`
+# block), so `sh -c '... "$KP2_JOIN_DB_URL"'` reads it from inside the
+# container instead. Interpolating the DSN into the command line would put
+# the password in this host process's argv, visible to any local user via
+# `ps auxww` (or a `bash -x` trace) for the run's duration -- exactly what
+# the masking discipline elsewhere in this pair of scripts exists to avoid.
 log "exporting kp2_join (pg_dump -Fc) -> $DUMP_FILE"
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
-  pg_dump -Fc "$KP2_JOIN_DB_URL" > "$DUMP_FILE"
+  sh -c 'exec pg_dump -Fc "$KP2_JOIN_DB_URL"' > "$DUMP_FILE"
 
 [ -s "$DUMP_FILE" ] || fail "pg_dump exited 0 but $DUMP_FILE is empty -- something is wrong even though the command reported success"
 

@@ -147,6 +147,14 @@ cmd_drift() {
 
   local record_json
   if [ "$datastore_kind" = "postgres" ]; then
+    # This needs Docker on whatever runs member.sh -- not guaranteed: the
+    # join-api container itself has no Docker socket (Dockerfile's design
+    # decision 8), so a `member.sh drift` run from inside it (which
+    # NETWORK_HINT below, in cmd_refresh, documents as sometimes necessary
+    # for the admin-API leg of `refresh`) would otherwise die on a raw
+    # "command not found" instead of this file's usual clear message.
+    command -v docker >/dev/null 2>&1 || fail "docker not found -- drift's Postgres path needs 'docker compose run' to reach the join store. Run this from wherever Docker is available (a droplet's own host shell, a laptop), not from inside the join-api container itself -- it has no Docker socket."
+
     # A temp file, not a pipe: `python3 -` already uses stdin to receive
     # ITS OWN script text (the heredoc below) -- piping dump-records'
     # output into that same stdin would starve the script of its source
@@ -335,7 +343,7 @@ cmd_refresh() {
            "$PACK_DIR/out/join-store/join-store.sqlite3" \
            "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" \
            "$datastore_kind" "$PACK_DIR/docker-compose.yml" <<'PY'
-import datetime, http.cookiejar, json, os, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
+import datetime, http.cookiejar, json, os, shutil, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
 
 import yaml
 
@@ -563,6 +571,19 @@ elif datastore_kind == "postgres":
     # API is down), it just never had to name the race because one
     # connection made it invisible there. No locking added for this --
     # out of scope.
+    #
+    # Guard against the invocation context NETWORK_HINT above documents as
+    # sometimes necessary (running this from inside the join-api container,
+    # for the admin-API login's sake) -- that container has no Docker
+    # socket (Dockerfile's design decision 8), so without this check a
+    # missing `docker` binary would surface as a raw FileNotFoundError
+    # traceback instead of this file's usual clear message.
+    if shutil.which("docker") is None:
+        sys.exit("member.sh refresh: docker not found -- the direct-write fallback's "
+                  "Postgres path needs 'docker compose run' to reach the join store. Run "
+                  "this from wherever Docker is available (a droplet's own host shell, a "
+                  "laptop), not from inside the join-api container itself -- it has no "
+                  "Docker socket.")
     dump = subprocess.run(
         ["docker", "compose", "-f", compose_file, "run", "--rm", "-T", "join-api",
          "python", "-m", "store", "dump-records"],
