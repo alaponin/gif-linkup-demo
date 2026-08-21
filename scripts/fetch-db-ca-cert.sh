@@ -19,7 +19,18 @@ fi
 [ -n "${KP2_DB_CA_CERT:-}" ] || fail "KP2_DB_CA_CERT is unset in the environment and $PACK_DIR/.env -- this is the host path to write the CA cert to (see .env.example)."
 
 log "fetching ca_certificate from infra/terraform-db's Terraform state"
-( cd "$PACK_DIR/infra/terraform-db" && terraform output -raw ca_certificate ) > "$KP2_DB_CA_CERT"
+# Write to a temp file and verify before touching the real path -- writing
+# straight to $KP2_DB_CA_CERT would truncate it before terraform even
+# runs, so any failure (uninitialized dir, missing backend credentials,
+# nothing applied yet) leaves a zero-byte cert where a good one used to
+# be, and the next join-api restart fails with a confusing TLS handshake
+# error instead of a clear one from this script. Same move-into-place
+# discipline scripts/join-store-export.sh already uses for its own
+# evidence file.
+tmp=$(mktemp)
+( cd "$PACK_DIR/infra/terraform-db" && terraform output -raw ca_certificate ) > "$tmp"
+grep -q 'BEGIN CERTIFICATE' "$tmp" || fail "terraform output -raw ca_certificate did not return a PEM certificate"
+mv "$tmp" "$KP2_DB_CA_CERT"
 
 # Public cert, not a secret -- readable is fine, unlike .env's 600.
 chmod 644 "$KP2_DB_CA_CERT"
