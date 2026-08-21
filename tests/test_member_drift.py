@@ -9,16 +9,18 @@ instead of rewriting endpoint_baseline, and getting it backwards produces a
 warning that either never clears or clears when it should not.
 
 No Docker, no admin API, no join-api: a temp pack, a synthetic ACTIVE join
-record, and a local http.server serving the "current" spec -- which is a real
+record seeded straight into the SQLite join store (the same technique
+tests/test_migrate_join_store.py uses -- import store.py and call into it),
+and a local http.server serving the "current" spec -- which is a real
 fetch, because that is what drift does.
 """
 from __future__ import annotations
 
 import http.server
-import json
 import pathlib
 import shutil
 import subprocess
+import sys
 import threading
 
 import pytest
@@ -27,6 +29,12 @@ import yaml
 PACK = pathlib.Path(__file__).resolve().parent.parent
 PORT = 18766
 SERVICE = "awards-api"
+
+# apps/join-api/ is not a package -- same reason
+# scripts/migrate-join-store.py inserts this directory onto sys.path
+# (that script's own comment). Only store.py is needed here.
+sys.path.insert(0, str(PACK / "apps" / "join-api"))
+import store  # noqa: E402
 
 
 class _SpecHandler(http.server.BaseHTTPRequestHandler):
@@ -73,7 +81,6 @@ def pack(tmp_path):
         "module": "member-ptsb",
         "services": [{"code": SERVICE, "spec_url": f"http://127.0.0.1:{PORT}/spec.yaml"}],
     }))
-    (pack / "out" / "join").mkdir(parents=True)
     return pack
 
 
@@ -87,7 +94,9 @@ def _record(pack, *, baseline, refreshes=None):
     }
     if refreshes is not None:
         record["refreshes"] = refreshes
-    (pack / "out" / "join" / "abc123.json").write_text(json.dumps(record))
+    conn = store.connect(store.init(pack / "out"))
+    store.save_request(conn, record, actor="system", event="test-seed")
+    conn.close()
 
 
 def _drift(pack):
@@ -161,6 +170,8 @@ def test_the_baseline_is_never_rewritten_by_reading_drift(pack):
     _SpecHandler.paths = ["/awards/{nin}", "/awards"]
     _record(pack, baseline=["/awards/{nin}"])
     _drift(pack)
-    record = json.loads((pack / "out" / "join" / "abc123.json").read_text())
+    conn = store.connect(store.init(pack / "out"))
+    record = store.load_request(conn, "abc123")
+    conn.close()
     assert record["endpoint_baseline"][SERVICE] == ["/awards/{nin}"]
     assert "refreshes" not in record
