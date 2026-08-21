@@ -523,11 +523,19 @@ first, then read its output —
 cd infra/terraform/ && terraform output -raw droplet_id
 ```
 
-— and pass that value into the DB module's own apply:
+— and pass that value into the DB module's own apply. `do_token` is a
+secret — export it as `TF_VAR_do_token` rather than putting it on the
+command line with `-var`, the same reason `$KP2_JOIN_DB_URL` never reaches
+argv in the export/import scripts below (`ps auxww` shows any local user
+the full command line for as long as `apply` runs); `droplet_id` isn't a
+secret and stays on argv as `-var`, matching `infra/IMPLEMENTATION-PLAN.md`
+and `variables.tf`'s own `do_token` description, which already document
+`TF_VAR_do_token` as the convention:
 
 ```
 cd infra/terraform-db
-terraform apply -var="do_token=$DO_TOKEN" -var="droplet_id=<the id just read>"
+export TF_VAR_do_token="$DO_TOKEN"
+terraform apply -var="droplet_id=<the id just read>"
 ```
 
 There is no cross-module state reference by design (`variables.tf`'s own
