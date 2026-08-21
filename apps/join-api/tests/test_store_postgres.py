@@ -91,33 +91,45 @@ def test_joinapi_cannot_update_or_delete_request_events(conn):
     UPDATE/DELETE there must fail with a privilege error specifically, not
     just any error.
 
-    Only meaningful when `conn` is actually connected as a role with
-    joinapi's restricted grants. A throwaway local/CI Postgres with no role
-    provisioning connects as the table owner or a superuser instead, which
-    bypasses GRANTs entirely (ownership, not privilege, decides access) --
-    detected here by the UPDATE trivially succeeding, in which case this
-    skips with an explanation rather than reporting a false green."""
+    `conn` is whatever role KP2_TEST_DB_URL names -- often the table
+    owner/superuser for a throwaway local/CI Postgres with no per-test role
+    setup, which bypasses GRANTs entirely (ownership, not privilege,
+    decides access). `SET ROLE joinapi` switches the *session's* privilege
+    checks to joinapi's for the rest of this test, without needing a
+    second connection or a different KP2_TEST_DB_URL -- Postgres enforces
+    GRANTs under SET ROLE exactly as it would for a real joinapi
+    connection, so the InsufficientPrivilege assertions below are real, not
+    skipped-around. This also means a grants.sql regression that
+    accidentally gave joinapi UPDATE/DELETE on request_events shows up as a
+    FAILURE here, not a silent skip. RESET ROLE in `finally` so a failed
+    assertion never leaves the session (and the fixture's next use of
+    `conn`) stuck under joinapi's restricted privileges.
+
+    Only skips if `SET ROLE joinapi` itself fails -- the role doesn't exist
+    or the connecting role isn't a member of it -- i.e. this test
+    environment has no joinapi role to test against at all."""
     import psycopg
 
     store.save_request(conn, _record(id="req-grants-1"), actor="tester", event="submitted")
     row = conn.execute("SELECT seq FROM request_events LIMIT 1").fetchone()
 
     try:
-        conn.execute("UPDATE request_events SET actor = %s WHERE seq = %s", ("tampered", row["seq"]))
-    except psycopg.errors.InsufficientPrivilege:
-        pass  # exactly what grants.sql's design promises
-    else:
-        current_user = conn.execute("SELECT current_user").fetchone()["current_user"]
+        conn.execute("SET ROLE joinapi")
+    except psycopg.Error as exc:
         pytest.skip(
-            f"KP2_TEST_DB_URL connects as {current_user!r}, which has UPDATE "
-            "on request_events (table owner/superuser, not the "
-            "grants-restricted joinapi role) -- the UPDATE trivially "
-            "succeeded, so this environment can't exercise grants.sql's "
-            "privilege restriction for real"
+            f"SET ROLE joinapi failed ({type(exc).__name__}: {exc}) -- "
+            "joinapi doesn't exist (or the connecting role isn't a member "
+            "of it) in this test environment; provision it per "
+            "migrations/grants.sql to test this for real"
         )
 
-    with pytest.raises(psycopg.errors.InsufficientPrivilege):
-        conn.execute("DELETE FROM request_events WHERE seq = %s", (row["seq"],))
+    try:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("UPDATE request_events SET actor = %s WHERE seq = %s", ("tampered", row["seq"]))
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("DELETE FROM request_events WHERE seq = %s", (row["seq"],))
+    finally:
+        conn.execute("RESET ROLE")
 
 
 # -- advisory-lock serialisation -----------------------------------------------
