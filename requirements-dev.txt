@@ -11,9 +11,14 @@ pytest==9.1.1
 fastapi==0.140.0
 httpx==0.28.1
 PyYAML==6.0.3
+# Matches apps/join-api/requirements.txt's uvicorn==0.52.1 (minus the
+# per-platform hashes -- see this file's own header) -- needed for
+# test_app_concurrency.py, which starts a real uvicorn server to catch
+# thread-affinity bugs a serial TestClient can't reproduce.
+uvicorn==0.52.1
 # Matches apps/join-api/requirements.txt's psycopg==3.3.4 (minus the
 # per-platform hashes -- see this file's own header) -- needed for
 # test_store_postgres.py and the psycopg.importorskip'd masking test in
-# test_store.py to actually run instead of silently skipping (plan §8:
-# "--fast with and without KP2_TEST_DB_URL").
+# test_store.py to actually run instead of silently skipping ("--fast with
+# and without KP2_TEST_DB_URL").
 psycopg[binary]==3.3.4
