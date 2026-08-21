@@ -14,6 +14,16 @@
 -- becomes table owner via CREATE TABLE, which silently defeats the whole
 -- append-only guarantee this file exists for).
 --
+-- Also grants SELECT on request_events_seq_seq -- the auto-named sequence
+-- backing request_events.seq's GENERATED ALWAYS AS IDENTITY column
+-- (confirmed via `SELECT pg_get_serial_sequence('request_events', 'seq')`
+-- against a real migrated database, not just assumed from Postgres's
+-- naming convention). pg_dump reads sequence state as a normal part of
+-- dumping a table, so `pg_dump` run as joinapi (scripts/join-store-export.sh
+-- uses KP2_JOIN_DB_URL, the joinapi role's DSN, per docker-compose.yml)
+-- failed outright with "permission denied for sequence
+-- request_events_seq_seq" without this grant.
+--
 -- NOT a versioned migration: unlike 001_init.sql, this file has no numeric
 -- prefix, is never recorded in schema_version, and store.py's _pg_init()
 -- runs it on EVERY store.init() call, not gated by "have I applied version
@@ -38,6 +48,7 @@ BEGIN
     -- no UPDATE, no DELETE, to anyone but the cluster's admin role.
     GRANT SELECT, INSERT, UPDATE ON requests, tokens TO joinapi;  -- no DELETE, no DDL
     GRANT SELECT ON schema_version TO joinapi;  -- _pg_init() reads this every store.init() call
+    GRANT SELECT ON request_events_seq_seq TO joinapi;  -- pg_dump needs this to dump request_events
     ALTER ROLE joinapi SET statement_timeout = '10s';
   ELSE
     RAISE NOTICE 'role "joinapi" does not exist yet -- skipping its GRANTs (provisioning creates it; retried next store.init())';
