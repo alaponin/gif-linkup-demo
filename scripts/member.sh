@@ -433,6 +433,21 @@ except urllib.error.HTTPError:
     # An answered HTTP request, even a non-2xx one, proves the process is up
     # and listening -- only a connection-level failure below means "down."
     api_up = True
+except urllib.error.URLError as exc:
+    # A genuine socket timeout is NOT proof of "down" -- it is proof of
+    # "could not tell in 3s," and a slow-but-actually-running join-api is
+    # still the sole writer. Confirmed live (this Python): urlopen wraps a
+    # connect-phase timeout as URLError(reason=TimeoutError(...)), never a
+    # bare TimeoutError. Resolve the ambiguity toward the safe answer, same
+    # principle as the HTTPError case above -- refuse the direct-write path
+    # rather than risk two writers.
+    if isinstance(exc.reason, TimeoutError):
+        api_up = True
+        print(f"member.sh refresh: {join_api}/health did not answer within 3s -- treating "
+              f"join-api as up (ambiguous, not definitely down) and refusing the direct-write "
+              f"fallback", file=sys.stderr)
+    else:
+        api_up = False
 except Exception:
     api_up = False
 
