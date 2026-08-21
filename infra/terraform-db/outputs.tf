@@ -42,3 +42,30 @@ output "kp2_join_dsn_template" {
   value       = "postgresql://joinapi:${digitalocean_database_user.joinapi.password}@${digitalocean_database_cluster.kp2_join.private_host}:${digitalocean_database_cluster.kp2_join.port}/kp2_join?sslmode=verify-full&sslrootcert=/pack-secrets/do-db-ca.crt"
   sensitive   = true
 }
+
+# DO creates a default admin/superuser account for every managed cluster
+# automatically -- no new resource needed, the cluster resource already
+# computes these two attributes. Needed because pg_restore's dump-restore
+# runs ALTER TABLE ... OWNER TO <original-owner> and setval(...) on the
+# sequence, neither of which the restricted joinapi role has (or should
+# have) privileges for -- see scripts/join-store-import.sh's
+# KP2_JOIN_DB_ADMIN_URL.
+output "db_admin_user" {
+  description = "DO's default admin/superuser role name for the cluster. Needed for pg_restore (ALTER TABLE ... OWNER TO, sequence setval) -- joinapi lacks those privileges by design."
+  value       = digitalocean_database_cluster.kp2_join.user
+}
+
+output "db_admin_password" {
+  description = "DO-generated password for the admin/superuser role."
+  value       = digitalocean_database_cluster.kp2_join.password
+  sensitive   = true
+}
+
+# Convenience output mirroring kp2_join_dsn_template above, but for the
+# admin role against the kp2_join database -- this is what
+# KP2_JOIN_DB_ADMIN_URL should be set to for scripts/join-store-import.sh.
+output "db_admin_dsn_template" {
+  description = "Full KP2_JOIN_DB_ADMIN_URL value (admin role), password interpolated. Sensitive -- contains the password."
+  value       = "postgresql://${digitalocean_database_cluster.kp2_join.user}:${digitalocean_database_cluster.kp2_join.password}@${digitalocean_database_cluster.kp2_join.private_host}:${digitalocean_database_cluster.kp2_join.port}/kp2_join?sslmode=verify-full&sslrootcert=/pack-secrets/do-db-ca.crt"
+  sensitive   = true
+}

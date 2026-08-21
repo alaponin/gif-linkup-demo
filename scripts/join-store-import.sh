@@ -2,11 +2,23 @@
 # scripts/join-store-import.sh -- the counterpart to join-store-export.sh:
 # pg_restore a previously-exported dump (pg_dump -Fc format) into a
 # Postgres cluster, meant to run at provision time against an empty
-# cluster (plan §6.3). Destructive to whatever database KP2_JOIN_DB_URL
-# names -- this is meant to be run non-interactively by provisioning
-# tooling, so it does NOT prompt for confirmation, but it DOES print the
-# target (host/dbname, password redacted) before touching anything, so
-# that's visible in whatever log captured the run.
+# cluster (plan §6.3). Destructive to whatever database it targets --
+# this is meant to be run non-interactively by provisioning tooling, so
+# it does NOT prompt for confirmation, but it DOES print the target
+# (host/dbname, password redacted) before touching anything, so that's
+# visible in whatever log captured the run.
+#
+# Two DSNs, one required and one optional: KP2_JOIN_DB_URL is always
+# required (it's how this script confirms there IS a Postgres deployment
+# to import into at all), but pg_restore of a custom-format dump runs
+# `ALTER TABLE ... OWNER TO <original-owner>` and `setval(...)` on
+# request_events_seq_seq -- both need privileges the restricted joinapi
+# role deliberately doesn't have (joinapi has no UPDATE on the sequence,
+# by design -- see apps/join-api/migrations/grants.sql). So: if
+# KP2_JOIN_DB_ADMIN_URL is set, pg_restore runs against THAT DSN instead
+# (infra/terraform-db's db_admin_dsn_template output is the source for
+# it); if unset, this falls back to KP2_JOIN_DB_URL exactly as before,
+# for a simpler setup where ownership isn't an issue.
 #
 # Same refusal checks and lib-core.sh-only sourcing as
 # scripts/join-store-export.sh -- see that script's header comment for why.
@@ -31,29 +43,39 @@ if [ -z "${KP2_JOIN_DB_URL:-}" ] && [ -f "$PACK_DIR/.env" ]; then
 fi
 case "${KP2_JOIN_DB_URL:-}" in
   ""|*CHANGEME*)
-    fail "KP2_JOIN_DB_URL is unset (or still the .env.example placeholder) in the environment and $PACK_DIR/.env -- this is the DSN pg_restore writes into." ;;
+    fail "KP2_JOIN_DB_URL is unset (or still the .env.example placeholder) in the environment and $PACK_DIR/.env -- this confirms there is a Postgres deployment to import into, regardless of which DSN pg_restore actually connects with (see KP2_JOIN_DB_ADMIN_URL above)." ;;
 esac
+
+# KP2_JOIN_DB_ADMIN_URL is optional and NOT sourced from .env -- an admin
+# DSN is deliberately not something scripts/gen-secrets.sh or .env.example
+# manages; the operator (or provisioning tooling) exports it for just this
+# run, straight from infra/terraform-db's db_admin_dsn_template output.
+# Falls back to KP2_JOIN_DB_URL when unset, so a deployment where ownership
+# isn't an issue needs nothing extra.
+effective_dsn="${KP2_JOIN_DB_ADMIN_URL:-$KP2_JOIN_DB_URL}"
 
 # Password-redacted DSN for the log line only -- the real one is never
 # echoed. Strips whatever sits between the first `:` after `://user` and
 # the following `@`, which is the only DSN shape this pack's KP2_JOIN_DB_URL
-# is documented in (.env.example's postgresql://user:PASSWORD@host:port/db
-# form) -- store.py's own _mask_dsn round-trips through psycopg's conninfo
-# parser to also handle key=value DSNs, which this one-line sed does not
-# attempt; not needed here since nothing in this pack ever writes
-# KP2_JOIN_DB_URL in that form.
-MASKED_DSN=$(printf '%s' "$KP2_JOIN_DB_URL" | sed -E 's#(://[^:/@]+:)[^@]*(@)#\1***\2#')
+# (and KP2_JOIN_DB_ADMIN_URL, same shape) is documented in (.env.example's
+# postgresql://user:PASSWORD@host:port/db form) -- store.py's own
+# _mask_dsn round-trips through psycopg's conninfo parser to also handle
+# key=value DSNs, which this one-line sed does not attempt; not needed
+# here since nothing in this pack ever writes either DSN in that form.
+MASKED_DSN=$(printf '%s' "$effective_dsn" | sed -E 's#(://[^:/@]+:)[^@]*(@)#\1***\2#')
 
 log "importing $DUMP_FILE into: $MASKED_DSN"
 log "this OVERWRITES whatever is already in that database -- run only against an empty cluster (plan §6.3's provision-time import)"
 
-# $KP2_JOIN_DB_URL is NOT passed as an argv here, same reason as
-# join-store-export.sh's pg_dump call -- docker-compose.yml already injects
-# it into join-api's own environment, so `sh -c '... "$KP2_JOIN_DB_URL"'`
-# reads it from inside the container instead of exposing it in this host
-# process's argv (visible via `ps auxww` for the run's duration otherwise,
-# which would defeat the masking above).
+# $effective_dsn is NOT passed as an argv here, same reason as
+# join-store-export.sh's pg_dump call -- exposing it in this host
+# process's argv (visible via `ps auxww` for the run's duration) would
+# defeat the masking above. Passed via `docker compose run -e` instead of
+# editing docker-compose.yml's static environment block -- an ad-hoc
+# override of the container's KP2_JOIN_DB_URL for just this one run,
+# rather than teaching the container-side command a second variable name.
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
+  -e KP2_JOIN_DB_URL="$effective_dsn" \
   -v "$DUMP_FILE:/tmp/kp2-join-import.dump:ro" \
   join-api sh -c 'exec pg_restore -d "$KP2_JOIN_DB_URL" /tmp/kp2-join-import.dump'
 
