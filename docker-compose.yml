@@ -241,6 +241,10 @@ services:
       # accepts. `join.sh up --wait` still fails, on the health check.
       KP2_JOIN_APPLICANT_TOKEN: ${KP2_JOIN_APPLICANT_TOKEN:-}
       KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:-}
+      # Postgres DSN, only set when deployment.yaml's datastore.kind:
+      # postgres. Empty on docker-local (SQLite stays the default), so
+      # app.py's _required_token-style refusal never even runs.
+      KP2_JOIN_DB_URL: ${KP2_JOIN_DB_URL:-}
     volumes:
       - ../../..:/repo
       # ...with one addition, for a checkout that is a git WORKTREE. There,
@@ -259,6 +263,14 @@ services:
       # for a bare `docker compose up` that never sourced join.sh: a
       # self-mount of the same .git, i.e. a no-op.
       - ${KP2_GIT_COMMON_DIR:-../../../.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}
+      # Same optional-mount pattern as KP2_GIT_COMMON_DIR above, for the
+      # Postgres cluster's CA cert (deployment.yaml's datastore.kind:
+      # postgres; named by KP2_JOIN_DB_URL's sslrootcert). Unset on
+      # docker-local, so this mounts /dev/null -- always present, harmless,
+      # and never read anyway since KP2_JOIN_DB_URL (and so the DSN's
+      # sslrootcert reference) is empty on that path. A droplet deployment
+      # sets KP2_DB_CA_CERT to the real downloaded cert's host path.
+      - ${KP2_DB_CA_CERT:-/dev/null}:/pack-secrets/do-db-ca.crt:ro
 
 volumes:
   cs-db: {name: kp2-cs-db}
