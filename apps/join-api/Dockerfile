@@ -37,7 +37,17 @@ COPY --from=hurl /usr/lib/ /opt/hurl-lib/
 # the host user, this process runs as nobody, and every git call here is a
 # read (status only, never a write) -- see writer.py's own docstring on why
 # nothing here ever commits.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+#
+# postgresql-client (pg_dump/pg_restore) -- scripts/join-store-export.sh and
+# -import.sh run these INSIDE this image via `docker compose run --rm
+# join-api pg_dump/pg_restore ...` (Task 5) rather than requiring a second
+# tool on the host. requirements.txt's psycopg driver does not bundle these
+# CLI binaries -- confirmed absent before this line (`which pg_dump` ->
+# not found). Debian's default postgresql-client version may trail
+# DigitalOcean's managed cluster version; a client tolerates dumping/
+# restoring against a same-or-newer server, not the reverse -- an
+# operational note for the runbook, not something engineered around here.
+RUN apt-get update && apt-get install -y --no-install-recommends git postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
 WORKDIR /app

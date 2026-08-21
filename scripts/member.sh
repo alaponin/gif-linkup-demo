@@ -127,14 +127,62 @@ cmd_drift() {
   # the newest on ambiguity rather than assume. A member added by hand via
   # prompts/member.md, or one whose join predates this feature, has no such
   # record: fail clearly here, the same house style cmd_remove uses for its
-  # canonical-member refusal, rather than crash further down. Opened
-  # read-only (file:...?mode=ro): no auth, no HTTP to the join API, works
-  # whether or not it is even running -- a WAL-mode database needs no
-  # running writer for a read (plan §1.3).
-  local db="$PACK_DIR/out/join-store/join-store.sqlite3"
-  [ -f "$db" ] || fail "no join store at $db -- join-api has not run yet (it creates the schema at startup), or state has not been migrated (scripts/migrate-join-store.py)."
+  # canonical-member refusal, rather than crash further down.
+  #
+  # Backend dispatch (Task 5): deployment.yaml's datastore.kind decides
+  # where that store actually lives. sqlite (the branch below, unchanged
+  # from before Postgres existed) opens the file directly, read-only
+  # (file:...?mode=ro): no auth, no HTTP to the join API, works whether or
+  # not it is even running -- a WAL-mode database needs no running writer
+  # for a read (plan §1.3). postgres has no local file to open, so that
+  # branch shells out to store.py's own CLI instead (`python -m store
+  # dump-records`, in a throwaway join-api container -- `run --rm`, not
+  # `exec`, so this too works whether or not the join-api container is up,
+  # the same no-API-dependency promise the sqlite branch already makes) and
+  # reimplements the identical filter (state == ACTIVE, payload.code
+  # matches case-insensitively, newest submitted_at wins) over the JSONL
+  # stream instead of SQL.
+  local datastore_kind
+  datastore_kind=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null || echo sqlite)
+
   local record_json
-  record_json=$(python3 - "$db" "$key" <<'PY'
+  if [ "$datastore_kind" = "postgres" ]; then
+    # A temp file, not a pipe: `python3 -` already uses stdin to receive
+    # ITS OWN script text (the heredoc below) -- piping dump-records'
+    # output into that same stdin would starve the script of its source
+    # before `for line in sys.stdin` ever ran (confirmed live: the pipe
+    # variant exits 0 with an empty result and a stray "broken pipe" on
+    # docker's side, silently -- not a crash, just wrong). A named file
+    # sidesteps the conflict.
+    local dump_file
+    dump_file=$(mktemp)
+    docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
+      python -m store dump-records > "$dump_file"
+    record_json=$(python3 - "$dump_file" "$key" <<'PY'
+import json, sys
+
+dump_path, key = sys.argv[1], sys.argv[2]
+best = None
+with open(dump_path) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if rec.get("state") != "ACTIVE":
+            continue
+        if (rec.get("payload") or {}).get("code", "").lower() != key.lower():
+            continue
+        if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
+            best = rec
+print(json.dumps(best) if best else "")
+PY
+)
+    rm -f "$dump_file"
+  else
+    local db="$PACK_DIR/out/join-store/join-store.sqlite3"
+    [ -f "$db" ] || fail "no join store at $db -- join-api has not run yet (it creates the schema at startup), or state has not been migrated (scripts/migrate-join-store.py)."
+    record_json=$(python3 - "$db" "$key" <<'PY'
 import sqlite3, sys
 
 db_path, key = sys.argv[1], sys.argv[2]
@@ -147,6 +195,7 @@ row = conn.execute(
 print(row[0] if row else "")
 PY
 )
+  fi
   [ -n "$record_json" ] || fail "no ACTIVE join-store record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
 
   python3 - "$dir" "$key" "$record_json" <<'PY'
@@ -273,14 +322,25 @@ cmd_refresh() {
   local topo="$PACK_DIR/hurl/topology.json"
   [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
 
+  # Backend dispatch (Task 5): only the direct-write fallback below (the
+  # `else` branch of `if api_up:`, used when join-api is not answering)
+  # needs to know this -- the API-first path above it only ever talks to
+  # join-api's own HTTP endpoint, which is identical regardless of what
+  # backend sits behind it. Read once here, passed into the same Python
+  # block everything else already runs in.
+  local datastore_kind
+  datastore_kind=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null || echo sqlite)
+
   python3 - "$topo" "$key" "$PACK_DIR/configs/x-road-bus/join-policy.yaml" \
            "$PACK_DIR/out/join-store/join-store.sqlite3" \
-           "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" <<'PY'
-import datetime, http.cookiejar, json, os, sqlite3, ssl, sys, urllib.parse, urllib.request
+           "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" \
+           "$datastore_kind" "$PACK_DIR/docker-compose.yml" <<'PY'
+import datetime, http.cookiejar, json, os, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
 
 import yaml
 
-topo_path, key, policy_path, db_path, admin_user, admin_password, operator_token = sys.argv[1:8]
+topo_path, key, policy_path, db_path, admin_user, admin_password, operator_token, \
+    datastore_kind, compose_file = sys.argv[1:10]
 
 # -- resolve ------------------------------------------------------------------
 # The IN-NETWORK address (host:ui_port), never the host-mapped one. This
@@ -481,6 +541,64 @@ if api_up:
                   f"HTTP {exc.code} {exc.read().decode(errors='replace')[:400]}")
     print(f"recorded the refresh via the join API ({len(endpoints)} service(s)); "
           f"endpoint_baseline untouched")
+elif datastore_kind == "postgres":
+    # Backend dispatch (Task 5): no local sqlite file to open against
+    # Postgres, so the same read-modify-write shape the sqlite branch below
+    # does over one connection is reimplemented as two `docker compose run
+    # --rm join-api python -m store ...` calls -- dump-records to find the
+    # ACTIVE record (same filter cmd_drift's Postgres branch uses: state ==
+    # ACTIVE, payload.code matches case-insensitively, newest submitted_at
+    # wins), then amend-refresh with the shallow-merged patch. `run --rm`,
+    # not `exec`, uniformly with cmd_drift's Postgres branch and
+    # scripts/join-store-export.sh/-import.sh -- works whether or not the
+    # join-api container is up.
+    #
+    # NOT atomic the way the sqlite branch's single connection is: a second
+    # concurrent `member.sh refresh` invocation during the gap between the
+    # dump-records call and the amend-refresh call could race and clobber
+    # each other's refreshes entry. This mirrors the plan's own framing of
+    # the fallback as safe "precisely when [join-api] is not running,
+    # because then it's the only writer" -- the sqlite branch relies on the
+    # exact same operational assumption (no other process writes while the
+    # API is down), it just never had to name the race because one
+    # connection made it invisible there. No locking added for this --
+    # out of scope.
+    dump = subprocess.run(
+        ["docker", "compose", "-f", compose_file, "run", "--rm", "-T", "join-api",
+         "python", "-m", "store", "dump-records"],
+        capture_output=True, text=True,
+    )
+    if dump.returncode != 0:
+        sys.exit(f"member.sh refresh: could not read the join store (dump-records): {dump.stderr}")
+    best_id, best = None, None
+    for line in dump.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if rec.get("state") != "ACTIVE":
+            continue
+        if (rec.get("payload") or {}).get("code", "").lower() != key.lower():
+            continue
+        if best is None or rec.get("submitted_at", "") > best.get("submitted_at", ""):
+            best_id, best = rec["id"], rec
+    if best is None:
+        print(no_record_msg, file=sys.stderr)
+        sys.exit(0)
+    best.setdefault("refreshes", []).append({
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "endpoints": endpoints,
+    })
+    patch = json.dumps({"refreshes": best["refreshes"]})
+    amend = subprocess.run(
+        ["docker", "compose", "-f", compose_file, "run", "--rm", "-T", "join-api",
+         "python", "-m", "store", "amend-refresh", best_id, patch],
+        capture_output=True, text=True,
+    )
+    if amend.returncode != 0:
+        sys.exit(f"member.sh refresh: amend-refresh failed for {best_id}: {amend.stderr}")
+    print(f"recorded the refresh directly -- join-api is not running "
+          f"({len(endpoints)} service(s)); endpoint_baseline untouched")
 else:
     if not os.path.exists(db_path):
         print(no_record_msg, file=sys.stderr)
