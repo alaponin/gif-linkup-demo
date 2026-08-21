@@ -446,6 +446,17 @@ def _load_request(db: sqlite3.Connection, request_id: str) -> dict | None:
 # runs the sweep" (it loads app.py via importlib.util.spec_from_file_location
 # specifically to trigger this side effect), asserting on state immediately
 # after exec_module, before any TestClient exists.
+# deployment.yaml's datastore.kind (plan §1.6): the seam that would make
+# `kind: postgres` fail loudly instead of silently being ignored. Missing
+# file defaults to "sqlite" -- many unit tests point PACK_DIR at a throwaway
+# fixture directory with no deployment.yaml, same as manifest.yaml/
+# join-policy.yaml being read lazily rather than required at import time.
+try:
+    _deployment_doc = yaml.safe_load((PACK_DIR / "deployment.yaml").read_text()) or {}
+except FileNotFoundError:
+    _deployment_doc = {}
+store.backend_for((_deployment_doc.get("datastore") or {}).get("kind", "sqlite"))
+
 with contextlib.closing(_conn()) as _startup_conn:
     store.recover_interrupted(_startup_conn)
 
@@ -739,7 +750,10 @@ def _run_job(request_id: str) -> None:
     # closes its own connection rather than sharing the request-scoped one
     # FastAPI's Depends(get_conn) hands a route handler, since
     # sqlite3.Connection objects aren't safe to share across threads.
-    with contextlib.closing(_conn()) as conn, _JOB_LOCK:
+    # _JOB_LOCK first, connection second: a queued job (waiting on the lock
+    # behind a running one) must not hold an idle connection open for
+    # however long that wait takes.
+    with _JOB_LOCK, contextlib.closing(_conn()) as conn:
         record = _load_request(conn, request_id)
         if record is None:  # deleted while queued
             return
@@ -962,8 +976,9 @@ _MEMBER_KEY_RE = re.compile(r"[a-z0-9]+")
 
 
 def _run_unjoin(request_id: str) -> None:
-    # Background thread, own connection -- see _run_job's comment.
-    with contextlib.closing(_conn()) as conn, _JOB_LOCK:
+    # Background thread, own connection, lock before connection -- see
+    # _run_job's comment.
+    with _JOB_LOCK, contextlib.closing(_conn()) as conn:
         record = _load_request(conn, request_id)
         if record is None:
             return
