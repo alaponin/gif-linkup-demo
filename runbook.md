@@ -547,9 +547,19 @@ After a successful apply:
 - `scripts/fetch-db-ca-cert.sh` — fetches the cluster's CA certificate (a
   public cert, not a secret) to wherever `KP2_DB_CA_CERT` points, per
   `.env.example`'s documentation.
+- `deployment.yaml`'s `datastore.kind: postgres` — an explicit, deliberate
+  switch an operator makes for the droplet target only. It stays `sqlite`
+  by default and for docker-local. **Set this before the bootstrap step
+  below** — `python -m store init` (like every other `store.py` entry
+  point) reads `deployment.yaml`'s `datastore.kind` to decide which
+  backend to talk to, and it defaults to `sqlite` — running the bootstrap
+  step before this one silently initialises a local SQLite file instead
+  of the Postgres cluster, and neither the joinapi role nor the append-only
+  guarantee this whole procedure exists to establish ever gets touched.
 - **Bootstrap the schema — using the ADMIN DSN, before `.env` ever points
-  at the joinapi DSN below.** This step must run first, and it must run as
-  admin, precisely so `joinapi` never becomes table owner:
+  at the joinapi DSN below.** This step must run first (now that
+  `datastore.kind: postgres` is set above), and it must run as admin,
+  precisely so `joinapi` never becomes table owner:
   ```
   export KP2_JOIN_DB_URL="$(cd infra/terraform-db && terraform output -raw db_admin_dsn_template)"
   docker compose run --rm -T -e KP2_JOIN_DB_URL join-api python -m store init
@@ -578,12 +588,10 @@ After a successful apply:
   for the optional `KP2_JOIN_DB_URL_RO` (the `joinapi_ro` role's DSN,
   preferred by `store.py`'s host-side `dump-records`/`check` when set —
   see `.env.example`).
-- `deployment.yaml`'s `datastore.kind: postgres` — an explicit, deliberate
-  switch an operator makes for the droplet target only. It stays `sqlite`
-  by default and for docker-local.
-- Only now, with the schema already bootstrapped as admin above, set
-  `.env`'s `KP2_JOIN_DB_URL` to the **joinapi** DSN (not the admin DSN used
-  for bootstrapping) and start join-api normally.
+- Only now, with `datastore.kind: postgres` already set and the schema
+  already bootstrapped as admin above, set `.env`'s `KP2_JOIN_DB_URL` to
+  the **joinapi** DSN (not the admin DSN used for bootstrapping) and start
+  join-api normally.
 
 **Rotation.** Reset the role's password in DO's console, update `.env`'s
 `KP2_JOIN_DB_URL`, `docker compose up -d join-api` (plan §4) — measured in
