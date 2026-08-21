@@ -1,6 +1,18 @@
 -- apps/join-api/migrations/grants.sql -- request_events' append-only
 -- enforcement (no UPDATE/DELETE granted to joinapi -- see 001_init.sql's
 -- comment on why GRANT, not a trigger) plus joinapi_ro's read-only access.
+-- Also grants SELECT on schema_version itself: store.py's _pg_init() reads
+-- it unconditionally on every store.init() call (to decide which
+-- migrations are pending), including startup under the joinapi role's own
+-- DSN in the normal deployment shape -- schema bootstrapped once by an
+-- owner/admin role, joinapi never owning the tables (the whole point of
+-- these restrictive grants). Without this line every process restart after
+-- the first one hard-fails at startup with
+-- psycopg.errors.InsufficientPrivilege: permission denied for table
+-- schema_version -- missed originally because it doesn't show up if
+-- joinapi happens to be the first role to ever call store.init() (it then
+-- becomes table owner via CREATE TABLE, which silently defeats the whole
+-- append-only guarantee this file exists for).
 --
 -- NOT a versioned migration: unlike 001_init.sql, this file has no numeric
 -- prefix, is never recorded in schema_version, and store.py's _pg_init()
@@ -25,6 +37,7 @@ BEGIN
     GRANT SELECT, INSERT ON request_events TO joinapi;
     -- no UPDATE, no DELETE, to anyone but the cluster's admin role.
     GRANT SELECT, INSERT, UPDATE ON requests, tokens TO joinapi;  -- no DELETE, no DDL
+    GRANT SELECT ON schema_version TO joinapi;  -- _pg_init() reads this every store.init() call
     ALTER ROLE joinapi SET statement_timeout = '10s';
   ELSE
     RAISE NOTICE 'role "joinapi" does not exist yet -- skipping its GRANTs (provisioning creates it; retried next store.init())';
@@ -34,7 +47,7 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'joinapi_ro') THEN
-    GRANT SELECT ON requests, request_events, tokens TO joinapi_ro;
+    GRANT SELECT ON requests, request_events, tokens, schema_version TO joinapi_ro;
   ELSE
     RAISE NOTICE 'role "joinapi_ro" does not exist yet -- skipping its GRANTs (provisioning creates it; retried next store.init())';
   END IF;
