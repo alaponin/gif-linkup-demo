@@ -531,6 +531,10 @@ def test_backend_for_sqlite_returns_sqlite():
     assert store.backend_for("sqlite") == "sqlite"
 
 
+def test_backend_for_postgres_returns_postgres():
+    assert store.backend_for("postgres") == "postgres"
+
+
 def test_backend_for_anything_else_raises_not_implemented():
     with pytest.raises(NotImplementedError):
-        store.backend_for("postgres")
+        store.backend_for("mysql")
