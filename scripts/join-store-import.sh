@@ -46,12 +46,15 @@ case "${KP2_JOIN_DB_URL:-}" in
     fail "KP2_JOIN_DB_URL is unset (or still the .env.example placeholder) in the environment and $PACK_DIR/.env -- this confirms there is a Postgres deployment to import into, regardless of which DSN pg_restore actually connects with (see KP2_JOIN_DB_ADMIN_URL above)." ;;
 esac
 
-# KP2_JOIN_DB_ADMIN_URL is optional and NOT sourced from .env -- an admin
-# DSN is deliberately not something scripts/gen-secrets.sh or .env.example
-# manages; the operator (or provisioning tooling) exports it for just this
-# run, straight from infra/terraform-db's db_admin_dsn_template output.
-# Falls back to KP2_JOIN_DB_URL when unset, so a deployment where ownership
-# isn't an issue needs nothing extra.
+# KP2_JOIN_DB_ADMIN_URL is optional. Nothing in this pack ever WRITES it
+# into .env -- an admin DSN is deliberately not something
+# scripts/gen-secrets.sh or .env.example manages, it's meant to be
+# exported by the operator (or provisioning tooling) for just this run,
+# straight from infra/terraform-db's db_admin_dsn_template output. (If it
+# happens to already be present in .env, the sourcing above picks it up
+# like any other .env variable -- there's just no mechanism that puts it
+# there.) Falls back to KP2_JOIN_DB_URL when unset, so a deployment where
+# ownership isn't an issue needs nothing extra.
 effective_dsn="${KP2_JOIN_DB_ADMIN_URL:-$KP2_JOIN_DB_URL}"
 
 # Password-redacted DSN for the log line only -- the real one is never
@@ -67,15 +70,20 @@ MASKED_DSN=$(printf '%s' "$effective_dsn" | sed -E 's#(://[^:/@]+:)[^@]*(@)#\1**
 log "importing $DUMP_FILE into: $MASKED_DSN"
 log "this OVERWRITES whatever is already in that database -- run only against an empty cluster (plan §6.3's provision-time import)"
 
-# $effective_dsn is NOT passed as an argv here, same reason as
-# join-store-export.sh's pg_dump call -- exposing it in this host
-# process's argv (visible via `ps auxww` for the run's duration) would
-# defeat the masking above. Passed via `docker compose run -e` instead of
-# editing docker-compose.yml's static environment block -- an ad-hoc
-# override of the container's KP2_JOIN_DB_URL for just this one run,
-# rather than teaching the container-side command a second variable name.
+# $effective_dsn must not land in this host process's argv (visible via
+# `ps auxww` for the run's duration, which would defeat the masking
+# above) -- same reason as join-store-export.sh's pg_dump call. `-e
+# KP2_JOIN_DB_URL="$effective_dsn"` (inline value) would do exactly that;
+# `-e KP2_JOIN_DB_URL` (bare key, no `=value`) instead tells `docker
+# compose run` to resolve the value from THIS SCRIPT's own environment,
+# so it has to be exported into that environment first. Once exported,
+# the DSN travels host-env -> container-env, never through argv, and
+# overrides docker-compose.yml's static environment block for this one
+# run only -- no edit to that file, no second variable name for the
+# container-side command to know about.
+export KP2_JOIN_DB_URL="$effective_dsn"
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
-  -e KP2_JOIN_DB_URL="$effective_dsn" \
+  -e KP2_JOIN_DB_URL \
   -v "$DUMP_FILE:/tmp/kp2-join-import.dump:ro" \
   join-api sh -c 'exec pg_restore -d "$KP2_JOIN_DB_URL" /tmp/kp2-join-import.dump'
 
