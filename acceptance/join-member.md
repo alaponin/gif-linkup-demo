@@ -123,10 +123,10 @@ one artefact further out.
 
 - **Given** a member that joined through this API, reached `ACTIVE`, and has
   since been retired through `DELETE /members/{key}` to state `RETIRED`
-  (discovered generically from `out/join/*.json`, the same way the clause
-  above discovers joined members — a federation nobody has un-joined
-  produces zero rows and passes vacuously), **and retired since the
-  federation now running was deployed**: `out/join/` survives
+  (discovered generically from the join store, a read-only SQLite query, the
+  same way the clause above discovers joined members — a federation nobody
+  has un-joined produces zero rows and passes vacuously), **and retired
+  since the federation now running was deployed**: the join store survives
   `scripts/teardown.sh --purge`, and a record from a previous federation
   would pass all four clauses trivially while asserting nothing about this
   one, so `retired_at` older than `out/deploy-timings.txt`'s `deploy_start`
@@ -206,8 +206,8 @@ findings already put it — `--full`, driven by hand, and by preference
 through the console's join tab, which is `--full`'s console smoke and the
 demonstration this pack exists to support. Neither tier ever *performs* a
 join: both clauses discover what has already happened
-(`hurl/topology.json` for joined members, `out/join/*.json` for retired
-ones) and pass vacuously when nothing has.
+(`hurl/topology.json` for joined members, the join store's SQLite records
+for retired ones) and pass vacuously when nothing has.
 
 `--fast` never runs this document; it only exercises the pieces module 2.7
 contributes that do not need a live stack (step-registry unit tests, the

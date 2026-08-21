@@ -436,25 +436,26 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # shape as 2.6.4/2.6.5. join-api is brought up here only to prove module
 # 2.7's building block deploys; see acceptance.sh's Task-5 report for the
 # alternative readings considered.)
-# The rows this section will check, computed up front -- cheap (local files
-# only: hurl/topology.json + out/join/*.json, no Docker, no join-api) -- so
-# both _selection_touches_27() below and the actual check loop read the same
-# data once. Every currently joined member (origin: joined in
-# hurl/topology.json, discovered the same generic way acceptance/member.md
-# already discovers any member) that has published a service with a
-# non-empty access: list. A service with an EMPTY access: list has nobody to
-# authorize -- there is nothing for the r1 clause to prove that member.md's
-# own exactness check (no subjects at all) does not already prove, so it is
-# skipped, not failed. If no member has joined yet, or nobody who has joined
-# has published anything, this produces zero rows and the section passes
-# vacuously -- there is nothing wrong with a federation nobody has joined.
+# The rows this section will check, computed up front -- cheap (local reads
+# only: hurl/topology.json + a read-only query against the join store, no
+# Docker, no running join-api) -- so both _selection_touches_27() below and
+# the actual check loop read the same data once. Every currently joined
+# member (origin: joined in hurl/topology.json, discovered the same generic
+# way acceptance/member.md already discovers any member) that has published
+# a service with a non-empty access: list. A service with an EMPTY access:
+# list has nobody to authorize -- there is nothing for the r1 clause to
+# prove that member.md's own exactness check (no subjects at all) does not
+# already prove, so it is skipped, not failed. If no member has joined yet,
+# or nobody who has joined has published anything, this produces zero rows
+# and the section passes vacuously -- there is nothing wrong with a
+# federation nobody has joined.
 #
 # The r1 call targets the SERVICE ROOT, not a specific operation path --
 # mirrors apps/join-api/job.py's own _r1_target/ss.r1_verify step exactly
 # (same file's ponytail comment explains why: "what this call has to prove
 # is the registry-perfect-but-dead case ... any non-X-Road response proves
 # that, including a backend 404"). This section originally preferred a
-# parameter-free path from out/join/<id>.json's endpoint_baseline, falling
+# parameter-free path from the join-time record's endpoint_baseline, falling
 # back to an UNSUBSTITUTED "{param}" path segment otherwise -- found live,
 # join-b's own first real join (PTSB): every service this pack
 # publishes, canonical or joined, is GET-by-key shaped, so there is never a
@@ -465,30 +466,28 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # "did the call traverse X-Road and reach a backend at all" -- see
 # check_r1_ok below, which checks for an X-Road fault the same way
 # apps/join-api/job.py's _default_r1_call does, not a literal 2xx. A member
-# with no ACTIVE out/join record (joined by hand via prompts/member.md
+# with no ACTIVE join-store record (joined by hand via prompts/member.md
 # rather than through the API) is skipped with a logged reason -- this
 # section proves the JOIN API's own effect, module 2.7, not every possible
 # way a member can join.
-mapfile -t _27_ROWS < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" <<'PY'
-import json, pathlib, sys
+mapfile -t _27_ROWS < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join-store/join-store.sqlite3" <<'PY'
+import json, pathlib, sqlite3, sys
 
 topo = json.load(open(sys.argv[1]))
-join_dir = pathlib.Path(sys.argv[2])
+db_path = pathlib.Path(sys.argv[2])
 instance, mclass = topo["instance"], topo["member_class"]
 subs = topo["subsystems"]
 
-# The most recently-submitted ACTIVE out/join/*.json record per member code
+# The most recently-submitted ACTIVE join-store record per member code
 # (upper-cased) -- there should be at most one per key in practice, nothing
-# enforces that, so pick the newest on ambiguity rather than assume.
+# enforces that, so pick the newest on ambiguity rather than assume. Opened
+# read-only (file:...?mode=ro): a WAL-mode database needs no running writer
+# for a read, same as scripts/member.sh drift's own query.
 baselines: dict[str, dict] = {}
-if join_dir.is_dir():
-    for f in sorted(join_dir.glob("*.json")):
-        try:
-            rec = json.loads(f.read_text())
-        except Exception:
-            continue
-        if rec.get("state") != "ACTIVE":
-            continue
+if db_path.is_file():
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'ACTIVE'"):
+        rec = json.loads(record_json)
         rec_code = (rec.get("payload") or {}).get("code")
         if not rec_code:
             continue
@@ -506,7 +505,7 @@ for sub in subs:
         if not access:
             continue  # nobody to authorize; member.md already proves "no subjects"
         if baseline_rec is None:
-            print(f"no ACTIVE out/join record for {code} -- skipping {svc['code']}", file=sys.stderr)
+            print(f"no ACTIVE join-store record for {code} -- skipping {svc['code']}", file=sys.stderr)
             continue
 
         good_str = access[0]  # "PROGRESSA/GOV/<CODE>/<SUBSYSTEM>"
@@ -558,42 +557,43 @@ done
 # acceptance/join-member.md's un-join clause: five assertions, which are exactly
 # docs/decisions/xroad-770-notes.md #11's closing claims. Discovered the same generic,
 # vacuous-by-default way the r1 rows above are: the newest RETIRED
-# out/join/*.json record per member code. A federation nobody has un-joined
+# join-store record per member code. A federation nobody has un-joined
 # produces zero rows and this section does not run at all.
 #
-# Deliberately reads out/join rather than anything in hurl/: a retired member
-# is GONE from hurl/topology.json (that is clause 5), so topology cannot be
-# the discovery source the way it is for a live joined member.
+# Deliberately reads the join store rather than anything in hurl/: a retired
+# member is GONE from hurl/topology.json (that is clause 5), so topology
+# cannot be the discovery source the way it is for a live joined member.
 #
-# ...and out/join/ outlives the federation it describes: scripts/teardown.sh
-# --purge tears down containers and volumes, never out/. A RETIRED record
-# from a PREVIOUS federation would otherwise produce a row whose every clause
-# passes trivially (CS list empty, host token has no such key, r1 returns
-# UnknownMember) -- four green checks asserting nothing about the federation
-# now running, the same vacuous-PASS shape the sibling topology check above
-# was just fixed for. So a record only counts if it was retired AFTER this
-# federation was deployed: hurl/run-linkup.sh writes deploy_start (epoch) to
-# out/deploy-timings.txt on every deploy, and job.py stamps retired_at when
-# the walk completes. No anchor, or a record older than it -> SKIP with a
-# reason, never a PASS.
+# ...and the join store outlives the federation it describes:
+# scripts/teardown.sh --purge tears down containers and volumes, never out/.
+# A RETIRED record from a PREVIOUS federation would otherwise produce a row
+# whose every clause passes trivially (CS list empty, host token has no such
+# key, r1 returns UnknownMember) -- four green checks asserting nothing
+# about the federation now running, the same vacuous-PASS shape the sibling
+# topology check above was just fixed for. So a record only counts if it was
+# retired AFTER this federation was deployed: hurl/run-linkup.sh writes
+# deploy_start (epoch) to out/deploy-timings.txt on every deploy, and job.py
+# stamps retired_at when the walk completes. No anchor, or a record older
+# than it -> SKIP with a reason, never a PASS.
 #
-# Purging out/join/ in teardown.sh instead was the alternative considered and
-# rejected: those same files are the ACTIVE join records `scripts/member.sh
-# drift` needs for its join-time endpoint baseline, and that the 2.7.r1 rows
-# above need to exist at all -- deleting them on --purge would trade one
-# vacuous PASS for silently skipping every r1 row after a purge-and-redeploy,
-# which is the pack's own P5 reproducibility flow.
+# Purging the join store in teardown.sh instead was the alternative
+# considered and rejected: those same records are the ACTIVE join baselines
+# `scripts/member.sh drift` needs for its join-time endpoint baseline, and
+# that the 2.7.r1 rows above need to exist at all -- deleting them on
+# --purge would trade one vacuous PASS for silently skipping every r1 row
+# after a purge-and-redeploy, which is the pack's own P5 reproducibility
+# flow.
 #
 # ponytail: a plain `teardown.sh` (no --purge) followed by deploy.sh keeps the
 # volumes but rewrites deploy_start, so a legitimate un-join from before that
 # restart reads as stale and its row SKIPs. That is the safe direction (a
 # logged SKIP, not a false PASS); anchor on the CS volume's CreatedAt instead
 # if the restart-and-reassert flow ever matters.
-mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join" "$OUT_DIR/deploy-timings.txt" <<'PY'
-import datetime, json, pathlib, sys
+mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join-store/join-store.sqlite3" "$OUT_DIR/deploy-timings.txt" <<'PY'
+import datetime, json, pathlib, sqlite3, sys
 
 topo = json.load(open(sys.argv[1]))
-join_dir = pathlib.Path(sys.argv[2])
+db_path = pathlib.Path(sys.argv[2])
 timings = pathlib.Path(sys.argv[3])
 instance, mclass = topo["instance"], topo["member_class"]
 live = {s["member_code"].upper() for s in topo["subsystems"]}
@@ -608,14 +608,10 @@ if deployed_at is None:
           f"describes; skipping every 2.7.unjoin row", file=sys.stderr)
 
 newest: dict[str, dict] = {}
-if join_dir.is_dir() and deployed_at is not None:
-    for f in sorted(join_dir.glob("*.json")):
-        try:
-            rec = json.loads(f.read_text())
-        except Exception:
-            continue
-        if rec.get("state") != "RETIRED":
-            continue
+if db_path.is_file() and deployed_at is not None:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'RETIRED'"):
+        rec = json.loads(record_json)
         code = ((rec.get("payload") or {}).get("code") or "").upper()
         if not code:
             continue

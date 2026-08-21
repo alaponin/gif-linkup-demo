@@ -284,9 +284,8 @@ same fault live and confirms it still matches the committed fixture.
 diffs byte-identical against `tests/golden/deployment/topology.json`, and
 `scripts/acceptance.sh` confirms it itself (`PASS 2.7.unjoin(<member>)`,
 `PASS 2.7.unjoin.topology`), discovered generically from the newest
-`RETIRED` record in the join store (`scripts/acceptance.sh`'s own 2.7
-un-join discovery still globs the now-unused `out/join/` directly and needs
-the same cutover — tracked as a follow-up, not part of this change) — there
+`RETIRED` record in the join store (a read-only SQLite query, the same
+discovery mechanism the sibling `2.7.r1`/`2.7.deny` rows use) — there
 is no `lite`/`full` choice to make, so this is simply "byte-identical to the
 golden," full stop.
 
