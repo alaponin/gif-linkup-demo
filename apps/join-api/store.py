@@ -93,11 +93,22 @@ def connect(path: pathlib.Path, *, readonly: bool = False) -> sqlite3.Connection
     """Connection factory. Row access is dict-like (sqlite3.Row). A
     readonly=True connection opens via the `mode=ro` URI, which SQLite
     enforces at the OS/file level -- a write through it raises
-    sqlite3.OperationalError regardless of anything this module does."""
+    sqlite3.OperationalError regardless of anything this module does.
+
+    check_same_thread=False: sqlite3's own default (True) raises
+    sqlite3.ProgrammingError the moment a connection is touched from a
+    thread other than the one that opened it. app.py's get_conn is a sync
+    generator FastAPI dependency, and every route is a sync `def`, so
+    FastAPI dispatches each request through anyio.to_thread.run_sync --
+    which does not guarantee the connection is opened and used on the same
+    worker thread (measured live: 8 concurrent clients, 80% failure rate).
+    Safe to relax here because it only permits a connection to migrate
+    threads, not to be used by two threads at once -- one request/flow of
+    control still ever holds a given connection at a time."""
     if readonly:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     else:
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     for pragma in _PRAGMAS:
         conn.execute(pragma)
