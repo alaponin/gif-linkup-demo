@@ -245,6 +245,11 @@ services:
       # postgres. Empty on docker-local (SQLite stays the default), so
       # app.py's _required_token-style refusal never even runs.
       KP2_JOIN_DB_URL: ${KP2_JOIN_DB_URL:-}
+      # The joinapi_ro role's DSN -- store.py's `python -m store
+      # dump-records`/`check` prefer this for host-side reads when it is
+      # set (see store.py's _cli_connect). Same empty-on-docker-local
+      # pattern as KP2_JOIN_DB_URL above.
+      KP2_JOIN_DB_URL_RO: ${KP2_JOIN_DB_URL_RO:-}
     volumes:
       - ../../..:/repo
       # ...with one addition, for a checkout that is a git WORKTREE. There,

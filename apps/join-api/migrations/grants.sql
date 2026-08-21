@@ -40,7 +40,8 @@
 -- (GRANT/ALTER ROLE are idempotent; re-granting an already-granted
 -- privilege is a no-op), and the pg_roles check means a still-missing role
 -- is a NOTICE, not a hard failure, so a normal run where the roles already
--- exist costs four cheap no-op statements every startup.
+-- exist costs six cheap no-op statements every startup (five in the
+-- joinapi block, one in joinapi_ro's).
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'joinapi') THEN

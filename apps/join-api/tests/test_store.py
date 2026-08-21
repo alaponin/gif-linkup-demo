@@ -10,6 +10,7 @@ import os
 import pathlib
 import sqlite3
 import sys
+import traceback
 
 import pytest
 
@@ -538,3 +539,30 @@ def test_backend_for_postgres_returns_postgres():
 def test_backend_for_anything_else_raises_not_implemented():
     with pytest.raises(NotImplementedError):
         store.backend_for("mysql")
+
+
+# -- DSN masking (Postgres connect path -- needs psycopg, but no live DB) -----
+# Moved here from test_store_postgres.py (final-review fix wave): that file's
+# whole-module `skipif(not KP2_TEST_DB_URL)` meant this test -- which only
+# provokes a connection *failure* and asserts the password never leaks into
+# it -- never ran without a live Postgres, even though it needs no database
+# at all. The plan explicitly demanded this be tested ("test it, because
+# connection errors are exactly where DSNs leak," §4). importorskip instead
+# of the DB-availability skipif: runs whenever the driver is installed, with
+# or without a real database.
+
+
+def test_connection_failure_never_leaks_the_password():
+    pytest.importorskip("psycopg")
+
+    password = "correcthorsebatterystaple"  # noqa: S105 -- test fixture, not a real secret
+    bad_dsn = f"postgresql://joinapi:{password}@localhost:1/kp2join"  # port 1: nothing listens
+
+    try:
+        store.connect(bad_dsn)
+    except RuntimeError as exc:
+        assert password not in str(exc)
+        assert password not in repr(exc)
+        assert password not in traceback.format_exc()
+    else:
+        pytest.fail("expected a RuntimeError from an unreachable Postgres DSN")

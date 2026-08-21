@@ -11,3 +11,9 @@ pytest==9.1.1
 fastapi==0.140.0
 httpx==0.28.1
 PyYAML==6.0.3
+# Matches apps/join-api/requirements.txt's psycopg==3.3.4 (minus the
+# per-platform hashes -- see this file's own header) -- needed for
+# test_store_postgres.py and the psycopg.importorskip'd masking test in
+# test_store.py to actually run instead of silently skipping (plan §8:
+# "--fast with and without KP2_TEST_DB_URL").
+psycopg[binary]==3.3.4

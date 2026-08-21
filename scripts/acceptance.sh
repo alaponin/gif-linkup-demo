@@ -470,22 +470,63 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # rather than through the API) is skipped with a logged reason -- this
 # section proves the JOIN API's own effect, module 2.7, not every possible
 # way a member can join.
-mapfile -t _27_ROWS < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join-store/join-store.sqlite3" <<'PY'
+# Backend dispatch (final-review fix wave): deployment.yaml's
+# datastore.kind decides where the join store actually lives -- same
+# dispatch scripts/member.sh's cmd_drift already has for exactly this
+# reason. sqlite (unchanged from before Postgres existed) is a local file,
+# read directly. postgres has no local file to open, so a throwaway
+# join-api container dumps every record as JSONL (`python -m store
+# dump-records`, `run --rm`, not `exec`, so this works whether or not
+# join-api is already up) into a temp file both call sites below read from,
+# reimplementing the same state/code filter the SQL WHERE clauses use.
+# Without this, `db_path.is_file()` below silently sees no file on a
+# Postgres deployment and every 2.7 row is skipped -- the vacuous pass the
+# final review flagged.
+_27_datastore_kind=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null || echo sqlite)
+_27_join_store="$OUT_DIR/join-store/join-store.sqlite3"
+if [ "$_27_datastore_kind" = "postgres" ]; then
+  _27_join_store=$(mktemp)
+  trap 'rm -f "$_27_join_store"' EXIT
+  docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
+    python -m store dump-records > "$_27_join_store" \
+    || fail "2.7: could not read the join store via 'docker compose run join-api python -m store dump-records'"
+fi
+
+mapfile -t _27_ROWS < <(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" <<'PY'
 import json, pathlib, sqlite3, sys
 
-topo = json.load(open(sys.argv[1]))
-db_path = pathlib.Path(sys.argv[2])
+kind = sys.argv[1]
+topo = json.load(open(sys.argv[2]))
+store_path = pathlib.Path(sys.argv[3])
 instance, mclass = topo["instance"], topo["member_class"]
 subs = topo["subsystems"]
 
 # The most recently-submitted ACTIVE join-store record per member code
 # (upper-cased) -- there should be at most one per key in practice, nothing
-# enforces that, so pick the newest on ambiguity rather than assume. Opened
-# read-only (file:...?mode=ro): a WAL-mode database needs no running writer
-# for a read, same as scripts/member.sh drift's own query.
+# enforces that, so pick the newest on ambiguity rather than assume.
+# sqlite: opened read-only (file:...?mode=ro) -- a WAL-mode database needs
+# no running writer for a read, same as scripts/member.sh drift's own
+# query. postgres: store_path is `python -m store dump-records`'s JSONL
+# output (one request record per line, every state), filtered to ACTIVE
+# here the same way the SQL WHERE clause does for sqlite.
 baselines: dict[str, dict] = {}
-if db_path.is_file():
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+if kind == "postgres":
+    if store_path.is_file():
+        for line in store_path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if rec.get("state") != "ACTIVE":
+                continue
+            rec_code = (rec.get("payload") or {}).get("code")
+            if not rec_code:
+                continue
+            prev = baselines.get(rec_code.upper())
+            if prev is None or rec.get("submitted_at", "") > prev.get("submitted_at", ""):
+                baselines[rec_code.upper()] = rec
+elif store_path.is_file():
+    conn = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
     for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'ACTIVE'"):
         rec = json.loads(record_json)
         rec_code = (rec.get("payload") or {}).get("code")
@@ -589,12 +630,13 @@ done
 # restart reads as stale and its row SKIPs. That is the safe direction (a
 # logged SKIP, not a false PASS); anchor on the CS volume's CreatedAt instead
 # if the restart-and-reassert flow ever matters.
-mapfile -t _27_RETIRED < <(python3 - "$PACK_DIR/hurl/topology.json" "$OUT_DIR/join-store/join-store.sqlite3" "$OUT_DIR/deploy-timings.txt" <<'PY'
+mapfile -t _27_RETIRED < <(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" "$OUT_DIR/deploy-timings.txt" <<'PY'
 import datetime, json, pathlib, sqlite3, sys
 
-topo = json.load(open(sys.argv[1]))
-db_path = pathlib.Path(sys.argv[2])
-timings = pathlib.Path(sys.argv[3])
+kind = sys.argv[1]
+topo = json.load(open(sys.argv[2]))
+store_path = pathlib.Path(sys.argv[3])
+timings = pathlib.Path(sys.argv[4])
 instance, mclass = topo["instance"], topo["member_class"]
 live = {s["member_code"].upper() for s in topo["subsystems"]}
 
@@ -607,11 +649,32 @@ if deployed_at is None:
     print(f"{timings} has no deploy_start -- cannot tell which federation a RETIRED record "
           f"describes; skipping every 2.7.unjoin row", file=sys.stderr)
 
-newest: dict[str, dict] = {}
-if db_path.is_file() and deployed_at is not None:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+
+def _retired_records():
+    # Same dispatch as the baselines block above: sqlite reads the file
+    # directly (WHERE state = 'RETIRED'), postgres filters the same JSONL
+    # dump `python -m store dump-records` already wrote for that block.
+    if kind == "postgres":
+        if not store_path.is_file():
+            return
+        for line in store_path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if rec.get("state") == "RETIRED":
+                yield rec
+        return
+    if not store_path.is_file():
+        return
+    conn = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
     for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'RETIRED'"):
-        rec = json.loads(record_json)
+        yield json.loads(record_json)
+
+
+newest: dict[str, dict] = {}
+if deployed_at is not None:
+    for rec in _retired_records():
         code = ((rec.get("payload") or {}).get("code") or "").upper()
         if not code:
             continue
@@ -661,6 +724,11 @@ for code, rec in sorted(newest.items()):
     print(f"{code}\t{host or '-'}\t{subject}\t{pair}\t{r1_path}\t{instance}:{mclass}:{code}")
 PY
 )
+if [ "$_27_datastore_kind" = "postgres" ]; then
+  rm -f "$_27_join_store"
+  trap - EXIT
+fi
+
 for _row in "${_27_RETIRED[@]}"; do
   IFS=$'\t' read -r _code _ _ _ _ _ <<<"$_row"
   _27_IDS+=("2.7.unjoin(${_code})" "2.7.unjoin.catalogue(${_code})")

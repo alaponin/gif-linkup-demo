@@ -5,7 +5,7 @@
 # private hostname is what keeps the traffic inside the VPC instead of
 # routing out to the public internet and back.
 output "db_private_host" {
-  description = "VPC-private hostname of the cluster. Use this in KP2_JOIN_DB_URL, never db_host's public counterpart."
+  description = "VPC-private hostname of the cluster. Use this in KP2_JOIN_DB_URL, never the cluster's public `host` attribute."
   value       = digitalocean_database_cluster.kp2_join.private_host
 }
 
@@ -40,6 +40,15 @@ output "ca_certificate" {
 output "kp2_join_dsn_template" {
   description = "Full KP2_JOIN_DB_URL value, password interpolated. Sensitive -- contains the password."
   value       = "postgresql://joinapi:${digitalocean_database_user.joinapi.password}@${digitalocean_database_cluster.kp2_join.private_host}:${digitalocean_database_cluster.kp2_join.port}/kp2_join?sslmode=verify-full&sslrootcert=/pack-secrets/do-db-ca.crt"
+  sensitive   = true
+}
+
+# Mirrors kp2_join_dsn_template above, but for the joinapi_ro role -- this
+# is what KP2_JOIN_DB_URL_RO should be set to (.env.example, store.py's
+# _cli_connect: host-side reads prefer this DSN when it is set).
+output "joinapi_ro_dsn_template" {
+  description = "Full KP2_JOIN_DB_URL_RO value, password interpolated. Sensitive -- contains the password."
+  value       = "postgresql://joinapi_ro:${digitalocean_database_user.joinapi_ro.password}@${digitalocean_database_cluster.kp2_join.private_host}:${digitalocean_database_cluster.kp2_join.port}/kp2_join?sslmode=verify-full&sslrootcert=/pack-secrets/do-db-ca.crt"
   sensitive   = true
 }
 

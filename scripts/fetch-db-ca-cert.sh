@@ -24,10 +24,9 @@ log "fetching ca_certificate from infra/terraform-db's Terraform state"
 # runs, so any failure (uninitialized dir, missing backend credentials,
 # nothing applied yet) leaves a zero-byte cert where a good one used to
 # be, and the next join-api restart fails with a confusing TLS handshake
-# error instead of a clear one from this script. Same move-into-place
-# discipline scripts/join-store-export.sh already uses for its own
-# evidence file.
+# error instead of a clear one from this script.
 tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
 ( cd "$PACK_DIR/infra/terraform-db" && terraform output -raw ca_certificate ) > "$tmp"
 grep -q 'BEGIN CERTIFICATE' "$tmp" || fail "terraform output -raw ca_certificate did not return a PEM certificate"
 mv "$tmp" "$KP2_DB_CA_CERT"

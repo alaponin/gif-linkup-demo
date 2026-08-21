@@ -547,16 +547,43 @@ After a successful apply:
 - `scripts/fetch-db-ca-cert.sh` — fetches the cluster's CA certificate (a
   public cert, not a secret) to wherever `KP2_DB_CA_CERT` points, per
   `.env.example`'s documentation.
+- **Bootstrap the schema — using the ADMIN DSN, before `.env` ever points
+  at the joinapi DSN below.** This step must run first, and it must run as
+  admin, precisely so `joinapi` never becomes table owner:
+  ```
+  export KP2_JOIN_DB_URL="$(cd infra/terraform-db && terraform output -raw db_admin_dsn_template)"
+  docker compose run --rm -T -e KP2_JOIN_DB_URL join-api python -m store init
+  ```
+  `migrations/grants.sql`/`001_init.sql` both say the deployment shape is
+  "schema bootstrapped once by an owner/admin role, joinapi never owning
+  the tables" — this is the step that makes that actually true, not just
+  documented. Skip it (or start join-api against the joinapi DSN first
+  instead) and `_pg_init` runs the migration connected AS joinapi on
+  join-api's own first start: on a correctly-locked-down PG15+/16 cluster
+  `joinapi` lacks `CREATE` on `public` and the app crash-loops with a raw
+  `InsufficientPrivilege`; on a cluster where DO's default role setup
+  happens to grant `CREATE`, the migration "succeeds" but `joinapi`
+  becomes table **owner**, which silently defeats every GRANT in
+  `grants.sql` (ownership bypasses GRANTs entirely). `store.py`'s startup
+  path now refuses to start in that second case too, loudly — but doing
+  this step, in this order, is what avoids hitting either failure mode at
+  all.
 - `terraform output -raw kp2_join_dsn_template` (from `infra/terraform-db/`)
   gives the ready-to-paste `KP2_JOIN_DB_URL` line for `.env` — quote it
   (`.env` is shell-sourced, and the DSN's `&` backgrounds the rest of an
   unquoted assignment, silently truncating it). It carries the real,
   DO-generated `joinapi` password: handle it the same way every other
   `.env` secret already is — mode `600`, never logged, never echoed in
-  full.
+  full. `terraform output -raw joinapi_ro_dsn_template` is the same shape
+  for the optional `KP2_JOIN_DB_URL_RO` (the `joinapi_ro` role's DSN,
+  preferred by `store.py`'s host-side `dump-records`/`check` when set —
+  see `.env.example`).
 - `deployment.yaml`'s `datastore.kind: postgres` — an explicit, deliberate
   switch an operator makes for the droplet target only. It stays `sqlite`
   by default and for docker-local.
+- Only now, with the schema already bootstrapped as admin above, set
+  `.env`'s `KP2_JOIN_DB_URL` to the **joinapi** DSN (not the admin DSN used
+  for bootstrapping) and start join-api normally.
 
 **Rotation.** Reset the role's password in DO's console, update `.env`'s
 `KP2_JOIN_DB_URL`, `docker compose up -d join-api` (plan §4) — measured in
@@ -660,6 +687,7 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
     expected, not drift) — the manifest says a member joined but the store
     disagrees. Remedy: a re-join, or a `git revert` of whatever added the
     manifest entry.
+
   Status: the mechanism itself (`python -m store check`) is implemented and
   exercised (Task 1's own test fixtures); running it against a real
   purge/redeploy cycle on a live droplet is documented, not yet run.
@@ -826,9 +854,10 @@ target:**
   using the host/port from `terraform output` (password omitted
   deliberately — the connection should never get far enough to need it).
   Expected: a timeout or connection refusal at the network layer, never an
-  authentication prompt — the cluster has no public access, and
-  `infra/terraform-db/main.tf`'s `digitalocean_database_firewall` trusts
-  only the droplet's resource id. Doubles, per plan §6.2, as the check that
+  authentication prompt — DO managed databases have a public endpoint by
+  default, but `infra/terraform-db/main.tf`'s `digitalocean_database_firewall`
+  trusts only the droplet's resource id, which is what makes that endpoint
+  practically unreachable from anywhere else. Doubles, per plan §6.2, as the check that
   a stale trusted-sources entry is actually gone after a droplet
   replacement.
 

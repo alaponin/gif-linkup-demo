@@ -53,6 +53,16 @@ DEST_DIR="$PACK_DIR/out/join-migrated/$TIMESTAMP"
 mkdir -p "$DEST_DIR"
 DUMP_FILE="$DEST_DIR/kp2_join.dump"
 
+# A pg_dump that dies mid-stream (set -e exits this script) would otherwise
+# leave a truncated dump sitting in this timestamped evidence directory --
+# caught later by pg_restore --list below if this script gets that far
+# again, but not cleaned up even then. Armed before pg_dump runs, disarmed
+# only after this script's own verification step (pg_restore --list) has
+# actually passed, so any non-zero exit before a fully verified dump exists
+# removes the partial file instead of leaving it to be mistaken for a real
+# export.
+trap 'rm -f "$DUMP_FILE"' EXIT
+
 # `docker compose run --rm` throws the container away on exit -- a file it
 # wrote INSIDE the container (e.g. via pg_dump -f) would be lost with it.
 # pg_dump writes the custom-format dump to stdout when -f is omitted, so
@@ -81,6 +91,8 @@ log "verifying the export opens (pg_restore --list)"
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
   -v "$DUMP_FILE:/tmp/kp2-join-export-verify.dump:ro" \
   join-api pg_restore --list /tmp/kp2-join-export-verify.dump
+
+trap - EXIT  # verified good -- keep the file, don't remove it on exit
 
 log "export verified: $DUMP_FILE"
 log "move this file somewhere durable before destroying the cluster (plan §6.3) -- DigitalOcean deletes automated backups when the cluster itself is destroyed, so this file is the only copy of the evidence once that happens."

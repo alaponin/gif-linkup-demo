@@ -164,8 +164,10 @@ cmd_drift() {
     # sidesteps the conflict.
     local dump_file
     dump_file=$(mktemp)
+    trap 'rm -f "$dump_file"' EXIT
     docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
-      python -m store dump-records > "$dump_file"
+      python -m store dump-records > "$dump_file" \
+      || fail "drift: 'docker compose run join-api python -m store dump-records' failed -- could not read the join store"
     record_json=$(python3 - "$dump_file" "$key" <<'PY'
 import json, sys
 
@@ -187,6 +189,7 @@ print(json.dumps(best) if best else "")
 PY
 )
     rm -f "$dump_file"
+    trap - EXIT
   else
     local db="$PACK_DIR/out/join-store/join-store.sqlite3"
     [ -f "$db" ] || fail "no join store at $db -- join-api has not run yet (it creates the schema at startup), or state has not been migrated (scripts/migrate-join-store.py)."

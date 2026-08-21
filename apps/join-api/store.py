@@ -302,7 +302,7 @@ def _pg_init(db_url: str) -> None:
             # schema_version and finds everything already applied.
             conn.execute("SELECT pg_advisory_xact_lock(hashtext('kp2-migrate'))")
             exists = conn.execute(
-                "SELECT to_regclass('public.schema_version') IS NOT NULL AS exists"
+                "SELECT to_regclass('schema_version') IS NOT NULL AS exists"
             ).fetchone()["exists"]
             applied = set()
             if exists:
@@ -326,8 +326,51 @@ def _pg_init(db_url: str) -> None:
             grants_file = _MIGRATIONS_DIR / "grants.sql"
             if grants_file.exists():
                 conn.execute(grants_file.read_text())
+            _refuse_if_joinapi_owns_tables(conn)
     finally:
         conn.close()
+
+
+def _refuse_if_joinapi_owns_tables(conn) -> None:
+    """Critical-finding safety net (final-review fix wave). grants.sql's
+    entire append-only guarantee (no UPDATE/DELETE granted to joinapi on
+    request_events) is enforced by GRANT -- and table OWNERSHIP bypasses
+    GRANTs entirely. If joinapi ever has CREATE on the schema it connects
+    to (a misconfigured cluster -- 001_init.sql/grants.sql both assume the
+    deployment shape "schema bootstrapped once by an admin/owner role,
+    joinapi never owning the tables"), the CREATE TABLEs just above run AS
+    joinapi and joinapi becomes the owner -- silently defeating the whole
+    point of this file, with no error anywhere before this check existed.
+    Hard failure, not just a log line: this is the one silent failure mode
+    the whole design depends on never happening.
+
+    Scoped to the literal role name 'joinapi', not "whoever currently owns
+    the table": the correct, INTENDED bootstrap shape has an admin role
+    legitimately owning these tables forever (that is grants.sql's design,
+    not a problem) -- a generic "any owner" check would false-positive on
+    every normal admin-DSN `python -m store init` bootstrap run, and on
+    test_store_postgres.py's own `conn` fixture (which bootstraps as
+    whatever convenience role KP2_TEST_DB_URL names -- "often the table
+    owner/superuser for a throwaway local/CI Postgres", per that fixture's
+    own docstring). 'joinapi' is the one role name that must never own
+    these tables in any real deployment, so checking for it specifically
+    can't collide with either of those legitimate cases."""
+    row = conn.execute(
+        "SELECT tableowner FROM pg_tables WHERE tablename = 'request_events'"
+    ).fetchone()
+    if row is None:
+        return  # no table yet -- e.g. joinapi lacks CREATE and the migration above already failed
+    current_user = conn.execute("SELECT current_user AS u").fetchone()["u"]
+    if current_user == "joinapi" and row["tableowner"] == current_user:
+        raise RuntimeError(
+            "join-api connected as 'joinapi' but owns request_events (table "
+            f"owner={row['tableowner']!r}) -- this means joinapi's own CREATE TABLE "
+            "ran the migration, which silently defeats grants.sql's append-only "
+            "enforcement (table ownership bypasses every GRANT). Bootstrap the schema "
+            "first using the ADMIN DSN (infra/terraform-db's db_admin_dsn_template "
+            "output): `python -m store init` connected as admin, THEN start join-api "
+            "with the joinapi DSN. See runbook.md's provisioning section."
+        )
 
 
 def _member_key(record: dict) -> str | None:
@@ -771,10 +814,14 @@ def backend_for(kind: str) -> str:
 # bypassing store.py) rather than through the running join-api process --
 # same idea here, generalised to whichever backend datastore.kind names, and
 # routed through store.py this time so the Postgres path (which has no
-# equivalent "open the file directly" option) works too. Deliberately does
-# NOT call init()/apply migrations: these commands assume join-api's own
-# startup already created/migrated the schema, exactly like member.sh drift
-# assumes the SQLite file already exists (`[ -f "$db" ] || fail ...`).
+# equivalent "open the file directly" option) works too. Every subcommand
+# but one deliberately does NOT call init()/apply migrations: those assume
+# join-api's own startup already created/migrated the schema, exactly like
+# member.sh drift assumes the SQLite file already exists (`[ -f "$db" ] ||
+# fail ...`). The one exception is `init` itself (final-review Critical
+# finding): an explicit, invokable "apply the migration" operator action,
+# so bootstrapping the schema no longer only ever happens as a side effect
+# of *whichever* role's DSN join-api happens to be started with first.
 
 
 def _resolve_backend() -> tuple[str, str | None, pathlib.Path, pathlib.Path]:
@@ -813,6 +860,26 @@ def _cli_connect(*, readonly: bool):
         print(f"no join store at {path} -- join-api has not run yet", file=sys.stderr)
         raise SystemExit(1)
     return connect(path, readonly=readonly)
+
+
+def _cmd_init(_args) -> None:
+    """Apply the schema/migrations (store.init()) as an explicit, invokable
+    operator action -- the piece the final-review Critical finding named as
+    missing: without it, "apply the migration" only ever happened as a side
+    effect of join-api's own startup (app.py's _conn(), first called by the
+    startup sweep), meaning whatever DSN join-api itself is started with is
+    the one that ends up running -- and, on Postgres, potentially OWNING --
+    the migration. Run this once, connected as the ADMIN/owner role
+    (infra/terraform-db's `db_admin_dsn_template` output), BEFORE ever
+    starting join-api with the restricted joinapi DSN -- see runbook.md's
+    provisioning section for the full sequence. Idempotent, like init()
+    itself -- safe to re-run.
+
+    Unlike every other subcommand here, this one calls init() on purpose
+    (they deliberately don't -- see this section's own header comment)."""
+    kind, db_url, _pack_dir, out_dir = _resolve_backend()
+    target = init(out_dir, kind=kind, db_url=db_url)
+    print(f"store initialised ({kind}): {target}")
 
 
 def _cmd_dump_records(_args) -> None:
@@ -911,6 +978,8 @@ def _build_arg_parser():
     parser = argparse.ArgumentParser(prog="python -m store", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("init", help="apply the schema/migrations -- run once, as the admin/owner role, before joinapi ever connects")
+
     sub.add_parser("dump-records", help="print every request record as JSON, one per line")
 
     p_amend = sub.add_parser("amend-refresh", help="merge a JSON patch into one record by id")
@@ -926,6 +995,7 @@ if __name__ == "__main__":
     _parser = _build_arg_parser()
     _args = _parser.parse_args()
     {
+        "init": _cmd_init,
         "dump-records": _cmd_dump_records,
         "amend-refresh": _cmd_amend_refresh,
         "check": _cmd_check,

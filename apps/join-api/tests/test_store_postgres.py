@@ -19,7 +19,6 @@ import pathlib
 import sys
 import threading
 import time
-import traceback
 
 import pytest
 
@@ -214,25 +213,12 @@ def test_migration_is_idempotent_under_two_concurrent_inits(conn):
     assert [row["version"] for row in rows] == [store.SCHEMA_VERSION]
 
 
-# -- DSN masking ----------------------------------------------------------------
-
-
-def test_connection_failure_never_leaks_the_password():
-    """Task 1 already exercised _mask_dsn live and via a doctest; this is
-    the pytest-run equivalent the reviewer flagged as missing. A real
-    (unreachable-port) connection failure must not leak the password into
-    str(exc), repr(exc), or a formatted traceback."""
-    password = "correcthorsebatterystaple"  # noqa: S105 -- test fixture, not a real secret
-    bad_dsn = f"postgresql://joinapi:{password}@localhost:1/kp2join"  # port 1: nothing listens
-
-    try:
-        store.connect(bad_dsn)
-    except RuntimeError as exc:
-        assert password not in str(exc)
-        assert password not in repr(exc)
-        assert password not in traceback.format_exc()
-    else:
-        pytest.fail("expected a RuntimeError from an unreachable Postgres DSN")
+# -- DSN masking -----------------------------------------------------------------
+# test_connection_failure_never_leaks_the_password moved to test_store.py
+# (final-review fix wave): it needs no live database (just psycopg, to
+# provoke a connection failure), so it belongs in the unconditionally-run
+# suite, guarded by `pytest.importorskip("psycopg")`, not behind this
+# module's KP2_TEST_DB_URL skipif.
 
 
 # -- JSONB round-trip -----------------------------------------------------------

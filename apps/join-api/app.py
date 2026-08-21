@@ -764,16 +764,35 @@ def _blocking_job_lock(conn):
     immediately) -- see store.py's own docstring. This wrapper reproduces
     the "one job at a time, others queue" behavior on both backends: on
     SQLite the loop body runs exactly once (job_lock() never raises
-    LockBusy there); on Postgres it retries until the lock is free."""
+    LockBusy there); on Postgres it retries until the lock is free.
+
+    The retry loop wraps only ACQUIRING the lock (job_lock's __enter__ --
+    the only place it ever raises LockBusy; see its own docstring/source:
+    Postgres raises it before yielding, never after). `yield` -- the
+    wrapped body's actual work -- deliberately sits outside that
+    except-LockBusy scope: nesting it inside (an earlier version did) is
+    unreachable today (nothing in the wrapped body raises LockBusy) but
+    would produce a confusing `RuntimeError: generator didn't stop after
+    throw()` the moment something in there did -- catching it here would
+    make this generator try to `yield` a second time, which contextlib
+    doesn't allow."""
     @contextlib.contextmanager
     def _cm():
         while True:
+            lock_cm = store.job_lock(conn)
             try:
-                with store.job_lock(conn):
-                    yield
-                return
+                lock_cm.__enter__()
             except store.LockBusy:
                 time.sleep(0.5)
+                continue
+            break
+        try:
+            yield
+        except BaseException:
+            lock_cm.__exit__(*sys.exc_info())
+            raise
+        else:
+            lock_cm.__exit__(None, None, None)
     return _cm()
 
 

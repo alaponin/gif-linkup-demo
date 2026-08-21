@@ -5,8 +5,11 @@
 the contract a second target's implementation would be written against: for
 each dimension a deployment has to decide, what `docker-local` does, and
 what another target has to supply instead. It does not implement a second
-target; no `target` branch, Terraform directory, or unread configuration key
-exists anywhere in this pack because of this document.
+target; no `target` branch or unread configuration key exists anywhere in
+this pack because of this document. (`infra/terraform/` and
+`infra/terraform-db/` do exist now -- droplet and managed-database
+provisioning, added since this was written -- but neither is a second
+`deployment.yaml` target: `target:` itself is still docker-local-only.)
 
 | Dimension | `docker-local` | What another target must decide |
 | --- | --- | --- |
