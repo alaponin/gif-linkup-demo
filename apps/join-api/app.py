@@ -746,17 +746,10 @@ def list_requests(
 # own docstrings for the full design, including the failure-contract
 # asymmetry between the SQLite and Postgres backends: apply_lock blocks on
 # both backends, job_lock blocks on SQLite but is non-blocking on Postgres).
-#
-# _JOB_LOCK stays a name in this module too, but only as an alias to
-# store.py's SQLite singleton (not a fresh threading.Lock()) --
-# test_app_approve.py's test_approve_reports_queued_when_another_job_holds_the_lock
-# acquires it directly to simulate a running job, and for that simulation to
-# be visible to store.job_lock_held() (used below for the `queued` field) it
-# has to be the literal same Lock object store.job_lock()'s SQLite path uses,
-# not a lookalike. _APPLY_LOCK has no such external reference -- every call
-# site now goes through store.apply_lock(conn) directly, so it is not
-# aliased here.
-_JOB_LOCK = store._JOB_LOCK
+# Neither is aliased here -- every call site goes through
+# store.job_lock(conn)/store.apply_lock(conn) directly (test code that needs
+# the SQLite singleton reaches it as store._JOB_LOCK, same as store.py's own
+# functions do).
 
 JOB_SECRETS = {
     "ss_admin_user": ADMIN_USER,

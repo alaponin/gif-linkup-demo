@@ -182,11 +182,11 @@ def test_approving_twice_is_a_conflict_not_a_second_write(client):
 def test_approve_reports_queued_when_another_job_holds_the_lock(client):
     """One active job, others queue, and the API says so."""
     record = _submit(client)
-    app_module._JOB_LOCK.acquire()
+    app_module.store._JOB_LOCK.acquire()
     try:
         body = client.post(f"/requests/{record['id']}/approve", json=DECISION, headers=OPERATOR).json()
     finally:
-        app_module._JOB_LOCK.release()
+        app_module.store._JOB_LOCK.release()
     assert body["queued"] is True
 
 
