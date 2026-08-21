@@ -502,6 +502,28 @@ def test_readonly_connection_cannot_write(tmp_path):
         ro.close()
 
 
+# -- locks --------------------------------------------------------------------------
+
+
+def test_job_lock_held_reflects_the_sqlite_singleton(tmp_path):
+    """SQLite path only -- a real Postgres path is Task 3's job. job_lock()
+    itself acquires store._JOB_LOCK; job_lock_held() must be peeking at that
+    same object, not a lookalike, so grabbing it directly (as
+    test_app_approve.py's queued test does) is what job_lock_held() sees."""
+    path = store.init(tmp_path)
+    conn = store.connect(path)
+    try:
+        assert store.job_lock_held(conn) is False
+        store._JOB_LOCK.acquire()
+        try:
+            assert store.job_lock_held(conn) is True
+        finally:
+            store._JOB_LOCK.release()
+        assert store.job_lock_held(conn) is False
+    finally:
+        conn.close()
+
+
 # -- backend selection --------------------------------------------------------------
 
 

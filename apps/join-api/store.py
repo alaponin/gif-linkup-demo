@@ -729,6 +729,31 @@ def apply_lock(conn):
         yield
 
 
+def job_lock_held(conn) -> bool:
+    """Non-blocking peek: true if job_lock(conn) is currently held by
+    someone else, without acquiring it. Backs app.py's `queued` field
+    (approve_request/resume_request/retire_member), which used to read
+    app.py's own _JOB_LOCK.locked() directly -- job_lock() moved here in
+    Task 2, so the peek moves with it.
+
+    SQLite: _JOB_LOCK.locked() -- the same module-level singleton job_lock()
+    itself acquires on that path.
+
+    Postgres: try to acquire the *same* key job_lock() uses
+    (pg_try_advisory_lock(hashtext('kp2-job'))) -- if it succeeds, the lock
+    was free, so release it again immediately (pg_advisory_unlock) and
+    report False; if it fails, someone else holds it, report True. Never
+    holds the lock itself -- this is a peek, not a lock/unlock pair a caller
+    is meant to nest anything inside."""
+    if isinstance(conn, sqlite3.Connection):
+        return _JOB_LOCK.locked()
+    got = conn.execute("SELECT pg_try_advisory_lock(hashtext('kp2-job')) AS ok").fetchone()["ok"]
+    if not got:
+        return True
+    conn.execute("SELECT pg_advisory_unlock(hashtext('kp2-job')) AS ok")
+    return False
+
+
 # -- backend selection (plan §1.6) --------------------------------------------
 # The seam Task 2 calls at startup to fail fast on an unsupported
 # datastore.kind, and store.init()/store.connect() use kind the same way.

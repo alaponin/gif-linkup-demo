@@ -69,8 +69,11 @@ OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 # cheap way to keep that working for the store too.
 
 
-def _conn(*, readonly: bool = False) -> sqlite3.Connection:
-    return store.connect(store.init(OUT_DIR), readonly=readonly)
+def _conn(*, readonly: bool = False):
+    return store.connect(
+        store.init(OUT_DIR, kind=_DATASTORE_KIND, db_url=KP2_JOIN_DB_URL),
+        readonly=readonly,
+    )
 
 
 def get_conn():
@@ -111,6 +114,32 @@ def _required_token(name: str) -> str:
 
 APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN")
 OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN")
+
+# -- store backend selection (plan §1.6) ---------------------------------------
+# deployment.yaml's datastore.kind: the seam that makes `kind: postgres` fail
+# loudly at import time (store.backend_for raises NotImplementedError for
+# anything else) instead of silently being ignored. Missing file defaults to
+# "sqlite" -- many unit tests point PACK_DIR at a throwaway fixture directory
+# with no deployment.yaml, same as manifest.yaml/join-policy.yaml being read
+# lazily rather than required at import time.
+#
+# Read here, next to the other credentials, NOT down by the startup sweep
+# where this used to live: _conn()/get_conn() (defined above, first called by
+# the startup sweep a few lines down) need _DATASTORE_KIND/KP2_JOIN_DB_URL
+# already resolved the first time either runs.
+try:
+    _deployment_doc = yaml.safe_load((PACK_DIR / "deployment.yaml").read_text()) or {}
+except FileNotFoundError:
+    _deployment_doc = {}
+_DATASTORE_KIND = (_deployment_doc.get("datastore") or {}).get("kind", "sqlite")
+store.backend_for(_DATASTORE_KIND)
+# Same _required_token refusal APPLICANT_TOKEN/OPERATOR_TOKEN get above,
+# applied to the Postgres DSN: unset or still the .env.example CHANGEME
+# placeholder must fail loudly at startup, not hand psycopg a string it will
+# only fail to parse (or, worse, connect with) later. None on the SQLite
+# path -- KP2_JOIN_DB_URL is Postgres-only, and _conn() only reads it when
+# _DATASTORE_KIND == "postgres" (store.init() ignores db_url for "sqlite").
+KP2_JOIN_DB_URL = _required_token("KP2_JOIN_DB_URL") if _DATASTORE_KIND == "postgres" else None
 
 # Request-boundary guard -- copied verbatim from apps/console/app.py's
 # _require_console_origin: a required custom
@@ -446,17 +475,6 @@ def _load_request(db: sqlite3.Connection, request_id: str) -> dict | None:
 # runs the sweep" (it loads app.py via importlib.util.spec_from_file_location
 # specifically to trigger this side effect), asserting on state immediately
 # after exec_module, before any TestClient exists.
-# deployment.yaml's datastore.kind (plan §1.6): the seam that would make
-# `kind: postgres` fail loudly instead of silently being ignored. Missing
-# file defaults to "sqlite" -- many unit tests point PACK_DIR at a throwaway
-# fixture directory with no deployment.yaml, same as manifest.yaml/
-# join-policy.yaml being read lazily rather than required at import time.
-try:
-    _deployment_doc = yaml.safe_load((PACK_DIR / "deployment.yaml").read_text()) or {}
-except FileNotFoundError:
-    _deployment_doc = {}
-store.backend_for((_deployment_doc.get("datastore") or {}).get("kind", "sqlite"))
-
 with contextlib.closing(_conn()) as _startup_conn:
     store.recover_interrupted(_startup_conn)
 
@@ -723,20 +741,22 @@ def list_requests(
 
 
 # -- approval and the job -----------------------------------------------------
-# One job at a time, others queue. threading.Lock, not a queue or a worker
-# pool, for the same reason apps/console/app.py's _MUTATE_LOCK is one: this is
-# one process, and two joins converging the same federation concurrently would
-# interleave management-request approvals on the Central Server. A request
-# whose thread is waiting on the lock reports queued: true.
-_JOB_LOCK = threading.Lock()
-
-# writer.apply_real is transactional (it restores every path it writes on any
-# failure), and that guarantee is only true one approval at a time: two
-# concurrent approvals interleave their writes to manifest.yaml, and then one
-# rollback reverts the other's entry. Not _JOB_LOCK -- that one is held for a
-# whole running job, and an approval must not wait minutes behind a live
-# federation walk to write four files.
-_APPLY_LOCK = threading.Lock()
+# One job at a time, others queue. store.job_lock(conn)/store.apply_lock(conn)
+# now own the actual lock objects (moved out of this file -- see store.py's
+# own docstrings for the full design, including the failure-contract
+# asymmetry between the SQLite and Postgres backends: apply_lock blocks on
+# both backends, job_lock blocks on SQLite but is non-blocking on Postgres).
+#
+# _JOB_LOCK stays a name in this module too, but only as an alias to
+# store.py's SQLite singleton (not a fresh threading.Lock()) --
+# test_app_approve.py's test_approve_reports_queued_when_another_job_holds_the_lock
+# acquires it directly to simulate a running job, and for that simulation to
+# be visible to store.job_lock_held() (used below for the `queued` field) it
+# has to be the literal same Lock object store.job_lock()'s SQLite path uses,
+# not a lookalike. _APPLY_LOCK has no such external reference -- every call
+# site now goes through store.apply_lock(conn) directly, so it is not
+# aliased here.
+_JOB_LOCK = store._JOB_LOCK
 
 JOB_SECRETS = {
     "ss_admin_user": ADMIN_USER,
@@ -745,28 +765,57 @@ JOB_SECRETS = {
 }
 
 
+def _blocking_job_lock(conn):
+    """store.job_lock() blocks on SQLite (a plain threading.Lock) but is
+    non-blocking on Postgres (pg_try_advisory_lock, raises LockBusy
+    immediately) -- see store.py's own docstring. This wrapper reproduces
+    the "one job at a time, others queue" behavior on both backends: on
+    SQLite the loop body runs exactly once (job_lock() never raises
+    LockBusy there); on Postgres it retries until the lock is free."""
+    @contextlib.contextmanager
+    def _cm():
+        while True:
+            try:
+                with store.job_lock(conn):
+                    yield
+                return
+            except store.LockBusy:
+                time.sleep(0.5)
+    return _cm()
+
+
 def _run_job(request_id: str) -> None:
     # This is a background thread, never the request thread -- it opens and
     # closes its own connection rather than sharing the request-scoped one
     # FastAPI's Depends(get_conn) hands a route handler, since
     # sqlite3.Connection objects aren't safe to share across threads.
-    # _JOB_LOCK first, connection second: a queued job (waiting on the lock
-    # behind a running one) must not hold an idle connection open for
-    # however long that wait takes.
-    with _JOB_LOCK, contextlib.closing(_conn()) as conn:
-        record = _load_request(conn, request_id)
-        if record is None:  # deleted while queued
-            return
-        try:
-            job.run(record, PACK_DIR, secrets=JOB_SECRETS,
-                    save=lambda r: store.save_request(conn, r, actor="system", event="job"))
-        except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
-            record["state"] = "FAILED"
-            record["error"] = {
-                "step": record.get("last_completed_step"),
-                "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
-            }
-            store.save_request(conn, record, actor="system", event="state:*->FAILED")
+    #
+    # Connection first, lock second -- INVERTED from this file's own earlier
+    # comment here ("_JOB_LOCK first, connection second: a queued job ...
+    # must not hold an idle connection open for however long that wait
+    # takes"), because the lock now needs a live connection to operate
+    # through (the Postgres advisory-lock calls run *through* conn -- see
+    # store.job_lock()'s docstring). On the SQLite path this really does mean
+    # a connection now sits open, idle, for however long _blocking_job_lock's
+    # retry loop takes -- a real, intentional behavior change from before,
+    # accepted as the trade for one backend-agnostic call site: SQLite
+    # connections are cheap and local, this isn't a resource concern in
+    # practice.
+    with contextlib.closing(_conn()) as conn:
+        with _blocking_job_lock(conn):
+            record = _load_request(conn, request_id)
+            if record is None:  # deleted while queued
+                return
+            try:
+                job.run(record, PACK_DIR, secrets=JOB_SECRETS,
+                        save=lambda r: store.save_request(conn, r, actor="system", event="job"))
+            except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
+                record["state"] = "FAILED"
+                record["error"] = {
+                    "step": record.get("last_completed_step"),
+                    "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+                }
+                store.save_request(conn, record, actor="system", event="state:*->FAILED")
 
 
 def _start_job(request_id: str) -> None:
@@ -816,7 +865,7 @@ def approve_request(
 
     payload = schema.JoinPayload(**record["payload"])
     try:
-        with _APPLY_LOCK:
+        with store.apply_lock(db):
             writer.apply_real(
                 PACK_DIR, payload.code.lower(), payload,
                 request_id=request_id, decision_reference=decision_reference,
@@ -865,7 +914,7 @@ def approve_request(
     record["state"] = "APPROVED"
     record["approved_at"] = approved_at
     record["decision_reference"] = decision_reference
-    record["queued"] = _JOB_LOCK.locked()
+    record["queued"] = store.job_lock_held(db)
     store.save_request(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
     _start_job(request_id)
     return record
@@ -893,7 +942,7 @@ def resume_request(
         raise HTTPException(404, f"no join request {request_id!r}")
     if record["state"] not in ("FAILED", "BLOCKED"):
         raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED or BLOCKED")
-    record["queued"] = _JOB_LOCK.locked()
+    record["queued"] = store.job_lock_held(db)
     store.save_request(db, record, actor="operator", event="resume")
     _start_job(request_id)
     return record
@@ -976,72 +1025,73 @@ _MEMBER_KEY_RE = re.compile(r"[a-z0-9]+")
 
 
 def _run_unjoin(request_id: str) -> None:
-    # Background thread, own connection, lock before connection -- see
-    # _run_job's comment.
-    with _JOB_LOCK, contextlib.closing(_conn()) as conn:
-        record = _load_request(conn, request_id)
-        if record is None:
-            return
-        try:
-            job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS,
-                       save=lambda r: store.save_request(conn, r, actor="system", event="unjoin"))
-        except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
-            record["error"] = {
-                "step": record.get("last_reversed_step"),
-                "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
-            }
-            store.save_request(conn, record, actor="system", event="state:*->RETIRING(error)")
-            return
-        if record.get("state") != "RETIRED":
-            return  # the walk stopped; record["error"] says where. DELETE again to resume.
+    # Background thread, own connection -- connection first, lock second, see
+    # _run_job's comment for why that ordering is inverted from before.
+    with contextlib.closing(_conn()) as conn:
+        with _blocking_job_lock(conn):
+            record = _load_request(conn, request_id)
+            if record is None:
+                return
+            try:
+                job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS,
+                           save=lambda r: store.save_request(conn, r, actor="system", event="unjoin"))
+            except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
+                record["error"] = {
+                    "step": record.get("last_reversed_step"),
+                    "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+                }
+                store.save_request(conn, record, actor="system", event="state:*->RETIRING(error)")
+                return
+            if record.get("state") != "RETIRED":
+                return  # the walk stopped; record["error"] says where. DELETE again to resume.
 
-        # The federation-side retirement just completed, so this is where
-        # the retirement record gets written -- not scripts/member.sh remove
-        # below, which is config removal only. Idempotent (same content
-        # every time): a repeat DELETE that reaches here just rewrites the
-        # same file, which is cheap and simpler than guarding it.
-        key = record["payload"]["code"].lower()
-        (PACK_DIR / "onboarding" / key / writer.RETIREMENT_FILE).write_text(
-            writer.render_retirement_record(key, record["retired_at"], record["id"])
-        )
+            # The federation-side retirement just completed, so this is where
+            # the retirement record gets written -- not scripts/member.sh remove
+            # below, which is config removal only. Idempotent (same content
+            # every time): a repeat DELETE that reaches here just rewrites the
+            # same file, which is cheap and simpler than guarding it.
+            key = record["payload"]["code"].lower()
+            (PACK_DIR / "onboarding" / key / writer.RETIREMENT_FILE).write_text(
+                writer.render_retirement_record(key, record["retired_at"], record["id"])
+            )
 
-        if record.get("config_removed"):
-            # Already done by an earlier run of this walk. scripts/member.sh
-            # remove is NOT idempotent -- it exits non-zero on a member whose
-            # directory is already gone -- so re-running it here would rewrite
-            # a completed retirement back to RETIRING with a config.remove
-            # error. Reachable whenever a second DELETE is issued, which
-            # runbook.md explicitly invites: two queue on _JOB_LOCK, and the
-            # second one's walk is a clean no-op over probes that all
-            # report absence.
-            return
+            if record.get("config_removed"):
+                # Already done by an earlier run of this walk. scripts/member.sh
+                # remove is NOT idempotent -- it exits non-zero on a member whose
+                # directory is already gone -- so re-running it here would rewrite
+                # a completed retirement back to RETIRING with a config.remove
+                # error. Reachable whenever a second DELETE is issued, which
+                # runbook.md explicitly invites: two queue on the job lock, and
+                # the second one's walk is a clean no-op over probes that all
+                # report absence.
+                return
 
-        # Step 5: the config-and-manifest half, delegated rather than
-        # reimplemented -- member.sh remove already deletes the directory,
-        # strips identity.members.<key>, refuses a canonical member and
-        # regenerates. Last, after the federation no longer holds the member:
-        # regenerating first would rewrite hurl/topology.json out from under
-        # a walk that has not finished.
-        proc = subprocess.run(
-            [str(PACK_DIR / "scripts" / "member.sh"), "remove", key],
-            capture_output=True, text=True, timeout=120,
-        )
-        if proc.returncode != 0:
-            record["state"] = "RETIRING"
-            record["error"] = {
-                "step": "config.remove",
-                "message": f"the federation no longer holds {key}, but scripts/member.sh remove "
-                f"{key} failed (exit {proc.returncode}):\n{job.scrub(proc.stderr or proc.stdout, JOB_SECRETS)}",
-            }
-        else:
-            record["config_removed"] = True
-            # The instance catalogue is derived from the member configs, so
-            # it drops this member's services by regeneration -- there is no
-            # entry to delete, and nothing to forget to delete. Its own
-            # onboarding/<key>/ record stays as evidence of what was revoked.
-            writer.write_catalogue(PACK_DIR)
-        store.save_request(conn, record, actor="system",
-                            event="config_removed" if record.get("config_removed") else "state:RETIRED->RETIRING")
+            # Step 5: the config-and-manifest half, delegated rather than
+            # reimplemented -- member.sh remove already deletes the directory,
+            # strips identity.members.<key>, refuses a canonical member and
+            # regenerates. Last, after the federation no longer holds the member:
+            # regenerating first would rewrite hurl/topology.json out from under
+            # a walk that has not finished.
+            proc = subprocess.run(
+                [str(PACK_DIR / "scripts" / "member.sh"), "remove", key],
+                capture_output=True, text=True, timeout=120,
+            )
+            if proc.returncode != 0:
+                record["state"] = "RETIRING"
+                record["error"] = {
+                    "step": "config.remove",
+                    "message": f"the federation no longer holds {key}, but scripts/member.sh remove "
+                    f"{key} failed (exit {proc.returncode}):\n{job.scrub(proc.stderr or proc.stdout, JOB_SECRETS)}",
+                }
+            else:
+                record["config_removed"] = True
+                # The instance catalogue is derived from the member configs, so
+                # it drops this member's services by regeneration -- there is no
+                # entry to delete, and nothing to forget to delete. Its own
+                # onboarding/<key>/ record stays as evidence of what was revoked.
+                writer.write_catalogue(PACK_DIR)
+            store.save_request(conn, record, actor="system",
+                                event="config_removed" if record.get("config_removed") else "state:RETIRED->RETIRING")
 
 
 def _start_unjoin(request_id: str) -> None:
@@ -1104,7 +1154,7 @@ def retire_member(
     # un-join is not finished by this API, and the operator has to be told
     # what is left for them whether or not they come back for the final record.
     record["retire_instruction"] = job.retire_instruction(schema.JoinPayload(**record["payload"]))
-    record["queued"] = _JOB_LOCK.locked()
+    record["queued"] = store.job_lock_held(db)
     store.save_request(db, record, actor="operator", event="state:ACTIVE->RETIRING")
     _start_unjoin(record["id"])
     return record
