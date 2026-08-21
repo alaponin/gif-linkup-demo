@@ -36,6 +36,10 @@ hurl/local.ini
 infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
+# Same reasoning, infra/terraform-db/ (separate module/state, plan §6.3).
+infra/terraform-db/.terraform/
+infra/terraform-db/*.tfstate
+infra/terraform-db/*.tfstate.backup
 
 # Local dev/test venv for apps/console (pytest/httpx/fastapi) -- the console
 # container installs its own deps in-image (apps/console/Dockerfile); this is
