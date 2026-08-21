@@ -189,6 +189,15 @@ services:
       # onboarding/catalogue.yaml, for the "what's on the bus" tab -- the
       # register's own generated output, re-read per request.
       - ./onboarding:/pack/onboarding:ro
+      # :rw for the ACL journal only -- but this is a bind mount of the
+      # whole out/ tree, including out/join-store/join-store.sqlite3
+      # (apps/join-api/store.py's own store). Docker bind mounts don't
+      # support per-subdirectory permissions, so the join store's own
+      # out/join-store/ subdirectory (store.py's db_path()) buys
+      # organizational isolation only, never enforced isolation -- this
+      # container has write access to that file too, in practice. The
+      # single-writer rule (join-api is the sole writer while it is
+      # running) is a convention this mount does not, and cannot, enforce.
       - ./out:/out
 
   join-api:

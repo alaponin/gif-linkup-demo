@@ -57,13 +57,6 @@ def _refuse_if_join_api_running() -> None:
         )
 
 
-def _member_key(record: dict) -> str | None:
-    payload = record.get("payload")
-    if isinstance(payload, dict) and "code" in payload:
-        return str(payload["code"]).lower()
-    return None
-
-
 def _import_requests(conn: sqlite3.Connection, join_dir: pathlib.Path) -> None:
     now = datetime.now(timezone.utc).isoformat()
     paths = sorted(join_dir.glob("*.json"))
@@ -76,7 +69,7 @@ def _import_requests(conn: sqlite3.Connection, join_dir: pathlib.Path) -> None:
                 "(id, state, submitted_at, submitted_by, member_key, record) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (record["id"], record["state"], record["submitted_at"],
-                 record.get("submitted_by"), _member_key(record), json.dumps(record)),
+                 record.get("submitted_by"), store._member_key(record), json.dumps(record)),
             )
             if cursor.rowcount:  # newly inserted -- not a re-run seeing an id already present
                 conn.execute(

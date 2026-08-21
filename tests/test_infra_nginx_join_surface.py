@@ -20,7 +20,7 @@ CONF = pathlib.Path(__file__).resolve().parent.parent / "infra/nginx/kp2-console
 # Every `location <modifier> <path>` in the file, as (modifier, path) pairs.
 _LOCATION = re.compile(r"^\s*location\s+(?:(=|~\*?|\^~)\s+)?(\S+)\s*\{", re.M)
 
-OPERATOR_MARKERS = ("approve", "resume", "reject", "members")
+OPERATOR_MARKERS = ("approve", "resume", "reject", "members", "refreshes")
 
 
 def _locations() -> list[tuple[str, str]]:
