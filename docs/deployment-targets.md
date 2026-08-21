@@ -16,7 +16,7 @@ exists anywhere in this pack because of this document.
 | **Image provenance** | Digest-pinned (`cs_digest`/`ss_digest`/`testca_tag`) | Already covered — carry forward, nothing new to decide |
 | **Certification authority** | `xrddev-testca` | An accredited CA; the Test CA cannot go to a non-loopback target at all (below) |
 | **Secrets** | `.env` on disk, mode 600, `scripts/gen-secrets.sh` | Where they come from and where they rest on the target (below) |
-| **Persistence** | Named Docker volumes on one host | Backup, restore and recovery time (below) |
+| **Persistence** | Named Docker volumes on one host | Backup, restore and recovery time (below) — answered for the droplet target specifically: a managed PostgreSQL backend behind `apps/join-api/store.py` (`docs/plans/join-datastore-postgres-digitalocean-plan.md`, `runbook.md`'s "The Postgres join store" section). Any other future target still has this dimension to decide for itself |
 | **Time** | The developer's laptop clock | NTP, mandatory (below) |
 | **Image acquisition** | Pull from Docker Hub / ghcr at deploy | Pre-pull, mirror, or accept the egress dependency (below) |
 
@@ -93,6 +93,13 @@ across a lost host would have to back up `/etc/xroad/gpghome` (or the whole
 rely on the admin API's own backup file — that combination was not tried
 live and is not claimed to work; it is the shape a real implementation would
 have to test.
+
+**This section is about X-Road's own admin-API backups and does not cover
+the join store.** The join store (`apps/join-api/store.py`) has its own,
+separate backup/restore/recovery story per deployment target — a `VACUUM
+INTO` of the SQLite file for docker-local, or a managed PostgreSQL cluster
+with point-in-time recovery for the droplet target — documented in
+`runbook.md`'s "The Postgres join store" section, not here.
 
 ## Require NTP
 

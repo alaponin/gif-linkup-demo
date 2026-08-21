@@ -494,6 +494,336 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     re-runs from the top and skips what is done. `POST /requests/{id}/resume`
     is *not* the way back — that one re-enters the forward path.
 
+## The Postgres join store (droplet target)
+
+Everything above assumes `datastore.kind: sqlite` — docker-local's default,
+`out/join-store/join-store.sqlite3`. The droplet target can instead point
+the join store at a DigitalOcean Managed PostgreSQL cluster.
+`docs/plans/join-datastore-postgres-digitalocean-plan.md` is the design
+record; this section is the operator-facing "how do I run this" and does
+not re-argue any of that plan's decisions.
+
+**No DigitalOcean credentials were available while this section was
+written.** Every procedure below is a real, runnable operator procedure,
+but wherever the plan's §8 calls for a *live* drill against an actual
+cluster or droplet, it is marked **Status: documented, not yet run** — a
+plain fact to say, not something to paper over.
+
+**Provisioning.** `cd infra/terraform-db && terraform init
+-backend-config=backend.hcl`, then the standard `terraform apply` flow —
+the module's own comments (`main.tf`, `variables.tf`) are the reference for
+what each resource and variable does; this is "how an operator invokes it,"
+not a second explanation of the module.
+
+`var.droplet_id` has no default and must come from the droplet module
+itself, in two steps: apply (or confirm already applied) `infra/terraform/`
+first, then read its output —
+
+```
+cd infra/terraform/ && terraform output -raw droplet_id
+```
+
+— and pass that value into the DB module's own apply:
+
+```
+cd infra/terraform-db
+terraform apply -var="do_token=$DO_TOKEN" -var="droplet_id=<the id just read>"
+```
+
+There is no cross-module state reference by design (`variables.tf`'s own
+comment on `droplet_id`) — a plain variable, not `terraform_remote_state`,
+so destroying the droplet module can never touch the DB module's state.
+
+After a successful apply:
+
+- `scripts/fetch-db-ca-cert.sh` — fetches the cluster's CA certificate (a
+  public cert, not a secret) to wherever `KP2_DB_CA_CERT` points, per
+  `.env.example`'s documentation.
+- `terraform output -raw kp2_join_dsn_template` (from `infra/terraform-db/`)
+  gives the ready-to-paste `KP2_JOIN_DB_URL` line for `.env` — quote it
+  (`.env` is shell-sourced, and the DSN's `&` backgrounds the rest of an
+  unquoted assignment, silently truncating it). It carries the real,
+  DO-generated `joinapi` password: handle it the same way every other
+  `.env` secret already is — mode `600`, never logged, never echoed in
+  full.
+- `deployment.yaml`'s `datastore.kind: postgres` — an explicit, deliberate
+  switch an operator makes for the droplet target only. It stays `sqlite`
+  by default and for docker-local.
+
+**Rotation.** Reset the role's password in DO's console, update `.env`'s
+`KP2_JOIN_DB_URL`, `docker compose up -d join-api` (plan §4) — measured in
+seconds of downtime, documented rather than automated, the same honesty the
+plan applies to its own scope.
+
+**Backup, restore and recovery — Postgres join store.** This is a
+**different mechanism** from this file's own "Backup / inspect the join
+store" bullet above (that one is `sqlite3 ... VACUUM INTO`, and does not
+apply once `datastore.kind: postgres`), and from
+`docs/deployment-targets.md`'s "Backup, restore and recovery time" section
+(that one is about X-Road's own admin-API backups — GPG-signed, tied to
+the `*-conf` volumes `teardown.sh --purge` deletes — which has nothing to
+do with the join store either way). What follows is the Postgres-specific,
+droplet-only mechanism.
+
+- **Restore drill (plan §8). Status: documented, not yet run.** Fork or
+  restore the cluster to a new instance from DO's point-in-time recovery
+  (console or API), point a scratch join-api at the restored instance's
+  DSN, then read the records back:
+  ```
+  docker compose run --rm -T join-api python -m store dump-records
+  ```
+  A correct restore is every pre-fork record present, byte-identical.
+
+- **Two monitoring queries** (plan §2's abuse-monitoring hook, §5's Audit
+  row — a starting point, not a monitoring system; `docs/production-delta.md`
+  says so explicitly). Both run against the schema in
+  `apps/join-api/migrations/001_init.sql`.
+
+  Refusals per token per hour (`actor` is a 12-character SHA-256 prefix of
+  the bearer token, never the token itself — `app.py`'s `_refusal_actor`;
+  `event` is `rate_limit` for the per-minute bucket or `quota` for the
+  200-record ceiling):
+  ```
+  docker compose run --rm -T join-api sh -c 'exec psql "$KP2_JOIN_DB_URL" -c "SELECT actor, date_trunc(\$\$hour\$\$, at) AS hour, count(*) AS refusals FROM request_events WHERE event IN (\$\$rate_limit\$\$, \$\$quota\$\$) GROUP BY actor, hour ORDER BY hour DESC, refusals DESC;"'
+  ```
+
+  Requests by state:
+  ```
+  docker compose run --rm -T join-api sh -c 'exec psql "$KP2_JOIN_DB_URL" -c "SELECT state, count(*) AS n FROM requests GROUP BY state ORDER BY n DESC;"'
+  ```
+
+  Both read `$KP2_JOIN_DB_URL` from the container's own environment
+  (`docker-compose.yml`'s pass-through) rather than the host command line —
+  the same discipline `scripts/join-store-export.sh`/`-import.sh` use, for
+  the same reason: a DSN on the host's own argv is visible to any local
+  user via `ps auxww` for the run's duration.
+
+- **`pg_restore` version skew — a known, live-confirmed false failure.**
+  The image's `pg_restore` (Debian's client, 17.11 as built) emits a
+  `transaction_timeout` GUC error against any DO cluster running Postgres
+  below 17, on the very first statement it issues — a PG17+-only setting an
+  older server does not recognise. `join-store-import.sh` deliberately does
+  not try to distinguish that from a real failure, so it reports the run as
+  **failed** even when the data landed correctly. **Mandatory, not
+  optional:** after every import, regardless of `join-store-import.sh`'s
+  own exit code, verify with
+  ```
+  docker compose run --rm -T join-api python -m store dump-records
+  ```
+  and confirm the expected records are present. If the only error text
+  `join-store-import.sh` printed was about `transaction_timeout` (or any
+  other GUC a newer client emits that the target server does not
+  recognise) and `dump-records` shows the records, the import succeeded
+  despite the exit code.
+
+- **Import needs the admin DSN, not the app's own DSN.**
+  `join-store-import.sh` restores via `KP2_JOIN_DB_ADMIN_URL` when it is
+  set (falling back to `KP2_JOIN_DB_URL` otherwise) — set it from
+  `infra/terraform-db`'s `db_admin_dsn_template` output for a real restore.
+  The dump's `ALTER TABLE ... OWNER TO` and `request_events_seq_seq`'s
+  `setval(...)` calls both need admin-level privilege the app's own
+  restricted `joinapi` role deliberately lacks (`migrations/grants.sql`
+  grants `joinapi` `SELECT` on that sequence, for `pg_dump`'s benefit, but
+  never `UPDATE`). `KP2_JOIN_DB_ADMIN_URL` is a one-off, provision-time
+  value — export it for the one import run; nothing in this pack writes it
+  into `.env`, and it should not be kept alongside `KP2_JOIN_DB_URL` as a
+  standing secret.
+
+**Lifecycle procedures (plan §6 — the deployment's actual operating mode).**
+This deployment is not always on: that is not an edge case for this
+target, it is how it runs. The cluster is the persistent evidence layer;
+the droplet's own stack is ephemeral around it. Four events, four rules.
+
+- **§6.1 — `teardown.sh --purge` → redeploy → reconciliation.** After a
+  redeploy, run:
+  ```
+  docker compose run --rm -T join-api python -m store check
+  ```
+  Non-empty output is a **named finding, not an error**. Two directions,
+  two remedies:
+  - A store record (`ACTIVE`/`RETIRING`) with no matching `manifest.yaml`
+    entry — the member's config did not survive whatever changed between
+    destroy and redeploy (a config rolled back in git, for instance).
+    Remedy: `scripts/member.sh remove <key>` if the member is genuinely
+    gone, or restore the config and re-join if it should still be there.
+  - A `manifest.yaml` entry with `origin: joined` and no matching
+    **`ACTIVE`** record (a `RETIRING` record does not count here — a
+    retiring member's manifest entry outliving its last `ACTIVE` record is
+    expected, not drift) — the manifest says a member joined but the store
+    disagrees. Remedy: a re-join, or a `git revert` of whatever added the
+    manifest entry.
+  Status: the mechanism itself (`python -m store check`) is implemented and
+  exercised (Task 1's own test fixtures); running it against a real
+  purge/redeploy cycle on a live droplet is documented, not yet run.
+
+- **§6.2 — droplet destroyed and re-created.** Three things must be
+  restored, and today nothing in this pack's CI automates any of them — a
+  human has to notice and act:
+  1. **`.env`'s `KP2_JOIN_DB_URL`.** The droplet's copy dies with it. The
+     DB password is DO-issued, not regenerated the way
+     `scripts/gen-secrets.sh` regenerates the X-Road demo credentials —
+     carry the existing value forward, or reset it in DO's console (the
+     Rotation procedure above) and update `.env` either way.
+  2. **The DB firewall's trusted-source entry.** DO's firewall trusts the
+     droplet as a *resource*, not a stable IP — a re-created droplet is a
+     new resource, and until it is trusted, every connection is refused at
+     the network layer. Re-adding it **is** re-running `terraform apply` in
+     `infra/terraform-db/` with the new droplet's `droplet_id` (same
+     two-step sequence as first provisioning, above) — there is no
+     separate "add to trusted sources" script, by Task 6's design; the
+     firewall resource's one rule is keyed on the droplet id, so a new
+     apply with a new id replaces the old rule rather than stacking it.
+  3. **The CA cert.** Stable per cluster, but it lives on the droplet's
+     disk — re-run `scripts/fetch-db-ca-cert.sh`.
+  **Named explicitly, per Task 6's own review finding:** step 2 is a manual
+  step today. Nothing watches for a droplet replacement and re-applies the
+  DB module automatically — miss it, and the cluster firewall keeps
+  trusting a droplet that no longer exists; join-api loses connectivity
+  with no automated signal beyond the resulting connection failures.
+  Status: the drill that would exercise this end to end (destroy the
+  droplet, re-provision, confirm the trusted-sources step is what makes the
+  first connect succeed) is documented, not yet run.
+
+- **§6.3 — cluster destruction gate.** Destroying the cluster is:
+  `scripts/join-store-export.sh` (which verifies its own output with
+  `pg_restore --list` internally), move the resulting dump somewhere
+  durable, **only then** `terraform destroy` in `infra/terraform-db/`.
+  `lifecycle { prevent_destroy = true }` on the cluster resource
+  (`infra/terraform-db/main.tf`) means a bare `terraform destroy` refuses —
+  this is structural, not just procedural, by design: destroying the
+  cluster for real requires first either removing that `lifecycle` block or
+  `terraform state rm`-ing the resource. Treat having to edit the `.tf`
+  file as the backstop working as intended, not friction to route around.
+  Status: the export/verify script is implemented and live-verified
+  against a local Postgres cluster (Task 5); the full export → destroy →
+  provision-fresh → import → read-back drill against a real DO cluster is
+  documented, not yet run.
+
+- **§6.4 — the posture decision.** Already made, during this plan's
+  execution, before Task 1 started: **posture (a), cluster persists / stack
+  is ephemeral** — chosen over (b) export-then-destroy and over staying on
+  the SQLite backend. Evidence continuity is automatic under (a); the
+  export script above is a periodic safety net, not a gate that has to run
+  on every teardown. The cost: the cluster keeps billing (~$15/month) while
+  the droplet is torn down between sessions. The alternative, (b), would
+  have made every teardown cycle carry a manual, skip-it-once-lose-records-
+  permanently evidence-handling step — judged the worse trade for how this
+  deployment is actually used.
+
+**Running `member.sh drift`/`refresh` and the export/import scripts on this
+target:**
+
+- **Invocation context.** `scripts/join-store-export.sh` and
+  `scripts/join-store-import.sh` shell out to `docker compose run --rm
+  join-api ...` to reach the store and touch nothing else network-wise —
+  run them from **the droplet's own host shell** (wherever
+  `docker`/`docker compose` are actually installed), never from inside the
+  join-api container itself: that container has no Docker socket, by
+  design. `member.sh drift`/`refresh`'s new Postgres-path branches do the
+  same `docker compose run` calls, but — unlike the export/import
+  scripts — both commands *also* fetch a joined member's live OpenAPI spec
+  from a docker-internal hostname (`spec_url`), which only resolves from
+  inside a container on the `linkup` network
+  (`docker-compose.yml`'s `networks: [linkup]`), never from the droplet's
+  bare host shell. That is two different network requirements in one
+  invocation, and they do not fit in the same place — see the two bullets
+  below for what each command actually needs. Both of `member.sh`'s new
+  Postgres-path subprocess calls at least fail with a clear `docker not
+  found — ...` message rather than a raw traceback if run from the wrong
+  place (a fix landed during Task 5's review).
+
+- **`member.sh drift` on a Postgres deployment: run it from the droplet's
+  own host shell, not via `docker compose exec join-api` (unlike the
+  SQLite-path guidance above).** `cmd_drift`'s Postgres branch checks for
+  `docker` and shells out to `docker compose run --rm join-api python -m
+  store dump-records` *before* it ever gets to the spec-fetch step, so
+  running it inside the join-api container (which has no Docker socket)
+  fails immediately at that check. Running it from the host instead gets
+  the store lookup right, but the second half — fetching each service's
+  live spec at its docker-internal `spec_url` — then hits the same
+  pre-existing trap this file already documents for the SQLite path
+  ("could not fetch current spec ... a docker-internal demo hostname like
+  this one is only reachable from inside the linkup network"): `drift`
+  does not crash, but it cannot verify any service's live endpoint set
+  from the host, and reports every service as unable-to-fetch rather than
+  as a real drift finding. There is no single invocation context that gets
+  both halves of `drift` right on this target with the code as built —
+  choosing the host shell is the one that at least reaches the store.
+
+- **`member.sh refresh`'s existing guidance still holds, for the common
+  case.** The X-Road admin-API login and the joined member's spec fetch
+  (`cmd_refresh`'s pre-existing logic, unchanged by this plan) need the
+  same docker-internal name resolution `drift` does. So `docker compose
+  exec join-api bash
+  /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh
+  refresh <key>` (the existing guidance, above) is still correct, and it
+  still works unmodified on a Postgres deployment **as long as join-api
+  itself is up**: the record amendment then goes through join-api's own
+  HTTP API (`http://join-api:8000`), which needs no Docker access at all
+  from inside that container.
+
+  The Postgres-path direct-write fallback (the new `elif datastore_kind ==
+  "postgres":` branch in `cmd_refresh`, only reached when join-api is
+  unreachable) has the same collision as `drift` above, but with a harder
+  failure mode: `cmd_refresh` calls `sys.exit` on a failed spec fetch
+  (rather than `drift`'s per-service warn-and-continue), so it does not
+  even degrade gracefully from the host — it stops at that step, before
+  ever reaching its own Postgres-path Docker calls. **Practical guidance:**
+  if `member.sh refresh` needs to run and join-api is down, bring it back
+  up first (`scripts/join.sh up`) and use the normal, API-first path
+  rather than relying on the direct-write fallback — on this target, that
+  fallback cannot complete end to end from any single invocation context
+  as currently built.
+
+- **Audit trail note.** The direct-write refresh fallback records a
+  different `request_events.event` value depending on backend:
+  `refresh:direct-write` on SQLite, plain `refresh` on Postgres (the
+  Postgres path goes through `python -m store amend-refresh`, which calls
+  `save_request(..., event="refresh")` — the same event name a normal,
+  API-driven refresh uses). An operator grepping the audit log for one
+  string will not find the other backend's equivalent entries.
+
+- **CA cert refresh.** `scripts/fetch-db-ca-cert.sh` writes atomically
+  (temp file, then move) — but an *already-running* join-api container
+  keeps using whatever cert it bind-mounted at its own start. Re-running
+  the fetch script alone does not update a live container; a cert refresh
+  needs `docker compose up -d join-api` (or equivalent) afterward to
+  actually take effect.
+
+- **Cluster tuning: `idle_in_transaction_session_timeout`.** Postgres's
+  `apply_lock` (`store.py`) holds one idle-in-transaction connection for
+  the whole duration of an approval's apply, including
+  `writer.apply_real`'s filesystem/subprocess work — inherent to
+  `pg_advisory_xact_lock`, not a bug (see `apply_lock`'s own docstring).
+  The cluster's `idle_in_transaction_session_timeout` needs to tolerate
+  that. DigitalOcean's managed Postgres exposes this as a configurable
+  cluster parameter; this pack does not set it (`infra/terraform-db/main.tf`
+  configures no `digitalocean_database_postgresql_config` resource for it),
+  and no DO-documented default for it was confirmed while writing this —
+  check the cluster's actual configured value against how long this pack's
+  approvals typically take to apply, rather than assuming either
+  "disabled" or any other specific number.
+
+- **Negative test (plan §8). Status: documented, not yet run.** From a
+  source the cluster's firewall does not trust — a second droplet in the
+  same VPC is the meaningful case (its private-network route to the
+  cluster's hostname exists, but the firewall trusts only the original
+  droplet's resource id, so the refusal is the firewall rule actually
+  working, not just an absent route; a workstation off the VPC entirely
+  fails even more trivially, with no route to the private hostname at
+  all) — attempt:
+  ```
+  psql "postgresql://joinapi@<db_private_host>:<db_port>/kp2_join?sslmode=verify-full"
+  ```
+  using the host/port from `terraform output` (password omitted
+  deliberately — the connection should never get far enough to need it).
+  Expected: a timeout or connection refusal at the network layer, never an
+  authentication prompt — the cluster has no public access, and
+  `infra/terraform-db/main.tf`'s `digitalocean_database_firewall` trusts
+  only the droplet's resource id. Doubles, per plan §6.2, as the check that
+  a stale trusted-sources entry is actually gone after a droplet
+  replacement.
+
 ## The service catalogue
 
 `onboarding/catalogue.yaml` answers, for the whole instance, what is
