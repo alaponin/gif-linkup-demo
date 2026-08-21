@@ -1,8 +1,9 @@
 """apps/join-api/store.py -- the repository seam for the join API's
 persistent state: request records, their audit trail, and issued tokens.
 Two backends exist: SQLite (`out/join-store/join-store.sqlite3`, the
-original -- see docs/plans/join-datastore-sqlite-plan.md) and Postgres (see
-docs/plans/join-datastore-postgres-digitalocean-plan.md). Dispatch between
+original, docker-local's default) and Postgres (a DigitalOcean Managed
+PostgreSQL cluster, the droplet target -- see runbook.md's "The Postgres
+join store" section for the operator-facing procedures). Dispatch between
 them is by **connection type**
 (`isinstance(conn, sqlite3.Connection)` vs everything else, i.e. a psycopg
 `Connection`) -- not a stored "current backend" global -- because every

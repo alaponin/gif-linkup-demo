@@ -12,8 +12,8 @@
 # installs clean.
 #
 # psycopg/psycopg-binary added 2026-08-21 for the Postgres datastore backend
-# (docs/plans/join-datastore-postgres-digitalocean-plan.md) -- resolved
-# separately from the console-derived block above, not copied from it.
+# (see store.py's own docstring) -- resolved separately from the
+# console-derived block above, not copied from it.
 # `psycopg[binary]==3.3.4` flattened to its two resolved distributions
 # (pip's own hash-locked requirements files -- pip-compile/pip freeze --
 # always list extras this way, never as `pkg[extra]==`): pure-Python

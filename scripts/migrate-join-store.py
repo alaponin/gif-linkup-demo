@@ -3,14 +3,11 @@
 join API's file-backed state (out/join/*.json request records,
 out/join-tokens.json issued credentials) into the store apps/join-api/
 store.py owns -- SQLite by default, or Postgres when deployment.yaml's
-datastore.kind: postgres (see docs/plans/join-datastore-sqlite-plan.md §2
-for the original SQLite design, and
-docs/plans/join-datastore-postgres-digitalocean-plan.md §3: "same
-scripts/migrate-join-store.py ... pointed at Postgres by KP2_JOIN_DB_URL,
-run via docker compose run so the driver is present"). Host-side; needs
-PyYAML for deployment.yaml (same as every other host script that reads it,
-e.g. scripts/lib-core.sh's yq_get) and, on the Postgres path, psycopg --
-neither is required on the (default, more common) SQLite path.
+datastore.kind: postgres, in which case it connects using KP2_JOIN_DB_URL,
+run via `docker compose run` so the Postgres driver is present. Host-side;
+needs PyYAML for deployment.yaml (same as every other host script that
+reads it, e.g. scripts/lib-core.sh's yq_get) and, on the Postgres path,
+psycopg -- neither is required on the (default, more common) SQLite path.
 
 app.py's own startup check (its module-level migration-refusal block)
 refuses to boot if out/join/*.json files still sit beside a DB that holds

@@ -1,7 +1,6 @@
 """Tests for scripts/migrate-join-store.py -- the one-shot import of the
 join API's old file-backed state (out/join/*.json, out/join-tokens.json)
 into apps/join-api/store.py's SQLite database.
-See docs/plans/join-datastore-sqlite-plan.md §2.
 
 Like tests/test_mkfixture.py, this runs the script as a subprocess -- its
 own module docstring says "no CLI flags", and PACK_DIR is derived from

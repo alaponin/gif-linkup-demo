@@ -58,8 +58,8 @@ OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 # (check_same_thread=True), and this process has two execution contexts that
 # touch the store: FastAPI's request handlers, and the background daemon
 # threads _start_job/_start_unjoin launch. Each gets its own connection,
-# opened where it runs, never handed across a thread boundary (plan
-# docs/plans/join-datastore-sqlite-plan.md, store.py's own docstring).
+# opened where it runs, never handed across a thread boundary (see
+# store.py's own docstring).
 #
 # _conn() resolves against the CURRENT OUT_DIR on every call, not a path
 # cached at import time: this file's own test fixtures reassign

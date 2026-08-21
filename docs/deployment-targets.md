@@ -19,7 +19,7 @@ provisioning, added since this was written -- but neither is a second
 | **Image provenance** | Digest-pinned (`cs_digest`/`ss_digest`/`testca_tag`) | Already covered — carry forward, nothing new to decide |
 | **Certification authority** | `xrddev-testca` | An accredited CA; the Test CA cannot go to a non-loopback target at all (below) |
 | **Secrets** | `.env` on disk, mode 600, `scripts/gen-secrets.sh` | Where they come from and where they rest on the target (below) |
-| **Persistence** | Named Docker volumes on one host | Backup, restore and recovery time (below) — answered for the droplet target specifically: a managed PostgreSQL backend behind `apps/join-api/store.py` (`docs/plans/join-datastore-postgres-digitalocean-plan.md`, `runbook.md`'s "The Postgres join store" section). Any other future target still has this dimension to decide for itself |
+| **Persistence** | Named Docker volumes on one host | Backup, restore and recovery time (below) — answered for the droplet target specifically: a managed PostgreSQL backend behind `apps/join-api/store.py` (see `runbook.md`'s "The Postgres join store" section). Any other future target still has this dimension to decide for itself |
 | **Time** | The developer's laptop clock | NTP, mandatory (below) |
 | **Image acquisition** | Pull from Docker Hub / ghcr at deploy | Pre-pull, mirror, or accept the egress dependency (below) |
 

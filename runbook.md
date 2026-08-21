@@ -498,16 +498,14 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
 
 Everything above assumes `datastore.kind: sqlite` — docker-local's default,
 `out/join-store/join-store.sqlite3`. The droplet target can instead point
-the join store at a DigitalOcean Managed PostgreSQL cluster.
-`docs/plans/join-datastore-postgres-digitalocean-plan.md` is the design
-record; this section is the operator-facing "how do I run this" and does
-not re-argue any of that plan's decisions.
+the join store at a DigitalOcean Managed PostgreSQL cluster. This section
+is the operator-facing "how do I run this" for that target.
 
 **No DigitalOcean credentials were available while this section was
 written.** Every procedure below is a real, runnable operator procedure,
-but wherever the plan's §8 calls for a *live* drill against an actual
-cluster or droplet, it is marked **Status: documented, not yet run** — a
-plain fact to say, not something to paper over.
+but wherever it calls for a *live* drill against an actual cluster or
+droplet, it is marked **Status: documented, not yet run** — a plain fact
+to say, not something to paper over.
 
 **Provisioning.** `cd infra/terraform-db && terraform init
 -backend-config=backend.hcl`, then the standard `terraform apply` flow —
@@ -594,9 +592,8 @@ After a successful apply:
   join-api normally.
 
 **Rotation.** Reset the role's password in DO's console, update `.env`'s
-`KP2_JOIN_DB_URL`, `docker compose up -d join-api` (plan §4) — measured in
-seconds of downtime, documented rather than automated, the same honesty the
-plan applies to its own scope.
+`KP2_JOIN_DB_URL`, `docker compose up -d join-api` — measured in seconds of
+downtime, documented rather than automated.
 
 **Backup, restore and recovery — Postgres join store.** This is a
 **different mechanism** from this file's own "Backup / inspect the join
@@ -608,7 +605,7 @@ the `*-conf` volumes `teardown.sh --purge` deletes — which has nothing to
 do with the join store either way). What follows is the Postgres-specific,
 droplet-only mechanism.
 
-- **Restore drill (plan §8). Status: documented, not yet run.** Fork or
+- **Restore drill. Status: documented, not yet run.** Fork or
   restore the cluster to a new instance from DO's point-in-time recovery
   (console or API), point a scratch join-api at the restored instance's
   DSN, then read the records back:
@@ -617,9 +614,8 @@ droplet-only mechanism.
   ```
   A correct restore is every pre-fork record present, byte-identical.
 
-- **Two monitoring queries** (plan §2's abuse-monitoring hook, §5's Audit
-  row — a starting point, not a monitoring system; `docs/production-delta.md`
-  says so explicitly). Both run against the schema in
+- **Two monitoring queries** — a starting point, not a monitoring system;
+  `docs/production-delta.md` says so explicitly. Both run against the schema in
   `apps/join-api/migrations/001_init.sql`.
 
   Refusals per token per hour (`actor` is a 12-character SHA-256 prefix of
@@ -672,7 +668,7 @@ droplet-only mechanism.
   into `.env`, and it should not be kept alongside `KP2_JOIN_DB_URL` as a
   standing secret.
 
-**Lifecycle procedures (plan §6 — the deployment's actual operating mode).**
+**Lifecycle procedures — the deployment's actual operating mode.**
 This deployment is not always on: that is not an edge case for this
 target, it is how it runs. The cluster is the persistent evidence layer;
 the droplet's own stack is ephemeral around it. Four events, four rules.
@@ -697,7 +693,7 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
     manifest entry.
 
   Status: the mechanism itself (`python -m store check`) is implemented and
-  exercised (Task 1's own test fixtures); running it against a real
+  exercised by this pack's own test suite; running it against a real
   purge/redeploy cycle on a live droplet is documented, not yet run.
 
 - **§6.2 — droplet destroyed and re-created.** Three things must be
@@ -714,12 +710,12 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
      the network layer. Re-adding it **is** re-running `terraform apply` in
      `infra/terraform-db/` with the new droplet's `droplet_id` (same
      two-step sequence as first provisioning, above) — there is no
-     separate "add to trusted sources" script, by Task 6's design; the
+     separate "add to trusted sources" script, by design; the
      firewall resource's one rule is keyed on the droplet id, so a new
      apply with a new id replaces the old rule rather than stacking it.
   3. **The CA cert.** Stable per cluster, but it lives on the droplet's
      disk — re-run `scripts/fetch-db-ca-cert.sh`.
-  **Named explicitly, per Task 6's own review finding:** step 2 is a manual
+  **Named explicitly:** step 2 is a manual
   step today. Nothing watches for a droplet replacement and re-applies the
   DB module automatically — miss it, and the cluster firewall keeps
   trusting a droplet that no longer exists; join-api loses connectivity
@@ -739,12 +735,11 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
   `terraform state rm`-ing the resource. Treat having to edit the `.tf`
   file as the backstop working as intended, not friction to route around.
   Status: the export/verify script is implemented and live-verified
-  against a local Postgres cluster (Task 5); the full export → destroy →
+  against a local Postgres cluster; the full export → destroy →
   provision-fresh → import → read-back drill against a real DO cluster is
   documented, not yet run.
 
-- **§6.4 — the posture decision.** Already made, during this plan's
-  execution, before Task 1 started: **posture (a), cluster persists / stack
+- **§6.4 — the posture decision.** **Posture (a), cluster persists / stack
   is ephemeral** — chosen over (b) export-then-destroy and over staying on
   the SQLite backend. Evidence continuity is automatic under (a); the
   export script above is a periodic safety net, not a gate that has to run
@@ -774,7 +769,7 @@ target:**
   below for what each command actually needs. Both of `member.sh`'s new
   Postgres-path subprocess calls at least fail with a clear `docker not
   found — ...` message rather than a raw traceback if run from the wrong
-  place (a fix landed during Task 5's review).
+  place.
 
 - **`member.sh drift` on a Postgres deployment: run it from the droplet's
   own host shell, not via `docker compose exec join-api` (unlike the
@@ -796,7 +791,7 @@ target:**
 
 - **`member.sh refresh`'s existing guidance still holds, for the common
   case.** The X-Road admin-API login and the joined member's spec fetch
-  (`cmd_refresh`'s pre-existing logic, unchanged by this plan) need the
+  (`cmd_refresh`'s pre-existing logic, unchanged by the Postgres addition) need the
   same docker-internal name resolution `drift` does. So `docker compose
   exec join-api bash
   /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh
@@ -848,7 +843,7 @@ target:**
   approvals typically take to apply, rather than assuming either
   "disabled" or any other specific number.
 
-- **Negative test (plan §8). Status: documented, not yet run.** From a
+- **Negative test. Status: documented, not yet run.** From a
   source the cluster's firewall does not trust — a second droplet in the
   same VPC is the meaningful case (its private-network route to the
   cluster's hostname exists, but the firewall trusts only the original
@@ -865,9 +860,9 @@ target:**
   authentication prompt — DO managed databases have a public endpoint by
   default, but `infra/terraform-db/main.tf`'s `digitalocean_database_firewall`
   trusts only the droplet's resource id, which is what makes that endpoint
-  practically unreachable from anywhere else. Doubles, per plan §6.2, as the check that
-  a stale trusted-sources entry is actually gone after a droplet
-  replacement.
+  practically unreachable from anywhere else. Doubles, per §6.2 above, as
+  the check that a stale trusted-sources entry is actually gone after a
+  droplet replacement.
 
 ## The service catalogue
 
