@@ -342,6 +342,32 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     state is not persisted (`apps/join-api/job.py`'s own docstring: nothing
     named `*_xsrf_token` is ever written to disk) rather than replaying the
     whole sequence from scratch.
+  - **Committing before go-live (`join_workflow.commit_gate: required`,
+    the droplet target's posture):** `deployment.yaml`'s default,
+    `advisory`, is what everything above describes — the console shows a
+    live-but-uncommitted flag, nothing gates. Flip it to `required` and
+    approval inserts a `config.commit` step before the job ever touches the
+    running federation: it checks (read-only — `git status`, never `git
+    commit`) that `configs/member-<key>/`, `manifest.yaml` and
+    `onboarding/<key>/` are committed, exactly the three trees
+    `writer.apply_real()`'s pre-write refusal already watches, scoped to
+    this one join. Clean, it passes silently and the job proceeds. Dirty (the
+    ordinary case — the config was only just written), the request goes
+    **`BLOCKED`** with `{step: "config.commit"}` and a message naming the
+    exact host-side commands:
+
+    ```
+    git add configs/member-<key>/ manifest.yaml onboarding/<key>/
+    git commit -m "join: add member <CODE>"
+    ```
+
+    Commit, then **Resume** (the console's button, or
+    `POST /requests/{id}/resume`, same endpoint every other `BLOCKED`/`FAILED`
+    record uses) — the gate re-checks and, now clean, the job carries on to
+    make the member live. `docs/production-delta.md` row 33 is the row this
+    closes; `apps/join-api/tests/test_job.py` is where "dirty → BLOCKED",
+    "clean → proceeds" and "resume re-enters the gate" are each their own
+    test.
   - **A join with the member's OWN Security Server:** set
     `security_server.own_server: true` in the payload and leave `hosted_on`
     out. It has to be asked for explicitly — a payload with neither is
@@ -493,6 +519,19 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     guarded by a read that proves whether it is already gone, so the walk
     re-runs from the top and skips what is done. `POST /requests/{id}/resume`
     is *not* the way back — that one re-enters the forward path.
+  - **Commit the removal.** `scripts/member.sh remove` (which the walk calls
+    for you, at the end) deletes `configs/member-<key>/` from the checkout
+    the same way `apply_real()` writes it on the way in — before anyone
+    commits. This phase does **not** gate un-join on a commit the way it
+    gates a join (`join_workflow.commit_gate: required` above): a member no
+    longer on the federation but still described in git is the safe
+    direction to drift in, so blocking the removal itself would trade a
+    smaller risk for a bigger one (a request an operator cannot finish
+    retiring). Instead the `RETIRED` record carries `commit_pending: true`,
+    set once and cleared by nothing — evidence, like `retire_instruction`,
+    that this is still owed. Commit it the same way a join is committed:
+    `git add configs/ manifest.yaml onboarding/<key>/ onboarding/catalogue.yaml
+    && git commit`.
 
 ## The Postgres join store (droplet target)
 
@@ -554,6 +593,14 @@ After a successful apply:
   step before this one silently initialises a local SQLite file instead
   of the Postgres cluster, and neither the joinapi role nor the append-only
   guarantee this whole procedure exists to establish ever gets touched.
+- `deployment.yaml`'s `join_workflow.commit_gate: required` — likewise, an
+  explicit switch for the droplet target only ("Committing before go-live"
+  above); `docker-local` keeps the default `advisory`. Order does not matter
+  against the two steps above (it is read by `join-api` at approval time, not
+  by the store bootstrap), but set it before the first real join on this
+  target — flipping it after a member has already gone `ACTIVE` closes the
+  window for every join from that point on, not retroactively for one that
+  already went live under `advisory`.
 - **Bootstrap the schema — using the ADMIN DSN, before `.env` ever points
   at the joinapi DSN below.** This step must run first (now that
   `datastore.kind: postgres` is set above), and it must run as admin,

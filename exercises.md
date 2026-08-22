@@ -145,6 +145,19 @@ itself; the operator token never reaches the browser.
 - `scripts/acceptance.sh` stays green, including the generic
   `acceptance/member.md` checks, which now run against PTSB too.
 
+**Variant: `join_workflow.commit_gate: required`.** Everything above runs
+under `deployment.yaml`'s default, `advisory` — `docker-local` never changes
+it, so this exercise's happy path is unaffected either way. To see the
+production posture instead (the droplet target's default): edit
+`deployment.yaml`, set `commit_gate: required` under `join_workflow:`,
+restart `join-api` (`scripts/join.sh down && scripts/join.sh up`), then
+re-run the submit/approve steps above. Approval now stops at a new step,
+`config.commit`, and the request goes `BLOCKED` — read the message it
+carries, run the `git add`/`git commit` it names, then Resume. `state`
+reaches `ACTIVE` from there exactly as before, just with the window closed:
+nothing was live before the commit that describes it. Set `commit_gate` back
+to `advisory` afterwards — exercises 3–5 assume the default.
+
 **Cleanup:** none yet — exercises 3 and 4 need this member.
 
 **Module:** `join-member` (manifest.yaml).
@@ -252,6 +265,10 @@ curl -X DELETE -H "X-KP2-Console: 1" \
 - The catalogue row is gone; tab 5 no longer lists `awards-api`.
 - `onboarding/ptsb/` is **retained**, and gains `99-retirement.md`. The
   record of a member that left is not itself deleted.
+- The `RETIRED` record carries `commit_pending: true` — un-join is
+  deliberately not gated on a commit the way exercise 2's variant gates a
+  join (`docs/production-delta.md` row 33 names the asymmetry), so this is
+  evidence, not a block: the deletion below still needs committing.
 - **Running the loop again is fine.** Re-submitting PTSB (exercise 2 a
   second time) replaces that retired `onboarding/ptsb/` wholesale — a
   re-joined member must not carry the retirement record of the membership

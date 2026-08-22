@@ -22,6 +22,7 @@ provisioning, added since this was written -- but neither is a second
 | **Persistence** | Named Docker volumes on one host | Backup, restore and recovery time (below) — answered for the droplet target specifically: a managed PostgreSQL backend behind `apps/join-api/store.py` (see `runbook.md`'s "The Postgres join store" section). Any other future target still has this dimension to decide for itself |
 | **Time** | The developer's laptop clock | NTP, mandatory (below) |
 | **Image acquisition** | Pull from Docker Hub / ghcr at deploy | Pre-pull, mirror, or accept the egress dependency (below) |
+| **Commit gate** | `join_workflow.commit_gate: advisory` — the console shows the live-but-uncommitted flag; nothing blocks a join from going live (`docs/production-delta.md` row 33) | `required`: the job BLOCKS at a `config.commit` step until the operator commits `configs/member-<key>/`, `manifest.yaml` and `onboarding/<key>/` — answered for the droplet target specifically (`runbook.md`'s "Committing before go-live"). Any other future target still has this dimension to decide for itself |
 
 ## Expected wall time and the healthcheck budget
 
