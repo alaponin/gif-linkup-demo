@@ -369,6 +369,39 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     closes; `apps/join-api/tests/test_job.py` is where "dirty → BLOCKED",
     "clean → proceeds" and "resume re-enters the gate" are each their own
     test.
+  - **Disabling the shared applicant token (`KP2_JOIN_APPLICANT_TOKEN=disabled`,
+    the droplet target's posture):** the shared credential described above
+    ("Issuing an agency its own credential") is what makes a zero-setup
+    demo possible, and it is exactly the row `docs/production-delta.md`
+    (row 28) calls out for a real federation: "the shared demo credential
+    must be disabled". Set `.env`'s `KP2_JOIN_APPLICANT_TOKEN` to the
+    literal string `disabled` — not empty; `docker-compose.yml`'s `:-`
+    default already passes an absent value through, so absence would
+    silently mean "disabled" the moment this line was forgotten, and
+    `disabled` is meant to be a deliberate, greppable act instead.
+    `require_applicant` (`apps/join-api/app.py`) then skips the
+    shared-token comparison entirely: every applicant call must arrive on
+    an issued per-agency credential (above). The console is unaffected —
+    its join tab holds the *operator* token server-side
+    (`docker-compose.yml`'s own comment on that service), never the
+    applicant one. `KP2_JOIN_OPERATOR_TOKEN` cannot be disabled the same
+    way — `join-api` refuses to start if it is set to the literal string
+    `disabled`.
+  - **Per-request ownership (`join_workflow.enforce_ownership: true`, the
+    droplet target's posture):** `deployment.yaml`'s default, `false`, is
+    what everything above describes — any applicant or operator credential
+    may read any request record. Flip it to `true` and `GET /requests/{id}`
+    **404**s (not 403 — no existence oracle, the same posture the
+    path-traversal case above has) for anyone but the operator, the issued
+    `applicant:<name>` credential whose name matches the record's
+    `submitted_by`, or — only while the shared token above is still
+    enabled — the shared applicant reading a `submitted_by: null` record.
+    Submission and the operator queue are unchanged. This switch is only
+    meaningful in combination with disabling the shared token above: with
+    it still enabled, every hand-typed applicant call shares one identity,
+    so ownership only ever protects per-agency (issued-token) records from
+    each other, nothing more. `docs/production-delta.md` row 28 is the
+    second half of the row this closes.
   - **A join with the member's OWN Security Server:** set
     `security_server.own_server: true` in the payload and leave `hosted_on`
     out. It has to be asked for explicitly — a payload with neither is

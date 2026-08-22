@@ -50,3 +50,14 @@ join_workflow:
   # config.commit until the member's config, manifest.yaml and
   # onboarding/<key>/ are committed (docs/production-delta.md row 33).
   commit_gate: advisory
+  # false (default): any applicant or operator credential may read any
+  # request record -- fine in a demo where one person plays both roles.
+  # true (the droplet target): GET /requests/{id} 404s for anyone but the
+  # operator, an issued applicant:<name> credential reading its own
+  # submission, or -- only while .env's KP2_JOIN_APPLICANT_TOKEN is still
+  # a real value, not "disabled" -- the shared applicant reading a
+  # submitted_by: null record (docs/production-delta.md row 28). Only
+  # meaningful once the shared token is also disabled; with it still
+  # enabled this protects per-agency records from each other, nothing
+  # more.
+  enforce_ownership: false

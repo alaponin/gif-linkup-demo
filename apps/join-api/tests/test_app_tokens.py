@@ -267,3 +267,62 @@ def test_the_token_store_is_not_mistaken_for_a_join_request(client):
     alike."""
     _issue(client, "ptsb")
     assert app_module.store.count_requests(_conn()) == 0
+
+
+# -- KP2_JOIN_APPLICANT_TOKEN=disabled (row 28, docs/production-delta.md) ------
+#
+# app.py reads APPLICANT_TOKEN/OPERATOR_TOKEN once, at import time, from the
+# environment -- so exercising the "disabled" sentinel needs its own import
+# under a distinct module name and a distinct env, same pattern
+# test_app_startup.py's own refusal test uses (os.environ backed up and
+# restored around a second exec_module call), rather than mutating the
+# module this file already imported above at collection time.
+
+
+def _import_app(tmp_path, *, applicant_token: str, operator_token: str = "test-operator-token"):
+    pack = tmp_path / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    env_backup = dict(os.environ)
+    os.environ["PACK_DIR"] = str(pack)
+    os.environ["OUT_DIR"] = str(tmp_path / "out")
+    os.environ["KP2_JOIN_APPLICANT_TOKEN"] = applicant_token
+    os.environ["KP2_JOIN_OPERATOR_TOKEN"] = operator_token
+    try:
+        spec = importlib.util.spec_from_file_location(
+            f"join_api_app_tokens_sentinel_{id(tmp_path)}",
+            pathlib.Path(__file__).resolve().parent.parent / "app.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        os.environ.clear()
+        os.environ.update(env_backup)
+
+
+def test_the_disabled_sentinel_turns_off_the_shared_applicant_token(tmp_path):
+    """require_applicant skips the shared-token comparison entirely once
+    APPLICANT_TOKEN == "disabled" -- the value that used to be the real
+    shared credential ("test-applicant-token") no longer authenticates
+    anything, but an issued per-agency credential still does."""
+    module = _import_app(tmp_path, applicant_token="disabled")
+    client = TestClient(module.app)
+    old_shared = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
+    assert client.get("/catalogue", headers=old_shared).status_code == 403
+
+    operator = {"Authorization": "Bearer test-operator-token", CONSOLE_HEADER: "1"}
+    issued = client.post("/tokens", json={"agency": "ptsb"}, headers=operator).json()["token"]
+    assert client.get("/catalogue", headers=_bearer(issued)).status_code == 200
+
+    # The operator credential is entirely unaffected by the applicant
+    # sentinel -- it is a different variable, checked by a different
+    # function (require_operator never reads APPLICANT_TOKEN at all).
+    assert client.get("/requests", headers=operator).status_code == 200
+
+
+def test_the_operator_token_cannot_be_set_to_the_disabled_sentinel(tmp_path):
+    """The asymmetry the sentinel is for: only KP2_JOIN_APPLICANT_TOKEN may
+    be "disabled" -- join-api refuses to start at all if
+    KP2_JOIN_OPERATOR_TOKEN is."""
+    with pytest.raises(RuntimeError, match="KP2_JOIN_OPERATOR_TOKEN.*disabled"):
+        _import_app(tmp_path, applicant_token="test-applicant-token", operator_token="disabled")

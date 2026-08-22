@@ -96,14 +96,32 @@ ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 TOKEN_PIN = os.environ["XROAD_TOKEN_PIN"]
 
 
-def _required_token(name: str) -> str:
+def _required_token(name: str, *, allow_disabled: bool = False) -> str:
     """scripts/lib-stack.sh refuses to run while XROAD_TOKEN_PIN or
     XROAD_ADMIN_PASSWORD are still a placeholder from .env.example
     on purpose. Same idea, applied
     here rather than in lib-stack.sh: only join-api cares about these two
     tokens, and every other script that sources lib-stack.sh (console.sh,
-    member.sh, ...) has no reason to fail over a secret it never uses."""
+    member.sh, ...) has no reason to fail over a secret it never uses.
+
+    `allow_disabled=True` is KP2_JOIN_APPLICANT_TOKEN's own switch (row 28,
+    docs/production-delta.md): the literal sentinel string "disabled",
+    returned as-is for require_applicant to recognise and skip the
+    shared-token comparison entirely -- not empty/absent, which
+    docker-compose.yml's `:-` default already passes through, so absence
+    would silently mean "disabled" the moment an operator forgot the .env
+    line. Every other caller (KP2_JOIN_OPERATOR_TOKEN) has that literal
+    string refused outright -- the operator credential can never be
+    disabled this way."""
     value = os.environ.get(name, "")
+    if value == "disabled":
+        if allow_disabled:
+            return value
+        raise RuntimeError(
+            f"join-api: {name} is set to the literal string 'disabled', which "
+            "only KP2_JOIN_APPLICANT_TOKEN may be. Set a real token (run "
+            "scripts/gen-secrets.sh)."
+        )
     if not value or "CHANGEME" in value:
         raise RuntimeError(
             f"join-api: {name} is unset or still the .env.example placeholder. "
@@ -112,7 +130,7 @@ def _required_token(name: str) -> str:
     return value
 
 
-APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN")
+APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN", allow_disabled=True)
 OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN")
 
 # -- store backend selection (plan §1.6) ---------------------------------------
@@ -150,6 +168,21 @@ if _COMMIT_GATE not in ("advisory", "required"):
         f"join-api: deployment.yaml join_workflow.commit_gate {_COMMIT_GATE!r} is not "
         "'advisory' or 'required'."
     )
+
+# deployment.yaml's join_workflow.enforce_ownership (docs/production-delta.md
+# row 28): False (default, docker-local) is today's behaviour -- any
+# applicant or operator credential may read any request record. True (the
+# droplet target) turns on the one comparison this module used to promise
+# was missing -- see _owns_record below, applied to GET /requests/{id}. Read
+# and validated here, next to _COMMIT_GATE, for the same reason: a bad value
+# fails loudly at startup rather than an app.py route silently treating a
+# typo as "false".
+_ENFORCE_OWNERSHIP = (_deployment_doc.get("join_workflow") or {}).get("enforce_ownership", False)
+if not isinstance(_ENFORCE_OWNERSHIP, bool):
+    raise RuntimeError(
+        f"join-api: deployment.yaml join_workflow.enforce_ownership {_ENFORCE_OWNERSHIP!r} is not "
+        "true or false."
+    )
 # Same _required_token refusal APPLICANT_TOKEN/OPERATOR_TOKEN get above,
 # applied to the Postgres DSN: unset or still the .env.example CHANGEME
 # placeholder must fail loudly at startup, not hand psycopg a string it will
@@ -186,12 +219,13 @@ def _require_console_origin(request: Request) -> None:
 # Bearer-token auth: two roles, applicant and
 # operator, each its own token from scripts/gen-secrets.sh, plus any number
 # of named applicant credentials the operator issues (POST /tokens below).
-# Deliberately still no per-request OWNERSHIP: in a demo where one person
-# plays both roles it is machinery guarding a boundary nobody crosses. The
-# `submitted_by` field that restoring it needs now exists and is recorded;
-# what is missing is the one comparison, and it stays missing until the
-# module is run with genuinely separate applicant/operator actors. The
-# *asymmetry* is the teaching point: an applicant cannot approve.
+# Per-request OWNERSHIP -- the one comparison this comment used to say was
+# deliberately missing -- now exists, behind deployment.yaml's
+# join_workflow.enforce_ownership (default false, docker-local: in a demo
+# where one person plays both roles it is machinery guarding a boundary
+# nobody crosses). See _owns_record below, applied to GET /requests/{id}.
+# The *asymmetry* stays the teaching point regardless: an applicant cannot
+# approve.
 def _bearer_token(request: Request) -> str:
     header = request.headers.get("authorization", "")
     scheme, _, value = header.partition(" ")
@@ -237,7 +271,13 @@ def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_con
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
-    if secrets.compare_digest(token, APPLICANT_TOKEN):
+    # APPLICANT_TOKEN == "disabled" (row 28, docs/production-delta.md):
+    # the shared credential is off, and the comparison against it is
+    # skipped entirely rather than attempted -- every applicant call must
+    # arrive on an issued per-agency credential instead (below). The
+    # console is unaffected: its join tab holds the *operator* token
+    # server-side (docker-compose.yml's own comment), never this one.
+    if APPLICANT_TOKEN != "disabled" and secrets.compare_digest(token, APPLICANT_TOKEN):
         return "applicant"
     row = store.find_token(db, _token_digest(token))
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -535,9 +575,9 @@ def submit_request(
     db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """Validate synchronously (eleven per-request checks plus
-    lawful_basis, sla_required and spec_url_origin, additions beyond those
-    eleven -- validate.py's own module docstring: check 5 moved to
-    generate-time),
+    lawful_basis, sla_required, spec_url_origin and allowed_backend_auth,
+    additions beyond those eleven -- validate.py's own module docstring:
+    check 5 moved to generate-time),
     then either persist
     a REJECTED record or -- on success -- write the candidate config to a
     throwaway copy of the pack, run its generate.py, and persist a SUBMITTED
@@ -596,7 +636,7 @@ def submit_request(
     try:
         diff = writer.dry_run_diff(PACK_DIR, key, payload)
     except writer.GenerateFailure as exc:
-        # Every one of the fourteen per-request checks passed, but generate.py itself still
+        # Every one of the fifteen per-request checks passed, but generate.py itself still
         # refused the result (e.g. check_join_policy's static cross-check) --
         # a real, if rarer, rejection. Surfaced the same way: a REJECTED
         # record, never a bare 500 -- submission always
@@ -651,11 +691,35 @@ def submit_request(
     return record
 
 
+def _owns_record(role: str, record: dict) -> bool:
+    """True if `role` (require_applicant's return value) may read `record`
+    under join_workflow.enforce_ownership: true (docs/production-delta.md
+    row 28). The operator reads everything. An issued applicant:<name>
+    credential reads only the record it submitted -- name equals
+    submitted_by, nothing looser. The shared applicant token reads only a
+    record with submitted_by: null -- the ones nothing else could have
+    submitted; role can only BE the bare "applicant" value when the shared
+    token matched in require_applicant, which cannot happen at all once
+    APPLICANT_TOKEN == "disabled" (require_applicant skips that comparison
+    entirely), so this branch is already conditioned on the shared token
+    still being enabled without a separate check for it here.
+
+    Ownership enforcement is only meaningful once the shared token is also
+    disabled: with it still enabled, every hand-typed applicant call shares
+    one identity, so this only ever protects per-agency (issued-token)
+    records from each other, nothing more."""
+    if role == "operator":
+        return True
+    if role.startswith("applicant:"):
+        return role.split(":", 1)[1] == record.get("submitted_by")
+    return record.get("submitted_by") is None
+
+
 @app.get("/requests/{request_id}")
 def get_request(
     request_id: str,
     _origin: None = Depends(_require_console_origin),
-    _role: str = Depends(require_applicant),
+    role: str = Depends(require_applicant),
     db: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     """The whole record, which also carries last_completed_step, the job
@@ -663,9 +727,15 @@ def get_request(
     FAILED. Deliberately the RAW record
     (test_app_requests.py asserts GET round-trips POST's response
     byte-for-byte) -- the derived, operator-only view (_record_view below)
-    lives on GET /requests instead, not here."""
+    lives on GET /requests instead, not here.
+
+    Not owning a record that exists 404s exactly like a request id that
+    does not exist at all (_owns_record, join_workflow.enforce_ownership) --
+    the same message, the same status: no existence oracle, matching the
+    path-traversal rule's 404 posture elsewhere in this module
+    (test_get_request_id_path_traversal_never_reaches_the_filesystem)."""
     record = _load_request(db, request_id)
-    if record is None:
+    if record is None or (_ENFORCE_OWNERSHIP and not _owns_record(role, record)):
         raise HTTPException(404, f"no join request {request_id!r}")
     return record
 
