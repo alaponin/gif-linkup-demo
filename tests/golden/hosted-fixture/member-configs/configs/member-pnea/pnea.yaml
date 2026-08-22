@@ -21,7 +21,12 @@ security_server:
   dns_name: ss-pnea
   hosted_on: ss-plr
 client:
-  connection_type: HTTP        # demo only — production: HTTPS + client TLS certificate
+  # Tracks the real configs/member-pnea/pnea.yaml, which this copy must not
+  # drift from in any field hurl/generate.py reads -- the reasoning for the
+  # value lives there and in docs/production-delta.md row 19, not restated
+  # here. Load-bearing for THIS fixture specifically: it is what makes the
+  # hosted-member scenario render the ss.internal_tls_cert step at all.
+  connection_type: HTTPS_NO_AUTH
 services: []                   # consumer in v0.1; provides nothing
 consumes:                      # the exchange this member exists for (wired in 2.6)
   - PROGRESSA/GOV/PNIA/IDENTITY/identity-api

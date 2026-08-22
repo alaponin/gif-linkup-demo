@@ -15,10 +15,30 @@ declare -A SS_REST=(
   [ss-plr]=3080
   [ss-pnia]=5180
 )
+# The TLS client proxy (:8443), for a client whose connection_type is
+# HTTPS/HTTPS_NO_AUTH -- docs/production-delta.md row 19. SS_REST stays the
+# plain :8080 mapping; which of the two a caller uses is decided by the
+# CONSUMER's connection_type, not by the server.
+declare -A SS_REST_TLS=(
+  [ss-pdga]=1443
+  [ss-pnea]=2443
+  [ss-plr]=3443
+  [ss-pnia]=5543
+)
 SS_ORDER=(ss-pdga ss-pnea ss-plr ss-pnia)
 declare -A HOST_SS=(
   [PDGA:MANAGEMENT]=ss-pdga
   [PNIA:IDENTITY]=ss-pnia
   [PLR:ENROLMENT]=ss-plr
   [PNEA:EXAMS]=ss-pnea
+)
+# Each client's own connection_type -- HTTP means talk to SS_REST, anything
+# else means talk to SS_REST_TLS and verify the certificate
+# (docs/production-delta.md row 19). PDGA:MANAGEMENT is not a discovered
+# member, same as in HOST_SS above, so it is stated here rather than derived.
+declare -A CLIENT_CONN=(
+  [PDGA:MANAGEMENT]=HTTP
+  [PNIA:IDENTITY]=HTTP
+  [PLR:ENROLMENT]=HTTP
+  [PNEA:EXAMS]=HTTPS_NO_AUTH
 )

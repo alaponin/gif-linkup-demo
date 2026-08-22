@@ -12,7 +12,7 @@ services:
   # type/forwarding URL/enabled/tls_verify: not config fields, see 2.2.yaml's
   # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
   - code: identity-api
-    spec_url: http://app-pnia:8000/spec.yaml
+    spec_url: https://app-pnia:8443/spec.yaml
     lawful_basis: "National Identity Decree, purpose-limited person lookup for credential issuance" # illustrative wording, not a real signed statute reference
     access:                    # deliberate: PNEA only — PLR:ENROLMENT excluded (negative check 2.6)
       - PROGRESSA/GOV/PNEA/EXAMS

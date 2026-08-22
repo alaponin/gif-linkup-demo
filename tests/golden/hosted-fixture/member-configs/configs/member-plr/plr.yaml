@@ -12,7 +12,7 @@ services:
   # type/forwarding URL/enabled/tls_verify: not config fields, see 2.2.yaml's
   # comment -- hurl/generate.py never reads them. Dogfooded 2026-07-25.
   - code: enrolment-api
-    spec_url: http://app-plr:8000/spec.yaml
+    spec_url: https://app-plr:8443/spec.yaml
     lawful_basis: "Learner Registry Act, PLR as the authoritative source of enrolment records" # illustrative wording, not a real signed statute reference
     access:                    # deliberate: PNEA only (negative check 2.6 now tests PNIA's identity-api, not this service)
       - PROGRESSA/GOV/PNEA/EXAMS

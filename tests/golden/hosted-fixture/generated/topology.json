@@ -12,7 +12,9 @@
       "ui_port": 4000,
       "proxy_port": 8080,
       "host_ui_port": 1000,
-      "host_proxy_port": 1080
+      "host_proxy_port": 1080,
+      "proxy_tls_port": 8443,
+      "host_proxy_tls_port": 1443
     },
     {
       "code": "SS-PLR",
@@ -20,7 +22,9 @@
       "ui_port": 4000,
       "proxy_port": 8080,
       "host_ui_port": 3000,
-      "host_proxy_port": 3080
+      "host_proxy_port": 3080,
+      "proxy_tls_port": 8443,
+      "host_proxy_tls_port": 3443
     },
     {
       "code": "SS-PNIA",
@@ -28,7 +32,9 @@
       "ui_port": 4000,
       "proxy_port": 8080,
       "host_ui_port": 5100,
-      "host_proxy_port": 5180
+      "host_proxy_port": 5180,
+      "proxy_tls_port": 8443,
+      "host_proxy_tls_port": 5543
     }
   ],
   "subsystems": [
@@ -38,6 +44,7 @@
       "member_name": "Progressa National Identity Authority",
       "subsystem_code": "IDENTITY",
       "hosted_on": "ss-pnia",
+      "connection_type": "HTTP",
       "origin": "canonical",
       "services": [
         {
@@ -54,6 +61,7 @@
       "member_name": "Progressa Learner Registry",
       "subsystem_code": "ENROLMENT",
       "hosted_on": "ss-plr",
+      "connection_type": "HTTP",
       "origin": "canonical",
       "services": [
         {
@@ -70,6 +78,7 @@
       "member_name": "Progressa National Examination Authority",
       "subsystem_code": "EXAMS",
       "hosted_on": "ss-plr",
+      "connection_type": "HTTPS_NO_AUTH",
       "origin": "canonical",
       "services": []
     }

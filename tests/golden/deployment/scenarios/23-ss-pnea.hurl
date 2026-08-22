@@ -234,6 +234,73 @@ X-XSRF-TOKEN: {{ss_pnea_xsrf_token}}
 
 HTTP 201
 
+# Replace this Security Server's INTERNAL TLS certificate with one the Test CA
+# issued for ss-pnea (docs/production-delta.md row 19).
+#
+# The internal TLS certificate is what the client proxy presents on :8443 --
+# the port a client whose connection_type is HTTPS/HTTPS_NO_AUTH must use.
+# Out of the box the sidecar generates it self-signed, with the CONTAINER ID
+# as its CN and no subjectAltName at all, so an information system connecting
+# to `ss-pnea` cannot verify it against anything: the only options left are
+# pinning that exact certificate per caller, or turning verification off. This
+# replaces it with one that chains to the same trust anchor the federation
+# already distributes, so every caller verifies it with a CA bundle and
+# nothing pins anything.
+#
+# Three calls, exactly the shape SS_AUTH_KEY_CSR.hurl.tmpl already uses for
+# the AUTH certificate: ask the server for a CSR, have the Test CA sign it,
+# import the result. type=auth is deliberate -- the Test CA's auth_ext is the
+# only one of its profiles carrying `extendedKeyUsage = clientAuth,
+# serverAuth`, which is what makes the issued certificate usable as a SERVER
+# certificate at all. Verified live before this was written.
+#
+# DEMO ONLY: the Test CA signs whatever it is asked to. A real deployment
+# gets this certificate from its own accredited CA -- the API calls are the
+# same three, only the signer changes.
+POST https://{{ss_pnea_host}}:4000/api/v1/system/certificate/csr
+X-XSRF-TOKEN: {{ss_pnea_xsrf_token}}
+Content-Type: application/json
+{
+  "name": "CN=ss-pnea"
+}
+
+HTTP 200
+
+[Captures]
+ss_pnea_internal_tls_csr: body
+
+# Sign it against the Test CA (needs a filename, hence the raw multipart body)
+POST http://{{ca_host}}:8888/testca/sign
+Content-Type: multipart/form-data; boundary=certboundary
+```
+--certboundary
+Content-Disposition: form-data; name="type"
+
+auth
+--certboundary
+Content-Disposition: form-data; name="certreq"; filename="auth.csr.pem"
+
+{{ss_pnea_internal_tls_csr}}
+--certboundary--
+```
+
+HTTP 200
+
+[Captures]
+ss_pnea_internal_tls_cert: body
+
+# Import it. The client proxy picks the new certificate up without a restart
+# -- confirmed live with `openssl s_client -connect ss-pnea:8443` immediately
+# after this call returned.
+POST https://{{ss_pnea_host}}:4000/api/v1/system/certificate/import
+X-XSRF-TOKEN: {{ss_pnea_xsrf_token}}
+Content-Type: application/octet-stream
+```
+{{ss_pnea_internal_tls_cert}}
+```
+
+HTTP 200
+
 # Add PNEA:EXAMS as a client of ss-pnea
 POST https://{{ss_pnea_host}}:4000/api/v1/clients
 X-XSRF-TOKEN: {{ss_pnea_xsrf_token}}
@@ -243,7 +310,7 @@ X-XSRF-TOKEN: {{ss_pnea_xsrf_token}}
     "member_class": "{{member_class}}",
     "member_code": "PNEA",
     "subsystem_code": "EXAMS",
-    "connection_type": "HTTP"
+    "connection_type": "HTTPS_NO_AUTH"
   }
 }
 
