@@ -40,7 +40,8 @@ Everything below is the engineering depth under those three.
 - **~10.9–11.1 GiB RAM in steady state**, measured live for the current
   4-Security-Server topology (`docker stats --no-stream`: four Security
   Servers ~2.2–2.3 GiB each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB,
-  two mock providers ~32 MiB each). Fits comfortably in 16 GB. There is one
+  mock providers ~65 MiB each, up from ~32 MiB before each grew a second,
+  TLS listener). Fits comfortably in 16 GB. There is one
   topology: no smaller alternative to opt into — an earlier 5-server
   topology including MoEYS measured ~13 GB before MoEYS was retired.
 - `curl`, `jq`, `python3` on the workstation.
@@ -436,6 +437,29 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     (`apps/join-api/validate.py`'s `allowed_backend_auth` check), naming
     `join-policy.yaml` in the rejection message, rather than merely
     discouraged in prose.
+  - **Requiring https on `spec_url` (`join_workflow.require_https_spec_url:
+    true`, the droplet target's posture):** `deployment.yaml`'s default,
+    `false`, accepts a plain-http `spec_url` exactly as this pack always
+    did — deliberately, so the demo's own fixtures could move to https
+    ahead of the switch rather than only with it. Flip it to `true` and a
+    join declaring an http (or scheme-less) `spec_url` is **REJECTED** at
+    request time on check `https_spec_url`
+    (`apps/join-api/validate.py`), *before* check 9 ever fetches the URL —
+    the rejection names the offending service, its `spec_url`, the scheme it
+    used and this key. Ordering is deliberate: `spec_url_origin` runs first,
+    so a `file:///pack/.env` is rejected as an unfetchable origin, not told
+    it is merely "not https".
+    What this buys, precisely: the join-api → `spec-fetcher` → member-backend
+    fetch is verified (`apps/spec-fetcher/app.py` adds the deployment's CA
+    bundle to a stock `ssl.create_default_context()`, so a certificate that
+    chains to nothing trusted fails the fetch) and encrypted. It is **not**
+    end-to-end verification: the Security Server's own later fetch of the
+    same `spec_url`, when it adds the service description, does not verify
+    the backend certificate — measured live against 7.7.0. So flipping this
+    on requires each joining member to serve its OpenAPI description over
+    https with a certificate chaining to a CA this federation trusts; a
+    self-signed one fails validation, which is the point.
+    `docs/production-delta.md` row 18 is the row this closes.
   - **A join with the member's OWN Security Server:** set
     `security_server.own_server: true` in the payload and leave `hosted_on`
     out. It has to be asked for explicitly — a payload with neither is
