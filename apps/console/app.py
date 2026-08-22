@@ -22,8 +22,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
+import console_logging as logging_setup
 import journal as journal_mod
-import logging_setup
 import truth as truth_mod
 import xroad
 
@@ -56,10 +56,15 @@ HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
 
 # JSON-lines to stdout, scrubbed of ADMIN_PASSWORD/JOIN_OPERATOR_TOKEN
-# (logging_setup.py's own docstring) -- replaces the previous "uvicorn
-# configures the root handlers, so this lands in `docker logs console` with
-# no setup of our own" default, for consistency with apps/join-api's own
-# structured logging (production-hardening-plan.md's E.1).
+# (console_logging.py's own docstring, imported here as `logging_setup` --
+# apps/join-api/app.py has its own, different, same-named module; a bare
+# `import logging_setup` in both would collide in sys.modules the moment
+# both services' test suites load in one pytest session -- found live,
+# closed by giving the two files distinct names) -- replaces the previous
+# "uvicorn configures the root handlers, so this lands in `docker logs
+# console` with no setup of our own" default, for consistency with
+# apps/join-api's own structured logging (production-hardening-plan.md's
+# E.1).
 _LOG = logging_setup.configure("kp2.console", {"admin_password": ADMIN_PASSWORD, "join_operator_token": JOIN_OPERATOR_TOKEN})
 
 # _mutate_acl is reached from `def` (not

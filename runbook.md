@@ -612,7 +612,7 @@ you.
 
 **Structured logs.** Both `join-api` and `console` write one JSON object
 per line to stdout (`docker logs join-api` / `docker logs console`), built
-by `apps/join-api/logging_setup.py` / `apps/console/logging_setup.py` --
+by `apps/join-api/join_logging.py` / `apps/console/console_logging.py` --
 stdlib `logging` only. Every record is scrubbed of the credentials this
 process holds (`job.scrub(..., JOB_SECRETS)` on join-api; the equivalent on
 console) before it is formatted, the same guard subprocess output already

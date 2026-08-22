@@ -46,7 +46,7 @@ from fastapi.responses import PlainTextResponse
 # import work either way, without requiring every test file to do it.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import job  # noqa: E402
-import logging_setup  # noqa: E402
+import join_logging as logging_setup  # noqa: E402
 import schema  # noqa: E402
 import store  # noqa: E402
 import validate  # noqa: E402
@@ -110,18 +110,6 @@ JOB_SECRETS = {
     "token_pin": TOKEN_PIN,
 }
 
-# -- structured logging (E.1, docs/production-delta.md row 34) --------------
-# JSON-lines to stdout, stdlib `logging` only -- logging_setup.py's own
-# docstring has the full design. Every record this logger emits passes
-# through job.scrub(..., JOB_SECRETS) first (logging_setup.ScrubFilter),
-# the identical guard app.py already applies to subprocess output before
-# persisting it (JOB_SECRETS' own comment below, `job.scrub` calls at this
-# file's GenerateFailure/RollbackFailure handlers) -- logs are the same
-# class of sink, and get the same treatment, tested the same way
-# (tests/test_app_health.py: a log record built from a real secret value
-# must not contain it once formatted).
-_LOG = logging_setup.configure("kp2.join-api", JOB_SECRETS)
-
 
 def _required_token(name: str, *, allow_disabled: bool = False) -> str:
     """scripts/lib-stack.sh refuses to run while XROAD_TOKEN_PIN or
@@ -164,6 +152,46 @@ def _required_token(name: str, *, allow_disabled: bool = False) -> str:
 
 APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN", allow_disabled=True)
 OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN")
+
+# -- structured logging (E.1, docs/production-delta.md row 34) --------------
+# JSON-lines to stdout, stdlib `logging` only -- join_logging.py's own
+# docstring has the full design (imported here as `logging_setup` --
+# apps/console/app.py has its own, different, same-named module; a bare
+# `import logging_setup` in both would let whichever service's test file
+# collects first in one pytest session win the cache and leave the other
+# silently testing the wrong file -- found live, closed by giving the two
+# files distinct names). Every record this logger emits is scrubbed
+# of the full secret set below (logging_setup.JsonFormatter scrubs the
+# payload recursively, before serializing it -- message, extra_fields and
+# exc_info together, not just the message channel) -- the identical guard
+# app.py already applies to subprocess output before persisting it
+# (JOB_SECRETS' own comment above, `job.scrub` calls at this file's
+# GenerateFailure/RollbackFailure handlers). Logs are the same class of
+# sink, and get the same treatment, tested the same way
+# (tests/test_app_health.py: a log record built from a real secret value --
+# including a bearer token, not just JOB_SECRETS' three -- must not contain
+# it once formatted).
+#
+# Bearer tokens are credentials exactly like the admin password/token PIN
+# (runbook.md's Observability section says so), so they belong in this set
+# too -- built here, after APPLICANT_TOKEN/OPERATOR_TOKEN are read, rather
+# than left at JOB_SECRETS alone.
+def _log_secrets(job_secrets: dict[str, str], operator_token: str, applicant_token: str) -> dict[str, str]:
+    """A function, not inline module-level code, so tests/test_app_health.py
+    can exercise the applicant_token=="disabled" branch directly with the
+    real guard rather than a copy of its logic. APPLICANT_TOKEN can
+    legitimately hold the literal sentinel "disabled" (row 28) -- that is a
+    marker string, not a secret, and scrubbing it would turn every
+    unrelated occurrence of the word "disabled" anywhere in a log line into
+    "***"."""
+    secrets = dict(job_secrets, operator_token=operator_token)
+    if applicant_token != "disabled":
+        secrets["applicant_token"] = applicant_token
+    return secrets
+
+
+_LOG_SECRETS = _log_secrets(JOB_SECRETS, OPERATOR_TOKEN, APPLICANT_TOKEN)
+_LOG = logging_setup.configure("kp2.join-api", _LOG_SECRETS)
 
 # -- store backend selection (plan §1.6) ---------------------------------------
 # deployment.yaml's datastore.kind: the seam that makes `kind: postgres` fail
