@@ -17,15 +17,25 @@ same size as the code it tests.
 """
 from __future__ import annotations
 
+import importlib.util
 import pathlib
-import sys
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import app as app_module  # noqa: E402
+# Loaded by path under a distinct module name, not `sys.path.insert` +
+# `import app` -- apps/console, apps/join-api and apps/mock-registry all
+# have their own app.py, and when verify.sh runs every apps/*/tests
+# directory in one pytest session, a plain `import app` here would
+# silently reuse whichever one of those got imported first instead of
+# loading this one (same fix as apps/join-api/tests/test_app_health.py and
+# apps/mock-registry/tests/test_app.py).
+_spec = importlib.util.spec_from_file_location(
+    "spec_fetcher_app", pathlib.Path(__file__).resolve().parent.parent / "app.py"
+)
+app_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(app_module)
 
 GOOD_HOST = "app-ptsb"
 GOOD_URL = f"http://{GOOD_HOST}:8000/spec.yaml"

@@ -9,7 +9,7 @@
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
 # Ids today are 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
-# 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1,
+# 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.2,
 # 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>),
 # 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>),
 # 2.7.unjoin.catalogue(<member>) and 2.7.unjoin.topology
@@ -614,7 +614,7 @@ PY
 # match every id under module 2,
 # same as it already does for 2.1/2.6) silently skipped this whole section
 # with no SKIP log line to say so.
-_27_IDS=(2.7.1)
+_27_IDS=(2.7.1 2.7.2)
 for _row in "${_27_ROWS[@]}"; do
   IFS=$'\t' read -r _ _code _svc _ _ _ _ _ _ <<<"$_row"
   _27_IDS+=("2.7.r1(${_code}.${_svc})" "2.7.deny(${_code}.${_svc})" "2.7.fields(${_code}.${_svc})"
@@ -786,6 +786,30 @@ if _selection_touches_27; then
 
   check_271() { curl -sf "http://${XROAD_BIND}:8091/health" | jq -e '.status=="ok"' >/dev/null; }
   check 2.7.1 "join-api deploys and reports healthy" check_271
+
+  # docs/production-delta.md row 41's actual claim, tested every run rather
+  # than asserted once: the topology (docker-compose.yml's `specs` network,
+  # internal: true) is the guard, not an allowlist -- so this asserts BOTH
+  # halves of that claim against the real running containers, not the
+  # rendered Compose config (config could say "internal: true" and still be
+  # wrong about which services are actually on which network). Positive
+  # half: join-api can reach spec-fetcher (SPEC_FETCHER_URL depends on
+  # exactly this). Negative half: spec-fetcher -- the one container that
+  # would receive an SSRF payload in a spec_url -- cannot reach the admin
+  # plane at all. `cs:4000` stands in for "any admin API"; spec-fetcher has
+  # no route to ANY host off the `specs` network (internal: true forbids
+  # egress too), so this one negative probe is representative, not a partial
+  # check of a larger allowlist.
+  check_272_positive() {
+    "${COMPOSE_DEMO[@]}" exec -T join-api \
+      python3 -c "import socket; socket.create_connection(('spec-fetcher', 8000), timeout=3)"
+  }
+  check_272_negative() {
+    ! "${COMPOSE_DEMO[@]}" exec -T spec-fetcher \
+      python3 -c "import socket; socket.create_connection(('cs', 4000), timeout=3)" 2>/dev/null
+  }
+  check_272() { check_272_positive && check_272_negative; }
+  check 2.7.2 "spec-fetcher reachable from join-api, admin :4000 (cs) NOT reachable from spec-fetcher" check_272
 
   # The catalogue, read the way a member reads it -- through the API, with
   # the applicant token, not off the file the same process wrote. Comparing
@@ -1017,10 +1041,10 @@ PY
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.2, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.2, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 
 if [ "$SELECT_MODE" = all ]; then

@@ -68,7 +68,7 @@ run_fast() {
   # the deploy path (hurl/run-linkup.sh), where the cost it guards against
   # actually lives.
 
-  log "pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/"
+  log "pytest tests/ apps/console/tests/ apps/join-api/tests/ apps/mock-registry/tests/ apps/spec-fetcher/tests/"
   # The venv is machine-local: gitignored, and the CI rsync excludes it
   # from the droplet (a macOS venv is not a Linux one). So every machine
   # that is not the laptop it was first built on -- CI droplet, fresh
@@ -79,7 +79,7 @@ run_fast() {
     python3 -m venv "$PACK_DIR/.venv" || fail "python3 -m venv failed -- on Debian/Ubuntu the stdlib venv module ships separately: apt-get install python3-venv (infra/terraform/cloud-init.yaml installs it on the droplet)."
     "$PYTEST" -m pip install -q -r "$PACK_DIR/requirements-dev.txt"
   fi
-  "$PYTEST" -m pytest "$PACK_DIR/tests" "$PACK_DIR/apps/console/tests" "$PACK_DIR/apps/join-api/tests" "$PACK_DIR/apps/mock-registry/tests" -q
+  "$PYTEST" -m pytest "$PACK_DIR/tests" "$PACK_DIR/apps/console/tests" "$PACK_DIR/apps/join-api/tests" "$PACK_DIR/apps/mock-registry/tests" "$PACK_DIR/apps/spec-fetcher/tests" -q
 }
 
 run_live() {
