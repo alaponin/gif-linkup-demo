@@ -728,11 +728,23 @@ function renderJoinRequest(record) {
     // is a better source for it.
     const key = (payload.code || "").toLowerCase();
     const blocked = record.blocked || {};
-    html += `<div class="join-blocked">Waiting on the joining member's own Security Server`
-      + `${blocked.server ? ` <code>${esc(blocked.server)}</code>` : ""} &mdash; `
-      + `this API cannot stand it up, and in a real federation could not. `
-      + `Run this on the Docker host, then Resume:`
-      + `<pre class="join-blocked-command">scripts/join-agent.sh ${esc(key)}</pre></div>`;
+    if (blocked.step === "config.commit") {
+      // join_workflow.commit_gate: required (docs/production-delta.md row
+      // 33) -- there is no server to stand up here, so this branch does NOT
+      // fall into the join-agent.sh copy below: that text would send the
+      // operator to run the wrong command for the wrong problem. job.py
+      // composes the exact git commands into blocked.message; render it
+      // verbatim (escaped, like every other record-derived string on this
+      // tab) rather than re-deriving them here, so the two cannot drift.
+      html += `<div class="join-blocked">commit required before ${esc(payload.code || key)} can go live `
+        + `&mdash; then Resume:<pre class="join-blocked-command">${esc(blocked.message || "")}</pre></div>`;
+    } else {
+      html += `<div class="join-blocked">Waiting on the joining member's own Security Server`
+        + `${blocked.server ? ` <code>${esc(blocked.server)}</code>` : ""} &mdash; `
+        + `this API cannot stand it up, and in a real federation could not. `
+        + `Run this on the Docker host, then Resume:`
+        + `<pre class="join-blocked-command">scripts/join-agent.sh ${esc(key)}</pre></div>`;
+    }
     html += renderJoinSteps(record);
     html += `<div class="join-actions">`
       + `<button class="action join-resume-btn" data-id="${esc(record.id)}">Resume</button>`

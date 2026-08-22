@@ -190,7 +190,7 @@ def test_join_render_paths_escape_every_payload_derived_field():
     unescaped_patterns = [
         "${payload.name}", "${payload.code}", "${record.diff}", "${record.submitted_at}",
         "${r.check}", "${r.message}", "${e.step}", "${e.message}",
-        "${step.id}", "${step.actor}", "${record.id}",
+        "${step.id}", "${step.actor}", "${record.id}", "${blocked.message}",
     ]
     for pattern in unescaped_patterns:
         assert pattern not in src, f"{pattern!r} is interpolated into app.js without esc()"
@@ -198,7 +198,7 @@ def test_join_render_paths_escape_every_payload_derived_field():
     must_be_escaped = [
         "esc(payload.code", "esc(payload.name", "esc(record.diff",
         "esc(r.check", "esc(r.message", "esc(e.step", "esc(e.message",
-        "esc(step.id", "esc(step.actor", "esc(record.id",
+        "esc(step.id", "esc(step.actor", "esc(record.id", "esc(blocked.message",
     ]
     for expected in must_be_escaped:
         assert expected in src, f"expected {expected!r} in app.js's join render path"
@@ -224,6 +224,23 @@ def test_the_blocked_card_names_the_agent_command_with_the_members_own_key():
     assert "esc(blocked.server" in src
     # BLOCKED marks the actor: member step it is waiting on as the current one.
     assert 'record.state === "BLOCKED") && i === lastIdx + 1' in src
+
+
+def test_the_blocked_card_renders_the_commit_gate_message_not_the_agent_command():
+    """join_workflow.commit_gate: required (docs/production-delta.md row 33)
+    BLOCKs at config.commit -- a different problem from the member-server
+    wait the card was originally written for, and the join-agent.sh text
+    would send an operator to run the wrong command. This must be its own
+    branch, keyed off blocked.step, rendering job.py's own message rather
+    than a re-derived one."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "static" / "app.js").read_text()
+    assert 'blocked.step === "config.commit"' in src
+    assert "esc(blocked.message" in src
+    # ...and the member-server branch (join-agent.sh) must not fire for it --
+    # both branches share the same `state === "BLOCKED"` guard, so the split
+    # has to be an if/else, not two independent conditions that could both
+    # render.
+    assert "} else {" in src.split('blocked.step === "config.commit"', 1)[1].split("scripts/join-agent.sh", 1)[0]
 
 
 def test_the_blocked_state_has_its_own_style_like_every_other_state():
