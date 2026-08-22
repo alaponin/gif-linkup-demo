@@ -386,27 +386,6 @@ clauses:
   evidence:
     - {path: docs/conventions.md}
 
-- id: G4.9
-  section: G4
-  clause: The information-system-to-Security-Server connection is TLS, and the server is authenticated
-  status: simulated
-  note: >-
-    Exercised for real, with the fidelity faked exactly where this pack always
-    fakes it. PNEA's client is HTTPS_NO_AUTH and X-Road refuses the plaintext
-    client proxy for it outright; the server's internal TLS certificate is
-    replaced with one issued for its own DNS name, so every consumer caller
-    verifies against a CA bundle rather than pinning a self-signed certificate
-    or turning verification off. The simulation is the issuer: the Test CA,
-    declared demo-only throughout this pack. NOT claimed, and stated as a gap
-    in the same row: client authentication -- HTTPS_NO_AUTH authenticates the
-    server to the information system, not the information system to the
-    server, which is what full HTTPS with a client certificate adds.
-  evidence:
-    - {path: configs/member-pnea/pnea.yaml, symbol: HTTPS_NO_AUTH}
-    - {path: hurl/templates/fragments/SS_INTERNAL_TLS_CERT.hurl.tmpl, symbol: certificate/import}
-    - {path: scripts/lib-stack.sh, symbol: rest_base}
-    - {path: docs/production-delta.md, symbol: HTTPS NO AUTH but client made plaintext connection}
-
 - id: G4.4
   section: G4
   clause: Monitoring add-ons installed on the Security Server at G4
@@ -469,6 +448,27 @@ clauses:
     - {path: docs/decisions/xroad-metrics-notes.md}
 
 # -- G5 ----------------------------------------------------------------------
+
+- id: G4.9
+  section: G4
+  clause: The information-system-to-Security-Server connection is TLS, and the server is authenticated
+  status: simulated
+  note: >-
+    Exercised for real, with the fidelity faked exactly where this pack always
+    fakes it. PNEA's client is HTTPS_NO_AUTH and X-Road refuses the plaintext
+    client proxy for it outright; the server's internal TLS certificate is
+    replaced with one issued for its own DNS name, so every consumer caller
+    verifies against a CA bundle rather than pinning a self-signed certificate
+    or turning verification off. The simulation is the issuer: the Test CA,
+    declared demo-only throughout this pack. NOT claimed, and stated as a gap
+    in the same row: client authentication -- HTTPS_NO_AUTH authenticates the
+    server to the information system, not the information system to the
+    server, which is what full HTTPS with a client certificate adds.
+  evidence:
+    - {path: configs/member-pnea/pnea.yaml, symbol: HTTPS_NO_AUTH}
+    - {path: hurl/templates/fragments/SS_INTERNAL_TLS_CERT.hurl.tmpl, symbol: certificate/import}
+    - {path: scripts/lib-stack.sh, symbol: rest_base}
+    - {path: docs/production-delta.md, symbol: HTTPS NO AUTH but client made plaintext connection}
 
 - id: G5.1
   section: G5

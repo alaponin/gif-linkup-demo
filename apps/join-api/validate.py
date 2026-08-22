@@ -876,9 +876,9 @@ def validate(
     check_reachable: Callable[[str], None] | None = None,
     require_https_spec_url: bool = False,
 ) -> tuple[JoinPayload, ValidationContext]:
-    """Runs all fourteen per-request checks (eleven, minus check 5,
-    plus lawful_basis, sla_required and spec_url_origin -- see _CHECKS' own
-    comment) in order. Returns
+    """Runs all fifteen per-request checks (eleven, minus check 5,
+    plus lawful_basis, sla_required, spec_url_origin, https_spec_url and
+    allowed_backend_auth -- see _CHECKS' own comment) in order. Returns
     (validated JoinPayload, the ValidationContext checks ran against) on
     success -- the context is returned too because the backend_reachability
     check populates ctx.fetched_specs with every service's parsed OpenAPI

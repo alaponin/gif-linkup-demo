@@ -889,14 +889,26 @@ if _selection_touches_27; then
     # this pack's own mock pattern) is skipped, not failed -- there is no
     # in-repo contract to check it against.
     check_r1_fields() {
-      python3 - "$PACK_DIR" "$spec_url" "$GOOD_REST" "$r1_path" "$client_header" \
-               "$(testca_bundle 2>/dev/null || true)" <<'PY'
-import json, pathlib, ssl, sys, urllib.parse
-import urllib.request
+      # Two passes, because the resource path this has to call is only
+      # knowable from the contract: pass 1 resolves it (pure, no network),
+      # bash makes the call with the SAME curl invocation check_r1_ok uses,
+      # pass 2 judges the body.
+      #
+      # The call is NOT made from Python. GOOD_REST is https://<ss-dns>:<host
+      # port> for a TLS consumer, and that name does not resolve on the host
+      # -- curl reaches it via --resolve (already in GOOD_OPTS), and
+      # urllib.request has no equivalent, so a Python fetch here would die on
+      # DNS exactly the way exercises.md's own "nodename nor servname
+      # provided" note describes. Reusing the curl path also means this check
+      # and check_r1_ok cannot drift about how the consumer hop is addressed
+      # or verified.
+      local _resource _body
+      _resource=$(python3 - "$PACK_DIR" "$spec_url" <<'PY'
+import pathlib, sys, urllib.parse
 
 import yaml
 
-pack_dir, spec_url, good_rest, r1_path, client_header, ca_bundle = sys.argv[1:7]
+pack_dir, spec_url = sys.argv[1:3]
 host = urllib.parse.urlparse(spec_url).hostname
 
 compose = yaml.safe_load(open(f"{pack_dir}/docker-compose.yml"))
@@ -930,25 +942,29 @@ with open(f"{pack_dir}/apps/data/{csv_file.removeprefix('/data/')}", newline="")
 path_param = next(p["name"] for p in path_item["get"].get("parameters", []) if p.get("in") == "path")
 resource = path_tmpl.lstrip("/").replace("{" + path_param + "}", key)
 
-# good_rest is https when this consumer's connection_type is not HTTP
-# (docs/production-delta.md row 19). Verified against the deployment's own
-# CA bundle -- never an unverified context, which is what this whole row
-# is about. The name in the URL is the Security Server's DNS name, which
-# is what its certificate is issued for, so no --resolve equivalent is
-# needed here: this runs on the host, where that name resolves through
-# the published port only via curl's --resolve, so a TLS good_rest is
-# addressed by name and reached by the loopback mapping the caller set up.
-ctx = None
-if good_rest.startswith("https://"):
-    if not ca_bundle:
-        print("SKIP: TLS entrypoint but no CA bundle available", file=sys.stderr)
-        sys.exit(0)
-    ctx = ssl.create_default_context(cafile=ca_bundle)
-req = urllib.request.Request(f"{good_rest}{r1_path}{resource}", headers={"X-Road-Client": client_header})
-with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
-    body = json.loads(resp.read())
+# resource, then the contract, on one line each -- bash reads the first and
+# passes the rest straight back into pass 2 rather than re-parsing the spec.
+print(resource)
+print(" ".join(sorted(declared)))
+print(" ".join(sorted(required)))
+PY
+      ) || return 1
+      [ -n "$_resource" ] || return 0   # pass 1 printed a SKIP and exited 0
 
-returned = set(body)
+      local _res _declared _required
+      _res=$(printf '%s\n' "$_resource" | sed -n 1p)
+      _declared=$(printf '%s\n' "$_resource" | sed -n 2p)
+      _required=$(printf '%s\n' "$_resource" | sed -n 3p)
+
+      _body=$(curl -s "${GOOD_OPTS[@]}" -H "X-Road-Client: $client_header" \
+                   "$GOOD_REST$r1_path$_res") || return 1
+
+      python3 - "$spec_url" "$_body" "$_declared" "$_required" <<'PY'
+import json, sys
+
+spec_url, body_json, declared_s, required_s = sys.argv[1:5]
+declared, required = set(declared_s.split()), set(required_s.split())
+returned = set(json.loads(body_json))
 undeclared = sorted(returned - declared)
 missing = sorted(required - returned)
 assert not undeclared and not missing, f"{spec_url}: undeclared={undeclared} missing={missing}"

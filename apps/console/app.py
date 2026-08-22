@@ -291,6 +291,11 @@ async def _lifespan(app: FastAPI):
     if startup_reset_task is not None:
         startup_reset_task.cancel()
     xroad.SHARED_CLIENT.close()
+    # The consumer hop's own pool, separate since docs/production-delta.md
+    # row 19 stopped it sharing SHARED_CLIENT's trust decision -- and so a
+    # second thing to close, or the leak this shutdown exists to prevent
+    # just moved to the other client.
+    xroad.EXCHANGE_CLIENT.close()
 
 
 app = FastAPI(title="KP2 demonstration console", lifespan=_lifespan)

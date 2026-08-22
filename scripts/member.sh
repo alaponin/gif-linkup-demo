@@ -210,11 +210,32 @@ PY
   [ -n "$record_json" ] || fail "no ACTIVE join-store record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
 
   python3 - "$dir" "$key" "$record_json" <<'PY'
-import glob, json, os, sys, urllib.request
+import glob, json, os, ssl, sys, urllib.request
 
 import yaml
 
 member_dir, key, record_json = sys.argv[1], sys.argv[2], sys.argv[3]
+
+# The published spec_url is https once the mock backends serve TLS
+# (docs/production-delta.md row 18), and this image's own trust store has no
+# Test CA in it. KP2_XROAD_CA_BUNDLE names the mounted public certificate,
+# exactly as apps/join-api/job.py's r1 call and apps/console/xroad.py's
+# exchange already do -- one variable, one meaning, four callers.
+#
+# ADDITIVE, never a replacement: a joined member on a real host with a real
+# certificate must still verify against the public roots, which is why this
+# is not SSL_CERT_FILE (that variable REPLACES the default store, and would
+# trade this bug for the mirror-image one). And never an unverified context:
+# spec_url is applicant-controlled, so an unauthenticated fetch would let
+# whoever holds the wire decide what this command reports as the member's
+# current contract.
+def _spec_ssl_context():
+    ctx = ssl.create_default_context()
+    bundle = os.environ.get("KP2_XROAD_CA_BUNDLE")
+    if bundle:
+        ctx.load_verify_locations(cafile=bundle)
+    return ctx
+
 record = json.loads(record_json)
 baseline = record.get("endpoint_baseline") or {}
 # The join-time baseline is never re-derived -- it is evidence of the contract
@@ -240,7 +261,7 @@ for svc in services:
     code, spec_url = svc["code"], svc["spec_url"]
     base_paths = set(baseline.get(code, []))
     try:
-        with urllib.request.urlopen(spec_url, timeout=10) as resp:
+        with urllib.request.urlopen(spec_url, timeout=10, context=_spec_ssl_context()) as resp:
             spec_doc = yaml.safe_load(resp.read())
         current_paths = set((spec_doc or {}).get("paths", {}).keys())
     except Exception as exc:
@@ -373,6 +394,27 @@ client_id = sub["id"]
 NETWORK_HINT = ("  (this has to run from a container on the linkup network -- "
                 "docker compose exec join-api -- the same place scripts/member.sh drift runs)")
 
+# The published spec_url is https once the mock backends serve TLS
+# (docs/production-delta.md row 18), and this image's own trust store has no
+# Test CA in it. KP2_XROAD_CA_BUNDLE names the mounted public certificate,
+# exactly as apps/join-api/job.py's r1 call and apps/console/xroad.py's
+# exchange already do -- one variable, one meaning, four callers.
+#
+# ADDITIVE, never a replacement: a joined member on a real host with a real
+# certificate must still verify against the public roots, which is why this
+# is not SSL_CERT_FILE (that variable REPLACES the default store, and would
+# trade this bug for the mirror-image one). And never an unverified context:
+# spec_url is applicant-controlled, so an unauthenticated fetch would let
+# whoever holds the wire decide what this command reports as the member's
+# current contract.
+def _spec_ssl_context():
+    ctx = ssl.create_default_context()
+    bundle = os.environ.get("KP2_XROAD_CA_BUNDLE")
+    if bundle:
+        ctx.load_verify_locations(cafile=bundle)
+    return ctx
+
+
 # -- session ------------------------------------------------------------------
 # X-Road's admin API authenticates by SESSION LOGIN, not an API key: POST
 # /login with form params, keep the JSESSIONID cookie, and send the
@@ -439,7 +481,7 @@ served, refused = {}, []
 for desc in descriptions:
     url = desc.get("url")
     try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
+        with urllib.request.urlopen(url, timeout=15, context=_spec_ssl_context()) as resp:
             spec = yaml.safe_load(resp.read()) or {}
     except Exception as exc:
         sys.exit(f"member.sh refresh: could not fetch the published spec at {url}: {exc}\n" + NETWORK_HINT)
