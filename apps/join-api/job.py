@@ -65,6 +65,7 @@ import httpx
 import yaml
 
 import validate
+import writer
 from schema import JoinPayload
 
 # hurl/run-linkup.sh's own proven values (match them). The budget
@@ -168,7 +169,7 @@ class JobStep:
     "service.publish" alone would not."""
 
     id: str
-    kind: str  # "hurl" | "r1"
+    kind: str  # "hurl" | "r1" | "gate"
     actor: str
     template: str | None
     tokens: dict[str, str]
@@ -301,8 +302,24 @@ def _spec_var(member_code: str, service_code: str) -> str:
     return f"{member_code.lower()}_{service_code.replace('-', '_')}_spec_url"
 
 
-def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep]:
+# The commit gate's step id (docs/production-delta.md row 33). Named once so
+# job.py's own run() loop and app.py's BLOCKED handling cannot drift on a
+# typo'd literal.
+CONFIG_COMMIT_STEP = "config.commit"
+
+
+def build_sequence(
+    pack_dir: pathlib.Path, payload: JoinPayload, *, commit_gate: bool = False
+) -> list[JobStep]:
     """The steps this join runs, in order, with every @TOKEN@ resolved.
+
+    `commit_gate`, threaded in by the caller (record["commit_gate"] ==
+    "required" at run() -- job.py never reads deployment.yaml itself),
+    prepends a `config.commit` step (kind: "gate", actor: "operator") before
+    everything else: a read-only check, run by run() below, that
+    configs/member-<key>/, manifest.yaml and onboarding/<key>/ are committed
+    before this join is allowed to touch the live federation at all. See
+    run()'s own docstring for what the step does; here it is only planned.
 
     Both shapes share a prologue (the job's own re-establishment of what cold
     deploy captures once and keeps in Hurl scope -- see the module docstring)
@@ -354,6 +371,22 @@ def build_sequence(pack_dir: pathlib.Path, payload: JoinPayload) -> list[JobStep
                 provides=tuple(generate.sub(name, **tokens) for name in step.provides),
                 probe=step.probe,
                 unsafe_to_repeat=step.unsafe_to_repeat,
+            )
+        )
+
+    if commit_gate:
+        # Between the config write (writer.apply_real, already done by the
+        # time run() calls this) and the first X-Road step -- run()'s loop
+        # checks it before this join touches the live federation at all.
+        sequence.append(
+            JobStep(
+                id=CONFIG_COMMIT_STEP,
+                kind="gate",
+                actor="operator",
+                template=None,
+                tokens={},
+                requires=(),
+                provides=(),
             )
         )
 
@@ -890,6 +923,42 @@ PROBE_INTERPRETERS: dict[str, Callable[[JobStep, dict], bool]] = {
 }
 
 
+def _commit_gate_blocked_message(repo_root: pathlib.Path, pack_dir: pathlib.Path, payload: JoinPayload) -> str | None:
+    """None if configs/member-<key>/, manifest.yaml and onboarding/<key>/ are
+    committed (the gate passes); otherwise the BLOCKED message the console
+    and the API surface verbatim -- retire_instruction()'s own pattern, a
+    dict with a human-readable instruction rather than a bare error.
+
+    Read-only, like every other git call this container makes
+    (writer.member_git_status_dirty shells out to `git status`, never `git
+    commit` -- the committer is the operator, on the host)."""
+    key = payload.code.lower()
+    try:
+        dirty = writer.member_git_status_dirty(repo_root, pack_dir, key)
+    except writer.GitCheckFailure as exc:
+        # Could not tell -- assume the worst, same rule app.py's
+        # _live_uncommitted and writer.apply_real's own pre-write refusal
+        # already follow for this exact class of failure.
+        return (
+            f"could not check whether configs/member-{key}/, manifest.yaml and "
+            f"onboarding/{key}/ are committed: {exc}. Treating that the same as "
+            "uncommitted -- resolve the git problem on the Docker host, then "
+            "resume this request."
+        )
+    if not dirty.strip():
+        return None
+    return (
+        f"configs/member-{key}/, manifest.yaml and onboarding/{key}/ are not committed. "
+        f"join_workflow.commit_gate: required refuses to make {payload.code} live on the "
+        "running federation before the version-controlled description of it is committed. "
+        "On the Docker host:\n"
+        f"  git add configs/member-{key}/ manifest.yaml onboarding/{key}/\n"
+        f'  git commit -m "join: add member {payload.code}"\n'
+        "then resume this request.\n\n"
+        f"{dirty}"
+    )
+
+
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -928,6 +997,7 @@ def run(
     server_up: Callable[[str], bool] = _default_server_up,
     retry_interval: float = RETRY_INTERVAL_SECONDS,
     blocked_poll_interval: float = BLOCKED_POLL_INTERVAL_SECONDS,
+    repo_root: pathlib.Path | None = None,
 ) -> dict:
     """Drive `record` (an out/join/<id>.json request) to ACTIVE, FAILED or
     BLOCKED, persisting after every step via `save`. Mutates and returns the
@@ -939,17 +1009,39 @@ def run(
     (JobStep.must_rerun) -- nothing else is re-run, which is the guarantee
     the resume test asserts.
 
-    BLOCKED: an own-server join's `actor: member` steps run against the
-    joining member's own Security Server, which this API cannot stand up. Any
-    such step is preceded by a bounded poll of that server's :4000; if the
-    bound expires the request goes BLOCKED (never FAILED -- there is nothing
-    wrong, the member has simply not brought its server up yet) and leaves
-    through the same POST /requests/{id}/resume a FAILED one does, which
-    re-enters here and polls again. A hosted_on join has no `actor: member`
-    step at all and can never reach this state.
+    BLOCKED (member): an own-server join's `actor: member` steps run against
+    the joining member's own Security Server, which this API cannot stand
+    up. Any such step is preceded by a bounded poll of that server's :4000;
+    if the bound expires the request goes BLOCKED (never FAILED -- there is
+    nothing wrong, the member has simply not brought its server up yet) and
+    leaves through the same POST /requests/{id}/resume a FAILED one does,
+    which re-enters here and polls again. A hosted_on join has no
+    `actor: member` step at all and can never reach this state.
+
+    BLOCKED (config.commit, docs/production-delta.md row 33): when
+    record["commit_gate"] == "required" (stamped on the record by app.py's
+    approve endpoint from deployment.yaml's join_workflow.commit_gate --
+    job.py itself never reads that file), build_sequence() prepends a
+    `config.commit` gate step. Reached, it runs writer.member_git_status_dirty
+    scoped to this join's own paths (configs/member-<key>/, manifest.yaml,
+    onboarding/<key>/) -- a read, never a write or a `git commit`: the pack's
+    standing posture is that every git call inside this container is a read,
+    and the committer is the operator, on the host, who has a git identity
+    this API cannot manufacture. Clean: the step passes and the job proceeds
+    to make the member live -- nothing goes live before its version-
+    controlled description is committed. Dirty, or a GitCheckFailure (could
+    not tell -- same assume-the-worst rule _live_uncommitted and apply_real's
+    own pre-write refusal already follow): BLOCKED with `{step:
+    "config.commit"}` and a message naming the exact host-side commit
+    command. `POST /requests/{id}/resume` re-enters here and re-checks --
+    since the gate step never advanced last_completed_step, a resume replans
+    the same sequence from the top and hits the gate again, exactly like the
+    member-server BLOCKED case above. `repo_root` defaults the same way
+    writer.apply_real's does (three levels above pack_dir); overridable so
+    tests can point it at a throwaway repo instead.
     """
     payload = JoinPayload(**record["payload"])
-    sequence = build_sequence(pack_dir, payload)
+    sequence = build_sequence(pack_dir, payload, commit_gate=record.get("commit_gate") == "required")
     constants = build_constants(pack_dir, payload, secrets)
     context = dict(record.get("context") or {})
     # The captures forbidden on disk (session tokens) live here for
@@ -1009,6 +1101,20 @@ def run(
                 }
                 save(record)
                 return record
+            if step.kind == "gate":
+                # config.commit (see run()'s own docstring). Resolved lazily,
+                # only once a gate step is actually reached, so a run with
+                # commit_gate off never has to resolve repo_root at all.
+                resolved_repo_root = repo_root or pack_dir.resolve().parents[2]
+                message = _commit_gate_blocked_message(resolved_repo_root, pack_dir, payload)
+                if message is not None:
+                    record["state"] = "BLOCKED"
+                    record["blocked"] = {"step": step.id, "message": message}
+                    save(record)
+                    return record
+                record["last_completed_step"] = step.id
+                save(record)
+                continue
             if step.actor == "member" and not _wait_for_server(
                 payload.security_server.dns_name, server_up, blocked_poll_interval
             ):
@@ -1424,6 +1530,13 @@ def unjoin(
     """
     payload = JoinPayload(**record["payload"])
     _, steps = _hurl_modules(pack_dir)
+    # commit_gate deliberately not threaded through here (contrast run()):
+    # store.member_record() only ever hands this function an ACTIVE or
+    # RETIRING record, and reaching ACTIVE already means the forward
+    # sequence -- gate included, if it was on -- ran to completion, so
+    # `last_completed_step` never names "config.commit". The gate step is
+    # also never in hurl/steps.py's REVERSAL_ORDER, so it could not appear in
+    # `walk` even if build_sequence() were asked to plan it here.
     sequence = build_sequence(pack_dir, payload)
     constants = build_constants(pack_dir, payload, secrets)
     context = dict(record.get("context") or {})
@@ -1512,6 +1625,20 @@ def unjoin(
         record["state"] = "RETIRED"
         record["retired_at"] = _now()
         record["retire_instruction"] = retire_instruction(payload)
+        # The mirror-image window (docs/production-delta.md row 33): this
+        # walk, then scripts/member.sh remove (called by app.py's
+        # retire_member), deletes configs/member-<key>/ from the live
+        # checkout before anyone commits the deletion. Un-join is
+        # deliberately NOT gated on a commit -- the retirement record and
+        # catalogue regeneration already happened above, and blocking a
+        # *removal* on a commit would invert the risk this phase closes for
+        # the forward direction: a member no longer on the federation but
+        # still described in git is the safe direction to drift in, not the
+        # dangerous one. `commit_pending` is evidence instead, exactly like
+        # retire_instruction() -- set once here and cleared by nothing, so
+        # the record keeps saying "the deletion is not committed yet" for as
+        # long as that stays true.
+        record["commit_pending"] = True
         save(record)
         return record
     finally:

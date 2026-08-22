@@ -133,6 +133,23 @@ except FileNotFoundError:
     _deployment_doc = {}
 _DATASTORE_KIND = (_deployment_doc.get("datastore") or {}).get("kind", "sqlite")
 store.backend_for(_DATASTORE_KIND)
+
+# deployment.yaml's join_workflow.commit_gate (docs/production-delta.md row
+# 33): "advisory" (default, docker-local) is today's behaviour -- the
+# console shows the live-but-uncommitted flag, nothing gates. "required"
+# (the droplet target) makes approve_request stamp this value onto the
+# record, which job.py reads back at run() time to decide whether to plan a
+# config.commit gate step -- job.py itself never reads deployment.yaml (same
+# split _DATASTORE_KIND above makes). hurl/generate.py's check_join_workflow
+# admits the same two values at generation time; this is the join-api
+# process's own copy of that same refusal, so a bad value fails loudly at
+# startup here too rather than silently defaulting to "advisory".
+_COMMIT_GATE = (_deployment_doc.get("join_workflow") or {}).get("commit_gate", "advisory")
+if _COMMIT_GATE not in ("advisory", "required"):
+    raise RuntimeError(
+        f"join-api: deployment.yaml join_workflow.commit_gate {_COMMIT_GATE!r} is not "
+        "'advisory' or 'required'."
+    )
 # Same _required_token refusal APPLICANT_TOKEN/OPERATOR_TOKEN get above,
 # applied to the Postgres DSN: unset or still the .env.example CHANGEME
 # placeholder must fail loudly at startup, not hand psycopg a string it will
@@ -668,11 +685,16 @@ def _step_summary(pack_dir: pathlib.Path, payload: schema.JoinPayload) -> list[d
     (the console's progress list, "coloured by its actor") recomputes it here instead.
     Cheap: yaml reads and string rendering, no network, no subprocess. None
     on failure (e.g. a REJECTED request's payload didn't survive schema
-    validation) -- the console renders no step list rather than erroring."""
+    validation) -- the console renders no step list rather than erroring.
+
+    commit_gate=_COMMIT_GATE == "required" -- the module-level flag read from
+    deployment.yaml at startup, not a per-record value -- so a request still
+    SUBMITTED (no commit_gate stamped on it yet, see approve_request) shows
+    the config.commit step in its preview exactly as it will actually run."""
     try:
         return [
             {"id": s.id, "actor": s.actor, "kind": s.kind}
-            for s in job.build_sequence(pack_dir, payload)
+            for s in job.build_sequence(pack_dir, payload, commit_gate=_COMMIT_GATE == "required")
         ]
     except Exception:  # noqa: BLE001 -- best-effort enrichment, never fatal to the queue view
         return None
@@ -926,6 +948,13 @@ def approve_request(
     record["state"] = "APPROVED"
     record["approved_at"] = approved_at
     record["decision_reference"] = decision_reference
+    # Stamped now, like approved_at/decision_reference above -- not re-read
+    # from deployment.yaml at run() time (a RUNNING/BLOCKED job can outlive a
+    # config edit; the record should say what was decided when this request
+    # was approved, not what the file happens to say when the job later
+    # resumes). job.py reads this back to decide whether to plan the
+    # config.commit gate step (docs/production-delta.md row 33).
+    record["commit_gate"] = _COMMIT_GATE
     record["queued"] = store.job_lock_held(db)
     store.save_request(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
     _start_job(request_id)

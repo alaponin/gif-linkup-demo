@@ -474,6 +474,130 @@ def test_a_contract_mismatch_message_is_scrubbed_like_every_other_r1_message():
     assert "***" in record["verified_by"]
 
 
+# -- the config.commit gate (docs/production-delta.md row 33) ---------------
+# job.run()'s gate step shells out to `git status` (writer.member_git_status_dirty)
+# against `pack_dir`'s enclosing repo_root, so unlike every other test in this
+# file it needs a real, throwaway git repo -- REAL_PACK_DIR (this whole
+# module's usual pack_dir) is the actual dev checkout and must never be
+# written to or git-inspected as a fixture. Same helpers test_writer.py's own
+# apply_real tests use, duplicated rather than imported across test modules
+# (this file's own convention: every join-api test module is self-contained).
+
+
+def _git(*args: str, cwd: pathlib.Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _committed_pack(tmp_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """A throwaway repo holding a committed copy of the real pack. Nothing
+    under configs/member-ptsb/ exists in it -- PTSB is a joining member, not
+    one of the four canonical ones -- so the gate's git-status check reads
+    clean by construction until a test deliberately dirties it."""
+    repo_root = tmp_path / "repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    _git("init", "-q", cwd=repo_root)
+    _git("config", "commit.gpgsign", "false", cwd=repo_root)
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "seed", cwd=repo_root,
+    )
+    return repo_root, pack
+
+
+def _run_gated(record: dict, pack: pathlib.Path, repo_root: pathlib.Path, hurl: FakeHurl) -> dict:
+    return job.run(
+        record, pack, secrets=SECRETS, save=lambda r: None, run_hurl=hurl,
+        r1_call=_fake_r1(), server_up=lambda dns: True,
+        retry_interval=0, blocked_poll_interval=0, repo_root=repo_root,
+    )
+
+
+def test_the_gate_step_is_absent_by_default_and_present_when_required():
+    """build_sequence()'s own contract, independent of run() and the
+    throwaway-repo fixture: commit_gate=False (the default -- a record with
+    no commit_gate, or "advisory") never plans config.commit; True plans it
+    first, before cs.init."""
+    ids = [s.id for s in job.build_sequence(REAL_PACK_DIR, _payload())]
+    assert "config.commit" not in ids
+
+    gated_ids = [s.id for s in job.build_sequence(REAL_PACK_DIR, _payload(), commit_gate=True)]
+    assert gated_ids[0] == "config.commit"
+    assert gated_ids[1:] == ids
+
+
+def test_the_gate_step_is_absent_at_run_time_when_the_flag_is_off(tmp_path):
+    """The default (record carries no commit_gate, or "advisory") -- today's
+    behaviour, unchanged: no git check runs and no X-Road step waits on one."""
+    repo_root, pack = _committed_pack(tmp_path)
+    record = _run_gated(_record(), pack, repo_root, FakeHurl())
+    assert record["state"] == "ACTIVE"
+
+
+def test_a_clean_checkout_passes_the_gate_and_proceeds(tmp_path):
+    repo_root, pack = _committed_pack(tmp_path)
+    record = _run_gated(_record(commit_gate="required"), pack, repo_root, FakeHurl())
+    assert record["state"] == "ACTIVE"
+    assert record["last_completed_step"] == "join.r1_verify"
+
+
+def test_a_dirty_members_own_paths_blocks_at_the_gate_with_the_commit_instruction(tmp_path):
+    repo_root, pack = _committed_pack(tmp_path)
+    (pack / "configs" / "member-ptsb").mkdir()
+    (pack / "configs" / "member-ptsb" / "ptsb.yaml").write_text("x: 1\n")
+    hurl = FakeHurl()
+    record = _run_gated(_record(commit_gate="required"), pack, repo_root, hurl)
+    assert record["state"] == "BLOCKED"
+    assert record["blocked"]["step"] == "config.commit"
+    message = record["blocked"]["message"]
+    assert "git add" in message and "git commit" in message
+    assert "configs/member-ptsb" in message
+    # Never advanced -- a resume replans the same sequence and hits the gate
+    # again from the top, exactly like the member-server BLOCKED case.
+    assert record.get("last_completed_step") is None
+    # The gate never ran a single X-Road call: it BLOCKS before cs.init.
+    assert hurl.calls == []
+
+
+def test_a_git_check_failure_blocks_toward_the_honest_could_not_check_message(tmp_path):
+    """repo_root not actually being a git repo (a structural problem) must
+    fail toward BLOCKED with an honest message, not raise past run() as an
+    unhandled subprocess error -- the same assume-the-worst rule
+    apps/join-api/app.py's _live_uncommitted and writer.apply_real's own
+    pre-write refusal already follow for this exact class of failure."""
+    repo_root = tmp_path / "not-a-repo"
+    pack = repo_root / "pack"
+    writer._copy_pack(REAL_PACK_DIR, pack)
+    # No `git init` -- repo_root has no .git at all.
+    record = _run_gated(_record(commit_gate="required"), pack, repo_root, FakeHurl())
+    assert record["state"] == "BLOCKED"
+    assert record["blocked"]["step"] == "config.commit"
+    assert "could not check" in record["blocked"]["message"]
+
+
+def test_resume_re_enters_the_gate_and_proceeds_once_committed(tmp_path):
+    repo_root, pack = _committed_pack(tmp_path)
+    (pack / "configs" / "member-ptsb").mkdir()
+    (pack / "configs" / "member-ptsb" / "ptsb.yaml").write_text("x: 1\n")
+    record = _run_gated(_record(commit_gate="required"), pack, repo_root, FakeHurl())
+    assert record["state"] == "BLOCKED"
+
+    # The operator's host-side act the message names.
+    _git("add", "-A", cwd=repo_root)
+    _git(
+        "-c", "user.email=test@example.invalid", "-c", "user.name=test",
+        "commit", "-q", "-m", "join: add member PTSB", cwd=repo_root,
+    )
+
+    resumed = FakeHurl()
+    record = _run_gated(record, pack, repo_root, resumed)
+    assert record["state"] == "ACTIVE"
+    assert record["last_completed_step"] == "join.r1_verify"
+    # The re-entered gate ran no X-Road call either -- only the git check.
+    assert resumed.calls[0] == "cs.init"
+
+
 # -- resume ------------------------------------------------------------------
 
 

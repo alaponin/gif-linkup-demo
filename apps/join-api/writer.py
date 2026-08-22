@@ -881,16 +881,17 @@ def _restore(pack_dir: pathlib.Path, saved: dict) -> None:
             shutil.copy2(dest, target)
 
 
-def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
+def _git_status(repo_root: pathlib.Path, pack_dir: pathlib.Path, rel_paths: tuple[str, ...]) -> str:
+    """The read `git status --porcelain <paths>` shared by _git_status_dirty
+    (apply_real's whole-tree pre-write refusal) and member_git_status_dirty
+    (job.py's config.commit gate, scoped to one member's own paths) -- same
+    subprocess call and the same GitCheckFailure contract, only `rel_paths`
+    differs."""
     try:
         rel = pack_dir.relative_to(repo_root)
         proc = subprocess.run(
-            # The live-but-uncommitted window production-delta.md documents
-            # covers a third tree: apply_real() writes onboarding/<key>/
-            # too, so the refusal-when-dirty check must watch it exactly
-            # like configs/ and manifest.yaml, not just the other two trees.
             ["git", "-C", str(repo_root), "status", "--porcelain",
-             str(rel / "configs"), str(rel / "manifest.yaml"), str(rel / "onboarding")],
+             *(str(rel / p) for p in rel_paths)],
             capture_output=True,
             text=True,
             check=True,
@@ -899,10 +900,32 @@ def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
         # ValueError: pack_dir is not under repo_root. CalledProcessError:
         # repo_root is not a git repo (or some other structural git failure).
         # OSError: git itself is missing. None of these mean "clean" --
-        # apply_real must refuse exactly as it would for a genuinely dirty
+        # the caller must refuse exactly as it would for a genuinely dirty
         # checkout, not silently proceed.
         raise GitCheckFailure(f"could not check whether {pack_dir} is a clean checkout: {exc}") from exc
     return proc.stdout
+
+
+def _git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path) -> str:
+    # The live-but-uncommitted window production-delta.md documents covers a
+    # third tree: apply_real() writes onboarding/<key>/ too, so the
+    # refusal-when-dirty check must watch it exactly like configs/ and
+    # manifest.yaml, not just the other two trees.
+    return _git_status(repo_root, pack_dir, ("configs", "manifest.yaml", "onboarding"))
+
+
+def member_git_status_dirty(repo_root: pathlib.Path, pack_dir: pathlib.Path, key: str) -> str:
+    """Same read as _git_status_dirty, scoped to one member's own paths
+    (configs/member-<key>/, manifest.yaml, onboarding/<key>/) rather than the
+    whole configs/ and onboarding/ trees. apps/join-api/job.py's
+    config.commit gate (join_workflow.commit_gate: required,
+    docs/production-delta.md row 33) reuses this to ask "did THIS join's own
+    writes get committed" -- a narrower question than apply_real's pre-write
+    refusal above, which guards the window's OTHER edge (starting a new job
+    on top of someone else's uncommitted work, whole-tree). Public (no
+    leading underscore): job.py, not writer.py's own apply_real, is the
+    caller."""
+    return _git_status(repo_root, pack_dir, (f"configs/member-{key}", "manifest.yaml", f"onboarding/{key}"))
 
 
 def apply_real(
