@@ -43,6 +43,12 @@ is not enough — a smaller VM, a constrained CI runner — raise `retries:` in
 `hurl/compose.hurl.yml` rather than treating a healthcheck timeout as a
 federation defect.
 
+Every healthcheck's steady-state budget now lives in the base
+`docker-compose.yml` (30×5s for `cs`/every `ss-*`, sized for a from-zero
+laptop boot); `hurl/compose.hurl.yml` only *extends* it to the 10-minute
+figure above for the persisted-volume restart case — it is no longer the
+only place a healthcheck is declared at all.
+
 ## Backup, restore and recovery time
 
 Investigated live against the running federation (X-Road 7.7.0). Both the

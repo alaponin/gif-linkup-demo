@@ -27,10 +27,29 @@ x-sidecar: &sidecar
     XROAD_LOG_LEVEL: INFO
   networks: [linkup]
   depends_on: [cs, ca]
+  restart: unless-stopped
+  # Steady-state budget: a from-zero boot passes well within 30x5s=2.5min on
+  # a laptop. hurl/compose.hurl.yml overrides this per ss-* with a 10-minute
+  # (120x5s) budget for the persisted-volume restart case that file's own
+  # comment documents -- this file's budget is not that case.
+  healthcheck:
+    test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
+    interval: 5s
+    retries: 30
+  # Measured steady state ~2.2-2.3 GiB per server (docs/production-delta.md's
+  # "Current measured figures") -- headroom, not a corset, so a leak trips
+  # this before the host swaps, and a runbook.md note explains an OOM kill
+  # here presents as a healthcheck flap, not an OOM log line.
+  mem_limit: 3500m
+  cpus: 2
 
 x-mock: &mock
   build: ./apps/mock-registry
   networks: [linkup]
+  restart: unless-stopped
+  # Measured ~32 MiB steady (docs/production-delta.md) -- generous headroom
+  # for a single small FastAPI process serving a CSV in memory.
+  mem_limit: 128m
 
 services:
   cs:
@@ -39,6 +58,7 @@ services:
     # XROAD_CS_TAG is the plain-tag fallback.
     image: niis/xroad-central-server:${XROAD_CS_DIGEST:-${XROAD_CS_TAG:-noble-7.7.0}}
     container_name: cs
+    restart: unless-stopped
     environment:
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
     ports: ["${XROAD_BIND:-127.0.0.1}:4000:4000"]
@@ -46,6 +66,15 @@ services:
       - cs-db:/var/lib/postgresql/16/main
       - cs-conf:/etc/xroad
     networks: [linkup]
+    # Same probe/budget shape as x-sidecar's healthcheck above; overridden
+    # to a 10-minute budget by hurl/compose.hurl.yml.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
+      interval: 5s
+      retries: 30
+    # Measured steady state ~1.8-2.0 GiB (docs/production-delta.md).
+    mem_limit: 3000m
+    cpus: 2
 
   ca:
     # Test CA + OCSP (:8888) + TSA (:8899) — demo trust anchor.
@@ -53,10 +82,22 @@ services:
     # reproducibility rule: pin by digest.
     image: ghcr.io/nordic-institute/xrddev-testca:${TESTCA_TAG:-latest}
     container_name: ca
+    restart: unless-stopped
     ports: ["${XROAD_BIND:-127.0.0.1}:8888:8888"]
     volumes:
       - ca-data:/home/ca
     networks: [linkup]
+    # Verified live against a running container before landing this (task-1
+    # report): GET /testca/certs returns 200. Moved here from
+    # hurl/compose.hurl.yml, which no longer needs to redeclare it -- ca has
+    # none of the persisted-volume slow-restart behaviour that gives cs/ss-*
+    # a tightened overlay budget.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/testca/certs"]
+      interval: 5s
+      retries: 40
+    # Measured steady state ~88 MiB (docs/production-delta.md).
+    mem_limit: 256m
 
   ss-pdga:
     # Management Security Server (CS owner PDGA + MANAGEMENT subsystem).
@@ -164,6 +205,12 @@ services:
     # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID.
     user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
+    restart: unless-stopped
+    # No healthcheck: key here -- apps/console/Dockerfile already declares
+    # one (HEALTHCHECK against /api/health), which Compose inherits from the
+    # built image whenever a service does not override it; docker inspect
+    # already reports Health.Status without repeating it here.
+    mem_limit: 256m
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8090:8000"]
     environment:
@@ -224,6 +271,12 @@ services:
     # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID.
     user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
+    restart: unless-stopped
+    # No healthcheck: key here -- apps/join-api/Dockerfile already declares
+    # one (HEALTHCHECK against /health), which Compose inherits from the
+    # built image whenever a service does not override it; docker inspect
+    # already reports Health.Status without repeating it here.
+    mem_limit: 512m
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8091:8000"]
     environment:

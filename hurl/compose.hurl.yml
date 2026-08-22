@@ -8,8 +8,13 @@
 #   1. a shared volume carrying the Test CA's ca.pem / ocsp.pem / tsa.pem into
 #      the runner's --file-root, so the certification-service requests can
 #      upload them without a docker cp dance;
-#   2. healthchecks on cs and the Security Servers, so the runner does not start
-#      firing until every admin UI answers on :4000.
+#   2. a TIGHTENED healthcheck budget on cs and the Security Servers, on top
+#      of the steady-state one docker-compose.yml now carries for every
+#      service (base-compose hardening, docs/plans/production-hardening-plan.md
+#      Phase A) -- this overlay only extends that budget, it does not
+#      originate it. ca's healthcheck moved to the base file outright: it has
+#      none of the persisted-volume slow-restart behaviour documented below
+#      that justifies a longer budget here, so there is nothing to tighten.
 
 services:
   ca:
@@ -17,10 +22,6 @@ services:
       # The xrddev-testca image writes the demo trust anchor here. Confirmed at
       # P0: ca.pem/ocsp.pem/tsa.pem land in /home/ca/certs exactly as assumed.
       - ca-certs:/home/ca/certs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/testca/certs"]
-      interval: 5s
-      retries: 40
 
   cs:
     healthcheck:

@@ -8,7 +8,7 @@
 #                                          # with) 2.6 -- matches 2.6.1..2.6.5
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
 #
-# Ids today are 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
+# Ids today are 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
 # 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1,
 # 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>),
 # 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>),
@@ -99,6 +99,28 @@ check_21() {  # paths confirmed live at P0
 # (Test CA, OCSP, TSA) are registered by hurl/templates/01-cs-trust-services.hurl.tmpl
 # at deploy time, but nothing here reads them back -- acceptance/federation-core.md.
 check 2.1 "instance $EXP_INSTANCE, member class $EXP_CLASS" check_21
+
+# ---- base-compose hardening: healthchecks are not silently absent -----------
+# The regression this guards against already happened once: cs/ca's
+# healthcheck lived only in hurl/compose.hurl.yml, and a script that brought
+# up a container against a narrower Compose file set silently lost it
+# (docs/production-delta.md's "Why join-agent.sh brings containers up with
+# the full Compose file set"). Phase A (docs/plans/production-hardening-plan.md)
+# moved every long-running service's healthcheck into the base
+# docker-compose.yml so that class of loss can no longer happen quietly; this
+# check is what makes a future regression fail here instead of being found
+# live again. console/join-api are profiles: ["demo"] and not necessarily up
+# during this run -- 2.7.1 below already proves join-api reports healthy
+# whenever it is brought up.
+check_healthcheck_present() {  # $1 = container name
+  local status
+  status=$(docker inspect "$1" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null)
+  [ -n "$status" ]
+}
+for hc_host in cs ca app-pnia app-plr app-ptsb "${SS_ORDER[@]}"; do
+  check_hc() { check_healthcheck_present "$hc_host"; }
+  check "2.1.health(${hc_host})" "${hc_host} reports a Docker healthcheck (State.Health.Status present)" check_hc
+done
 
 # ---- add-ons: operational + environmental monitoring ---------
 # Server-level, not client-level -- xroad-monitor (environmental) and
@@ -981,10 +1003,10 @@ PY
 fi
 
 if [ "$SELECT_MODE" = from ] && [ "$_FROM_REACHED" = 0 ]; then
-  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
+  fail "--from $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
-  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
+  fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 
 if [ "$SELECT_MODE" = all ]; then

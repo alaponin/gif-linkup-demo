@@ -59,18 +59,25 @@ if [ -z "$(docker ps -q -f "name=^${SS}$")" ]; then
 fi
 
 log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server image takes a few minutes to become healthy"
-# COMPOSE_ALL, not COMPOSE: cs and ca's healthchecks are defined only in
-# hurl/compose.hurl.yml (see that file's own comment), not in the base
-# docker-compose.yml. $SS's x-sidecar anchor declares depends_on: [cs, ca],
-# so bringing it up with the narrower COMPOSE file set still touches cs/ca
-# via that dependency -- and because their merged config differs (no
-# healthcheck) from the COMPOSE_HURL view run-linkup.sh originally started
-# them with, Compose sees a config drift and recreates them, silently
-# stripping the healthcheck they had (found live: cs/ca
-# reported no Config.Healthcheck at all after a join-agent.sh run).
-# COMPOSE_ALL already includes hurl/compose.hurl.yml (lib-stack.sh), so this
-# invocation's view of cs/ca matches what is already running -- no drift,
-# no recreate. Functionally harmless either way (state lives in the named
+# COMPOSE_ALL, not COMPOSE: base-compose hardening (docs/plans/
+# production-hardening-plan.md Phase A) put a steady-state healthcheck on cs
+# in docker-compose.yml itself, closing the original version of this
+# regression -- narrower COMPOSE no longer means "cs has no healthcheck at
+# all" the way it did when this was found live (cs reported no
+# Config.Healthcheck whatsoever after a join-agent.sh run). But
+# hurl/compose.hurl.yml still OVERRIDES cs's budget to a longer one
+# (retries: 120 vs the base file's 30), a real difference between the
+# COMPOSE and COMPOSE_ALL views of cs's config -- and $SS's x-sidecar anchor
+# declares depends_on: [cs, ca], so bringing $SS up with the narrower
+# COMPOSE file set still touches cs via that dependency. Compose computes
+# each service's up-to-date-ness from a hash of its own invocation's merged
+# config, so that difference alone is still enough to make Compose see drift
+# and recreate cs. COMPOSE_ALL already includes hurl/compose.hurl.yml
+# (lib-stack.sh), so this invocation's view of cs matches what is already
+# running -- no drift, no recreate. (ca no longer has an overlay override at
+# all -- its healthcheck moved to the base file outright -- so it no longer
+# has this problem either way; cs is the one service this still matters
+# for.) Functionally harmless either way (state lives in the named
 # volumes), but a needless restart and a lost health signal are both worth
 # avoiding.
 "${COMPOSE_ALL[@]}" up -d --wait --wait-timeout "${JOIN_AGENT_WAIT:-600}" "$SS"

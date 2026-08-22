@@ -966,6 +966,19 @@ added until enabled; the consumer subsystem's connection type must be HTTP for t
 demo call (default HTTPS expects a client TLS certificate); the admin APIs
 authenticate by session login and XSRF token, not by API key.
 
+`docker-compose.yml`'s `mem_limit`/`cpus` (base-compose hardening,
+`docs/plans/production-hardening-plan.md` Phase A) are a ceiling sized with
+real headroom over the measured steady-state figures above, not a corset --
+but if a container genuinely leaks past it, the OOM kill does **not** show up
+as an OOM message anywhere this pack's own tooling looks. `docker inspect`
+reports `OOMKilled: true` on the container, but `acceptance.sh` and
+`scripts/verify.sh` only ever see the *symptom*: a Security Server that was
+`healthy` stops answering its healthcheck and, with `restart: unless-stopped`
+now in place, comes back up a few seconds later having lost in-memory state
+(the token unlock, for one). Diagnose an unexplained healthcheck flap with
+`docker inspect <container> --format '{{.State.OOMKilled}}'` before assuming
+it is the propagation flake described below.
+
 A security server's Test CA-issued OCSP response has a bounded freshness window:
 after roughly ten hours idle, the signer starts rejecting the server's own
 authentication certificate (`IncorrectValidationInfo: OCSP response is too old`),

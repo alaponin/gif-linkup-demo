@@ -382,6 +382,22 @@ already includes `hurl/compose.hurl.yml`), so its view of `cs`/`ca` matches
 what is already running and Compose has no drift to "fix" by recreating
 them.
 
+**Narrowed further (base-compose hardening, Phase A of
+`docs/plans/production-hardening-plan.md`):** `cs` and every `ss-*` now
+carry a steady-state healthcheck in the base `docker-compose.yml` itself
+(`ca`'s moved there outright, with no overlay override left at all), so
+`Config.Healthcheck: null` — total absence — can no longer happen on any
+Compose file set. The narrower drift this section describes still exists in
+one place: `hurl/compose.hurl.yml` still overrides `cs`'s budget to a
+longer one (`retries: 120` vs. the base file's `30`), so a hash mismatch
+between the two views of `cs`'s config is still possible in principle — the
+reason `join-agent.sh` still uses `COMPOSE_ALL` rather than `COMPOSE`, per
+that script's own updated comment. What changed is the failure mode: a
+future gap here would show up as a healthcheck *budget* difference, not a
+healthcheck *disappearing* — and `scripts/acceptance.sh`'s
+`2.1.health(<host>)` checks now assert the field is present at all, so the
+disappearing case this section describes cannot recur silently.
+
 ## Current measured figures
 
 | | Figure |
