@@ -788,10 +788,11 @@ def submit_request(
     # Which agency's credential this arrived on, when it arrived on an issued
     # one. None for the shared applicant token and for the operator, because
     # neither identifies anybody -- recording "applicant" there would be a
-    # field that looks like attribution and is not. This is the field this
-    # module's auth comment says per-request ownership would need; it is
-    # recorded, not yet enforced on -- the demo's one-person-two-roles
-    # ergonomics stay.
+    # field that looks like attribution and is not. This is the field
+    # per-request ownership needs, and it IS enforced on now, behind
+    # deployment.yaml's join_workflow.enforce_ownership (default false on
+    # docker-local, where the demo's one-person-two-roles ergonomics stay;
+    # true on the droplet). See _owns_record below.
     submitted_by = role.split(":", 1)[1] if role.startswith("applicant:") else None
 
     try:
@@ -884,21 +885,33 @@ def _owns_record(role: str, record: dict) -> bool:
     credential reads only the record it submitted -- name equals
     submitted_by, nothing looser. The shared applicant token reads only a
     record with submitted_by: null -- the ones nothing else could have
-    submitted; role can only BE the bare "applicant" value when the shared
-    token matched in require_applicant, which cannot happen at all once
-    APPLICANT_TOKEN == "disabled" (require_applicant skips that comparison
-    entirely), so this branch is already conditioned on the shared token
-    still being enabled without a separate check for it here.
+    submitted.
 
     Ownership enforcement is only meaningful once the shared token is also
     disabled: with it still enabled, every hand-typed applicant call shares
     one identity, so this only ever protects per-agency (issued-token)
-    records from each other, nothing more."""
+    records from each other, nothing more.
+
+    Fails CLOSED. Every branch below matches one of require_applicant's three
+    return shapes explicitly and the fallback is `return False`, not the
+    shared-token rule. The earlier form reached that rule by elimination --
+    correct for exactly today's three shapes, and an automatic GRANT for the
+    fourth. A role shape a future phase adds and forgets to handle here must
+    read nothing; this is an authorization predicate, and the direction it
+    guesses in when it does not recognise its input is the entire property."""
     if role == "operator":
         return True
     if role.startswith("applicant:"):
         return role.split(":", 1)[1] == record.get("submitted_by")
-    return record.get("submitted_by") is None
+    if role == "applicant":
+        # The shared token, which identifies nobody: it reads only records
+        # with submitted_by: null, the ones no issued credential could have
+        # submitted. Unreachable once APPLICANT_TOKEN == "disabled"
+        # (require_applicant skips that comparison entirely and can never
+        # return the bare value), so this branch needs no separate check for
+        # that.
+        return record.get("submitted_by") is None
+    return False
 
 
 @app.get("/requests/{request_id}")
