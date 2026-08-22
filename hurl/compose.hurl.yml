@@ -17,11 +17,11 @@
 #      that justifies a longer budget here, so there is nothing to tighten.
 
 services:
-  ca:
-    volumes:
-      # The xrddev-testca image writes the demo trust anchor here. Confirmed at
-      # P0: ca.pem/ocsp.pem/tsa.pem land in /home/ca/certs exactly as assumed.
-      - ca-certs:/home/ca/certs
+  # ca's `ca-certs:/home/ca/certs` mount used to live here and moved to the
+  # base docker-compose.yml (Phase F, row 18): spec-fetcher needs the same
+  # public trust anchor with no overlay loaded, so the base file has to
+  # declare it. Nothing overlay-specific is left to say about `ca` -- the
+  # runner below still mounts the same named volume.
 
   cs:
     healthcheck:
@@ -84,4 +84,6 @@ services:
         condition: service_healthy
 
 volumes:
+  # Same named volume the base file now declares -- restated so this overlay
+  # stays readable on its own; Compose merges the two identical entries.
   ca-certs: {name: kp2-ca-certs}

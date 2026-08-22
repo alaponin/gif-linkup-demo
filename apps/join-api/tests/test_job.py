@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import shutil
+import ssl
 import subprocess
 import sys
 
@@ -242,9 +243,40 @@ def test_consume_only_join_has_no_reachability_step():
 
 
 def test_r1_target_is_the_consumers_own_security_server():
+    """https://ss-pnea:8443, not http://ss-pnea:8080, because PNEA:EXAMS's
+    own connection_type is HTTPS_NO_AUTH (docs/production-delta.md row 19)
+    -- X-Road refuses the plaintext port for that client outright, so a
+    step still pointing at :8080 would fail every join, and the scheme is
+    read from the real topology.json rather than hardcoded here."""
     target = job._r1_target(REAL_PACK_DIR, _payload())
     assert target["client_header"] == "PROGRESSA/GOV/PNEA/EXAMS"
-    assert target["url"].startswith("http://ss-pnea:8080/r1/PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api")
+    assert target["url"].startswith(
+        "https://ss-pnea:8443/r1/PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api"
+    )
+
+
+def test_r1_target_stays_on_the_plain_proxy_for_a_plain_http_consumer(tmp_path):
+    """The other half: the scheme follows the CONSUMER's connection_type,
+    it is not a global switch. Flip PNEA back to HTTP in a copied topology
+    and the same payload plans a plain :8080 call again."""
+    writer._copy_pack(REAL_PACK_DIR, tmp_path)
+    topology_path = tmp_path / "hurl" / "topology.json"
+    topology = json.loads(topology_path.read_text())
+    for sub in topology["subsystems"]:
+        if sub["id"] == "PROGRESSA:GOV:PNEA:EXAMS":
+            sub["connection_type"] = "HTTP"
+    topology_path.write_text(json.dumps(topology))
+    target = job._r1_target(tmp_path, _payload())
+    assert target["url"].startswith("http://ss-pnea:8080/r1/")
+
+
+def test_the_r1_call_never_runs_with_verification_off():
+    """Row 19's non-negotiable, on the join path this time. `verified` on an
+    ACTIVE record has to mean the call reached the consumer's Security
+    Server, not something that answered for its name."""
+    ctx = job._r1_ssl_context()
+    assert ctx.verify_mode is ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
 
 
 def test_r1_target_raises_loud_not_silent_when_topology_has_drifted_from_manifest(tmp_path):

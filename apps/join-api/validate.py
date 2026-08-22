@@ -199,6 +199,14 @@ class ValidationContext:
     semantic_map: dict  # configs/semantic/semantic-map.yaml -- entity -> {anchor, fields}
     fetch_spec: Callable[[str], str] = _default_fetch_spec
     check_reachable: Callable[[str], None] = _default_check_reachable
+    # deployment.yaml's join_workflow.require_https_spec_url (docs/
+    # production-delta.md row 18), threaded in by app.py exactly the way
+    # _COMMIT_GATE and _ENFORCE_OWNERSHIP are -- a deployment posture, not a
+    # join-content policy, so it does NOT live on `policy` above with
+    # join-policy.yaml's own five keys. Default False here, so every test
+    # and every caller that predates the switch keeps the transition
+    # behaviour without naming it.
+    require_https_spec_url: bool = False
     # Populated by check 9, consumed by check 10 -- avoids fetching the same
     # spec twice for services that pass check 9.
     fetched_specs: dict[str, dict] = dataclasses.field(default_factory=dict)
@@ -731,6 +739,52 @@ def _check_spec_url_origin(ctx: ValidationContext) -> str | None:
     return None
 
 
+def _check_https_spec_url(ctx: ValidationContext) -> str | None:
+    """Every service's spec_url uses https, when deployment.yaml's
+    join_workflow.require_https_spec_url says so (docs/production-delta.md
+    row 18).
+
+    Off (the default) this check is a no-op and http spec_urls are accepted
+    exactly as before -- that is the transition, and it is why the demo's
+    own fixtures could move to https without the switch having to move with
+    them. On (the droplet target) a plain-http spec_url is REJECTED here,
+    before check 9 ever fetches it.
+
+    Placed AFTER spec_url_origin rather than before it, deliberately.
+    spec_url_origin is the more fundamental judgement -- is this a URL this
+    federation will fetch AT ALL (a fetchable scheme, a host on
+    join.spec_url_hosts, not an IP literal, not localhost) -- and a
+    `file:///pack/.env` spec_url should be rejected as spec_url_origin, not
+    told it is merely "not https". This check only narrows the scheme set
+    spec_url_origin already accepted, so it belongs on top of that check,
+    not in front of it. It still runs before backend_reachability, which is
+    the only thing that matters for the guard-before-the-fetch rule
+    spec_url_origin's own placement comment states.
+
+    What this does NOT claim. The verified https path is join-api ->
+    spec-fetcher -> the member's backend: apps/spec-fetcher/app.py builds an
+    ssl.create_default_context() and adds the deployment's own CA bundle to
+    it, so a certificate that does not chain to a trusted root fails the
+    fetch. The Security Server's OWN fetch of the same spec_url (when it
+    adds the service description) does NOT verify the backend certificate --
+    measured live against 7.7.0, see docs/production-delta.md row 18 -- so
+    this switch buys a verified fetch at validate time and transport
+    encryption, not end-to-end certificate verification across every hop."""
+    if not ctx.require_https_spec_url:
+        return None
+    for svc in ctx.payload.services:
+        scheme = urllib.parse.urlsplit(svc.spec_url).scheme
+        if scheme != "https":
+            return (
+                f"service {svc.code!r}'s spec_url {svc.spec_url!r} uses "
+                f"{scheme or '(no scheme)'!r}, but this deployment sets "
+                "join_workflow.require_https_spec_url: true (deployment.yaml) "
+                "-- publish the OpenAPI description over https, with a "
+                "certificate that chains to a CA this federation trusts"
+            )
+    return None
+
+
 def _check_backend_reachability(ctx: ValidationContext) -> str | None:
     """Fetch spec_url, parse servers.url, resolve-and-connect to it from
     inside the linkup network. Catches the
@@ -783,7 +837,10 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 # inserted after purpose_limitation since all three inspect payload.services,
 # plus spec_url_origin immediately before backend_reachability, where it has
 # to be: it is the guard on that check's own fetch, and a guard that runs
-# after the fetch guards nothing, plus allowed_backend_auth immediately
+# after the fetch guards nothing, plus https_spec_url between those two --
+# it narrows the scheme set spec_url_origin already accepted, so it sits on
+# top of that check rather than in front of it (its own docstring has the
+# argument), and still ahead of the fetch, plus allowed_backend_auth immediately
 # after backend_auth_declared, where it belongs: that check establishes
 # backend.auth is a legal schema value at all, this one judges it against
 # the policy's own allowlist.
@@ -799,6 +856,7 @@ _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("lawful_basis", _check_lawful_basis),
     ("sla_required", _check_sla_required),
     ("spec_url_origin", _check_spec_url_origin),
+    ("https_spec_url", _check_https_spec_url),
     ("backend_reachability", _check_backend_reachability),
     ("allowed_methods", _check_allowed_methods),
     ("backend_auth_declared", _check_backend_auth_declared),
@@ -816,6 +874,7 @@ def validate(
     semantic_map: dict,
     fetch_spec: Callable[[str], str] | None = None,
     check_reachable: Callable[[str], None] | None = None,
+    require_https_spec_url: bool = False,
 ) -> tuple[JoinPayload, ValidationContext]:
     """Runs all fourteen per-request checks (eleven, minus check 5,
     plus lawful_basis, sla_required and spec_url_origin -- see _CHECKS' own
@@ -853,6 +912,7 @@ def validate(
         semantic_map=semantic_map,
         fetch_spec=fetch_spec or _make_fetch_spec(policy),
         check_reachable=check_reachable or _make_check_reachable(policy),
+        require_https_spec_url=require_https_spec_url,
     )
     for name, check_fn in _CHECKS:
         error = check_fn(ctx)

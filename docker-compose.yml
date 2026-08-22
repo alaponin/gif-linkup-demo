@@ -66,8 +66,17 @@ x-mock: &mock
   # a Docker bridge each app-* container sits on twice, not two containers.
   networks: [linkup, specs]
   restart: unless-stopped
+  # apps/mock-registry/entrypoint.sh asks the Test CA for this container's
+  # own :8443 server certificate at boot (docs/production-delta.md row 18).
+  # It retries for ~2 minutes if the CA is not there yet, so this
+  # dependency is an optimisation, not the correctness guarantee -- but it
+  # makes the retry the exception rather than every cold boot's rule.
+  depends_on:
+    ca:
+      condition: service_healthy
   # Measured ~32 MiB steady (docs/production-delta.md) -- generous headroom
-  # for a single small FastAPI process serving a CSV in memory.
+  # for a single small FastAPI process serving a CSV in memory, now two
+  # (plain :8000 and TLS :8443).
   mem_limit: 128m
 
 services:
@@ -107,6 +116,14 @@ services:
     ports: ["${XROAD_BIND:-127.0.0.1}:8888:8888"]
     volumes:
       - ca-data:/home/ca
+      # ca.pem / ocsp.pem / tsa.pem and nothing else -- the PUBLIC half of
+      # this CA. Moved up from hurl/compose.hurl.yml, which used to be the
+      # only file declaring it, because spec-fetcher now needs the same
+      # bundle on a plain `docker compose up` with no Hurl overlay in
+      # sight (docs/production-delta.md row 18). Deliberately NOT ca-data:
+      # that volume also carries /home/ca/CA/private/ca.key.pem, and the
+      # whole point of spec-fetcher is that it holds nothing worth stealing.
+      - ca-certs:/home/ca/certs
     networks: [linkup]
     # Verified live against a running container before landing this (task-1
     # report): GET /testca/certs returns 200. Moved here from
@@ -124,7 +141,13 @@ services:
     # Management Security Server (CS owner PDGA + MANAGEMENT subsystem).
     <<: *sidecar
     container_name: ss-pdga
-    ports: ["${XROAD_BIND:-127.0.0.1}:1000:4000", "${XROAD_BIND:-127.0.0.1}:1080:8080"]
+    # :8443 is the TLS client proxy -- the port a client whose
+    # connection_type is HTTPS/HTTPS_NO_AUTH must use, and the one X-Road
+    # refuses the plaintext :8080 in favour of for that client
+    # (docs/production-delta.md row 19). Host port is UI+443, the same
+    # derivation hurl/generate.py's tls_rest_port() applies to a joined
+    # member's own server. Loopback-bound like every other published port.
+    ports: ["${XROAD_BIND:-127.0.0.1}:1000:4000", "${XROAD_BIND:-127.0.0.1}:1080:8080", "${XROAD_BIND:-127.0.0.1}:1443:8443"]
     volumes:
       - ss-pdga-db:/var/lib/postgresql/16/main
       - ss-pdga-conf:/etc/xroad
@@ -135,7 +158,13 @@ services:
     # PNEA — consumer (PROGRESSA/GOV/PNEA:EXAMS).
     <<: *sidecar
     container_name: ss-pnea
-    ports: ["${XROAD_BIND:-127.0.0.1}:2000:4000", "${XROAD_BIND:-127.0.0.1}:2080:8080"]
+    # :8443 is the TLS client proxy -- the port a client whose
+    # connection_type is HTTPS/HTTPS_NO_AUTH must use, and the one X-Road
+    # refuses the plaintext :8080 in favour of for that client
+    # (docs/production-delta.md row 19). Host port is UI+443, the same
+    # derivation hurl/generate.py's tls_rest_port() applies to a joined
+    # member's own server. Loopback-bound like every other published port.
+    ports: ["${XROAD_BIND:-127.0.0.1}:2000:4000", "${XROAD_BIND:-127.0.0.1}:2080:8080", "${XROAD_BIND:-127.0.0.1}:2443:8443"]
     volumes:
       - ss-pnea-db:/var/lib/postgresql/16/main
       - ss-pnea-conf:/etc/xroad
@@ -146,7 +175,13 @@ services:
     # PLR — provider (PROGRESSA/GOV/PLR:ENROLMENT).
     <<: *sidecar
     container_name: ss-plr
-    ports: ["${XROAD_BIND:-127.0.0.1}:3000:4000", "${XROAD_BIND:-127.0.0.1}:3080:8080"]
+    # :8443 is the TLS client proxy -- the port a client whose
+    # connection_type is HTTPS/HTTPS_NO_AUTH must use, and the one X-Road
+    # refuses the plaintext :8080 in favour of for that client
+    # (docs/production-delta.md row 19). Host port is UI+443, the same
+    # derivation hurl/generate.py's tls_rest_port() applies to a joined
+    # member's own server. Loopback-bound like every other published port.
+    ports: ["${XROAD_BIND:-127.0.0.1}:3000:4000", "${XROAD_BIND:-127.0.0.1}:3080:8080", "${XROAD_BIND:-127.0.0.1}:3443:8443"]
     volumes:
       - ss-plr-db:/var/lib/postgresql/16/main
       - ss-plr-conf:/etc/xroad
@@ -161,7 +196,13 @@ services:
     # failing fast.
     <<: *sidecar
     container_name: ss-pnia
-    ports: ["${XROAD_BIND:-127.0.0.1}:5100:4000", "${XROAD_BIND:-127.0.0.1}:5180:8080"]
+    # :8443 is the TLS client proxy -- the port a client whose
+    # connection_type is HTTPS/HTTPS_NO_AUTH must use, and the one X-Road
+    # refuses the plaintext :8080 in favour of for that client
+    # (docs/production-delta.md row 19). Host port is UI+443, the same
+    # derivation hurl/generate.py's tls_rest_port() applies to a joined
+    # member's own server. Loopback-bound like every other published port.
+    ports: ["${XROAD_BIND:-127.0.0.1}:5100:4000", "${XROAD_BIND:-127.0.0.1}:5180:8080", "${XROAD_BIND:-127.0.0.1}:5543:8443"]
     volumes:
       - ss-pnia-db:/var/lib/postgresql/16/main
       - ss-pnia-conf:/etc/xroad
@@ -172,6 +213,12 @@ services:
     # Mock identity registry behind ss-pnia.
     <<: *mock
     container_name: app-pnia
+    # The name the Test CA-issued :8443 certificate is issued FOR
+    # (apps/mock-registry/entrypoint.sh reads `hostname`). Compose does
+    # not derive this from container_name -- without it the container id
+    # lands in the SAN and every https spec_url naming app-pnia fails
+    # hostname verification. Found live, not reasoned about.
+    hostname: app-pnia
     environment:
       ENTITY: persons
       CSV_FILE: /data/persons.csv
@@ -185,6 +232,12 @@ services:
     # Mock learner registry behind ss-plr.
     <<: *mock
     container_name: app-plr
+    # The name the Test CA-issued :8443 certificate is issued FOR
+    # (apps/mock-registry/entrypoint.sh reads `hostname`). Compose does
+    # not derive this from container_name -- without it the container id
+    # lands in the SAN and every https spec_url naming app-plr fails
+    # hostname verification. Found live, not reasoned about.
+    hostname: app-plr
     environment:
       ENTITY: enrolments
       CSV_FILE: /data/enrolments.csv
@@ -203,6 +256,12 @@ services:
     # against, same generic mock pattern as app-pnia/app-plr.
     <<: *mock
     container_name: app-ptsb
+    # The name the Test CA-issued :8443 certificate is issued FOR
+    # (apps/mock-registry/entrypoint.sh reads `hostname`). Compose does
+    # not derive this from container_name -- without it the container id
+    # lands in the SAN and every https spec_url naming app-ptsb fails
+    # hostname verification. Found live, not reasoned about.
+    hostname: app-ptsb
     environment:
       ENTITY: awards
       CSV_FILE: /data/awards.csv
@@ -244,6 +303,20 @@ services:
     # OTHER service's ports:) has nothing to check here because there is
     # nothing published.
     networks: [specs]
+    # The ONE volume this container gets, and the reason the Dockerfile's
+    # "no volumes" comment now reads "no volumes worth stealing": the Test
+    # CA's PUBLIC certificate, read-only. spec-fetcher sits on `specs`
+    # alone and has no route to `ca` on `linkup`, so it cannot fetch this
+    # over HTTP the way apps/mock-registry/entrypoint.sh does -- and the
+    # alternative to mounting it is `verify=False`, which is exactly the
+    # thing docs/production-delta.md row 18 exists to forbid.
+    volumes:
+      - ca-certs:/etc/ssl/testca:ro
+    environment:
+      # app.py builds an ssl.create_default_context() and ADDS this file to
+      # it -- the public trust store plus the Test CA, never instead of it,
+      # and never a bypass. Unset (any other target) => stock verification.
+      SPEC_FETCHER_CA_BUNDLE: /etc/ssl/testca/ca.pem
 
   console:
     # KP2 demonstration console -- demo only, never production (see
@@ -286,7 +359,16 @@ services:
       # does not stop the console. join-api's own stanza keeps :?, where
       # the token is load-bearing.
       KP2_JOIN_OPERATOR_TOKEN: ${KP2_JOIN_OPERATOR_TOKEN:-}
+      # The trust anchor apps/console/xroad.py's exchange() verifies the
+      # consumer's TLS client-proxy against once a consumer's
+      # connection_type is HTTPS_NO_AUTH (docs/production-delta.md row 19).
+      # Public certificate only, from the same `ca-certs` volume
+      # spec-fetcher gets. NOT used for the :4000 admin API, which still
+      # presents the sidecar's own self-signed proxy-ui certificate --
+      # that one is a separate, still-open demo compromise xroad.py names.
+      KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
     volumes:
+      - ca-certs:/etc/ssl/testca:ro
       - ./deployment.yaml:/pack/deployment.yaml:ro
       - ./manifest.yaml:/pack/manifest.yaml:ro
       - ./configs:/pack/configs:ro
@@ -382,7 +464,14 @@ services:
       # set (see store.py's _cli_connect). Same empty-on-docker-local
       # pattern as KP2_JOIN_DB_URL above.
       KP2_JOIN_DB_URL_RO: ${KP2_JOIN_DB_URL_RO:-}
+      # Same trust anchor, same reason, for job.py's r1 verification step:
+      # that call goes through the consumer's Security Server, so once the
+      # consumer is HTTPS_NO_AUTH it is a TLS call and it is verified
+      # against this file, never with verification off
+      # (docs/production-delta.md row 19).
+      KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
     volumes:
+      - ca-certs:/etc/ssl/testca:ro
       - ../../..:/repo
       # ...with one addition, for a checkout that is a git WORKTREE. There,
       # /repo/.git is not a directory but a FILE holding
@@ -413,6 +502,11 @@ volumes:
   cs-db: {name: kp2-cs-db}
   cs-conf: {name: kp2-cs-conf}
   ca-data: {name: kp2-ca-data}
+  # Public trust anchor only (see ca's own volumes: above). Declared here
+  # rather than in hurl/compose.hurl.yml since spec-fetcher needs it with
+  # no overlay loaded; the overlay still mounts the same named volume into
+  # the Hurl runner's --file-root.
+  ca-certs: {name: kp2-ca-certs}
   ss-pdga-db: {name: kp2-ss-pdga-db}
   ss-pdga-conf: {name: kp2-ss-pdga-conf}
   ss-pdga-archive: {name: kp2-ss-pdga-archive}

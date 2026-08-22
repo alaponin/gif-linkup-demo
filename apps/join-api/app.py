@@ -243,6 +243,24 @@ if not isinstance(_ENFORCE_OWNERSHIP, bool):
         f"join-api: deployment.yaml join_workflow.enforce_ownership {_ENFORCE_OWNERSHIP!r} is not "
         "true or false."
     )
+
+# deployment.yaml's join_workflow.require_https_spec_url (docs/production-
+# delta.md row 18): False (default, docker-local) is the transition -- an
+# http spec_url is accepted exactly as it always was, which is what lets
+# this pack's own fixtures move to https ahead of the switch rather than
+# with it. True (the droplet target) makes validate.py's https_spec_url
+# check REJECT a plain-http spec_url before check 9 ever fetches it. Read
+# and validated here beside _COMMIT_GATE/_ENFORCE_OWNERSHIP for the third
+# time for the same reason: a typo must fail loudly at startup, never
+# quietly become "false" and leave the production posture off.
+_REQUIRE_HTTPS_SPEC_URL = (_deployment_doc.get("join_workflow") or {}).get(
+    "require_https_spec_url", False
+)
+if not isinstance(_REQUIRE_HTTPS_SPEC_URL, bool):
+    raise RuntimeError(
+        f"join-api: deployment.yaml join_workflow.require_https_spec_url "
+        f"{_REQUIRE_HTTPS_SPEC_URL!r} is not true or false."
+    )
 # Same _required_token refusal APPLICANT_TOKEN/OPERATOR_TOKEN get above,
 # applied to the Postgres DSN: unset or still the .env.example CHANGEME
 # placeholder must fail loudly at startup, not hand psycopg a string it will
@@ -783,6 +801,7 @@ def submit_request(
             policy=_load_join_policy(),
             existing_servers=validate.load_existing_security_servers(PACK_DIR),
             semantic_map=validate.load_semantic_map(PACK_DIR),
+            require_https_spec_url=_REQUIRE_HTTPS_SPEC_URL,
         )
     except validate.RejectionError as exc:
         record = {

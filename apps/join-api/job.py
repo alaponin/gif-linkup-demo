@@ -52,9 +52,11 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import json
+import os
 import pathlib
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -556,7 +558,16 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
             "hurl/topology.json -- manifest and topology have diverged; cannot plan join.r1_verify",
         )
     host = next((s for s in topology["security_servers"] if s["host"] == entry["hosted_on"]), None)
-    proxy_port = (host or {}).get("proxy_port", 8080)
+    # Plain or TLS client proxy, decided by the CONSUMER's own
+    # connection_type -- the same decision apps/console/truth.py's
+    # _entrypoint_for_member_code and scripts/lib-stack.sh's rest_base()
+    # make, from the same topology.json (docs/production-delta.md row 19).
+    # The host name stays the Security Server's DNS name either way, which
+    # is what its internal TLS certificate is issued for.
+    if entry.get("connection_type", "HTTP") != "HTTP":
+        scheme, proxy_port = "https", (host or {}).get("proxy_tls_port", 8443)
+    else:
+        scheme, proxy_port = "http", (host or {}).get("proxy_port", 8080)
     # ponytail: the service ROOT path, not an operation from the joining
     # member's OpenAPI document. What this call has to prove is S2.4's
     # "registry-perfect but dead" case -- that a request actually traverses
@@ -576,7 +587,7 @@ def _r1_target(pack_dir: pathlib.Path, payload: JoinPayload) -> dict | None:
         ]
     )
     return {
-        "url": f"http://{entry['hosted_on']}:{proxy_port}/{path}/",
+        "url": f"{scheme}://{entry['hosted_on']}:{proxy_port}/{path}/",
         "client_header": subject,
         "service": service.code,
     }
@@ -705,14 +716,39 @@ def _default_run_hurl(
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _r1_ssl_context() -> ssl.SSLContext:
+    """Trust store for the r1 call below (docs/production-delta.md row 19):
+    the public roots PLUS whatever KP2_XROAD_CA_BUNDLE names -- on
+    docker-local, the Test CA's public certificate, mounted read-only from
+    the `ca-certs` volume. Never instead of the public roots, and never a
+    bypass. Built per call rather than at import: this runs at most once per
+    job step, and a module-level context would be one more thing to keep in
+    sync with a test that changes the variable."""
+    ctx = ssl.create_default_context()
+    bundle = os.environ.get("KP2_XROAD_CA_BUNDLE")
+    if bundle:
+        ctx.load_verify_locations(cafile=bundle)
+    return ctx
+
+
 def _default_r1_call(
     url: str, client_header: str, declared: frozenset[str], required: frozenset[str]
 ) -> tuple[bool, str, dict[str, list[str]] | None]:
     """The r1 reachability call, adapted from apps/console/xroad.py's
-    exchange() -- a plain GET on the consumer's proxy (:8080) with an
-    X-Road-Client header, verify=False for the same Test CA reason. Not
-    imported from apps/console: this container does not mount that app
-    (app.py copies its request-boundary guard for the same reason).
+    exchange() -- a GET on the consumer's proxy with an X-Road-Client
+    header. Not imported from apps/console: this container does not mount
+    that app (app.py copies its request-boundary guard for the same
+    reason).
+
+    `url` is https when the consumer's connection_type is not HTTP
+    (_r1_target above, docs/production-delta.md row 19), and it is VERIFIED
+    -- public roots plus KP2_XROAD_CA_BUNDLE, the same trust store
+    apps/console/xroad.py's exchange path builds, never verify=False. The
+    Security Server's internal TLS certificate is issued by the
+    federation's own CA for that server's name; verification off would make
+    this step prove the call reached *something* answering for `ss-pnea`,
+    which is not what "verified" is claimed to mean on the record it
+    stamps.
 
     Verified means the call traversed X-Road and reached a backend: any
     response that is not an X-Road fault. A denial
@@ -732,7 +768,9 @@ def _default_r1_call(
     nothing to compare against.
     """
     try:
-        resp = httpx.get(url, headers={"X-Road-Client": client_header}, verify=False, timeout=10.0)
+        resp = httpx.get(
+            url, headers={"X-Road-Client": client_header}, verify=_r1_ssl_context(), timeout=10.0
+        )
     except httpx.HTTPError as exc:
         return False, f"{url}: {exc}", None
     try:

@@ -483,6 +483,45 @@ def test_a_policy_with_no_allowlist_fetches_nothing():
     assert "spec_url_hosts" in err.message
 
 
+# -- https_spec_url: deployment.yaml's join_workflow.require_https_spec_url --
+# The admission test join-policy.yaml's own header states, applied to a key
+# that lives in deployment.yaml instead: can it be set to another value, and
+# does something observably change? These four say yes -- the same payload is
+# accepted with the switch off and REJECTED with it on, and the switch does
+# not disturb the two checks either side of it.
+
+
+def test_an_http_spec_url_is_accepted_while_the_switch_is_off():
+    """The default, and the whole reason the switch exists: the transition.
+    docker-local ships require_https_spec_url: false, so nothing that worked
+    before this check existed stops working the day it lands."""
+    payload = _run(_publishing("http://app-ptsb:8000/openapi.yaml"),
+                   fetch_spec=_fetch_fixture("clean.yaml"))
+    assert payload.services[0].code == "awards-api"
+
+
+def test_the_same_http_spec_url_is_rejected_once_the_switch_is_on():
+    err = _rejects(_publishing("http://app-ptsb:8000/openapi.yaml"), "https_spec_url",
+                   require_https_spec_url=True, fetch_spec=_never_fetched)
+    assert "require_https_spec_url" in err.message
+
+
+def test_an_https_spec_url_passes_with_the_switch_on():
+    """The other half. A switch that rejects everything is not a posture."""
+    payload = _run(_publishing("https://app-ptsb:8443/openapi.yaml"),
+                   require_https_spec_url=True, fetch_spec=_fetch_fixture("clean.yaml"))
+    assert payload.services[0].code == "awards-api"
+
+
+def test_spec_url_origin_still_wins_over_https_spec_url():
+    """Placement, asserted rather than described. file:// is not "merely not
+    https" -- it is a scheme this federation never fetches at all, and the
+    rejection has to say so even with the stricter switch on, or the operator
+    reading a REJECTED record is pointed at the wrong problem."""
+    _rejects(_publishing("file:///pack/.env"), "spec_url_origin",
+             require_https_spec_url=True, fetch_spec=_never_fetched)
+
+
 def test_the_backend_url_inside_the_spec_is_judged_by_the_same_rule():
     """The delta row names spec_url; servers[].url is equally
     applicant-controlled and fetched from the same container. Closing only

@@ -300,6 +300,23 @@ REGISTRY: tuple[Step, ...] = (
         provides=(),
         probe="fragments/PROBE_SS_TSA_POST.hurl.tmpl",
     ),
+    # (b) Idempotent by construction: every run asks for a fresh CSR and
+    # imports the certificate the Test CA returns for it, replacing whatever
+    # internal TLS certificate was there before. Repeating it costs a serial
+    # and rotates the key; it never conflicts, and it never leaves the
+    # server without a usable certificate. Rendered only for a server whose
+    # own client is not plain HTTP (generate.py's build_ss_file), so it is
+    # absent from most scenarios entirely. No reversal: reverting means
+    # regenerating a self-signed certificate (POST /system/certificate),
+    # which is the sidecar's boot behaviour, not an undo of this step --
+    # and nothing in the pack has needed it.
+    Step(
+        id="ss.internal_tls_cert",
+        template="fragments/SS_INTERNAL_TLS_CERT.hurl.tmpl",
+        actor="member",
+        requires=("@HOSTVAR@", "@P@_xsrf_token", "ca_host"),
+        provides=("@P@_internal_tls_csr", "@P@_internal_tls_cert"),
+    ),
     # ss.client_add -> [ss.sign_key_csr] -> ss.client_register is the order
     # every caller must render these in (build_ss_file, build_hosted_client):
     # client-add must precede its SIGN-key generation, which must precede its

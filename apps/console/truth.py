@@ -106,9 +106,24 @@ def _to_colon_id(value: str) -> str:
 
 
 def _entrypoint_for_member_code(topology: dict, member_code: str) -> str:
+    """Where this member's own information system talks to its Security
+    Server -- the plain client proxy (:8080) or the TLS one (:8443),
+    decided by the subsystem's own connection_type, exactly the way
+    scripts/lib-stack.sh's rest_base() decides it for the shell callers
+    (docs/production-delta.md row 19).
+
+    The host name is the Security Server's DNS name either way, and for the
+    TLS case that is load-bearing rather than cosmetic: its internal TLS
+    certificate is issued for that name, so a URL naming anything else --
+    an address, a published-port alias -- fails hostname verification. This
+    console runs on the `linkup` network, where the name resolves directly.
+    """
     for subsystem in topology["subsystems"]:
         if subsystem["member_code"] == member_code:
-            return f"http://{subsystem['hosted_on']}:8080"
+            host = subsystem["hosted_on"]
+            if subsystem.get("connection_type", "HTTP") != "HTTP":
+                return f"https://{host}:8443"
+            return f"http://{host}:8080"
     raise RuntimeError(
         f"truth.py: no subsystem in topology.json for member_code {member_code!r} "
         "-- topology.json is stale, re-run hurl/generate.py"

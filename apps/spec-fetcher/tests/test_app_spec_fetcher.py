@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import ssl
 
 import httpx
 import pytest
@@ -211,6 +212,71 @@ def test_health():
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
 
+
+# -- the TLS trust store (docs/production-delta.md row 18) ---------------------
+# _ssl_context() is the whole of this service's https verification posture,
+# and the one thing about it that must never regress is that it is a real
+# trust store and not a bypass. These three assert exactly that, without a
+# socket: verification stays on, the deployment's own CA is ADDED to the
+# public roots rather than replacing them, and an unset variable leaves stock
+# verification alone.
+
+
+def test_the_ssl_context_verifies_and_checks_hostnames():
+    ctx = app_module._ssl_context()
+    assert ctx.verify_mode is ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
+def test_an_extra_ca_bundle_is_added_to_the_public_roots_not_substituted(monkeypatch, tmp_path):
+    """`load_verify_locations` adds; it does not replace. If a future edit
+    ever swaps this for a context built with cafile= alone, this service
+    would stop trusting every public CA the moment a deployment named its
+    own -- which is how a "fix" for a private CA quietly breaks every real
+    spec host."""
+    stock = len(ssl.create_default_context().get_ca_certs())
+    bundle = tmp_path / "extra-ca.pem"
+    bundle.write_text(_SELF_SIGNED_CA_PEM)
+    monkeypatch.setenv("SPEC_FETCHER_CA_BUNDLE", str(bundle))
+    ctx = app_module._ssl_context()
+    assert len(ctx.get_ca_certs()) == stock + 1
+
+
+def test_no_ca_bundle_leaves_stock_verification_untouched(monkeypatch):
+    monkeypatch.delenv("SPEC_FETCHER_CA_BUNDLE", raising=False)
+    ctx = app_module._ssl_context()
+    assert len(ctx.get_ca_certs()) == len(ssl.create_default_context().get_ca_certs())
+    assert ctx.verify_mode is ssl.CERT_REQUIRED
+
+
+# A throwaway CA certificate, generated once with
+#   openssl req -x509 -newkey rsa:2048 -nodes -days 36500 \
+#     -subj "/O=KP2 test/CN=spec-fetcher test CA" -keyout /dev/null -out -
+# and pasted here so this suite needs neither a key on disk nor an openssl
+# binary. It signs nothing; the only thing asserted about it is that
+# _ssl_context() loads it alongside the public roots.
+_SELF_SIGNED_CA_PEM = """\
+-----BEGIN CERTIFICATE-----
+MIIDRzCCAi+gAwIBAgIUDR4H+Jp7YjhdrscNErXDYH93cDUwDQYJKoZIhvcNAQEL
+BQAwMjERMA8GA1UECgwIS1AyIHRlc3QxHTAbBgNVBAMMFHNwZWMtZmV0Y2hlciB0
+ZXN0IENBMCAXDTI2MDgyMjE4NDM1MVoYDzIxMjYwNzI5MTg0MzUxWjAyMREwDwYD
+VQQKDAhLUDIgdGVzdDEdMBsGA1UEAwwUc3BlYy1mZXRjaGVyIHRlc3QgQ0EwggEi
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDfYN8LBvTpZmCofTjzzQJVs/Os
+NL7+NkP+thUlelpzbJZlriMzqjN45N+RbtXUCvRkqD6Zhpnh1+398Oqnb0MWYlOf
+7t/QMVC1seuTCFCG7K0WPHSC8Tz2ofEptN5ujXwOcR5/h1bhNfod1nWB07i8N9FG
+49+MRipKxBZ3Z5VA3MC74gCqTW4DtXYNUARx8tp/fo5hTJ5Fl/O++lmL872c7EYn
+EXond6OxBSJxr3GgFOPTA7a1lQnpKVJTnSSM5XZgF+z31iIn16ezaD+C4oQkSva4
+N4sKajQySV2UhhJLGdtVsGlJz/aaxL+jbfLKJNLtu7hCLImt8yV/l9QoqiiTAgMB
+AAGjUzBRMB0GA1UdDgQWBBR8/0n4XnU4oAD9f0kQxubFqaHWIjAfBgNVHSMEGDAW
+gBR8/0n4XnU4oAD9f0kQxubFqaHWIjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
+DQEBCwUAA4IBAQAjlctHshf+35TY2pvxI0oaYC/ZJlZD33D/Qx6FLi6JI+fVIhEd
+VEgCFt97TstGtBVdeSMwxKsc7nHj/8tMfyTrH5ZL7kOzWwyzMIn3exCfEWAEjTvX
+eyVDeSI5/1e7VeUyG969Ek6Tv0m+SQW1sm16sDbCU9xX1aVnaPQbVfLDYSuVbAk4
+iZgSdViksVuHxphxfIsbiRJNobsoTHpvkMC24wKJsS0VWY/UbogYSD3TCeaR+Abz
+WD59zbIsodgebk9XwQbgwccRSvpxoRixr5x8h46HluCLv5kcAJCClfSSwFnHnlHn
+PcqxhsfA0eDVWka2NIF5QfCZc17kzePKNZtA
+-----END CERTIFICATE-----
+"""
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

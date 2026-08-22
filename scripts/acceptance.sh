@@ -296,14 +296,21 @@ EN_PATH_TMPL="${_exchange[3]}"
 
 CONSUMER_MEMBER_SUBSYSTEM="${_exchange[0]//\//:}"; CONSUMER_MEMBER_SUBSYSTEM="${CONSUMER_MEMBER_SUBSYSTEM#*:*:}"
 BAD_MEMBER_SUBSYSTEM="${_exchange[1]//\//:}"; BAD_MEMBER_SUBSYSTEM="${BAD_MEMBER_SUBSYSTEM#*:*:}"
-PNEA_REST="http://${XROAD_BIND}:${SS_REST[${HOST_SS[$CONSUMER_MEMBER_SUBSYSTEM]}]}"
+# The consumer's own entrypoint, plain or TLS according to ITS
+# connection_type -- lib-stack.sh's rest_base() is the one place that
+# decides, and PNEA_OPTS carries whatever curl arguments the choice
+# implies (a --cacert and a --resolve for TLS, nothing for plain).
+# docs/production-delta.md row 19.
+rest_base "$CONSUMER_MEMBER_SUBSYSTEM" || fail "could not resolve the consumer entrypoint"
+PNEA_REST="$REST_BASE"; PNEA_OPTS=("${REST_OPTS[@]}")
 # Negative check goes through the SS that hosts the unauthorised caller (its
 # own server -- so the denial genuinely comes from the provider-side ACL, not
 # from the consumer's SS rejecting an unknown client). If that caller were
 # ever hosted (security_server.hosted_on), this would resolve to the host's
 # shared server instead.
 BAD_SS=${HOST_SS[$BAD_MEMBER_SUBSYSTEM]}
-BAD_REST="http://${XROAD_BIND}:${SS_REST[$BAD_SS]}"
+rest_base "$BAD_MEMBER_SUBSYSTEM" || fail "could not resolve the negative-check entrypoint"
+BAD_REST="$REST_BASE"; BAD_OPTS=("${REST_OPTS[@]}")
 
 ID_URL="$PNEA_REST${ID_PATH_TMPL%/\{nin\}}"
 EN_URL="$PNEA_REST${EN_PATH_TMPL%/\{nin\}}"
@@ -333,7 +340,7 @@ fetch_retry() {
     # ends in fail() with the URL rather than in a confusing parse error
     # downstream. Worth knowing before reusing this helper for an endpoint
     # where `null` or `false` IS the answer.
-    if out=$(curl -sf -H "$CLIENT" "$url" 2>/dev/null) &&
+    if out=$(curl -sf "${PNEA_OPTS[@]}" -H "$CLIENT" "$url" 2>/dev/null) &&
        printf '%s' "$out" | jq -e . >/dev/null 2>&1; then printf '%s' "$out"; return 0; fi
     # >&2 IS LOAD-BEARING, and this is the one function in the file where it
     # is: lib-core.sh's log() writes to STDOUT, and this function's stdout is
@@ -382,14 +389,14 @@ check_264() {  # denial must come from the provider ACL, observed as an X-Road e
                # Exact fault confirmed live at P0:
                # {"type":"Server.ServerProxy.AccessDenied","message":"Request is not
                # allowed: SERVICE:PROGRESSA/GOV/PNIA/IDENTITY/identity-api",...}, HTTP 500.
-  curl -sk -H "$BADCLIENT" "$BAD_REST${ID_PATH_TMPL/\{nin\}/$NIN}" \
+  curl -s "${BAD_OPTS[@]}" -H "$BADCLIENT" "$BAD_REST${ID_PATH_TMPL/\{nin\}/$NIN}" \
     | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
 }
 check 2.6.4 "negative — ${_exchange[1]} (via its own SS $BAD_SS) denied by the provider ACL" check_264
 
 check_265() {
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' -H "$CLIENT" "$EN_URL/$MISSING_NIN")
+  code=$(curl -s "${PNEA_OPTS[@]}" -o /dev/null -w '%{http_code}' -H "$CLIENT" "$EN_URL/$MISSING_NIN")
   [ "$code" = "404" ]
 }
 check 2.6.5 "negative — NIN absent from PLR yields a clean 404, not silence" check_265
@@ -839,8 +846,12 @@ if _selection_touches_27; then
       log "SKIP 2.7 r1(${code}.${svc}) -- ${good_pair} or ${bad_pair} not in this deployment's HOST_SS"
       continue
     fi
-    GOOD_REST="http://${XROAD_BIND}:${SS_REST[$GOOD_SS]}"
-    BAD_REST="http://${XROAD_BIND}:${SS_REST[$BAD_SS]}"
+    # Same rest_base() decision as the canonical exchange above, per
+    # joined member -- a joined consumer can be HTTPS too.
+    rest_base "$good_pair" || fail "could not resolve ${good_pair}'s entrypoint"
+    GOOD_REST="$REST_BASE"; GOOD_OPTS=("${REST_OPTS[@]}")
+    rest_base "$bad_pair" || fail "could not resolve ${bad_pair}'s entrypoint"
+    BAD_REST="$REST_BASE"; BAD_OPTS=("${REST_OPTS[@]}")
 
     # "2xx" per acceptance/join-member.md's prose meant, in practice, "the call
     # traversed X-Road and reached the backend" -- true for job.py's own
@@ -855,7 +866,7 @@ if _selection_touches_27; then
     # unambiguously distinct regardless of this change.
     check_r1_ok() {
       local body is_fault
-      body=$(curl -sk -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
+      body=$(curl -s "${GOOD_OPTS[@]}" -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path")
       is_fault=$(printf '%s' "$body" | jq -r '(.type // "") | test("^(Server|Client)\\.")' 2>/dev/null)
       [ "$is_fault" != "true" ]
     }
@@ -863,7 +874,7 @@ if _selection_touches_27; then
     check "2.7.r1(${code}.${svc})" "${client_header} r1 call to ${svc} reaches the backend (no X-Road fault)" check_r1_ok_retry
 
     check_r1_denied() {
-      curl -sk -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
+      curl -s "${BAD_OPTS[@]}" -H "X-Road-Client: $bad_header" "$BAD_REST$r1_path" \
         | jq -e '.type == "Server.ServerProxy.AccessDenied"' >/dev/null
     }
     check "2.7.deny(${code}.${svc})" "${bad_header} (via its own SS $BAD_SS) denied by the provider ACL" check_r1_denied
@@ -878,13 +889,14 @@ if _selection_touches_27; then
     # this pack's own mock pattern) is skipped, not failed -- there is no
     # in-repo contract to check it against.
     check_r1_fields() {
-      python3 - "$PACK_DIR" "$spec_url" "$GOOD_REST" "$r1_path" "$client_header" <<'PY'
-import json, pathlib, sys, urllib.parse
+      python3 - "$PACK_DIR" "$spec_url" "$GOOD_REST" "$r1_path" "$client_header" \
+               "$(testca_bundle 2>/dev/null || true)" <<'PY'
+import json, pathlib, ssl, sys, urllib.parse
 import urllib.request
 
 import yaml
 
-pack_dir, spec_url, good_rest, r1_path, client_header = sys.argv[1:6]
+pack_dir, spec_url, good_rest, r1_path, client_header, ca_bundle = sys.argv[1:7]
 host = urllib.parse.urlparse(spec_url).hostname
 
 compose = yaml.safe_load(open(f"{pack_dir}/docker-compose.yml"))
@@ -918,8 +930,22 @@ with open(f"{pack_dir}/apps/data/{csv_file.removeprefix('/data/')}", newline="")
 path_param = next(p["name"] for p in path_item["get"].get("parameters", []) if p.get("in") == "path")
 resource = path_tmpl.lstrip("/").replace("{" + path_param + "}", key)
 
+# good_rest is https when this consumer's connection_type is not HTTP
+# (docs/production-delta.md row 19). Verified against the deployment's own
+# CA bundle -- never an unverified context, which is what this whole row
+# is about. The name in the URL is the Security Server's DNS name, which
+# is what its certificate is issued for, so no --resolve equivalent is
+# needed here: this runs on the host, where that name resolves through
+# the published port only via curl's --resolve, so a TLS good_rest is
+# addressed by name and reached by the loopback mapping the caller set up.
+ctx = None
+if good_rest.startswith("https://"):
+    if not ca_bundle:
+        print("SKIP: TLS entrypoint but no CA bundle available", file=sys.stderr)
+        sys.exit(0)
+    ctx = ssl.create_default_context(cafile=ca_bundle)
 req = urllib.request.Request(f"{good_rest}{r1_path}{resource}", headers={"X-Road-Client": client_header})
-with urllib.request.urlopen(req, timeout=10) as resp:
+with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
     body = json.loads(resp.read())
 
 returned = set(body)
@@ -952,7 +978,8 @@ PY
       log "SKIP 2.7.unjoin(${code}) -- ${good_pair}, its authorised consumer before it left, is not in this deployment's HOST_SS"
       continue
     fi
-    GOOD_REST="http://${XROAD_BIND}:${SS_REST[$GOOD_SS]}"
+    rest_base "$good_pair" || fail "could not resolve ${good_pair}'s entrypoint"
+    GOOD_REST="$REST_BASE"; GOOD_OPTS=("${REST_OPTS[@]}")
 
     # Clause 1. Absence on the CS is an EMPTY LIST, not a 404 -- there is no
     # GET /subsystems/{id} on the Central Server at all (405), so this read
@@ -994,7 +1021,7 @@ PY
     # same terms as every other propagation wait in this file -- the proxy's
     # own authorisation cache lags a live change by seconds (#6).
     check_unjoin_r1() {
-      curl -sk -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path" \
+      curl -s "${GOOD_OPTS[@]}" -H "X-Road-Client: $client_header" "$GOOD_REST$r1_path" \
         | jq -e '.type == "Server.ClientProxy.UnknownMember"' >/dev/null
     }
     check_unjoin() {

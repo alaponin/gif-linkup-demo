@@ -1143,9 +1143,18 @@ certs are already named `ca.pem` / `ocsp.pem` / `tsa.pem` in `/home/ca/certs` an
 shared into the runner by `hurl/compose.hurl.yml` — no renaming, no `docker cp`;
 certificate profile is FiVRK, which validates the country code (`C=FI` — an artefact
 of the demo CA, not a claim about Progressa); services stay disabled after they are
-added until enabled; the consumer subsystem's connection type must be HTTP for the
-demo call (default HTTPS expects a client TLS certificate); the admin APIs
-authenticate by session login and XSRF token, not by API key.
+added until enabled; the consumer subsystem's connection type decides which
+client-proxy port its own information system may use, and X-Road enforces it --
+`HTTPS_NO_AUTH` (what PNEA runs since `docs/production-delta.md` row 19) makes
+the plaintext `:8080` fail with `Server.ClientProxy.SslAuthenticationFailed`
+"specifies HTTPS NO AUTH but client made plaintext connection" and requires
+`:8443`, while full `HTTPS` additionally demands a client TLS certificate
+registered on that client (not implemented here -- see row 19 for the gap);
+a Security Server's INTERNAL TLS certificate is self-signed with the CONTAINER
+ID as its CN out of the box, so it is replaced with a Test CA-issued one for
+the server's own DNS name (`hurl/steps.py`'s `ss.internal_tls_cert`) before
+anything is asked to verify it; the admin APIs authenticate by session login
+and XSRF token, not by API key.
 
 `docker-compose.yml`'s `mem_limit`/`cpus` (base-compose hardening,
 `docs/plans/production-hardening-plan.md` Phase A) are a ceiling sized with

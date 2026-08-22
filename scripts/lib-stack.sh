@@ -138,6 +138,60 @@ fi
 [ -f "$TOPOLOGY_SH" ] || { echo "lib-stack.sh: $TOPOLOGY_SH still missing after running generate.py" >&2; exit 1; }
 . "$TOPOLOGY_SH"
 
+# The Test CA's PUBLIC certificate, on the host, for a caller that has to
+# verify a TLS hop into the federation -- the consumer's client proxy on
+# :8443 once its connection_type is HTTPS/HTTPS_NO_AUTH
+# (docs/production-delta.md row 19). Fetched from the running `ca`
+# container's own distribution point (nginx serves /home/ca/CA/certs) and
+# cached under out/, which is gitignored and purged with the stack. Echoes
+# the path; returns non-zero, silently, if the CA is not up -- the caller
+# decides whether that is fatal, since a federation whose clients are all
+# plain HTTP never needs this at all.
+#
+# DEMO ONLY, and the reason this is a download rather than a pinned file: a
+# real deployment's trust anchor is distributed out of band, not fetched
+# over plain HTTP from the CA it is supposed to authenticate.
+testca_bundle() {
+  local out="$PACK_DIR/out/testca/ca.pem"
+  if [ ! -s "$out" ]; then
+    mkdir -p "$(dirname "$out")"
+    curl -fsS --max-time 10 "http://${XROAD_BIND}:8888/testca/certs/ca.cert.pem" -o "$out" \
+      2>/dev/null || { rm -f "$out"; return 1; }
+  fi
+  printf '%s\n' "$out"
+}
+
+# Sets REST_BASE and the REST_OPTS curl-argument array for reaching one
+# subsystem's OWN Security Server as that subsystem's information system.
+# $1 is a MEMBER:SUBSYSTEM pair, the same key HOST_SS and CLIENT_CONN use.
+#
+# This is the one place that decides plain vs TLS, so no caller has to.
+# HTTP -> the published :8080 mapping, exactly as before. Anything else ->
+# the :8443 mapping, addressed by the server's DNS NAME rather than by
+# ${XROAD_BIND}: the Security Server's internal TLS certificate is issued
+# for that name (hurl's ss.internal_tls_cert step), so a URL naming a
+# loopback ADDRESS would fail hostname verification. --resolve keeps the
+# connection on loopback while letting the name be the one verified, which
+# is exactly what --resolve is for -- and is why this is not `-k`.
+rest_base() {
+  local pair="$1" ss conn port
+  ss=${HOST_SS[$pair]:-}
+  conn=${CLIENT_CONN[$pair]:-HTTP}
+  REST_OPTS=()
+  if [ "$conn" = "HTTP" ]; then
+    REST_BASE="http://${XROAD_BIND}:${SS_REST[$ss]}"
+    return 0
+  fi
+  port=${SS_REST_TLS[$ss]}
+  REST_BASE="https://${ss}:${port}"
+  local bundle
+  bundle=$(testca_bundle) || {
+    echo "lib-stack.sh: $pair is $conn but the Test CA bundle could not be fetched -- is the stack up?" >&2
+    return 1
+  }
+  REST_OPTS=(--cacert "$bundle" --resolve "${ss}:${port}:${XROAD_BIND}")
+}
+
 # hurl/compose.members.yml (generated above -- joined members that own their
 # own Security Server) is added whenever it exists, to both arrays: a volume
 # it defines can only be removed by a `down -v` that names this file too,

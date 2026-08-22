@@ -137,7 +137,12 @@ def test_member_service_block_binds_both_ports_to_the_configured_interface():
     # changed to a bare mapping -- same reasoning as _AIRPLAY_5000_RANGE above.
     assert ports.strip() == (
         'ports: ["${XROAD_BIND:-127.0.0.1}:7100:4000", '
-        '"${XROAD_BIND:-127.0.0.1}:7180:8080"]'
+        '"${XROAD_BIND:-127.0.0.1}:7180:8080", '
+        # The TLS client proxy, UI+443 -- docs/production-delta.md row 19.
+        # Bound to the same interface as the other two, which is the whole
+        # point of this test: a third published port is a third place the
+        # bind policy can be forgotten.
+        '"${XROAD_BIND:-127.0.0.1}:7543:8443"]'
     ), f"a joined member's own Security Server must honour deployment.yaml's network.bind, got: {ports.strip()}"
 
 

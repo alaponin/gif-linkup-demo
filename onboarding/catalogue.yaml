@@ -10,7 +10,7 @@ services:
     code: PLR
     name: Progressa Learner Registry
   service_code: enrolment-api
-  contract: http://app-plr:8000/spec.yaml
+  contract: https://app-plr:8443/spec.yaml
   semantic:
     entity: enrolment
     anchor: OneRoster
@@ -27,7 +27,7 @@ services:
     code: PNIA
     name: Progressa National Identity Authority
   service_code: identity-api
-  contract: http://app-pnia:8000/spec.yaml
+  contract: https://app-pnia:8443/spec.yaml
   semantic:
     entity: person
     anchor: CEDS

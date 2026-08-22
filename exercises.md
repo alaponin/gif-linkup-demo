@@ -100,7 +100,7 @@ curl -s -X POST http://localhost:8091/requests \
                  "pattern": "digital_registries_lookup"},
     "services": [{
       "code": "awards-api",
-      "spec_url": "http://app-ptsb:8000/spec.yaml",
+      "spec_url": "https://app-ptsb:8443/spec.yaml",
       "access": ["PROGRESSA/GOV/PNEA/EXAMS"],
       "lawful_basis": "[confirm: cite the decree article]",
       "sla": {"availability": "99.5% monthly uptime",
@@ -199,9 +199,16 @@ data.)
 
 - Run from the host instead of inside the network, this reports
   `nodename nor servname provided`. **That error is the trap working**: the
-  spec URL is an internal `linkup` hostname (`app-ptsb:8000`), reachable only
+  spec URL is an internal `linkup` hostname (`app-ptsb:8443`), reachable only
   from a container on that network. It is not a bug and not a misconfigured
   member.
+- The URL is `https://` on port 8443, not `http://` on 8000. Both work today:
+  `deployment.yaml`'s `join_workflow.require_https_spec_url` defaults to
+  `false`, so a plain-http `spec_url` is still accepted (that is the
+  transition). Set it to `true` -- the droplet posture -- and resubmitting the
+  same payload with `http://` is REJECTED at check `https_spec_url` before
+  anything is fetched. That is the switch's own admission test, and it is
+  worth running once in both positions (`docs/production-delta.md` row 18).
 - Run from inside, the output is an **endpoint diff** against the baseline
   captured at join time (the join store, `out/join-store/join-store.sqlite3`):
   `awards-api: DRIFT since join` with `+ /awards/{nin}/history`, and the

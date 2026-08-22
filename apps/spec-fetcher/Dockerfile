@@ -13,10 +13,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 COPY app.py .
-# No volumes, no ENV secrets (docker-compose.yml's spec-fetcher service
-# declares none) -- USER nobody is not defence against a mount this image
-# never gets, it is one more thing an SSRF payload lands against and finds
-# nothing.
+# No secrets in ENV, and the one volume this container gets is the Test CA's
+# PUBLIC certificate, read-only (docker-compose.yml's spec-fetcher service;
+# docs/production-delta.md row 18 needed a real trust anchor here, and the
+# alternative was verify=False). USER nobody is not defence against a mount
+# this image never gets, it is one more thing an SSRF payload lands against
+# and finds nothing worth taking.
 USER nobody
 EXPOSE 8000
 HEALTHCHECK --interval=5s --retries=12 \

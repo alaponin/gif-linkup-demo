@@ -43,6 +43,8 @@ there is no default-allow here any more than there is in validate.py.
 from __future__ import annotations
 
 import ipaddress
+import os
+import ssl
 import urllib.parse
 
 import httpx
@@ -70,7 +72,32 @@ _TIMEOUT = 5.0
 # this name from the module global at call time (not as a default
 # parameter value, which Python would bind once at import time and a test's
 # later reassignment would never be seen).
-_CLIENT = httpx.Client()
+def _ssl_context() -> ssl.SSLContext:
+    """The TLS trust store for every https fetch this service makes
+    (docs/production-delta.md row 18).
+
+    Stock public verification (certifi via ssl.create_default_context) PLUS
+    whatever SPEC_FETCHER_CA_BUNDLE names, never instead of it: on
+    docker-local that variable is the Test CA's public certificate, mounted
+    read-only from the `ca-certs` volume, because the demo's own mock
+    backends now serve https with Test CA-issued certificates
+    (apps/mock-registry/entrypoint.sh). Unset on any target with real spec
+    hosts => stock verification, unchanged.
+
+    What this is NOT, and must never become: `verify=False`. Verification
+    off would make an https spec_url weaker than the http one it replaced --
+    an attacker on the path could serve any OpenAPI document it liked and
+    check 9 would believe it. An explicit CA file is the whole difference
+    between row 18 being closed and being theatre.
+    """
+    ctx = ssl.create_default_context()
+    bundle = os.environ.get("SPEC_FETCHER_CA_BUNDLE")
+    if bundle:
+        ctx.load_verify_locations(cafile=bundle)
+    return ctx
+
+
+_CLIENT = httpx.Client(verify=_ssl_context())
 
 
 def _origin_error(url: str, allowed_hosts: list[str]) -> str | None:

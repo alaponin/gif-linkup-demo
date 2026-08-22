@@ -259,9 +259,14 @@ def test_a_403_is_not_retried():
     assert calls.count("/login") == 1
 
 
-def test_exchange_defaults_to_the_shared_pool(monkeypatch):
+def test_exchange_defaults_to_the_exchange_pool(monkeypatch):
     """The leak this replaced: exchange() built a fresh, never-closed
-    httpx.Client on every call, and the counter tab calls it per lookup."""
+    httpx.Client on every call, and the counter tab calls it per lookup.
+
+    EXCHANGE_CLIENT, not SHARED_CLIENT: the two stopped sharing a trust
+    decision at docs/production-delta.md row 19 -- SHARED_CLIENT still runs
+    verify=False for the unverifiable :4000 admin certificate, and the
+    consumer hop must never inherit that."""
     import xroad
 
     seen = []
@@ -270,7 +275,7 @@ def test_exchange_defaults_to_the_shared_pool(monkeypatch):
         seen.append(str(request.url))
         return httpx.Response(200, json={"ok": True}, request=request)
 
-    monkeypatch.setattr(xroad, "SHARED_CLIENT", httpx.Client(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(xroad, "EXCHANGE_CLIENT", httpx.Client(transport=httpx.MockTransport(handler)))
     results = xroad.exchange(
         "http://ss-pdga:8080/r1",
         [{"service": "identity-api", "r1_path": "/persons/{nin}"}],
@@ -279,3 +284,18 @@ def test_exchange_defaults_to_the_shared_pool(monkeypatch):
     )
     assert [r.status_code for r in results] == [200]
     assert seen == ["http://ss-pdga:8080/r1/persons/02831663233"]
+
+
+def test_the_consumer_hop_never_runs_with_verification_off():
+    """Row 19's one non-negotiable. The admin session's own client may still
+    be unverified -- there is nothing to verify a self-signed :4000
+    certificate against -- but the exchange path must not inherit that, or
+    an encrypted consumer hop is open to anyone able to answer for the
+    Security Server's name."""
+    import ssl
+
+    import xroad
+
+    ctx = xroad._exchange_ssl_context()
+    assert ctx.verify_mode is ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True

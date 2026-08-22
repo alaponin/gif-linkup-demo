@@ -9,7 +9,23 @@ security_server:
   code: SS-PNEA
   dns_name: ss-pnea
 client:
-  connection_type: HTTP        # demo only — production: HTTPS + client TLS certificate
+  # How PNEA's own information system reaches its Security Server
+  # (docs/production-delta.md row 19). HTTPS_NO_AUTH: the hop is TLS on
+  # :8443 and X-Road REFUSES the plaintext :8080 for this client outright
+  # ("Client (SUBSYSTEM:PROGRESSA/GOV/PNEA/EXAMS) specifies HTTPS NO AUTH
+  # but client made plaintext connection" -- measured, not quoted from a
+  # manual). The server's internal TLS certificate is issued by the Test CA
+  # for `ss-pnea` (hurl's ss.internal_tls_cert step), so every caller
+  # verifies it against a CA bundle rather than pinning a self-signed
+  # certificate or turning verification off.
+  #
+  # Still NOT closed, deliberately: HTTPS (as opposed to HTTPS_NO_AUTH) also
+  # authenticates the information system to the Security Server with a
+  # CLIENT certificate. That is a separate security property from transport
+  # encryption, it needs a certificate issued to and distributed to every
+  # consumer caller, and this demo does not do it -- see
+  # docs/production-delta.md row 19 for the gap stated in full.
+  connection_type: HTTPS_NO_AUTH
 services: []                   # consumer in v0.1; provides nothing
 consumes:                      # the exchange this member exists for (wired in 2.6)
   - PROGRESSA/GOV/PNIA/IDENTITY/identity-api

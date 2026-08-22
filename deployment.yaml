@@ -61,3 +61,16 @@ join_workflow:
   # enabled this protects per-agency records from each other, nothing
   # more.
   enforce_ownership: false
+  # false (default): a joining member's spec_url may be plain http, exactly
+  # as it always could -- the transition, so this pack's own fixtures could
+  # move to https ahead of the switch rather than in lockstep with it.
+  # true (the droplet target): apps/join-api/validate.py's https_spec_url
+  # check REJECTS a plain-http spec_url before check 9 fetches it
+  # (docs/production-delta.md row 18). What the https path actually buys:
+  # apps/spec-fetcher verifies the certificate against a real trust store
+  # (public roots PLUS the deployment's own CA bundle, never verify=False),
+  # so at validate time a spec cannot be served by whoever holds the wire.
+  # What it does not buy: the Security Server's own fetch of the same
+  # spec_url, when it adds the service description, does NOT verify the
+  # backend certificate -- measured against 7.7.0, see row 18.
+  require_https_spec_url: false

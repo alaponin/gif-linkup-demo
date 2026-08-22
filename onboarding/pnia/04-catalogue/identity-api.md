@@ -5,7 +5,7 @@
 | Service code | `identity-api` |
 | X-Road service id | `PROGRESSA/GOV/PNIA/IDENTITY/identity-api` |
 | Provider | Progressa National Identity Authority (PNIA) |
-| Contract | `http://app-pnia:8000/spec.yaml` |
+| Contract | `https://app-pnia:8443/spec.yaml` |
 | Declared fields | *not copied -- read them from the contract above, which is not re-fetched when this entry is written* |
 | Semantic entity (tier 2) | `person` (anchor: CEDS) |
 | Exchange pattern (tier 1) | `digital_registries_lookup` |

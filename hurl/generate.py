@@ -134,6 +134,25 @@ def _allocate_numbers(keys: list, pinned: dict, start: int) -> dict:
     return result
 
 
+def tls_rest_port(ui: int) -> int:
+    """Host port for a Security Server's TLS client-proxy listener (:8443),
+    derived from its UI port rather than pinned or allocated separately
+    (docs/production-delta.md row 19).
+
+    :8443 is the port the proxy has always listened on beside :8080 -- a
+    client whose connection_type is HTTPS/HTTPS_NO_AUTH must use it, and
+    X-Road refuses the plaintext one for that client outright (measured:
+    "Client (SUBSYSTEM:...) specifies HTTPS NO AUTH but client made
+    plaintext connection"). Derived, not added to PINNED_PORTS, because a
+    third element in every pinned tuple would rewrite an interface four
+    callers already read for a value that has exactly one correct answer
+    per server. ui + 443 keeps the mapping legible at a glance -- 2000 (UI)
+    / 2080 (plain) / 2443 (TLS) for ss-pnea -- and cannot collide with the
+    UI (+0) or plain-REST (+80) ports allocate_ports() hands out, whose
+    spacing is +100."""
+    return ui + 443
+
+
 def allocate_ports(owner_keys: list) -> dict:
     """owner_keys: every Security-Server-OWNING entity's key ("pdga" plus
     every unhosted member key), already in deterministic order. Pinned
@@ -561,6 +580,22 @@ def build_ss_file(member: dict, host_var: str, capture_ca_name: bool = False) ->
         SESS_P=prefix,
         CAP_P=prefix,
     )
+    # Only for a server whose own client is not plain HTTP
+    # (docs/production-delta.md row 19). Rendered BEFORE the client is added,
+    # so the TLS listener is already presenting a verifiable certificate by
+    # the time a client that requires TLS exists at all -- there is never a
+    # window where connection_type says HTTPS and :8443 still offers the
+    # container-id-CN self-signed certificate the sidecar shipped with.
+    # Gated on the config value rather than rendered unconditionally: it
+    # costs the Test CA a serial and the server a key rotation, and a
+    # federation whose clients are all plain HTTP has nothing to verify.
+    if conn != "HTTP":
+        body += render(
+            steps_module.BY_ID["ss.internal_tls_cert"].template,
+            SS=ss["dns_name"],
+            HOSTVAR=host_var,
+            P=prefix,
+        )
     # ss.client_add -> ss.client_register: see hurl/steps.py's comment on
     # these ids for why this order is load-bearing.
     body += render(steps_module.BY_ID["ss.client_add"].template, **client_kwargs)
@@ -630,10 +665,28 @@ def build_hosted_client(member: dict, host_member: dict, host_var: str) -> str:
     host_ss = host_member["security_server"]
     sess_p = ss_prefix(host_ss["dns_name"])
     cap_p = ss_prefix(member["security_server"]["dns_name"])
+    # The HOSTED case of the same rule build_ss_file applies to an own-server
+    # member (docs/production-delta.md row 19), and it is not the same server:
+    # a hosted client's information system connects to its HOST's client
+    # proxy, so it is the HOST's internal TLS certificate that has to be
+    # verifiable. Without this, a hosted member declaring HTTPS would be
+    # pointed at a listener still presenting the sidecar's container-id-CN
+    # self-signed certificate -- a connection nothing can verify, which is
+    # the exact silent half-measure row 19 refuses to ship. The step is
+    # idempotent, so two hosted HTTPS clients on one host simply rotate its
+    # certificate twice.
+    body = ""
+    if conn != "HTTP":
+        body += render(
+            steps_module.BY_ID["ss.internal_tls_cert"].template,
+            SS=host_ss["dns_name"],
+            HOSTVAR=host_var,
+            P=sess_p,
+        )
     # ss.client_add -> ss.sign_key_csr -> ss.client_register, in that order:
     # see hurl/steps.py's comment on those ids -- this is the exact ordering
     # bug this docstring's own paragraph above describes.
-    body = render(
+    body += render(
         steps_module.BY_ID["ss.client_add"].template,
         SS=host_ss["dns_name"],
         MEMBER_CODE=m["member_code"],
@@ -757,7 +810,8 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
         f"  {dns}:\n"
         f"    <<: *sidecar\n"
         f"    container_name: {dns}\n"
-        f'    ports: ["${{XROAD_BIND:-127.0.0.1}}:{ui}:4000", "${{XROAD_BIND:-127.0.0.1}}:{rest}:8080"]\n'
+        f'    ports: ["${{XROAD_BIND:-127.0.0.1}}:{ui}:4000", "${{XROAD_BIND:-127.0.0.1}}:{rest}:8080",'
+        f' "${{XROAD_BIND:-127.0.0.1}}:{tls_rest_port(ui)}:8443"]\n'
         f"    volumes:\n"
         f"      - {key}-db:/var/lib/postgresql/16/main\n"
         f"      - {key}-conf:/etc/xroad\n"
@@ -1062,6 +1116,12 @@ def main() -> None:
         return {
             "code": code, "host": host, "ui_port": 4000, "proxy_port": 8080,
             "host_ui_port": ui, "host_proxy_port": rest,
+            # The TLS client proxy (docs/production-delta.md row 19). Always
+            # emitted, for every server, not only the ones whose clients are
+            # HTTPS today: the listener is always there, and a consumer's
+            # connection_type is a per-client setting that can move without
+            # the topology being regenerated.
+            "proxy_tls_port": 8443, "host_proxy_tls_port": tls_rest_port(ui),
         }
 
     security_servers = [_ss_entry(mgmt_ss["code"], mgmt_ss["dns_name"], "pdga")]
@@ -1090,6 +1150,15 @@ def main() -> None:
             "member_name": m["member_name"],
             "subsystem_code": sub_cfg["code"],
             "hosted_on": host_dns,
+            # How this subsystem's own information system reaches its
+            # Security Server (docs/production-delta.md row 19). HTTP is the
+            # default for a member whose config says nothing, which is every
+            # member but the consumer today. Carried in the topology, not
+            # re-read from configs/ by each caller, for the same reason
+            # hosted_on is: apps/console and scripts/acceptance.sh must
+            # agree on it, and two independent readings of the same file
+            # are two things to drift.
+            "connection_type": member.get("client", {}).get("connection_type", "HTTP"),
             "origin": identity["members"][key].get("origin", "canonical"),
             "services": [
                 {"code": svc["code"], "access": svc.get("access") or []}
@@ -1117,10 +1186,15 @@ def main() -> None:
     # so it is added here explicitly rather than silently dropped.
     ss_lines = "\n".join(f"  [{s['host']}]={s['host_ui_port']}" for s in security_servers)
     rest_lines = "\n".join(f"  [{s['host']}]={s['host_proxy_port']}" for s in security_servers)
+    rest_tls_lines = "\n".join(
+        f"  [{s['host']}]={s['host_proxy_tls_port']}" for s in security_servers
+    )
     order_line = " ".join(s["host"] for s in security_servers)
     host_ss_lines = [f"  [{owner['code']}:{owner['management_subsystem']}]={mgmt_ss['dns_name']}"]
+    conn_lines = [f"  [{owner['code']}:{owner['management_subsystem']}]=HTTP"]
     for s in subsystems:
         host_ss_lines.append(f"  [{s['member_code']}:{s['subsystem_code']}]={s['hosted_on']}")
+        conn_lines.append(f"  [{s['member_code']}:{s['subsystem_code']}]={s['connection_type']}")
     topology_sh = f"""# GENERATED by hurl/generate.py -- do not hand-edit.
 # One topology, generated once: scripts/lib-stack.sh sources this instead of
 # declaring these four itself; apps/console reads the same generation
@@ -1132,9 +1206,23 @@ declare -A SS_UI=(
 declare -A SS_REST=(
 {rest_lines}
 )
+# The TLS client proxy (:8443), for a client whose connection_type is
+# HTTPS/HTTPS_NO_AUTH -- docs/production-delta.md row 19. SS_REST stays the
+# plain :8080 mapping; which of the two a caller uses is decided by the
+# CONSUMER's connection_type, not by the server.
+declare -A SS_REST_TLS=(
+{rest_tls_lines}
+)
 SS_ORDER=({order_line})
 declare -A HOST_SS=(
 {chr(10).join(host_ss_lines)}
+)
+# Each client's own connection_type -- HTTP means talk to SS_REST, anything
+# else means talk to SS_REST_TLS and verify the certificate
+# (docs/production-delta.md row 19). PDGA:MANAGEMENT is not a discovered
+# member, same as in HOST_SS above, so it is stated here rather than derived.
+declare -A CLIENT_CONN=(
+{chr(10).join(conn_lines)}
 )
 """
     (HURL_DIR / "topology.sh").write_text(topology_sh)

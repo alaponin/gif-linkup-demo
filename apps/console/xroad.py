@@ -4,17 +4,31 @@ X-Road. Two distinct clients, because they hit two distinct surfaces:
 - AdminSession: the Security Server admin REST API on :4000, session-login
   authenticated (mirrors scripts/lib-stack.sh's api_key()/api() exactly). Used for
   reading and mutating ACLs.
-- exchange(): the r1 proxy interface on :8080, authenticated by the
-  X-Road-Client header, not an admin session. Used for the counter/inspector
-  tabs' actual once-only-exchange calls.
+- exchange(): the r1 proxy interface -- :8080 plain, or :8443 TLS when the
+  consumer's connection_type says so -- authenticated by the X-Road-Client
+  header, not an admin session. Used for the counter/inspector tabs' actual
+  once-only-exchange calls.
 
-Both are demo-only: verify=False everywhere, because the Test CA issues
-self-signed certificates (docs/production-delta.md already flags this at
-the deployment layer; this container inherits the same trust decision).
+The two now differ in exactly one way, and it is the point of
+docs/production-delta.md row 19:
+
+- AdminSession still runs with verify=False. The :4000 admin UI presents
+  the sidecar's own self-signed proxy-ui certificate, which nothing issues
+  and nothing can verify; that is a demo compromise this row does NOT
+  close and the delta table still carries.
+- exchange() does NOT. A consumer's TLS client proxy presents an internal
+  TLS certificate the federation's CA issued for that server's name
+  (hurl's ss.internal_tls_cert step), so this connection is verified
+  against KP2_XROAD_CA_BUNDLE like any other real TLS client. Turning
+  verification off here would leave the hop encrypted against an observer
+  and open to anyone able to answer for `ss-pnea` -- which is not a smaller
+  version of the property row 19 claims, it is the absence of it.
 """
 from __future__ import annotations
 
 import dataclasses
+import os
+import ssl
 import time
 
 import httpx
@@ -29,6 +43,25 @@ import httpx
 # Per-request `timeout=` still overrides this default where a caller wants a
 # shorter one (app.py's reachability probe).
 SHARED_CLIENT = httpx.Client(verify=False, timeout=10.0)
+
+
+def _exchange_ssl_context() -> ssl.SSLContext:
+    """Trust store for the consumer hop (docs/production-delta.md row 19):
+    the public roots PLUS whatever KP2_XROAD_CA_BUNDLE names, never instead
+    of them and never a bypass. Unset => stock verification, which is the
+    right answer for any deployment whose Security Servers hold real
+    certificates."""
+    ctx = ssl.create_default_context()
+    bundle = os.environ.get("KP2_XROAD_CA_BUNDLE")
+    if bundle:
+        ctx.load_verify_locations(cafile=bundle)
+    return ctx
+
+
+# Separate from SHARED_CLIENT on purpose -- see this module's docstring for
+# why the two clients no longer share a trust decision. Same pooling
+# rationale, same thread-safety.
+EXCHANGE_CLIENT = httpx.Client(verify=_exchange_ssl_context(), timeout=10.0)
 
 
 class AdminSession:
@@ -167,7 +200,7 @@ def exchange(
     boundary, not this library function. A
     second check here would be a second place to keep in sync.
     """
-    client = http_client or SHARED_CLIENT
+    client = http_client or EXCHANGE_CLIENT
     results: list[CallResult] = []
     for call in calls:
         url = entrypoint.rstrip("/") + call["r1_path"].format(nin=nin)

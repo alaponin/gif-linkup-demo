@@ -11,11 +11,24 @@ the unauthorised caller is denied. All four EIF layers in one call (Module 5.6).
 - **When** the check makes the two consumer-side calls through ss-pnea:
 
   ```
-  curl -H 'X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS' \
-    http://localhost:2080/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/{nin}
-  curl -H 'X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS' \
-    http://localhost:2080/r1/PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api/enrolments/{nin}
+  # PNEA's connection type is HTTPS_NO_AUTH (docs/production-delta.md row 19),
+  # so this is the TLS client proxy on :8443 (host port 2443), verified against
+  # the federation's own CA -- never `-k`. --resolve keeps the connection on
+  # loopback while the name in the URL stays the one the Security Server's
+  # certificate is issued for. `scripts/lib-stack.sh`'s testca_bundle() caches
+  # that CA certificate under out/testca/ca.pem.
+  curl --cacert out/testca/ca.pem --resolve ss-pnea:2443:127.0.0.1 \
+    -H 'X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS' \
+    https://ss-pnea:2443/r1/PROGRESSA/GOV/PNIA/IDENTITY/identity-api/persons/{nin}
+  curl --cacert out/testca/ca.pem --resolve ss-pnea:2443:127.0.0.1 \
+    -H 'X-Road-Client: PROGRESSA/GOV/PNEA/EXAMS' \
+    https://ss-pnea:2443/r1/PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api/enrolments/{nin}
   ```
+
+  The same call on `http://localhost:2080/...` now FAILS, by design:
+  `{"type":"Server.ClientProxy.SslAuthenticationFailed","message":"Client
+  (SUBSYSTEM:PROGRESSA/GOV/PNEA/EXAMS) specifies HTTPS NO AUTH but client made
+  plaintext connection"}`, HTTP 500.
 
 - **Then** — four assertions, each mapped to its layer:
   1. **Happy path** (technical) — both calls return HTTP 200 **cross-server**

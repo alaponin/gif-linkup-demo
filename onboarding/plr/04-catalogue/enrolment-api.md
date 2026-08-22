@@ -5,7 +5,7 @@
 | Service code | `enrolment-api` |
 | X-Road service id | `PROGRESSA/GOV/PLR/ENROLMENT/enrolment-api` |
 | Provider | Progressa Learner Registry (PLR) |
-| Contract | `http://app-plr:8000/spec.yaml` |
+| Contract | `https://app-plr:8443/spec.yaml` |
 | Declared fields | *not copied -- read them from the contract above, which is not re-fetched when this entry is written* |
 | Semantic entity (tier 2) | `enrolment` (anchor: OneRoster) |
 | Exchange pattern (tier 1) | `digital_registries_lookup` |

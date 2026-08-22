@@ -25,9 +25,12 @@ notion of what a provider's own app actually returns.
   and — for PLR and PNIA — probes the member's own app directly;
 - **Then**:
   1. **PNEA (consumer)** — client `PROGRESSA/GOV/PNEA/EXAMS` exists with
-     status `REGISTERED`; its connection type is `HTTP` (demo-only, per
-     `configs/member-pnea/pnea.yaml` — production must use HTTPS with a
-     client TLS certificate, or the demo call fails outright); ss-pnea holds
+     status `REGISTERED`; its connection type is `HTTPS_NO_AUTH` (per
+     `configs/member-pnea/pnea.yaml`, `docs/production-delta.md` row 19 —
+     the consumer hop is TLS on `:8443` and X-Road refuses the plaintext
+     `:8080` for this client; still short of production, which authenticates
+     the information system to the server with a client TLS certificate);
+     ss-pnea holds
      current global configuration (it can see the other members in the
      registry — precondition for routing any call in module 2.6); the soft
      token is logged in and the sign + auth certificates are active;
