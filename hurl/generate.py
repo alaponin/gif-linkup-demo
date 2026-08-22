@@ -347,16 +347,24 @@ def check_policy(core: dict) -> None:
         )
 
 
-# The four keys apps/join-api/validate.py enforces -- kept here as
-# well so a fifth key sitting undetected in configs/x-road-bus/join-policy.yaml is a
+# The five keys apps/join-api/validate.py enforces -- kept here as
+# well so a sixth key sitting undetected in configs/x-road-bus/join-policy.yaml is a
 # generate-time failure, not something only discovered when a join is
-# submitted. Value-correctness for each of the four is validate.py's job (it
+# submitted. Value-correctness for each of the five is validate.py's job (it
 # is the code that actually applies join: policy at request time); this is
 # purely the same "no undeclared decoration" guard check_policy() already
 # applies to the bus policy above.
 JOIN_POLICY_KEYS = frozenset(
-    {"member_class", "default_hosting", "allowed_methods", "spec_url_hosts"}
+    {"member_class", "default_hosting", "allowed_methods", "spec_url_hosts", "allowed_backend_auth"}
 )
+
+# schema.BackendAuth's three legal values, duplicated here rather than
+# imported from apps/join-api/schema.py -- hurl/ and apps/join-api/ stay two
+# separate containers that cannot import each other (the same deliberate
+# decoupling apps/mock-registry/app.py's DECLARED_FIELDS documents for
+# contract_fields()). Used only by check_join_policy()'s allowed_backend_auth
+# shape assertion below.
+_BACKEND_AUTH_VALUES = frozenset({"none", "network_allowlist", "proxy_injected"})
 
 
 def check_join_policy(join_config: dict, manifest: dict) -> None:
@@ -401,6 +409,23 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
             f"must be a non-empty list of host names (found: {hosts!r}) -- it is the "
             "allowlist apps/join-api/validate.py judges an applicant's spec_url "
             "against before fetching it from a credential-holding container."
+        )
+    # Same split as spec_url_hosts above, for the fifth key
+    # (docs/production-delta.md row 30): apps/join-api/validate.py fails
+    # closed on a missing or empty allowed_backend_auth at request time; this
+    # fails loudly at generate time on a malformed one -- not a list, empty,
+    # or naming a value schema.BackendAuth does not define.
+    backend_auth = join.get("allowed_backend_auth")
+    if backend_auth is not None and (
+        not isinstance(backend_auth, list) or not backend_auth
+        or not all(v in _BACKEND_AUTH_VALUES for v in backend_auth)
+    ):
+        raise SystemExit(
+            "generate.py: configs/x-road-bus/join-policy.yaml "
+            "join.allowed_backend_auth must be a non-empty list drawn from "
+            f"{sorted(_BACKEND_AUTH_VALUES)} (found: {backend_auth!r}) -- it is the "
+            "allowlist apps/join-api/validate.py judges a joining member's "
+            "backend.auth against."
         )
     policy_class = join.get("member_class")
     federation_class = manifest["identity"]["member_class"]

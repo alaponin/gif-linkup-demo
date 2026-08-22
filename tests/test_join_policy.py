@@ -38,9 +38,10 @@ def test_the_committed_join_policy_yaml_passes_against_the_real_manifest():
     check_join_policy(config, manifest)  # does not raise
 
 
-def test_exactly_four_keys_are_recognised():
+def test_exactly_five_keys_are_recognised():
     assert JOIN_POLICY_KEYS == {
         "member_class", "default_hosting", "allowed_methods", "spec_url_hosts",
+        "allowed_backend_auth",
     }
 
 
@@ -97,7 +98,53 @@ def test_an_absent_spec_url_hosts_passes_generate_time():
     check_join_policy({"join": {"member_class": "GOV"}}, GOV_MANIFEST)
 
 
-def test_an_undeclared_fourth_key_is_a_hard_failure():
+# -- allowed_backend_auth: the fifth key --------------------------------------
+#
+# join.allowed_backend_auth is what apps/join-api/validate.py's
+# _check_allowed_backend_auth judges a joining member's backend.auth
+# against at request time; this file only checks its SHAPE (same split as
+# spec_url_hosts above) -- a non-empty list drawn from schema.BackendAuth's
+# three legal values, failing loudly at generate time on anything else.
+
+
+def test_the_committed_policy_lists_all_three_backend_auth_values():
+    """Demo default: the PTSB fixture and every mock backend in this pack
+    actually speak backend.auth: none, so the committed policy must still
+    admit it -- narrowing to [network_allowlist, proxy_injected] is a
+    production-target decision (docs/production-delta.md row 30,
+    runbook.md), not the docker-local default."""
+    config = yaml.safe_load((PACK / "configs/x-road-bus/join-policy.yaml").read_text())
+    assert set(config["join"]["allowed_backend_auth"]) == {"none", "network_allowlist", "proxy_injected"}
+
+
+def test_a_well_formed_allowed_backend_auth_passes():
+    check_join_policy({"join": {"allowed_backend_auth": ["network_allowlist", "proxy_injected"]}}, GOV_MANIFEST)
+
+
+def test_an_absent_allowed_backend_auth_passes_generate_time():
+    """Absent is not a generate-time failure here either -- apps/join-api/
+    validate.py fails closed at request time (every backend.auth value
+    refused) rather than this failing loudly on a key that is simply
+    missing."""
+    check_join_policy({"join": {"member_class": "GOV"}}, GOV_MANIFEST)
+
+
+def test_an_empty_allowed_backend_auth_list_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="allowed_backend_auth"):
+        check_join_policy({"join": {"allowed_backend_auth": []}}, GOV_MANIFEST)
+
+
+def test_a_bare_string_allowed_backend_auth_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="allowed_backend_auth"):
+        check_join_policy({"join": {"allowed_backend_auth": "none"}}, GOV_MANIFEST)
+
+
+def test_an_unrecognised_value_in_allowed_backend_auth_is_a_hard_failure():
+    with pytest.raises(SystemExit, match="allowed_backend_auth"):
+        check_join_policy({"join": {"allowed_backend_auth": ["none", "mtls"]}}, GOV_MANIFEST)
+
+
+def test_an_undeclared_sixth_key_is_a_hard_failure():
     with pytest.raises(SystemExit, match="max_services"):
         check_join_policy({"join": {"member_class": "GOV", "max_services": 4}}, GOV_MANIFEST)
 

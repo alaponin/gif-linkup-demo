@@ -402,6 +402,18 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     so ownership only ever protects per-agency (issued-token) records from
     each other, nothing more. `docs/production-delta.md` row 28 is the
     second half of the row this closes.
+  - **Narrowing `allowed_backend_auth` (`configs/x-road-bus/join-policy.yaml`,
+    the droplet target's posture):** the committed policy's demo default
+    lists all three `schema.BackendAuth` values (`none`, `network_allowlist`,
+    `proxy_injected`), so the PTSB fixture and every mock backend in this
+    pack — which all actually speak `none` — keep passing. A real
+    federation should list `[network_allowlist, proxy_injected]` only:
+    `backend.auth: none` means the consumer holds the provider's own API
+    credential (`docs/production-delta.md` row 30). With `none` removed, a
+    join declaring it is **REJECTED** at request time
+    (`apps/join-api/validate.py`'s `allowed_backend_auth` check), naming
+    `join-policy.yaml` in the rejection message, rather than merely
+    discouraged in prose.
   - **A join with the member's OWN Security Server:** set
     `security_server.own_server: true` in the payload and leave `hosted_on`
     out. It has to be asked for explicitly — a payload with neither is

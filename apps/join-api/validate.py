@@ -1,14 +1,16 @@
 """apps/join-api/validate.py -- eleven of the twelve checks required
-before a join request can be approved, plus three more that go
-beyond that (lawful_basis, sla_required and spec_url_origin) -- fourteen
-per-request checks in total. Check 5 (member class) moved to
+before a join request can be approved, plus four more that go
+beyond that (lawful_basis, sla_required, spec_url_origin and
+allowed_backend_auth) -- fifteen per-request checks in total. Check 5
+(member class) moved to
 hurl/generate.py's check_join_policy() -- a generate-time structural check,
 not a per-request one -- see the comment above where _check_member_class
 used to be; this module runs the other eleven, plus
-lawful_basis, sla_required and spec_url_origin. Pure functions over a
+lawful_basis, sla_required, spec_url_origin and allowed_backend_auth. Pure
+functions over a
 payload, the manifest, the join policy and a fetched OpenAPI document -- no
 X-Road, no containers, no job. Checks run in the exact order listed (1 schema
-.. 12 identifier characters, minus 5); the three additional checks run
+.. 12 identifier characters, minus 5); the four additional checks run
 alongside them (see _CHECKS below for where), and the first failure of any of
 them raises RejectionError(check, message) naming the check, which is what a
 REJECTED request carries.
@@ -453,6 +455,42 @@ def _check_backend_auth_declared(ctx: ValidationContext) -> str | None:
     return None
 
 
+def _check_allowed_backend_auth(ctx: ValidationContext) -> str | None:
+    """backend.auth is one of join.allowed_backend_auth
+    (configs/x-road-bus/join-policy.yaml's fifth key, docs/production-
+    delta.md row 30). Demo default lists all three schema.BackendAuth
+    values, so the PTSB fixture and every mock keep passing; a production
+    policy narrows it to network_allowlist and proxy_injected only --
+    backend.auth: none means the consumer holds the provider's own API
+    credential.
+
+    Fails closed like _origin_error's spec_url_hosts guard above: an
+    undeclared or empty allowed_backend_auth means no value is accepted,
+    not "accept everything" -- the file's own admission test ("can it be
+    set to another value, and does something observably change?") only
+    holds if the absence of a value is not silently the same as "allow
+    all". hurl/generate.py's check_join_policy() is the generate-time half
+    of the same split: it fails loudly there on a malformed (non-list,
+    empty, or unrecognised-value) allowed_backend_auth rather than letting
+    a typo become "accept nothing" discovered only when the next join is
+    submitted."""
+    allowed = ctx.policy.get("allowed_backend_auth")
+    if not isinstance(allowed, list) or not allowed:
+        return (
+            "configs/x-road-bus/join-policy.yaml declares no (or an empty) "
+            "join.allowed_backend_auth -- this API refuses every backend.auth "
+            "value without an allowlist to judge it against. Add the key and "
+            "redeploy"
+        )
+    if ctx.payload.backend.auth not in allowed:
+        return (
+            f"backend.auth {ctx.payload.backend.auth.value!r} is not in "
+            f"join.allowed_backend_auth {sorted(allowed)} (configs/x-road-bus/"
+            "join-policy.yaml)"
+        )
+    return None
+
+
 # X-Road >=7.3.0 enforces a strict identifier allowlist, strict by default
 # on fresh installations (XRDDEV-1960): code, subsystem and service codes
 # may contain only a-zA-Z0-9'()+,-.=? -- the Security Server itself rejects
@@ -668,7 +706,10 @@ def _check_backend_reachability(ctx: ValidationContext) -> str | None:
 # inserted after purpose_limitation since all three inspect payload.services,
 # plus spec_url_origin immediately before backend_reachability, where it has
 # to be: it is the guard on that check's own fetch, and a guard that runs
-# after the fetch guards nothing.
+# after the fetch guards nothing, plus allowed_backend_auth immediately
+# after backend_auth_declared, where it belongs: that check establishes
+# backend.auth is a legal schema value at all, this one judges it against
+# the policy's own allowlist.
 # Check 1 (schema) happens in validate() itself, before a ValidationContext
 # can even be built.
 _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
@@ -684,6 +725,7 @@ _CHECKS: list[tuple[str, Callable[[ValidationContext], str | None]]] = [
     ("backend_reachability", _check_backend_reachability),
     ("allowed_methods", _check_allowed_methods),
     ("backend_auth_declared", _check_backend_auth_declared),
+    ("allowed_backend_auth", _check_allowed_backend_auth),
     ("identifier_characters", _check_identifier_characters),
 ]
 

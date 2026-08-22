@@ -3,7 +3,7 @@
 # produced (the prompt was added after the fact, in the same curriculum
 # register as every other module).
 #
-# Exactly four keys. Do not add a fifth: an earlier draft invented
+# Exactly five keys. Do not add a sixth: an earlier draft invented
 # max_services, require_semantic_for_provenance and backend_auth and all
 # three were deleted because nothing applied them -- "a block
 # the generator silently ignores is worse than no block at all: it reads as
@@ -19,6 +19,16 @@
 # _check_spec_url_origin). It is a join property -- what a joining member is
 # allowed to point this federation at -- so this file is the right scope for
 # it, unlike approval mode below.
+#
+# allowed_backend_auth is the fifth, admitted the same way: remove `none`
+# and a join whose backend.auth is `none` is REJECTED at a new check
+# (apps/join-api/validate.py's _check_allowed_backend_auth) instead of
+# accepted -- observably different. Demo default lists all three
+# schema.BackendAuth values so the PTSB fixture and every mock keep
+# passing; a production federation should narrow it to
+# [network_allowlist, proxy_injected] -- backend.auth: none means the
+# consumer holds the provider's own API credential (docs/production-
+# delta.md row 30), which is the demo posture, not the production one.
 #
 # approval mode is NOT a key here, on purpose -- it is a property of how the
 # Central Server was deployed, not of a join request, so this file is the
@@ -40,3 +50,11 @@ join:
   # joining agencies' own hosts. Host names only -- IP literals are refused
   # outright, whatever this list says.
   spec_url_hosts: [app-pnia, app-plr, app-ptsb]
+  # A joining member's backend.auth must be one of these (schema.BackendAuth
+  # defines only these three). Demo default: all three, so `none` -- what
+  # every mock backend in this pack actually accepts -- keeps passing.
+  # A production federation narrows this to [network_allowlist,
+  # proxy_injected] (docs/production-delta.md row 30, runbook.md's
+  # production-posture notes): a real joining member must never hand its
+  # own backend's API credential to a consumer.
+  allowed_backend_auth: [none, network_allowlist, proxy_injected]

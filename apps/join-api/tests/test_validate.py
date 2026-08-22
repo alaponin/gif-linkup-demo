@@ -80,6 +80,7 @@ POLICY = {
     "default_hosting": "hosted_on",
     "allowed_methods": ["GET"],
     "spec_url_hosts": ["app-ptsb"],
+    "allowed_backend_auth": ["none", "network_allowlist", "proxy_injected"],
 }
 
 
@@ -542,6 +543,39 @@ def test_backend_auth_declared_passes_for_every_schema_enum_value():
         ctx = ValidationContext(payload=payload, manifest=MANIFEST, policy=POLICY,
                                   existing_servers=EXISTING_SERVERS, semantic_map=SEMANTIC_MAP)
         assert validate_module._check_backend_auth_declared(ctx) is None
+
+
+# -- allowed_backend_auth: the fifth join-policy.yaml key (row 30) -------------
+
+
+def test_allowed_backend_auth_passes_when_the_policy_admits_the_value():
+    payload = _run(_payload(backend={"auth": "none"}))
+    assert payload.backend.auth == "none"
+
+
+def test_allowed_backend_auth_rejects_a_value_the_policy_narrowed_away():
+    """The production posture: a policy that lists network_allowlist and
+    proxy_injected only (no `none`) rejects a join declaring backend.auth:
+    none, naming the policy file -- docs/production-delta.md row 30's
+    admission test ("does something observably change?")."""
+    narrowed = dict(POLICY, allowed_backend_auth=["network_allowlist", "proxy_injected"])
+    err = _rejects(_payload(backend={"auth": "none"}), "allowed_backend_auth", policy=narrowed)
+    assert "join-policy.yaml" in err.message
+    assert "none" in err.message
+
+
+def test_allowed_backend_auth_fails_closed_when_the_policy_key_is_absent():
+    """Same fail-closed posture as spec_url_hosts's _origin_error: an
+    undeclared allowlist refuses every backend.auth value, not "accept
+    everything"."""
+    no_key = {k: v for k, v in POLICY.items() if k != "allowed_backend_auth"}
+    err = _rejects(_payload(), "allowed_backend_auth", policy=no_key)
+    assert "allowed_backend_auth" in err.message
+
+
+def test_allowed_backend_auth_fails_closed_when_the_policy_list_is_empty():
+    empty = dict(POLICY, allowed_backend_auth=[])
+    _rejects(_payload(), "allowed_backend_auth", policy=empty)
 
 
 # -- check 12: identifier characters --------------------------------------------
