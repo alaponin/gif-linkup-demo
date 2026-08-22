@@ -18,6 +18,7 @@ from generate import (  # noqa: E402
     FORBIDDEN_PORT_RANGE,
     FRESH_SERVICE_SCENARIO_START,
     FRESH_SS_SCENARIO_START,
+    MEMBER_SIDECAR_ANCHOR,
     PINNED_PORTS,
     PINNED_SCENARIO_NO,
     PINNED_SERVICE_SCENARIO_NO,
@@ -155,3 +156,52 @@ def test_member_service_block_matches_the_hand_written_compose_convention():
     assert hand_written, "docker-compose.yml declares no ports: lines -- this test is checking nothing"
     assert all("${XROAD_BIND:-127.0.0.1}:" in l for l in hand_written), hand_written
     assert "${XROAD_BIND:-127.0.0.1}:" in member_service_block("x", "ss-x", 1, 2)
+
+
+def _hand_written_sidecar_anchor() -> dict[str, str]:
+    """docker-compose.yml's own x-sidecar block, as a flat key -> value map of
+    its top-level (two-space-indented) scalar keys. Parsed rather than
+    hard-coded so this test tracks the hand-written file: the property under
+    test is that the two anchors AGREE, not that either holds one literal."""
+    compose = (pathlib.Path(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
+    lines = compose.splitlines()
+    start = lines.index("x-sidecar: &sidecar")
+    out: dict[str, str] = {}
+    for line in lines[start + 1:]:
+        if line and not line.startswith(" "):
+            break  # next top-level key -- the anchor is over
+        if not line.startswith("  ") or line.startswith("   ") or line.lstrip().startswith("#"):
+            continue
+        key, sep, value = line.strip().partition(":")
+        if sep:
+            out[key] = value.strip()
+    return out
+
+
+# The hardening pass that added restart/mem_limit/cpus to docker-compose.yml's
+# x-sidecar never reached the anchor generate.py redeclares in
+# compose.members.yml -- a YAML anchor does not cross Compose's -f boundaries,
+# so a joined member's own Security Server inherited none of it and shipped
+# with no restart policy and no resource ceiling. The golden corpus cannot
+# catch this (it only ever holds the empty `services: {}` variant, see the
+# comment above), so this is the guard.
+def test_the_generated_sidecar_anchor_carries_the_same_hardening_as_the_hand_written_one():
+    hand = _hand_written_sidecar_anchor()
+    for field in ("restart", "mem_limit", "cpus"):
+        assert field in hand, (
+            f"docker-compose.yml's x-sidecar no longer declares {field}: -- this test's "
+            "reference point is gone, not the generated block's problem"
+        )
+        assert f"  {field}: {hand[field]}\n" in MEMBER_SIDECAR_ANCHOR, (
+            f"compose.members.yml's generated x-sidecar must declare {field}: {hand[field]}, "
+            f"matching docker-compose.yml's. Got:\n{MEMBER_SIDECAR_ANCHOR}"
+        )
+
+
+def test_a_joined_members_own_server_gets_a_healthcheck_start_period():
+    """Without it, every probe during the 215-234s a Sidecar measurably takes
+    to boot reports "unhealthy" instead of "starting" -- the same false alarm
+    docker-compose.yml's x-sidecar grew start_period to avoid, and the same
+    240s budget."""
+    block = member_service_block("pvtb", "ss-pvtb", 7100, 7180)
+    assert "      start_period: 240s\n" in block, block

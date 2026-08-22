@@ -456,20 +456,36 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
         )
 
 
-# deployment.yaml's join_workflow: block -- currently just commit_gate
-# (docs/production-delta.md row 33); the production-hardening plan's later
-# phases add enforce_ownership and require_https_spec_url to this same
-# block. Kept here rather than inlined into main() so it is unit-testable
+# deployment.yaml's join_workflow: block -- commit_gate
+# (docs/production-delta.md row 33) plus the two booleans later phases added
+# to the same block, enforce_ownership (row 28) and require_https_spec_url
+# (row 18). Kept here rather than inlined into main() so it is unit-testable
 # the same way check_policy()/check_join_policy() are, and so a value this
 # code does not recognise fails loudly at generate time rather than an
 # apps/join-api process silently treating a typo as "advisory".
 def check_join_workflow(deployment: dict) -> None:
-    commit_gate = (deployment.get("join_workflow") or {}).get("commit_gate", "advisory")
+    block = deployment.get("join_workflow") or {}
+    commit_gate = block.get("commit_gate", "advisory")
     if commit_gate not in ("advisory", "required"):
         raise SystemExit(
             f"generate.py: deployment.yaml join_workflow.commit_gate {commit_gate!r} is not "
             "'advisory' or 'required'."
         )
+    # The two later switches that landed in the same block and were never
+    # added here -- so a typo in either reached generate time unremarked and
+    # only apps/join-api/app.py's own startup check caught it, in a container,
+    # after a deploy. Both are booleans there (`isinstance(..., bool)`), and
+    # this mirrors that exactly: YAML's `yes`/`on`/`"false"` all parse to
+    # something that is NOT a bool, and every one of them would silently mean
+    # "off" -- the production posture quietly not applied, which is the worst
+    # possible failure mode for a switch whose whole job is to be on.
+    for key in ("enforce_ownership", "require_https_spec_url"):
+        value = block.get(key, False)
+        if not isinstance(value, bool):
+            raise SystemExit(
+                f"generate.py: deployment.yaml join_workflow.{key} {value!r} is not "
+                "true or false."
+            )
 
 
 def write(name: str, src: str, body: str) -> None:
@@ -780,6 +796,37 @@ server-conf-cache-period = @period@
 LOCAL_INI_MOUNT = "./hurl/local.ini"
 
 
+# The x-sidecar anchor compose.members.yml redeclares for a joined member's
+# own Security Server. Module-level for exactly the reason
+# member_service_block() below is: tests/test_allocation.py can assert on it
+# without a manifest carrying a joined member, and nothing else renders this
+# branch (the golden corpus only ever contains the empty `services: {}`
+# variant).
+#
+# The restart/mem_limit/cpus trio is the hardening docker-compose.yml's OWN
+# x-sidecar carries. It has to be repeated here, not inherited: a YAML anchor
+# does not cross Compose's -f file boundaries. It shipped without any of it --
+# a joined member's Security Server that never restarts and has no memory or
+# CPU ceiling, which is precisely the container in this pack nobody is
+# watching. Keep these three equal to docker-compose.yml's x-sidecar;
+# tests/test_allocation.py compares them against that file so the next
+# hardening pass cannot land on one anchor and silently miss this one.
+MEMBER_SIDECAR_ANCHOR = (
+    "x-sidecar: &sidecar\n"
+    "  image: niis/xroad-security-server-sidecar:${XROAD_VERSION:-7.7.0}\n"
+    "  environment:\n"
+    "    XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}\n"
+    "    XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}\n"
+    "    XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}\n"
+    "    XROAD_LOG_LEVEL: INFO\n"
+    "  networks: [linkup]\n"
+    "  depends_on: [cs, ca]\n"
+    "  restart: unless-stopped\n"
+    "  mem_limit: 3500m\n"
+    "  cpus: 2\n"
+)
+
+
 def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
     """One joined member's own Security Server, as a compose.members.yml
     service block. A module-level function purely so tests/test_allocation.py
@@ -821,6 +868,15 @@ def member_service_block(key: str, dns: str, ui: int, rest: int) -> str:
         f'      test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]\n'
         f"      interval: 5s\n"
         f"      retries: 120\n"
+        # Without start_period, every failing probe during the 215-234s a
+        # Sidecar measurably takes to boot reports "unhealthy" rather than
+        # "starting" -- a false alarm for whoever is watching a freshly-joined
+        # member come up, and the exact reason docker-compose.yml's own
+        # x-sidecar grew this line in the hardening pass this generated block
+        # was missed by. Same 240s, same justification (see that anchor's
+        # healthcheck comment); the 120x5s retries after it are steady-state
+        # budget, not boot time.
+        f"      start_period: 240s\n"
     )
 
 
@@ -1266,15 +1322,7 @@ declare -A CLIENT_CONN=(
             "# file boundaries, only its services:/volumes:/networks: keys do;\n"
             "# services here reference the linkup network docker-compose.yml\n"
             "# already declares, not a second copy of it.\n"
-            "x-sidecar: &sidecar\n"
-            "  image: niis/xroad-security-server-sidecar:${XROAD_VERSION:-7.7.0}\n"
-            "  environment:\n"
-            "    XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}\n"
-            "    XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}\n"
-            "    XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}\n"
-            "    XROAD_LOG_LEVEL: INFO\n"
-            "  networks: [linkup]\n"
-            "  depends_on: [cs, ca]\n"
+            + MEMBER_SIDECAR_ANCHOR +
             "\n"
             "services:\n" + "\n".join(service_blocks) +
             "\n"
