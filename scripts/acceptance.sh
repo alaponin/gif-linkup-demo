@@ -801,11 +801,11 @@ if _selection_touches_27; then
   # egress too), so this one negative probe is representative, not a partial
   # check of a larger allowlist.
   check_272_positive() {
-    "${COMPOSE_DEMO[@]}" exec -T join-api \
+    "${COMPOSE[@]}" exec -T join-api \
       python3 -c "import socket; socket.create_connection(('spec-fetcher', 8000), timeout=3)"
   }
   check_272_negative() {
-    ! "${COMPOSE_DEMO[@]}" exec -T spec-fetcher \
+    ! "${COMPOSE[@]}" exec -T spec-fetcher \
       python3 -c "import socket; socket.create_connection(('cs', 4000), timeout=3)" 2>/dev/null
   }
   check_272() { check_272_positive && check_272_negative; }
