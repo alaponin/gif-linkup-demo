@@ -1,0 +1,37 @@
+# Member PTSB -- joined via the join API on 2026-08-22. Do not hand-edit -- regenerate via a new join or scripts/member.sh remove.
+module: "ptsb"
+building_block: member-ptsb
+security_server:
+  code: SS-PTSB
+  dns_name: ss-ptsb
+  hosted_on: ss-plr
+services:
+- code: awards-api
+  spec_url: http://app-ptsb:8000/spec.yaml
+  access:
+  - PROGRESSA/GOV/PNEA/EXAMS
+  lawful_basis: confirm-cite-the-decree-article
+  sla:
+    availability: 99.5% monthly uptime
+    response_time: 500 ms at the 95th percentile
+    support_hours: 08:00-17:00 on working days
+    incident_response: acknowledged within 4 working hours
+    change_notice: 30 days for a breaking change
+    signatory: Head of IT, PTSB
+semantic:
+  entity: award
+  key: nin
+  fields:
+  - nin
+  - award_id
+  - program
+  - year
+  pattern: digital_registries_lookup
+backend:
+  auth: none
+member_requirements:
+  has_security_server: true
+  has_registered_identity: true
+  standards_portfolio_adopted: true
+  data_conformant: true
+  technical_contact: Head of IT, PTSB
