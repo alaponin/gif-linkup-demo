@@ -486,6 +486,44 @@ def test_readonly_connection_can_read_existing_rows(tmp_path):
         ro.close()
 
 
+# The sibling test above does NOT actually cover the case this one does:
+# sqlite3's close() leaves -wal/-shm sitting beside the file, so `mode=ro`
+# still finds the -shm index it needs and the read succeeds. Once those
+# sidecars are gone -- a checkpointed, cleanly-closed store, which is exactly
+# how a real out/join-store/ looks between runs -- a bare `mode=ro` open of a
+# WAL database fails with "unable to open database file", because SQLite
+# needs -shm to read WAL and refuses to CREATE one through a read-only
+# handle.
+#
+# Found live: scripts/acceptance.sh's 2.7 rows blew up the first time that
+# query stopped swallowing its own subprocess exit status. Before that the
+# failure read as "no joined members" and a whole module reported green
+# having checked nothing -- this bug's only symptom, for its entire life, was
+# silence. Same guard now sits in scripts/member.sh and scripts/acceptance.sh.
+def test_readonly_connection_reads_a_wal_store_whose_sidecars_are_gone(tmp_path):
+    path = store.init(tmp_path)
+    conn = store.connect(path)
+    try:
+        store.save_request(conn, _record(), actor="system", event="submitted")
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal", (
+            "this test is only meaningful against a WAL database -- _PRAGMAS no "
+            "longer sets one, so it is now asserting nothing"
+        )
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+    for suffix in ("-wal", "-shm"):
+        sidecar = pathlib.Path(f"{path}{suffix}")
+        if sidecar.exists():
+            sidecar.unlink()
+
+    ro = store.connect(path, readonly=True)
+    try:
+        assert store.count_requests(ro) == 1
+    finally:
+        ro.close()
+
+
 def test_readonly_connection_cannot_write(tmp_path):
     path = store.init(tmp_path)
     conn = store.connect(path)

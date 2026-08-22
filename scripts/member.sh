@@ -133,8 +133,9 @@ cmd_drift() {
   # where that store actually lives. sqlite (the branch below, unchanged
   # from before Postgres existed) opens the file directly, read-only
   # (file:...?mode=ro): no auth, no HTTP to the join API, works whether or
-  # not it is even running -- a WAL-mode database needs no running writer
-  # for a read (plan §1.3). postgres has no local file to open, so that
+  # not it is even running (plan §1.3) -- but `mode=ro` alone does NOT
+  # actually deliver that promise for a WAL database, see the connect below.
+  # postgres has no local file to open, so that
   # branch shells out to store.py's own CLI instead (`python -m store
   # dump-records`, in a throwaway join-api container -- `run --rm`, not
   # `exec`, so this too works whether or not the join-api container is up,
@@ -194,10 +195,28 @@ PY
     local db="$PACK_DIR/out/join-store/join-store.sqlite3"
     [ -f "$db" ] || fail "no join store at $db -- join-api has not run yet (it creates the schema at startup), or state has not been migrated (scripts/migrate-join-store.py)."
     record_json=$(python3 - "$db" "$key" <<'PY'
-import sqlite3, sys
+import pathlib, sqlite3, sys
 
 db_path, key = sys.argv[1], sys.argv[2]
-conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+# `mode=ro` on its own cannot open a WAL database once SQLite has removed
+# -wal/-shm on the last writer's clean close: it needs the -shm index to
+# read WAL and will not create one through a read-only handle, so a
+# perfectly healthy store fails with a bare "unable to open database file"
+# -- which is precisely the "works whether or not join-api is running"
+# promise above, unkept. immutable=1 is the documented read path for a
+# database nothing is writing, and an absent -wal is that proof; a -wal that
+# IS present holds content immutable=1 would skip, so re-raise there rather
+# than hand drift a stale baseline. Same guard as apps/join-api/store.py's
+# _sqlite_connect() and scripts/acceptance.sh's 2.7 queries. The SELECT 1 is
+# load-bearing: sqlite3.connect() is lazy, so the failure surfaces on the
+# first statement and a try: around connect() alone would catch nothing.
+try:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.execute("SELECT 1")
+except sqlite3.OperationalError:
+    if pathlib.Path(f"{db_path}-wal").exists():
+        raise
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
 row = conn.execute(
     "SELECT record FROM requests WHERE member_key = ? AND state = 'ACTIVE' "
     "ORDER BY submitted_at DESC LIMIT 1",

@@ -121,7 +121,17 @@ check_healthcheck_present() {  # $1 = container name
 # files define, not a fixed list) -- so a joined member's own mock (e.g.
 # app-ptsb once it's not the canonical fixture) is covered without this list
 # drifting silently the day a mock is added or removed.
-mapfile -t _HC_APPS < <("${COMPOSE[@]}" config --services | grep '^app-')
+#
+# `mapfile < <(...)` throws the producer's exit status away -- process
+# substitution is not a pipeline, so neither `set -e` nor `pipefail` sees it.
+# A broken compose config would have produced an empty _HC_APPS and a GREEN
+# run that checked no mock at all. Capture first, check the status, THEN
+# split: same shape at all three mapfile sites in this file.
+if ! _hc_services=$("${COMPOSE[@]}" config --services); then
+  fail "2.1.health: 'docker compose config --services' failed -- cannot tell which app-* mocks this deployment defines."
+fi
+mapfile -t _HC_APPS < <(printf '%s\n' "$_hc_services" | grep '^app-' || true)
+[ ${#_HC_APPS[@]} -gt 0 ] || fail "2.1.health: the compose files define no app-* mock at all -- every mock healthcheck row would pass vacuously."
 for hc_host in cs ca "${_HC_APPS[@]}" "${SS_ORDER[@]}"; do
   check_hc() { check_healthcheck_present "$hc_host"; }
   check "2.1.health(${hc_host})" "${hc_host} reports a Docker healthcheck (State.Health.Status present)" check_hc
@@ -526,7 +536,20 @@ if [ "$_27_datastore_kind" = "postgres" ]; then
     || fail "2.7: could not read the join store via 'docker compose run join-api python -m store dump-records'"
 fi
 
-mapfile -t _27_ROWS < <(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" <<'PY'
+# Captured, status-checked, THEN split -- see the 2.1.health mapfile above
+# for why `mapfile < <(python3 ...)` cannot do that on its own. This is the
+# site that actually bit: an unreadable join store (a WAL database the
+# `mode=ro` open cannot attach to, a corrupt file, a bad topology.json)
+# raises inside the heredoc, and the old form turned that traceback into an
+# empty array and a GREEN 2.7 section that asserted nothing.
+#
+# A NON-EMPTY store with ZERO rows is NOT an error and is deliberately not
+# treated as one: these rows are topology-joined-member x published-service
+# pairs, not join-store rows. A federation whose only joined member has since
+# been un-joined has a store full of RETIRED records and no live joined
+# subsystem at all -- zero rows, entirely correct, and the 2.7.unjoin section
+# below is what covers that state. The exit status is the signal here.
+if ! _27_rows_out=$(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" <<'PY'
 import json, pathlib, sqlite3, sys
 
 kind = sys.argv[1]
@@ -538,11 +561,47 @@ subs = topo["subsystems"]
 # The most recently-submitted ACTIVE join-store record per member code
 # (upper-cased) -- there should be at most one per key in practice, nothing
 # enforces that, so pick the newest on ambiguity rather than assume.
-# sqlite: opened read-only (file:...?mode=ro) -- a WAL-mode database needs
-# no running writer for a read, same as scripts/member.sh drift's own
-# query. postgres: store_path is `python -m store dump-records`'s JSONL
+# sqlite: opened read-only, via _ro_connect below -- `mode=ro` alone is not
+# enough for a WAL database with no live writer, same correction
+# scripts/member.sh drift's own query and apps/join-api/store.py's
+# _sqlite_connect() carry. postgres: store_path is `python -m store dump-records`'s JSONL
 # output (one request record per line, every state), filtered to ACTIVE
 # here the same way the SQL WHERE clause does for sqlite.
+
+def _ro_connect(path):
+    """Read-only open of the SQLite join store, WAL included.
+
+    `mode=ro` on its own is NOT enough: the store is journal_mode = WAL, and
+    SQLite needs the -shm index to read a WAL database but will not CREATE
+    one through a read-only handle. So the instant the last writer closes
+    cleanly and SQLite removes -wal/-shm, every `mode=ro` open of a
+    perfectly healthy, fully-checkpointed store fails with a bare "unable to
+    open database file" -- which is exactly what this section had been
+    silently swallowing for its whole life, reporting green having read
+    nothing.
+
+    immutable=1 is the documented read path for a database no one is
+    writing, and no -wal beside the file is exactly that proof: everything
+    committed is already in the main file, so there is nothing for it to
+    miss. A -wal that IS present means content immutable=1 would skip --
+    re-raise instead, because a wrong answer here is worse than an error.
+    Same guard as apps/join-api/store.py's _sqlite_connect().
+    """
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        # sqlite3.connect() is LAZY -- it hands back a Connection without
+        # having opened anything, and the "unable to open database file"
+        # surfaces on the first statement instead. A try: around connect()
+        # alone catches nothing (found the hard way). This SELECT is what
+        # actually forces the open, so the except: below can see it.
+        conn.execute("SELECT 1")
+        return conn
+    except sqlite3.OperationalError:
+        if pathlib.Path(f"{path}-wal").exists():
+            raise
+        return sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
+
+
 baselines: dict[str, dict] = {}
 if kind == "postgres":
     if store_path.is_file():
@@ -560,7 +619,7 @@ if kind == "postgres":
             if prev is None or rec.get("submitted_at", "") > prev.get("submitted_at", ""):
                 baselines[rec_code.upper()] = rec
 elif store_path.is_file():
-    conn = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    conn = _ro_connect(store_path)
     for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'ACTIVE'"):
         rec = json.loads(record_json)
         rec_code = (rec.get("payload") or {}).get("code")
@@ -610,7 +669,12 @@ for sub in subs:
         spec_url = (payload_svc or {}).get("spec_url", "")
         print(f"{sub['hosted_on']}\t{code}\t{svc['code']}\t{good_str}\t{good_pair}\t{bad_str}\t{bad_pair}\t{r1_path}\t{spec_url}")
 PY
-)
+); then
+  fail "2.7: could not enumerate joined members from the join store ($_27_datastore_kind: $_27_join_store) and hurl/topology.json -- the traceback is above. Every 2.7.r1/deny/fields/catalogue row would otherwise be skipped silently."
+fi
+# printf '%s' (no \n): command substitution has already stripped the trailing
+# newline, and '%s\n' would turn empty output into one empty array element.
+mapfile -t _27_ROWS < <(printf '%s' "$_27_rows_out")
 
 # The real ids this section can emit -- 2.7.1 always, plus one 2.7.r1(...)/
 # 2.7.deny(...) pair per row above. Built before deciding whether to run, so
@@ -640,7 +704,9 @@ done
 # cannot be the discovery source the way it is for a live joined member.
 #
 # ...and the join store outlives the federation it describes:
-# scripts/teardown.sh --purge tears down containers and volumes, never out/.
+# scripts/teardown.sh --purge tears down containers and volumes, and the
+# out/testca anchor cached from the CA those volumes held -- never the join
+# store.
 # A RETIRED record from a PREVIOUS federation would otherwise produce a row
 # whose every clause passes trivially (CS list empty, host token has no such
 # key, r1 returns UnknownMember) -- four green checks asserting nothing
@@ -664,7 +730,11 @@ done
 # restart reads as stale and its row SKIPs. That is the safe direction (a
 # logged SKIP, not a false PASS); anchor on the CS volume's CreatedAt instead
 # if the restart-and-reassert flow ever matters.
-mapfile -t _27_RETIRED < <(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" "$OUT_DIR/deploy-timings.txt" <<'PY'
+# Same capture-then-split as the two mapfile sites above, for the same reason:
+# a store this query cannot read must be a loud failure, not zero un-join rows
+# and a green section. Zero rows from a store that DID read is the normal case
+# (nobody has un-joined) and stays a silent no-op.
+if ! _27_retired_out=$(python3 - "$_27_datastore_kind" "$PACK_DIR/hurl/topology.json" "$_27_join_store" "$OUT_DIR/deploy-timings.txt" <<'PY'
 import datetime, json, pathlib, sqlite3, sys
 
 kind = sys.argv[1]
@@ -701,7 +771,21 @@ def _retired_records():
         return
     if not store_path.is_file():
         return
-    conn = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    # `mode=ro` alone cannot open a WAL database whose -shm is gone (the
+    # normal state once the last writer closed cleanly) -- the same guard the
+    # 2.7 baselines block's _ro_connect() and apps/join-api/store.py's
+    # _sqlite_connect() carry, repeated because this heredoc is its own
+    # Python program and shares nothing with that one. immutable=1 is safe
+    # exactly when there is no -wal to miss; if there is one, re-raise. The
+    # SELECT 1 is load-bearing: sqlite3.connect() is lazy and the failure
+    # surfaces on the first statement, not on connect().
+    try:
+        conn = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+        conn.execute("SELECT 1")
+    except sqlite3.OperationalError:
+        if pathlib.Path(f"{store_path}-wal").exists():
+            raise
+        conn = sqlite3.connect(f"file:{store_path}?mode=ro&immutable=1", uri=True)
     for (record_json,) in conn.execute("SELECT record FROM requests WHERE state = 'RETIRED'"):
         yield json.loads(record_json)
 
@@ -757,7 +841,10 @@ for code, rec in sorted(newest.items()):
     # first time this ran against a real own-server retirement).
     print(f"{code}\t{host or '-'}\t{subject}\t{pair}\t{r1_path}\t{instance}:{mclass}:{code}")
 PY
-)
+); then
+  fail "2.7.unjoin: could not enumerate RETIRED records from the join store ($_27_datastore_kind: $_27_join_store) -- the traceback is above. Every un-join clause would otherwise be skipped silently."
+fi
+mapfile -t _27_RETIRED < <(printf '%s' "$_27_retired_out")
 if [ "$_27_datastore_kind" = "postgres" ]; then
   rm -f "$_27_join_store"
   trap - EXIT

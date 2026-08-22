@@ -177,7 +177,41 @@ def connect(target: pathlib.Path | str, *, readonly: bool = False):
 
 def _sqlite_connect(path: pathlib.Path, *, readonly: bool = False) -> sqlite3.Connection:
     if readonly:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+        # `mode=ro` alone is NOT enough for a WAL database, which this one is
+        # (_PRAGMAS sets journal_mode = WAL). SQLite needs the -shm index to
+        # read a WAL database, and it will not CREATE one through a read-only
+        # handle -- so the moment the last writer closes cleanly and SQLite
+        # removes -wal/-shm, every `mode=ro` open of a perfectly healthy,
+        # fully-checkpointed store fails with a bare
+        # "unable to open database file".
+        #
+        # Found live, by scripts/acceptance.sh's 2.7 rows failing loudly for
+        # the first time once that query stopped swallowing its own subprocess
+        # exit status. Before that it read as "no joined members", and a whole
+        # module reported green having checked nothing -- so this bug's only
+        # symptom for its entire life was a section that silently did nothing.
+        #
+        # immutable=1 is the documented read path for a database no one is
+        # writing, and the absence of -wal is exactly that proof: no journal
+        # beside the file means everything committed is already in the main
+        # file, so there is nothing for immutable=1 to miss. If a -wal IS
+        # there, there is content it would skip -- re-raise rather than answer
+        # from a stale main file, because a wrong answer here is worse than an
+        # error.
+        #
+        # The SELECT 1 is load-bearing: sqlite3.connect() is LAZY -- it hands
+        # back a Connection without opening anything, and the failure surfaces
+        # on the first statement instead. A try: around connect() alone
+        # catches nothing at all.
+        try:
+            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+            conn.execute("SELECT 1")
+        except sqlite3.OperationalError:
+            if pathlib.Path(f"{path}-wal").exists():
+                raise
+            conn = sqlite3.connect(
+                f"file:{path}?mode=ro&immutable=1", uri=True, check_same_thread=False
+            )
     else:
         conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
