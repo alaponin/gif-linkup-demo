@@ -956,6 +956,15 @@ async function onJoinListClick(e) {
 // apps/join-api/schema.py's JoinPayload with placeholder values, so the
 // applicant edits rather than invents. The token is referenced unexpanded --
 // it stays in .env, exactly as the runbook's own examples do.
+//
+// ponytail: this assumes docker-local's demo posture, where
+// KP2_JOIN_APPLICANT_TOKEN is a real shared value -- under the droplet
+// posture (KP2_JOIN_APPLICANT_TOKEN=disabled, docs/production-delta.md row
+// 28) the pasted command 403s, and the applicant needs an issued
+// per-agency token instead (runbook.md's "Disabling the shared applicant
+// token"). Console has no notion of deployment posture to detect this
+// from; upgrade if the console ever needs to run demos against a droplet
+// target.
 const JOIN_SUBMIT_PAYLOAD = {
   code: "AGENCY", name: "Agency Full Name",
   subsystem: "SUBSYSTEM", subsystem_description: "what this subsystem does",

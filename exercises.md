@@ -77,7 +77,11 @@ set -a; . ./.env; set +a      # the two tokens the commands below reference
 ```
 
 Submission is the **applicant's** act, with the applicant token, from
-outside — so it stays a `curl`:
+outside — so it stays a `curl`. (This exercise assumes `docker-local`'s
+default, where `KP2_JOIN_APPLICANT_TOKEN` is a real shared value —
+`runbook.md`'s "Disabling the shared applicant token" describes the droplet
+posture, where this token is `disabled` and submission goes through an
+issued per-agency credential instead.)
 
 ```
 curl -s -X POST http://localhost:8091/requests \

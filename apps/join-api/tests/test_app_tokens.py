@@ -326,3 +326,30 @@ def test_the_operator_token_cannot_be_set_to_the_disabled_sentinel(tmp_path):
     KP2_JOIN_OPERATOR_TOKEN is."""
     with pytest.raises(RuntimeError, match="KP2_JOIN_OPERATOR_TOKEN.*disabled"):
         _import_app(tmp_path, applicant_token="test-applicant-token", operator_token="disabled")
+
+
+@pytest.mark.parametrize("spelling", ["Disabled", "DISABLED", "disabled ", " disabled", "  DiSaBled  "])
+def test_a_near_miss_spelling_of_the_sentinel_is_still_treated_as_disabled(tmp_path, spelling):
+    """.env is shell-sourced -- a stray trailing space or a capitalised
+    "Disabled" is an easy typo. Un-normalised, that value would be neither
+    empty nor contain "CHANGEME", so _required_token's ordinary check would
+    let it through as APPLICANT_TOKEN's ACTUAL value: a live shared token
+    whose contents are literally the word an attacker would guess first --
+    the opposite of what setting it was meant to do. Every spelling here
+    must still disable the shared-token comparison, and APPLICANT_TOKEN
+    itself must come back as the single canonical "disabled" (not the raw
+    text) so the downstream `APPLICANT_TOKEN != "disabled"` re-enable guard
+    in require_applicant can't silently miss it."""
+    module = _import_app(tmp_path, applicant_token=spelling)
+    assert module.APPLICANT_TOKEN == "disabled"
+    client = TestClient(module.app)
+    # The near-miss spelling itself must never authenticate as a bearer
+    # token either -- proves the raw text was not what got returned/compared.
+    near_miss_as_bearer = {"Authorization": f"Bearer {spelling.strip()}", CONSOLE_HEADER: "1"}
+    assert client.get("/catalogue", headers=near_miss_as_bearer).status_code == 403
+
+
+@pytest.mark.parametrize("spelling", ["Disabled", "disabled "])
+def test_a_near_miss_spelling_still_refuses_the_operator_token(tmp_path, spelling):
+    with pytest.raises(RuntimeError, match="KP2_JOIN_OPERATOR_TOKEN.*disabled"):
+        _import_app(tmp_path, applicant_token="test-applicant-token", operator_token=spelling)

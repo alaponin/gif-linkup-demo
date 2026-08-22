@@ -793,8 +793,17 @@ if _selection_touches_27; then
   # renderer against itself; asking the running service what it publishes
   # asserts the property a joining body actually depends on.
   catalogue_json() {
+    # KP2_JOIN_APPLICANT_TOKEN=disabled is the droplet posture
+    # (docs/production-delta.md row 28) -- the shared credential above stops
+    # authenticating anything. require_applicant (apps/join-api/app.py)
+    # accepts the operator token for a read too (an applicant call, not just
+    # operator-only routes), so that is the one credential this check can
+    # fall back to that is never disabled -- no need to self-issue a
+    # per-agency token just to read a discovery endpoint.
+    local _token="$KP2_JOIN_APPLICANT_TOKEN"
+    [ "${_token,,}" = "disabled" ] && _token="$KP2_JOIN_OPERATOR_TOKEN"
     curl -sf -H "X-KP2-Console: 1" \
-         -H "Authorization: Bearer ${KP2_JOIN_APPLICANT_TOKEN}" \
+         -H "Authorization: Bearer ${_token}" \
          "http://${XROAD_BIND}:8091/catalogue"
   }
 

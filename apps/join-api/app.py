@@ -105,20 +105,25 @@ def _required_token(name: str, *, allow_disabled: bool = False) -> str:
     member.sh, ...) has no reason to fail over a secret it never uses.
 
     `allow_disabled=True` is KP2_JOIN_APPLICANT_TOKEN's own switch (row 28,
-    docs/production-delta.md): the literal sentinel string "disabled",
-    returned as-is for require_applicant to recognise and skip the
-    shared-token comparison entirely -- not empty/absent, which
-    docker-compose.yml's `:-` default already passes through, so absence
-    would silently mean "disabled" the moment an operator forgot the .env
-    line. Every other caller (KP2_JOIN_OPERATOR_TOKEN) has that literal
-    string refused outright -- the operator credential can never be
+    docs/production-delta.md): the sentinel string "disabled" -- matched
+    case-insensitively and with surrounding whitespace stripped (.env is
+    shell-sourced; a trailing space or a capitalised "Disabled" is an easy
+    typo to introduce and must not fail OPEN into that literal string
+    becoming a live, guessable shared token) -- returns the single
+    canonical value "disabled", never the raw/un-normalised text, for
+    require_applicant to compare against with == and skip the shared-token
+    comparison entirely. Not empty/absent, which docker-compose.yml's `:-`
+    default already passes through, so absence would silently mean
+    "disabled" the moment an operator forgot the .env line. Every other
+    caller (KP2_JOIN_OPERATOR_TOKEN) has that same sentinel (any spelling
+    of it) refused outright -- the operator credential can never be
     disabled this way."""
     value = os.environ.get(name, "")
-    if value == "disabled":
+    if value.strip().lower() == "disabled":
         if allow_disabled:
-            return value
+            return "disabled"
         raise RuntimeError(
-            f"join-api: {name} is set to the literal string 'disabled', which "
+            f"join-api: {name} is set to the sentinel string 'disabled', which "
             "only KP2_JOIN_APPLICANT_TOKEN may be. Set a real token (run "
             "scripts/gen-secrets.sh)."
         )
