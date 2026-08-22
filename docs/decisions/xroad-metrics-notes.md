@@ -10,11 +10,23 @@ this demo pack can carry?
 
 **Verdict: no-go.** The data source is not the blocker — it works, live,
 today, with zero extra provisioning (§1). The official collector *stack* is
-the blocker: no container images (§2), a second database engine the
-existing datastore plan never priced in (§3), and a footprint NIIS's own
-docs size at multiple hosts even for a "simplified" test setup (§4). This
-returns to the backlog with the evidence below, per the plan's own
-sign-off that this is an acceptable spike outcome.
+the blocker: no published, pinnable container image, and an upstream
+compose setup its own README scopes to "limited local testing" (§2); a
+second database engine the existing datastore plan never priced in (§3);
+and a footprint NIIS's own docs size at eight hosts in production and two
+even for a "simplified" test setup (§4). This returns to the backlog with
+the evidence below, per the plan's own sign-off that this is an acceptable
+spike outcome.
+
+**On sources.** §1 is a live probe against this pack's own containers and
+is reproducible from the note itself. §2–§4 are claims about upstream
+that a live probe cannot observe, so each one carries the document it
+comes from and the date it was read. Every upstream URL below was fetched
+**2026-08-22** against `nordic-institute/X-Road-Metrics` `master`.
+Re-reading §2–§4 against a later `master` is the right way to decide
+whether this no-go still holds — that is what the dates are for. Where the
+first pass of this note asserted something the sources do not support, the
+correction is stated in place rather than quietly dropped (see §2).
 
 ## 1. The data source itself: live-tested, works today, no new provisioning
 
@@ -68,19 +80,54 @@ window) `POST`ed with `Content-Type: text/xml` to the calling member's own
 monitoring was never a join-time or acceptance-time call before this
 spike), and none is added here — a one-off probe, not a wired mechanism.
 
-## 2. No official container image — package-only, one host per module by default
+## 2. No *published* container image — the supported install is `apt`, and upstream's own compose is scoped to "limited local testing"
 
-`nordic-institute/X-Road-Metrics` ships **no Docker image for any of its
-seven modules** (collector, corrector, reports, opendata, anonymizer,
-networking/visualizer, the experimental analysis module). Installation is
-Ubuntu 22.04/24.04 `.deb` packages, systemd services and cron jobs — the
-opposite of this pack's whole posture (`docker-compose.yml`, digest-pinned
-images, `profiles:` flags). Every other "NIIS OSS" component this pack runs
-(`niis/xroad-central-server`, `niis/xroad-security-server-sidecar`) *is*
-published as a maintained image; `xroad-metrics` is not, and building four-
-plus unofficial images from `.deb` packages ourselves is a materially
-different (and materially larger) commitment than "compose services behind
-a `profiles: ["metrics"]` flag" implied when this task was scoped.
+**Correction to this note's first pass, stated in place rather than
+silently dropped.** That version claimed `X-Road-Metrics` "ships **no Docker
+image for any of its seven modules**" and that adopting it would mean
+"building four-plus unofficial images from `.deb` packages ourselves". The
+second half is wrong: the repository has a top-level `Docker/` directory
+with a Dockerfile per module, a `prepare-containers.sh` that builds all
+seven (collector, corrector, anonymizer, opendata, opendata-collector,
+reports, networking) and a `docker-compose.yaml` wiring them to MongoDB and
+PostgreSQL. We would not be inventing the packaging. The accurate version of
+the blocker is narrower, and it is two things:
+
+- **Nothing is published.** There is no `niis/xroad-metrics-*` on Docker
+  Hub or ghcr — unlike `niis/xroad-central-server` and
+  `niis/xroad-security-server-sidecar`, which this pack already pins **by
+  digest** (`deployment.yaml`'s `cs_digest`/`ss_digest`, C13). Images have
+  to be built locally from that directory, which means there is no digest
+  to pin and no upstream rebuild to inherit — a direct conflict with the
+  image-provenance dimension `docs/deployment-targets.md` already commits
+  to. Searched 2026-08-22; no such image found on either registry.
+- **Upstream scopes its own compose out of production.** `Docker/README.md`
+  states plainly: *"This Docker setup is only intended for limited local
+  testing."* Adopting it for a demo pack that a reader may point at a
+  droplet means either ignoring that sentence or owning the gap ourselves.
+
+The *supported* installation path is unchanged and is what the module docs
+document: Ubuntu Server 22.04 (Jammy) / 24.04 (Noble), `sudo apt install
+xroad-metrics-collector`, driven by a cron file at
+`/etc/cron.d/xroad-metrics-collector-cron` (default: every three hours).
+That is still the opposite of this pack's posture (`docker-compose.yml`,
+digest-pinned images, `profiles:` flags) — but "unsupported-for-production
+containers exist" is a weaker blocker than "no containers exist", and the
+no-go rests on §3 and §4 more than it rests on this section.
+
+Sources, all fetched **2026-08-22**:
+- <https://github.com/nordic-institute/X-Road-Metrics/tree/master/Docker> —
+  per-module Dockerfiles, `prepare-containers.sh`, `docker-compose.yaml`,
+  `mongodb-init/`, `postgresql-init/`.
+- <https://github.com/nordic-institute/X-Road-Metrics/blob/master/Docker/README.md>
+  — *"This directory contains Dockerfiles and scripts for building the
+  containers for each module"*; *"This Docker setup is only intended for
+  limited local testing."*
+- <https://github.com/nordic-institute/X-Road-Metrics/blob/master/docs/collector_module.md>
+  — Ubuntu 22.04/24.04, `apt install`, the cron file and its three-hour
+  default.
+- <https://hub.docker.com/u/niis> — the published NIIS images; no
+  `xroad-metrics` entry as of the fetch date.
 
 ## 3. Two databases, not one — MongoDB is the primary store, Postgres is a downstream projection
 
@@ -109,14 +156,42 @@ never see. Standing up "the database" for this spike would mean standing
 up both engines and the isolation between them, not extending the existing
 `join-api`/`kp2_join` Postgres pattern to a second database name.
 
+Sources, fetched **2026-08-22**, both
+<https://github.com/nordic-institute/X-Road-Metrics/blob/master/docs/system_architecture.md>
+and
+<https://github.com/nordic-institute/X-Road-Metrics/blob/master/docs/database_module.md>:
+- *"MongoDb is used to store 'non-anonymized' operational monitoring data
+  that should be accessible only by the X-Road administrators. Anonymized
+  operational monitoring data that can be published for wider audience is
+  stored in the PostgreSQL."*
+- *"MongoDB shall retain 1 year data in disk memory"*; *"MongoDB shall
+  retain 1 week data in RAM memory for efficient query"*; *"MongoDB shall
+  run in a replication set for availability"*; *"PostgreSQL shall retain 1
+  year of public available data."*
+- *"the MongoDb contains data that might contain sensitive information like
+  IP-addresses or personal data. That should be accessible only by the
+  X-Road administrators"*, mitigated by *"separate virtual LANs for the
+  public and private modules and setting a firewalled routing between the
+  networks."*
+- The four modules that touch MongoDB directly, per `database_module.md`:
+  collector (read/write), corrector (read/write), reports (read),
+  anonymizer (read).
+
 ## 4. Footprint, even at NIIS's own "simplified" testing scale
 
-NIIS's docs size *production* at nine dedicated hosts (one per module plus
-the central db) and name a *testing-simplified* floor of **two**:
+NIIS's docs size *production* at **eight** dedicated hosts — one per module
+plus the central database: `xroad-metrics-centraldb`, `-collector`,
+`-corrector`, `-reports`, `-analyzer`, `-anonymizer`, `-opendata`,
+`-networking` — and name a *testing-simplified* floor of **two**:
 
-- `xroad-metrics-private` — MongoDB + collector + corrector + reports +
-  anonymizer
-- `xroad-metrics-opendata` — PostgreSQL + opendata + networking/visualizer
+- `xroad-metrics-private` — MongoDB and the private modules
+- `xroad-metrics-opendata` — PostgreSQL and the public modules
+
+(An earlier draft of this note said "nine". It is eight; corrected against
+the source below. The same draft attributed a precise module-per-host split
+to that document — it does not give one at the simplified scale, only the
+private/public division above, so the split is not asserted here. The
+argument does not turn on either number.)
 
 Two hosts (or, translated to this pack's shape, at minimum two custom-built
 multi-process containers plus MongoDB plus a second Postgres instance) is a
@@ -136,6 +211,17 @@ solvable — §1 already shows the underlying calls work with existing
 identities — but "solvable with four times the collector configuration"
 is scope this task's `~1.5 day` E.3 estimate did not carry.
 
+Sources, fetched **2026-08-22**:
+- <https://github.com/nordic-institute/X-Road-Metrics/blob/master/docs/system_architecture.md>
+  — the eight production hosts by name, and the two-host
+  `xroad-metrics-private` / `xroad-metrics-opendata` testing setup with
+  firewalled routing between them.
+- <https://github.com/nordic-institute/X-Road-Metrics/blob/master/docs/collector_module.md>
+  — `settings.yaml`'s single `security-server:` mapping (a host, not a
+  list), and multi-instance handling by separate settings *profiles*
+  (`settings_DEV.yaml`, `settings_TEST.yaml`, …, selected with
+  `xroad-metrics-collector --profile TEST collect`).
+
 ## 5. What would have to be true to reopen this
 
 - An officially maintained (or this-pack-maintained-and-committed-to)
@@ -154,8 +240,9 @@ is scope this task's `~1.5 day` E.3 estimate did not carry.
 
 None of this is disqualifying forever — §1's finding is that the hard part
 (does the demo federation actually produce and serve the data the
-collector wants?) is already proven yes. What's missing is packaging this
-pack does not control (§2) and a footprint this task's own estimate did
+collector wants?) is already proven yes. What's missing is a publishable,
+pinnable image upstream does not offer and whose own compose setup it
+scopes out of production (§2), and a footprint this task's own estimate did
 not carry (§3-§4). `docs/production-delta.md`'s G4 text and
 `docs/path-conformance.yaml`'s `G4.8` are updated to say so precisely,
 rather than leaving the older, vaguer "adding X-Road Metrics later closes
