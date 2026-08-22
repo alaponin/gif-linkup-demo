@@ -58,7 +58,13 @@ x-sidecar: &sidecar
 
 x-mock: &mock
   build: ./apps/mock-registry
-  networks: [linkup]
+  # linkup: reachable behind its own Security Server, same as always.
+  # specs: reachable BY spec-fetcher (docs/production-delta.md row 41) --
+  # every app-* backend a joined member's spec_url or servers[].url can
+  # legitimately name has to be on the same network the credential-free
+  # fetcher is. See the `specs` network's own comment below for why this is
+  # a Docker bridge each app-* container sits on twice, not two containers.
+  networks: [linkup, specs]
   restart: unless-stopped
   # Measured ~32 MiB steady (docs/production-delta.md) -- generous headroom
   # for a single small FastAPI process serving a CSV in memory.
@@ -206,6 +212,39 @@ services:
       - ./apps/data:/data:ro
       - ./apps/specs:/specs:ro
 
+  spec-fetcher:
+    # The credential-free fetcher apps/join-api/validate.py delegates every
+    # applicant-controlled URL fetch to (docs/production-delta.md row 41;
+    # apps/spec-fetcher/app.py's own docstring has the full design). profiles:
+    # ["demo"] like join-api -- both are join-workflow-only, off by default on
+    # a plain `docker compose up`, and scripts/join.sh brings this up
+    # alongside join-api rather than requiring a separate entry point.
+    build: ./apps/spec-fetcher
+    container_name: spec-fetcher
+    profiles: ["demo"]
+    restart: unless-stopped
+    # No healthcheck: key here -- apps/spec-fetcher/Dockerfile already
+    # declares one (HEALTHCHECK against /health), which Compose inherits
+    # from the built image whenever a service does not override it; docker
+    # inspect already reports Health.Status without repeating it here --
+    # same pattern as join-api/console above.
+    # Small: one FastAPI process, no state, no dependency heavier than
+    # httpx. Not measured yet (docs/production-delta.md's measured-figures
+    # table has no row for it) -- same estimate-not-measured caveat as
+    # join-api/console's own mem_limit comments; revisit with a real
+    # `docker stats --no-stream spec-fetcher` figure if this ever flaps.
+    mem_limit: 128m
+    # ONLY `specs` -- no `linkup`. This is the entire control: no route to
+    # `cs`, `ca`, or any `ss-*` (every admin API lives on `linkup`, and this
+    # container is never on it), and no external egress either (`specs` is
+    # `internal: true`, below) -- on docker-local this container can reach
+    # exactly the three mock backends on `specs` and nothing else on earth.
+    # No `ports:` either: nothing outside the Compose network needs to reach
+    # this directly, and check-exposure.sh's loopback-only assertion (every
+    # OTHER service's ports:) has nothing to check here because there is
+    # nothing published.
+    networks: [specs]
+
   console:
     # KP2 demonstration console -- demo only, never production (see
     # docs/production-delta.md). profiles: ["demo"] keeps it off by default
@@ -303,7 +342,14 @@ services:
     # `docker stats --no-stream join-api` figure taken during a live join if
     # this ever flaps.
     mem_limit: 512m
-    networks: [linkup]
+    # linkup: every admin-API call this container still legitimately makes
+    # (client/ACL registration, r1 verification, member.sh drift/refresh --
+    # none of those are applicant-controlled URLs). specs: reaches
+    # spec-fetcher, and ONLY spec-fetcher -- app-pnia/app-plr/app-ptsb are on
+    # `specs` too (their own comment above), but join-api never talks to them
+    # directly on it; SPEC_FETCHER_URL below is the one thing this membership
+    # is for.
+    networks: [linkup, specs]
     ports: ["${XROAD_BIND:-127.0.0.1}:8091:8000"]
     environment:
       PACK_DIR: /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack
@@ -311,6 +357,13 @@ services:
       XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
       XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
+      # validate.py's _default_fetch_spec/_default_check_reachable fail
+      # closed (SpecFetcherUnavailable) when this is unset -- row 41 stays
+      # closed rather than silently falling back to an in-process fetch from
+      # this credential-holding container. docker-local's only value: the
+      # spec-fetcher service's own Compose name, on the `specs` network both
+      # containers share.
+      SPEC_FETCHER_URL: http://spec-fetcher:8000
       # :- not :?, even though join-api genuinely requires both. Compose
       # interpolates the WHOLE file whatever service is targeted, so a :?
       # here stops `scripts/console.sh up` too -- the exact coupling
@@ -381,3 +434,22 @@ networks:
   linkup:
     name: linkup
     driver: bridge
+  specs:
+    # docs/production-delta.md row 41's actual mitigation: internal: true
+    # means Docker gives this network no route to the outside world at
+    # all -- no default gateway, no NAT, no egress -- so spec-fetcher
+    # (networks: [specs] only) can reach exactly the containers also on this
+    # network (app-pnia/app-plr/app-ptsb, join-api) and nothing else,
+    # ever, regardless of what a fetch's own logic does or fails to do.
+    # join-api sits on this network too (to reach spec-fetcher) but that
+    # does not put spec-fetcher on `linkup` -- membership is not
+    # transitive, and spec-fetcher's own `networks:` line above never names
+    # linkup. This is the one dimension docs/deployment-targets.md's "Spec
+    # fetch egress" row calls out as a per-target decision: a target with
+    # real external spec hosts needs the fetcher on a network with egress,
+    # still with no route to the admin plane -- docker-local's spec hosts
+    # are the three mocks, which is why `internal: true` is the right
+    # answer here specifically.
+    name: kp2-specs
+    driver: bridge
+    internal: true

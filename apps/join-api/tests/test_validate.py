@@ -3,17 +3,27 @@ checks, plus lawful_basis, sla_required and spec_url_origin, for
 fourteen total. Pure functions over fixture dicts for checks 2-8 and 12;
 checks 9-11 read the fixture OpenAPI documents under fixtures/specs/.
 
-Check 9 (backend reachability) is the one place this suite does real I/O,
-deliberately: a local http.server thread stands in for "inside the linkup
-network", and fixtures/specs/unreachable.yaml's
+Check 9 (backend reachability) is the one place this suite does real I/O
+against a fixture backend, deliberately: a local http.server thread stands
+in for "inside the linkup network", and fixtures/specs/unreachable.yaml's
 servers.url (port 1, a privileged port nothing listens on) is a real
 connection attempt that fails fast, not a mocked-away one -- mocking it
-would defeat the point of the check.
+would defeat the point of the check. _resolve_to_loopback below makes that
+connection directly (httpx, real socket) rather than through validate.py's
+own fetch_spec/check_reachable defaults, which -- since docs/production-
+delta.md row 41 -- no longer connect anywhere themselves; they call
+apps/spec-fetcher over HTTP, and spec-fetcher is the one that connects.
+That second real I/O path (validate.py -> spec-fetcher) gets its own
+small stand-in server below (_SpecFetcherDouble), separate from
+_reachable_backend -- apps/spec-fetcher/tests/test_app.py is where
+spec-fetcher's OWN fetch/probe logic (allowlist, IP refusal, redirects,
+size cap) is actually tested; this file only proves validate.py's client
+sends the right request and fails closed with no SPEC_FETCHER_URL.
 
 The fixture specs name `app-ptsb` because check 9a (spec_url_origin) refuses
 IP literals outright, whatever join.spec_url_hosts says. Only the NAME is
 substituted, by _resolve_to_loopback below -- the connection attempt itself
-is still validate.py's own, against the thread above.
+is still a real one, against the thread above.
 """
 from __future__ import annotations
 
@@ -21,7 +31,9 @@ import http.server
 import pathlib
 import sys
 import threading
+import urllib.parse
 
+import httpx
 import pytest
 import yaml
 
@@ -85,13 +97,20 @@ POLICY = {
 
 
 def _resolve_to_loopback(url: str) -> None:
-    """Stands in for the linkup network's own DNS, and nothing else: the host
-    name is rewritten to the loopback address the module's http.server is
-    actually bound to, then validate.py's real check_reachable runs against
-    it. Substituting the name rather than the whole call is what keeps
-    "the reachability half must always be a real attempt" true -- an
-    unreachable fixture still fails by failing to connect."""
-    validate_module._default_check_reachable(url.replace("app-ptsb", "127.0.0.1"))
+    """Stands in for the linkup network's own DNS AND for what production's
+    check_reachable does once it reaches spec-fetcher (apps/spec-fetcher/
+    app.py's own _get, tested directly in apps/spec-fetcher/tests/
+    test_app.py) -- the host name is rewritten to the loopback address the
+    module's http.server is actually bound to, then a real connection is
+    attempted against it. Substituting the name rather than the whole call
+    is what keeps "the reachability half must always be a real attempt"
+    true -- an unreachable fixture still fails by failing to connect. This
+    is injected as validate()'s check_reachable override in every test
+    below that needs one; it is not validate.py's own default any more
+    (that default now talks to spec-fetcher over HTTP -- see
+    test_default_fetch_spec_and_check_reachable_fail_closed_without_a_fetcher
+    and the _SpecFetcherDouble tests below for that half's own coverage)."""
+    httpx.get(url.replace("app-ptsb", "127.0.0.1"), timeout=5.0, follow_redirects=False)
 
 # Deliberately does not include every canonical member -- only plr and pnia
 # have "existing config on disk" in this fixture set, which is what lets
@@ -512,6 +531,111 @@ def test_backend_reachability_rejects_when_the_spec_cannot_be_fetched_at_all():
     raw = _payload(services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml", "lawful_basis": "consent",
                                 "access": [], "sla": _sla()}])
     _rejects(raw, "backend_reachability", fetch_spec=_boom)
+
+
+# -- the spec-fetcher client (row 41: the real fetch moved out of this
+# container) -------------------------------------------------------------
+#
+# validate.py's own default fetch_spec/check_reachable no longer touch the
+# applicant's URL at all -- they call apps/spec-fetcher over HTTP, and
+# apps/spec-fetcher/tests/test_app.py is where THAT service's fetch/probe
+# logic (allowlist, IP refusal, redirects, size cap) is actually exercised.
+# What belongs here is narrower: (a) the default path must fail closed,
+# loudly, naming what is missing, when SPEC_FETCHER_URL is unset -- never
+# silently fall back to fetching in-process, which is exactly the
+# regression row 41 exists to prevent; (b) the client this module builds
+# sends the request spec-fetcher actually needs (the URL, and the policy's
+# join.spec_url_hosts as allowed_hosts). _SpecFetcherDouble below is a
+# stand-in server, not the real service, so it can assert what it received
+# without pulling apps/spec-fetcher's own code into this test process.
+
+
+class _SpecFetcherDouble(http.server.BaseHTTPRequestHandler):
+    """Records the last request's path and query string, and answers every
+    GET with 200 -- just enough to prove validate.py's client calls the
+    right endpoint with the right parameters. Class attributes, not
+    instance attributes: http.server.HTTPServer instantiates a fresh
+    handler per request, so the test has nowhere else to read them from
+    after the request completes."""
+
+    last_path: str | None = None
+    last_query: dict[str, list[str]] | None = None
+
+    def do_GET(self):  # noqa: N802 -- stdlib method name
+        parsed = urllib.parse.urlsplit(self.path)
+        _SpecFetcherDouble.last_path = parsed.path
+        _SpecFetcherDouble.last_query = urllib.parse.parse_qs(parsed.query)
+        body = b"openapi: 3.0.0"
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):  # silence -- keep pytest -q output clean
+        pass
+
+
+@pytest.fixture()
+def spec_fetcher_double(monkeypatch):
+    server = http.server.HTTPServer(("127.0.0.1", 0), _SpecFetcherDouble)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("SPEC_FETCHER_URL", f"http://127.0.0.1:{server.server_address[1]}")
+    yield _SpecFetcherDouble
+    server.shutdown()
+    thread.join()
+
+
+def test_default_fetch_spec_and_check_reachable_fail_closed_without_a_fetcher(monkeypatch):
+    """The default path -- no injected fetch_spec/check_reachable -- must
+    never silently fetch spec_url in-process just because SPEC_FETCHER_URL
+    happens to be unset. Row 41 stays closed."""
+    monkeypatch.delenv("SPEC_FETCHER_URL", raising=False)
+    with pytest.raises(validate_module.SpecFetcherUnavailable, match="SPEC_FETCHER_URL"):
+        validate_module._default_fetch_spec("http://app-ptsb:8000/spec.yaml")
+    with pytest.raises(validate_module.SpecFetcherUnavailable, match="SPEC_FETCHER_URL"):
+        validate_module._default_check_reachable("http://app-ptsb:8000/")
+
+
+def test_a_real_validate_run_fails_closed_without_a_fetcher_naming_the_missing_service(monkeypatch):
+    """End to end, through validate() itself, with no fetch_spec override
+    -- the production call shape (app.py's own validate.validate() call
+    passes neither callable). A missing SPEC_FETCHER_URL surfaces as an
+    ordinary backend_reachability rejection (any fetch failure does), but
+    the message names what is actually missing rather than reading like a
+    flaky network."""
+    monkeypatch.delenv("SPEC_FETCHER_URL", raising=False)
+    err = _rejects(_publishing("http://app-ptsb:8000/spec.yaml"), "backend_reachability")
+    assert "SPEC_FETCHER_URL" in err.message
+
+
+def test_default_fetch_spec_sends_the_url_with_no_allowlist(spec_fetcher_double):
+    """The bare dataclass-field default (never reached via validate() in
+    production -- see _make_fetch_spec's own docstring) -- allowed_hosts=[]
+    is what it sends, which spec-fetcher's own allowlist check treats as
+    fail-closed, not as "allow anything"."""
+    text = validate_module._default_fetch_spec("http://app-ptsb:8000/spec.yaml")
+    assert text == "openapi: 3.0.0"
+    assert spec_fetcher_double.last_path == "/fetch"
+    assert spec_fetcher_double.last_query["url"] == ["http://app-ptsb:8000/spec.yaml"]
+    assert "allowed_hosts" not in spec_fetcher_double.last_query
+
+
+def test_make_fetch_spec_sends_the_policy_allowlist_as_a_request_parameter(spec_fetcher_double):
+    """The real default validate() installs: join.spec_url_hosts reaches
+    spec-fetcher as a request parameter, since spec-fetcher reads no
+    policy file of its own (no volumes -- apps/spec-fetcher/app.py's own
+    docstring)."""
+    fetch_spec = validate_module._make_fetch_spec(POLICY)
+    fetch_spec("http://app-ptsb:8000/spec.yaml")
+    assert spec_fetcher_double.last_query["allowed_hosts"] == POLICY["spec_url_hosts"]
+
+
+def test_make_check_reachable_calls_the_probe_endpoint(spec_fetcher_double):
+    check_reachable = validate_module._make_check_reachable(POLICY)
+    check_reachable("http://app-ptsb:8000/")
+    assert spec_fetcher_double.last_path == "/probe"
+    assert spec_fetcher_double.last_query["allowed_hosts"] == POLICY["spec_url_hosts"]
 
 
 # -- check 10: allowed methods --------------------------------------------------

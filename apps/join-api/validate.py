@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import dataclasses
 import ipaddress
+import os
 import pathlib
 import re
 import urllib.parse
@@ -90,27 +91,103 @@ def load_semantic_map(pack_dir: str | pathlib.Path) -> dict:
 # spec_url over the network too (a third-party spec) -- only the
 # *test* fixtures short-circuit that half; the reachability half must always
 # be a real attempt (the backend_reachability check).
+#
+# docs/production-delta.md row 41: both used to fetch (httpx, GET) the
+# applicant-controlled URL directly, from inside THIS container -- the one
+# holding JOB_SECRETS and a route to every admin API on the `linkup`
+# network. An allowlist checked before that fetch (spec_url_origin, below)
+# is not segregation; it is one list, one careless edit away from admitting
+# a host it should not. The real fetch now happens in apps/spec-fetcher/ --
+# its own container, on its own `internal: true` Docker network with no
+# route to `cs`/`ca`/any `ss-*` and no external egress either, holding no
+# credentials of its own. What runs here is an HTTP call to THAT service,
+# not to the applicant's URL.
 
 
-# follow_redirects=False in both: httpx's own default today, pinned here
-# because the spec_url_origin check below is only worth having if the host it
-# approved is the host that is actually contacted. A 302 to http://cs:4000
-# from an applicant-controlled URL walks straight past an allowlist that was
-# checked once, before the fetch -- so the no-redirect behaviour is stated
-# rather than inherited, and a future httpx default change (or a
-# well-meaning edit) cannot silently reopen it.
-def _default_fetch_spec(url: str) -> str:
-    resp = httpx.get(url, timeout=5.0, follow_redirects=False)
+class SpecFetcherUnavailable(RuntimeError):
+    """Raised by the default fetch_spec/check_reachable when
+    SPEC_FETCHER_URL is unset. _check_backend_reachability's own `except
+    Exception` (it has to catch broadly -- any fetch/parse/connect failure
+    is a rejection) turns this into an ordinary RejectionError naming the
+    check, same as a network timeout would -- but the message says exactly
+    what is missing rather than looking like a flaky fetch, because what
+    actually happened is this container refusing to fall back to fetching
+    the URL itself. Never caught anywhere on purpose: row 41 stays closed,
+    not silently reopened, the one time this container has no fetcher to
+    delegate to."""
+
+
+def _spec_fetcher_base_url() -> str:
+    base = os.environ.get("SPEC_FETCHER_URL")
+    if not base:
+        raise SpecFetcherUnavailable(
+            "SPEC_FETCHER_URL is not set -- refusing to fetch spec_url or probe a "
+            "backend in-process from this container, which holds JOB_SECRETS and a "
+            "route to every Security Server's admin API (docs/production-delta.md "
+            "row 41 stays closed). Set SPEC_FETCHER_URL to the spec-fetcher "
+            "service -- docker-compose.yml sets it to http://spec-fetcher:8000 for "
+            "join-api's own profile."
+        )
+    return base
+
+
+# follow_redirects=False here too, on the same line as the httpx.get call
+# below (test_neither_fetch_follows_redirects greps for exactly that): a 302 from
+# spec-fetcher must not be followed any more than a 302 from the applicant's
+# own host would be -- spec-fetcher's own app.py pins the same behaviour a
+# second time, against the URL it actually contacts, for the same reason.
+def _spec_fetcher_get(path: str, url: str, allowed_hosts: list[str]) -> httpx.Response:
+    base = _spec_fetcher_base_url()
+    params = [("url", url)] + [("allowed_hosts", h) for h in allowed_hosts]
+    resp = httpx.get(f"{base}{path}", params=params, timeout=10.0, follow_redirects=False)
     resp.raise_for_status()
-    return resp.text
+    return resp
+
+
+def _default_fetch_spec(url: str) -> str:
+    """The ValidationContext dataclass field's own default -- reached only
+    if a ValidationContext is built directly without going through
+    validate() (apps/join-api/tests has exactly one such case, and it never
+    calls fetch_spec). validate() itself always installs
+    _make_fetch_spec(policy) instead, below, so the host allowlist reaches
+    spec-fetcher as a request parameter. allowed_hosts=[] here is inert, not
+    dangerous, if this is ever reached for real: spec-fetcher fails closed
+    on an empty allowlist the same way _origin_error fails closed on a
+    missing join.spec_url_hosts."""
+    return _spec_fetcher_get("/fetch", url, allowed_hosts=[]).text
 
 
 def _default_check_reachable(url: str) -> None:
     # Any response -- even a 404 -- proves the TCP/TLS handshake and HTTP
-    # exchange succeeded, which is what "resolve and connect to it"
-    # asks for. No raise_for_status(): endpoint correctness is not
-    # this check's job, only reachability.
-    httpx.get(url, timeout=5.0, follow_redirects=False)
+    # exchange succeeded, which is what "resolve and connect to it" asks
+    # for; spec-fetcher's own /probe applies the same "no raise_for_status"
+    # rule for the same reason. See _default_fetch_spec's docstring above --
+    # same allowed_hosts=[] caveat applies here.
+    _spec_fetcher_get("/probe", url, allowed_hosts=[])
+
+
+def _make_fetch_spec(policy: dict) -> Callable[[str], str]:
+    """The real default validate() installs: closes over this request's own
+    join.spec_url_hosts so every call to spec-fetcher carries the allowlist
+    as a request parameter -- spec-fetcher has no join-policy.yaml of its
+    own to read (no volumes; see apps/spec-fetcher/app.py's docstring), so
+    this is the only way its allowlist check is anything but "no allowlist
+    seen locally"."""
+    allowed_hosts = policy.get("spec_url_hosts") or []
+
+    def fetch_spec(url: str) -> str:
+        return _spec_fetcher_get("/fetch", url, allowed_hosts).text
+
+    return fetch_spec
+
+
+def _make_check_reachable(policy: dict) -> Callable[[str], None]:
+    allowed_hosts = policy.get("spec_url_hosts") or []
+
+    def check_reachable(url: str) -> None:
+        _spec_fetcher_get("/probe", url, allowed_hosts)
+
+    return check_reachable
 
 
 @dataclasses.dataclass
@@ -737,8 +814,8 @@ def validate(
     policy: dict,
     existing_servers: dict,
     semantic_map: dict,
-    fetch_spec: Callable[[str], str] = _default_fetch_spec,
-    check_reachable: Callable[[str], None] = _default_check_reachable,
+    fetch_spec: Callable[[str], str] | None = None,
+    check_reachable: Callable[[str], None] | None = None,
 ) -> tuple[JoinPayload, ValidationContext]:
     """Runs all fourteen per-request checks (eleven, minus check 5,
     plus lawful_basis, sla_required and spec_url_origin -- see _CHECKS' own
@@ -752,7 +829,17 @@ def validate(
     gone by the time app.py persisted the SUBMITTED record. Raises
     RejectionError(check, message) naming the first failing check on
     failure -- the caller (app.py's endpoint) catches it to set the
-    request REJECTED with that check name."""
+    request REJECTED with that check name.
+
+    fetch_spec/check_reachable default to None, not _default_fetch_spec/
+    _default_check_reachable directly: the real default is built HERE,
+    against this call's own policy (_make_fetch_spec/_make_check_reachable),
+    so join.spec_url_hosts reaches spec-fetcher as a request parameter --
+    a plain function reference bound once at import time could never see a
+    per-call policy dict. apps/join-api/tests injects its own fakes for
+    both in every test that does not want a real fetch; app.py's own call
+    site passes neither, so production always goes through the
+    policy-aware wrapper."""
     try:
         payload = JoinPayload(**raw)
     except pydantic.ValidationError as exc:
@@ -764,8 +851,8 @@ def validate(
         policy=policy,
         existing_servers=existing_servers,
         semantic_map=semantic_map,
-        fetch_spec=fetch_spec,
-        check_reachable=check_reachable,
+        fetch_spec=fetch_spec or _make_fetch_spec(policy),
+        check_reachable=check_reachable or _make_check_reachable(policy),
     )
     for name, check_fn in _CHECKS:
         error = check_fn(ctx)
