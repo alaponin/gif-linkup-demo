@@ -601,6 +601,64 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     `git add configs/ manifest.yaml onboarding/<key>/ onboarding/catalogue.yaml
     && git commit`.
 
+## Observability: structured logs and `/metrics`
+
+Backend-agnostic (docker-local and the droplet target alike) — Task 5,
+Phase E of `docs/plans/production-hardening-plan.md`, `docs/production-
+delta.md` row 34. A *surface*, not a monitoring system: nothing scrapes
+`/metrics` and nothing ships the logs anywhere by default. Turning that
+into monitoring is an operator action, not something this pack does for
+you.
+
+**Structured logs.** Both `join-api` and `console` write one JSON object
+per line to stdout (`docker logs join-api` / `docker logs console`), built
+by `apps/join-api/logging_setup.py` / `apps/console/logging_setup.py` --
+stdlib `logging` only. Every record is scrubbed of the credentials this
+process holds (`job.scrub(..., JOB_SECRETS)` on join-api; the equivalent on
+console) before it is formatted, the same guard subprocess output already
+gets -- a log line can never carry the admin password, the token PIN, or a
+bearer token. join-api additionally:
+
+- stamps a fresh `request_id` (contextvar, also returned as the
+  `X-Request-Id` response header) onto every log line for the duration of
+  one HTTP call, and into that call's `request_events.detail` row, so a log
+  line and its audit-table row join on the same value;
+- stamps `join_id` -- the join request's own record id -- onto every log
+  line touching that join (submit, approve, resume, every job/unjoin step,
+  the terminal state), so `docker logs join-api | grep '"join_id":"<id>"'`
+  greps one join's whole lifecycle across the several separate HTTP calls
+  and the background thread the job runs on.
+
+**`GET /metrics`.** Prometheus text format, hand-rolled (no
+`prometheus_client`). Gated by the operator token, the same
+`require_operator` dependency every other operator route uses -- **not**
+the console-origin header, which a real Prometheus scrape never sends.
+Exposes: join requests by state, the store's held-record count and quota
+ceiling (`store.count_requests`, the same query the 200-record refusal
+uses -- not a second counter), 429 refusals since process start, job/unjoin
+steps completed vs. failed, and a job-duration summary.
+
+```
+curl -sk -H "Authorization: Bearer $KP2_JOIN_OPERATOR_TOKEN" \
+  http://127.0.0.1:8091/metrics
+```
+
+Prometheus scrape config (`prometheus.yml`), for whichever host can reach
+`XROAD_BIND:8091` -- loopback-bound by default (`docker-compose.yml`), so a
+Prometheus server not on the same host needs the same reverse-proxy/
+network story `docs/deployment-targets.md` already asks for everything
+else on this stack:
+
+```yaml
+scrape_configs:
+  - job_name: kp2-join-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:8091"]
+    authorization:
+      credentials_file: /run/secrets/kp2_join_operator_token  # KP2_JOIN_OPERATOR_TOKEN, not inline
+```
+
 ## The Postgres join store (droplet target)
 
 Everything above assumes `datastore.kind: sqlite` — docker-local's default,
@@ -729,9 +787,12 @@ droplet-only mechanism.
   ```
   A correct restore is every pre-fork record present, byte-identical.
 
-- **Two monitoring queries** — a starting point, not a monitoring system;
-  `docs/production-delta.md` says so explicitly. Both run against the schema in
-  `apps/join-api/migrations/001_init.sql`.
+- **Two monitoring queries, or scrape `/metrics`** — a starting point, not a
+  monitoring system; `docs/production-delta.md` says so explicitly. The two
+  queries run against the schema in `apps/join-api/migrations/001_init.sql`
+  (Postgres/droplet only, below); `GET /metrics` (Task 5, Phase E) is the
+  same starting point on **either** backend — see "Scraping `/metrics`"
+  right after this bullet.
 
   Refusals per token per hour (`actor` is a 12-character SHA-256 prefix of
   the bearer token, never the token itself — `app.py`'s `_refusal_actor`;

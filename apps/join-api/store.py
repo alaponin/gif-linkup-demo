@@ -493,6 +493,14 @@ def count_requests(conn) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM requests").fetchone()["n"]
 
 
+def count_requests_by_state(conn) -> dict[str, int]:
+    """The same COUNT(*) idiom as count_requests, grouped -- app.py's
+    GET /metrics (E.2) reads this live at scrape time rather than keeping a
+    second, in-process tally of a fact this table already answers."""
+    rows = conn.execute("SELECT state, COUNT(*) AS n FROM requests GROUP BY state").fetchall()
+    return {row["state"]: row["n"] for row in rows}
+
+
 def member_record(conn, key: str) -> dict | None:
     """Newest ACTIVE-or-RETIRING record for `key` (already lowercased by the
     caller), via the requests_by_member index."""

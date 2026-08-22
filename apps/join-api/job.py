@@ -1007,6 +1007,7 @@ def run(
     retry_interval: float = RETRY_INTERVAL_SECONDS,
     blocked_poll_interval: float = BLOCKED_POLL_INTERVAL_SECONDS,
     repo_root: pathlib.Path | None = None,
+    log: Callable[..., None] | None = None,
 ) -> dict:
     """Drive `record` (an out/join/<id>.json request) to ACTIVE, FAILED or
     BLOCKED, persisting after every step via `save`. Mutates and returns the
@@ -1049,7 +1050,18 @@ def run(
     member-server BLOCKED case above. `repo_root` defaults the same way
     writer.apply_real's does (three levels above pack_dir); overridable so
     tests can point it at a throwaway repo instead.
+
+    `log`, same seam as `save`: an optional `(event: str, **fields) -> None`
+    callable, called at job/step start, end (with a duration) and every
+    state transition this function reaches (RUNNING, BLOCKED, FAILED,
+    ACTIVE). No-op by default -- every test in this module that does not
+    pass one gets silence, not an AttributeError. job.py itself never
+    imports `logging` (module docstring): app.py's own `_job_log` is what
+    turns these calls into JSON-lines records, scrubbed the same way every
+    other error path here already is.
     """
+    if log is None:
+        log = lambda *_a, **_k: None  # noqa: E731 -- see docstring above
     payload = JoinPayload(**record["payload"])
     sequence = build_sequence(pack_dir, payload, commit_gate=record.get("commit_gate") == "required")
     constants = build_constants(pack_dir, payload, secrets)
@@ -1095,6 +1107,7 @@ def run(
         # budget is not evidence about this one.
         record["retry_budget_left"] = RETRY_BUDGET
         save(record)
+        log("job.start", state="RUNNING", resuming=resuming)
 
         for step in sequence:
             already = step.id in completed
@@ -1110,20 +1123,25 @@ def run(
                     "in hurl/steps.py and no probe can establish whether it already ran",
                 }
                 save(record)
+                log("job.finished", state="FAILED", step=step.id)
                 return record
             if step.kind == "gate":
                 # config.commit (see run()'s own docstring). Resolved lazily,
                 # only once a gate step is actually reached, so a run with
                 # commit_gate off never has to resolve repo_root at all.
                 resolved_repo_root = repo_root or pack_dir.resolve().parents[2]
+                log("job.step.start", step=step.id, kind="gate")
                 message = _commit_gate_blocked_message(resolved_repo_root, pack_dir, payload)
                 if message is not None:
                     record["state"] = "BLOCKED"
                     record["blocked"] = {"step": step.id, "message": message}
                     save(record)
+                    log("job.step.end", step=step.id, kind="gate", outcome="blocked")
+                    log("job.finished", state="BLOCKED", step=step.id)
                     return record
                 record["last_completed_step"] = step.id
                 save(record)
+                log("job.step.end", step=step.id, kind="gate", outcome="passed")
                 continue
             if step.actor == "member" and not _wait_for_server(
                 payload.security_server.dns_name, server_up, blocked_poll_interval
@@ -1145,14 +1163,21 @@ def run(
                     ),
                 }
                 save(record)
+                log("job.finished", state="BLOCKED", step=step.id, server=payload.security_server.dns_name)
                 return record
 
             variables = {**constants, **context, **session}
+            log("job.step.start", step=step.id, kind=step.kind, actor=step.actor)
+            t0 = time.monotonic()
             try:
                 if resuming and step.probe and step.id.split(":")[0] in PROBE_INTERPRETERS:
                     if _probe(step, variables, pack_dir, run_hurl):
                         record["last_completed_step"] = step.id
                         save(record)
+                        log(
+                            "job.step.end", step=step.id, kind=step.kind, outcome="probed-skip",
+                            duration_s=round(time.monotonic() - t0, 3),
+                        )
                         continue
                 _execute(
                     step, variables, context, session, pack_dir, run_hurl, r1_call, record, retry_interval, secrets
@@ -1161,7 +1186,16 @@ def run(
                 record["state"] = "FAILED"
                 record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
                 save(record)
+                log(
+                    "job.step.end", step=exc.step_id, kind=step.kind, outcome="failed",
+                    duration_s=round(time.monotonic() - t0, 3), error=scrub(exc.message, secrets),
+                )
+                log("job.finished", state="FAILED", step=exc.step_id)
                 return record
+            log(
+                "job.step.end", step=step.id, kind=step.kind, outcome="success",
+                duration_s=round(time.monotonic() - t0, 3),
+            )
             record["context"] = context
             if not already:
                 # Forward only. A session step re-run on resume (`already` and
@@ -1175,6 +1209,7 @@ def run(
 
         record["state"] = "ACTIVE"
         record["finished_at"] = _now()
+        log("job.finished", state="ACTIVE")
         if not payload.services:
             # A consume-only member's ACTIVE means registered and able
             # to reach the global configuration -- there is nothing of its own to
@@ -1521,6 +1556,7 @@ def unjoin(
     save: Callable[[dict], None],
     run_hurl: Callable[[str, str, dict], dict] = _default_run_hurl,
     retry_interval: float = RETRY_INTERVAL_SECONDS,
+    log: Callable[..., None] | None = None,
 ) -> dict:
     """Walk `record`'s completed steps backwards, undoing each. Mutates and
     returns the record, persisting after every entry via `save`.
@@ -1537,7 +1573,12 @@ def unjoin(
     real failure with a real message, not a state to wait in. The forward
     path's BLOCKED exists because the member had not stood its server up yet;
     backwards there is no such "not yet".
+
+    `log`, same seam and same no-op default as run()'s own -- see that
+    docstring.
     """
+    if log is None:
+        log = lambda *_a, **_k: None  # noqa: E731
     payload = JoinPayload(**record["payload"])
     _, steps = _hurl_modules(pack_dir)
     # commit_gate deliberately not threaded through here (contrast run()):
@@ -1585,6 +1626,7 @@ def unjoin(
         record["retry_budget_left"] = RETRY_BUDGET
         record["reversal"] = []
         save(record)
+        log("unjoin.start", state="RETIRING")
 
         try:
             # The sessions this walk authenticates with are exactly the ones
@@ -1602,9 +1644,14 @@ def unjoin(
             for step in walk:
                 variables = {**constants, **context, **session}
                 base = step.id.split(":")[0]
+                t0 = time.monotonic()
                 element = _reversal_probe(step, variables, pack_dir, run_hurl)
                 if REVERSAL_ABSENT[base](step, element, variables):
                     record["reversal"].append({"step": step.id, "outcome": "already absent"})
+                    log(
+                        "unjoin.step.end", step=step.id, outcome="already_absent",
+                        duration_s=round(time.monotonic() - t0, 3),
+                    )
                 else:
                     if base == "ss.sign_key_csr":
                         # Never the id the forward run captured: it may predate
@@ -1625,16 +1672,22 @@ def unjoin(
                         step, steps.BY_ID[base].reverse, variables, pack_dir, run_hurl, record, retry_interval
                     )
                     record["reversal"].append({"step": step.id, "outcome": "reversed"})
+                    log(
+                        "unjoin.step.end", step=step.id, outcome="reversed",
+                        duration_s=round(time.monotonic() - t0, 3),
+                    )
                 record["last_reversed_step"] = step.id
                 save(record)
         except StepFailure as exc:
             record["error"] = {"step": exc.step_id, "message": scrub(exc.message, secrets)}
             save(record)
+            log("unjoin.finished", state="RETIRING(error)", step=exc.step_id, error=scrub(exc.message, secrets))
             return record
 
         record["state"] = "RETIRED"
         record["retired_at"] = _now()
         record["retire_instruction"] = retire_instruction(payload)
+        log("unjoin.finished", state="RETIRED")
         # The mirror-image window (docs/production-delta.md row 33): this
         # walk, then scripts/member.sh remove (called by app.py's
         # retire_member), deletes configs/member-<key>/ from the live

@@ -4,6 +4,8 @@ directly (no protected route exists to hang them off yet; that arrives with
 the real endpoints later). Env vars set before import, same
 pattern as apps/console/tests/test_app_csrf.py."""
 import importlib.util
+import io
+import json
 import os
 import pathlib
 
@@ -137,3 +139,105 @@ def test_console_origin_guard_rejects_a_foreign_origin():
 def test_console_origin_guard_accepts_a_matching_origin():
     req = _request({CONSOLE_HEADER: "1", "origin": "http://testserver", "host": "testserver"})
     app._require_console_origin(req)  # does not raise
+
+
+# -- structured logging (E.1, docs/production-delta.md row 34) ---------------
+
+def _captured_log_lines(fn) -> list[dict]:
+    """Runs `fn()` with app._LOG's real handler pointed at an in-memory
+    buffer instead of stdout, and returns every JSON line it wrote --
+    the same handler/formatter/filter the running process actually uses,
+    not a stand-in."""
+    handler = app._LOG.handlers[0]
+    buf = io.StringIO()
+    original_stream = handler.stream
+    handler.stream = buf
+    try:
+        fn()
+    finally:
+        handler.stream = original_stream
+    return [json.loads(line) for line in buf.getvalue().splitlines() if line.strip()]
+
+
+def test_request_id_middleware_sets_a_header_and_a_different_one_per_request():
+    client = TestClient(app.app)
+    r1 = client.get("/health")
+    r2 = client.get("/health")
+    assert r1.headers["x-request-id"]
+    assert r2.headers["x-request-id"]
+    assert r1.headers["x-request-id"] != r2.headers["x-request-id"]
+
+
+def test_log_records_are_scrubbed_of_a_real_secret_value():
+    """job.scrub(..., JOB_SECRETS) runs on every record this logger emits
+    (logging_setup.ScrubFilter) -- proven with the actual ADMIN_PASSWORD/
+    TOKEN_PIN values this test process holds, not by reasoning about the
+    filter alone (the task's own binding constraint)."""
+    lines = _captured_log_lines(
+        lambda: app._LOG.info(
+            "auth attempt password=%s pin=%s", app.ADMIN_PASSWORD, app.TOKEN_PIN
+        )
+    )
+    assert len(lines) == 1
+    raw = json.dumps(lines[0])
+    assert app.ADMIN_PASSWORD not in raw
+    assert app.TOKEN_PIN not in raw
+    assert "***" in lines[0]["message"]
+
+
+def test_job_log_carries_the_join_id_for_correlation_across_the_jobs_lifecycle():
+    lines = _captured_log_lines(lambda: app._job_log("join-abc123", "job.start", state="RUNNING"))
+    assert lines == [
+        {
+            "ts": lines[0]["ts"], "level": "INFO", "logger": "kp2.join-api",
+            "message": "job.start", "request_id": None, "join_id": "join-abc123", "state": "RUNNING",
+        }
+    ]
+
+
+def test_job_log_with_metrics_bumps_the_matching_step_counter():
+    before_ok = app._METRICS.get("job_steps_completed_total", 0)
+    before_failed = app._METRICS.get("job_steps_failed_total", 0)
+    log = app._job_log_with_metrics("some-join-id")
+    log("job.step.end", step="cs.init", outcome="success", duration_s=1.2)
+    log("job.step.end", step="ss.client_add", outcome="failed", duration_s=0.4)
+    log("unjoin.step.end", step="service.acl", outcome="reversed", duration_s=0.1)
+    assert app._METRICS["job_steps_completed_total"] == before_ok + 2
+    assert app._METRICS["job_steps_failed_total"] == before_failed + 1
+
+
+# -- GET /metrics (E.2, docs/production-delta.md row 34) ---------------------
+
+def test_metrics_rejects_a_missing_bearer_token():
+    client = TestClient(app.app)
+    resp = client.get("/metrics")
+    assert resp.status_code == 401
+
+
+def test_metrics_rejects_the_applicant_token():
+    """Operator-only, reusing require_operator -- the same asymmetry
+    test_require_operator_rejects_the_applicant_token asserts directly."""
+    client = TestClient(app.app)
+    resp = client.get("/metrics", headers={"authorization": "Bearer test-applicant-token"})
+    assert resp.status_code == 403
+
+
+def test_metrics_accepts_the_operator_token_and_returns_prometheus_text():
+    client = TestClient(app.app)
+    resp = client.get("/metrics", headers={"authorization": "Bearer test-operator-token"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    body = resp.text
+    for name in (
+        "kp2_join_requests", "kp2_join_store_requests", "kp2_join_store_quota",
+        "kp2_join_rate_limited_total", "kp2_join_job_steps_total",
+        "kp2_join_job_duration_seconds_sum", "kp2_join_job_duration_seconds_count",
+    ):
+        assert name in body, f"{name} missing from /metrics output:\n{body}"
+
+
+def test_metrics_response_never_carries_a_credential():
+    client = TestClient(app.app)
+    resp = client.get("/metrics", headers={"authorization": "Bearer test-operator-token"})
+    for secret in (app.ADMIN_PASSWORD, app.TOKEN_PIN, app.APPLICANT_TOKEN, app.OPERATOR_TOKEN):
+        assert secret not in resp.text

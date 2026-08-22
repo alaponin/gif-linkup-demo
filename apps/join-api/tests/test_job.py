@@ -143,7 +143,7 @@ def _fake_r1(
     return call
 
 
-def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, server_up=None) -> dict:
+def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, server_up=None, log=None) -> dict:
     def save(rec: dict) -> None:
         if saves is not None:
             saves.append(json.loads(json.dumps(rec)))
@@ -162,6 +162,7 @@ def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, se
         server_up=server_up or (lambda dns: True),
         retry_interval=0,
         blocked_poll_interval=0,
+        log=log,
     )
 
 
@@ -301,6 +302,50 @@ def test_session_tokens_are_never_persisted_but_are_still_injected():
     assert not [k for k in record["context"] if k.endswith("_xsrf_token")]
     at_client_add = hurl.variables[hurl.calls.index("ss.client_add")]
     assert at_client_add["ss_plr_xsrf_token"]
+
+
+# -- the log= seam (E.1, docs/production-delta.md row 34) --------------------
+# job.py never imports `logging` itself (module docstring) -- these tests
+# only assert on the EVENTS this module calls `log` with, not on any
+# formatting. app.py's own tests (test_app_health.py) cover the JSON/scrub
+# side of the seam.
+
+
+def test_log_is_optional_and_defaults_to_silence():
+    """No log= at all -- job.run()'s own default, exercised by every other
+    test in this file -- must not raise."""
+    record = _run(_record(), FakeHurl())
+    assert record["state"] == "ACTIVE"
+
+
+def test_a_successful_run_logs_start_every_step_and_finish():
+    events: list[tuple[str, dict]] = []
+    record = _run(_record(), FakeHurl(), log=lambda event, **fields: events.append((event, fields)))
+    assert record["state"] == "ACTIVE"
+    names = [e for e, _ in events]
+    assert names[0] == "job.start"
+    assert names[-1] == "job.finished"
+    assert events[-1][1]["state"] == "ACTIVE"
+    step_starts = [f["step"] for e, f in events if e == "job.step.start"]
+    step_ends = {f["step"]: f for e, f in events if e == "job.step.end"}
+    assert step_starts == EXPECTED_IDS  # every planned step, in order
+    for step_id in EXPECTED_IDS:
+        assert step_ends[step_id]["outcome"] == "success"
+        assert isinstance(step_ends[step_id]["duration_s"], (int, float))
+
+
+def test_a_failed_step_logs_end_failed_and_finish_failed():
+    events: list[tuple[str, dict]] = []
+    hurl = FakeHurl({"ss.client_add": _FAILED})
+    record = _run(_record(), hurl, log=lambda event, **fields: events.append((event, fields)))
+    assert record["state"] == "FAILED"
+    ends = {f["step"]: f for e, f in events if e == "job.step.end"}
+    assert ends["ss.client_add"]["outcome"] == "failed"
+    # Scrubbed exactly like record["error"]["message"] itself -- same
+    # scrub() call, same secrets dict.
+    assert SECRETS["ss_admin_password"] not in ends["ss.client_add"]["error"]
+    finished = [f for e, f in events if e == "job.finished"]
+    assert finished[-1] == {"state": "FAILED", "step": "ss.client_add"}
 
 
 def test_409_on_a_repeat_counts_as_success():

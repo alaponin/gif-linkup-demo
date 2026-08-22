@@ -10,7 +10,6 @@ import asyncio
 import contextlib
 import csv
 import dataclasses
-import logging
 import os
 import pathlib
 import re
@@ -24,6 +23,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 import journal as journal_mod
+import logging_setup
 import truth as truth_mod
 import xroad
 
@@ -55,9 +55,12 @@ MUTABLE_SERVICE = "identity-api"
 HEARTBEAT_TIMEOUT_S = 120
 WATCHDOG_POLL_S = 10
 
-# uvicorn configures the root handlers, so this lands in `docker logs console`
-# with no setup of our own.
-_LOG = logging.getLogger("kp2.console")
+# JSON-lines to stdout, scrubbed of ADMIN_PASSWORD/JOIN_OPERATOR_TOKEN
+# (logging_setup.py's own docstring) -- replaces the previous "uvicorn
+# configures the root handlers, so this lands in `docker logs console` with
+# no setup of our own" default, for consistency with apps/join-api's own
+# structured logging (production-hardening-plan.md's E.1).
+_LOG = logging_setup.configure("kp2.console", {"admin_password": ADMIN_PASSWORD, "join_operator_token": JOIN_OPERATOR_TOKEN})
 
 # _mutate_acl is reached from `def` (not
 # `async def`) endpoints, so FastAPI runs it in a threadpool -- two

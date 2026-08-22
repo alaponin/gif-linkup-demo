@@ -33,6 +33,7 @@ import time
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
 # schema.py/validate.py/writer.py live beside this file. A bare `import
 # validate` (which itself does `from schema import ...`) only resolves if
@@ -45,6 +46,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 # import work either way, without requiring every test file to do it.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import job  # noqa: E402
+import logging_setup  # noqa: E402
 import schema  # noqa: E402
 import store  # noqa: E402
 import validate  # noqa: E402
@@ -94,6 +96,31 @@ def get_conn():
 ADMIN_USER = os.environ.get("XROAD_ADMIN_USER", "xrd")
 ADMIN_PASSWORD = os.environ["XROAD_ADMIN_PASSWORD"]
 TOKEN_PIN = os.environ["XROAD_TOKEN_PIN"]
+
+# Moved up from beside "the operator queue" section (where it stayed for
+# most of this file's history) to right after the three raw values it is
+# built from: logging_setup.configure() below needs it immediately, to scrub
+# every record this process emits from the very first line -- see
+# "-- structured logging (E.1) --" a few lines down. Nothing between the old
+# and new position reads JOB_SECRETS before job.run()/job.unjoin() are
+# actually called (both post-approval), so the move changes nothing else.
+JOB_SECRETS = {
+    "ss_admin_user": ADMIN_USER,
+    "ss_admin_password": ADMIN_PASSWORD,
+    "token_pin": TOKEN_PIN,
+}
+
+# -- structured logging (E.1, docs/production-delta.md row 34) --------------
+# JSON-lines to stdout, stdlib `logging` only -- logging_setup.py's own
+# docstring has the full design. Every record this logger emits passes
+# through job.scrub(..., JOB_SECRETS) first (logging_setup.ScrubFilter),
+# the identical guard app.py already applies to subprocess output before
+# persisting it (JOB_SECRETS' own comment below, `job.scrub` calls at this
+# file's GenerateFailure/RollbackFailure handlers) -- logs are the same
+# class of sink, and get the same treatment, tested the same way
+# (tests/test_app_health.py: a log record built from a real secret value
+# must not contain it once formatted).
+_LOG = logging_setup.configure("kp2.join-api", JOB_SECRETS)
 
 
 def _required_token(name: str, *, allow_disabled: bool = False) -> str:
@@ -290,6 +317,11 @@ def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_con
         row["expires_at"] is None or row["expires_at"] > now
     ):
         return f"applicant:{row['name']}"
+    # Auth failure: the token DIGEST PREFIX only, never the raw token --
+    # same rule and same helper (_refusal_actor, defined below in this
+    # file) the 429 refusal path already applies to a bearer token that
+    # must never reach a log line or a persisted record whole.
+    _LOG.info("auth.rejected", extra={"extra_fields": {"role": "applicant", "actor": _refusal_actor(request)}})
     raise HTTPException(403, "token does not match either configured role")
 
 
@@ -299,6 +331,7 @@ def require_operator(request: Request) -> str:
     token = _bearer_token(request)
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
+    _LOG.info("auth.rejected", extra={"extra_fields": {"role": "operator", "actor": _refusal_actor(request)}})
     raise HTTPException(403, "operator token required for this endpoint")
 
 
@@ -376,7 +409,9 @@ def rate_limit(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> 
     wait = _take_token(hashlib.sha256(_bearer_token(request).encode()).hexdigest())
     if wait is None:
         return
-    store.log_refusal(db, actor=_refusal_actor(request), event="rate_limit")
+    _refuse(db, actor=_refusal_actor(request), event="rate_limit")
+    _metric_inc("rate_limited_total")
+    _LOG.info("rate_limit.refused", extra={"extra_fields": {"actor": _refusal_actor(request), "retry_after_s": max(1, math.ceil(wait))}})
     raise HTTPException(
         429,
         f"rate limit: this credential may make {RATE_LIMIT_REFILL_PER_MINUTE} of these "
@@ -390,9 +425,104 @@ def rate_limit(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> 
 app = FastAPI(title="KP2 member-join API")
 
 
+# -- request-id middleware (E.1) ----------------------------------------------
+# One id per HTTP request, generated the same way join request ids are
+# (secrets.token_urlsafe), set on logging_setup.request_id_ctx for the
+# duration of the call (every _LOG.info(...) issued while handling this
+# request picks it up automatically -- JsonFormatter reads the same
+# contextvar) and returned as X-Request-Id. `_save()`/`_refuse()` below also
+# stamp it into request_events.detail, so a JSON log line and its
+# audit-table row can be joined on this one value -- distinct from
+# `join_id` (the join request's own record id, stable across the several
+# HTTP calls -- submit, approve, resume -- and the background job/unjoin
+# threads a single join spans; see `_job_log`).
+@app.middleware("http")
+async def _request_id_middleware(request: Request, call_next):
+    request_id = secrets.token_urlsafe(8)
+    token = logging_setup.request_id_ctx.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        logging_setup.request_id_ctx.reset(token)
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+def _save(conn, record: dict, *, actor: str, event: str, detail: dict | None = None) -> None:
+    """store.save_request, plus the request-id middleware's id stamped into
+    detail -- the log/audit join key described above. `None` for the
+    background job/unjoin threads (no HTTP request is in flight there);
+    those events are already correlated by `join_id` instead."""
+    merged = dict(detail or {})
+    merged["request_id"] = logging_setup.request_id_ctx.get()
+    store.save_request(conn, record, actor=actor, event=event, detail=merged)
+
+
+def _refuse(conn, *, actor: str, event: str) -> None:
+    store.log_refusal(conn, actor=actor, event=event, detail={"request_id": logging_setup.request_id_ctx.get()})
+
+
+def _job_log(join_id: str, event: str, **fields) -> None:
+    """The `log=` callable threaded into job.run()/job.unjoin() (job.py's
+    own seam -- see its module docstring on why job.py itself never imports
+    `logging`). Every call carries `join_id` -- the join request's own
+    record id -- so a live join's whole lifecycle (submit, approve, every
+    job step, the final ACTIVE/FAILED/BLOCKED) greps as one value, spanning
+    the several separate HTTP requests and the background thread the job
+    runs on, none of which share one X-Request-Id."""
+    _LOG.info(event, extra={"extra_fields": {"join_id": join_id, **fields}})
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# -- Prometheus text-format metrics (E.2, docs/production-delta.md row 34) --
+# Hand-rolled -- no prometheus_client (Global constraints: no new Python
+# dependency for E.1/E.2). This is a *surface*, not a monitoring system:
+# nothing scrapes it by default, no alerting, no retention -- runbook.md's
+# scrape-config note says so, and so does the row this closes half of.
+# Gated the same way every other operator-only route is (Depends(require_operator)),
+# not a new auth path: Prometheus scrapes with a bearer header, which is
+# exactly what that dependency already checks. Deliberately NOT behind
+# _require_console_origin -- that guard exists for a BROWSER's cross-origin
+# request (the custom header, the Origin/Sec-Fetch-Site checks); a
+# Prometheus server is a plain server-to-server scrape that sends none of
+# those, and gating on them would make this endpoint unreachable by the
+# thing it exists for.
+def _render_metrics(db: sqlite3.Connection) -> str:
+    lines: list[str] = []
+    lines.append("# HELP kp2_join_requests Join requests currently in each state.")
+    lines.append("# TYPE kp2_join_requests gauge")
+    for state, n in sorted(store.count_requests_by_state(db).items()):
+        lines.append(f'kp2_join_requests{{state="{state}"}} {n}')
+    lines.append("# HELP kp2_join_store_requests Records held in the join store (store.count_requests).")
+    lines.append("# TYPE kp2_join_store_requests gauge")
+    lines.append(f'kp2_join_store_requests{{backend="{_DATASTORE_KIND}"}} {store.count_requests(db)}')
+    lines.append("# HELP kp2_join_store_quota The store's refusal ceiling (STORE_QUOTA) -- not a usage value.")
+    lines.append("# TYPE kp2_join_store_quota gauge")
+    lines.append(f"kp2_join_store_quota {STORE_QUOTA}")
+    lines.append("# HELP kp2_join_rate_limited_total 429 refusals (per-minute rate limit + store quota) since process start.")
+    lines.append("# TYPE kp2_join_rate_limited_total counter")
+    lines.append(f'kp2_join_rate_limited_total {_METRICS.get("rate_limited_total", 0)}')
+    lines.append("# HELP kp2_join_job_steps_total Job/unjoin steps completed, by outcome, since process start.")
+    lines.append("# TYPE kp2_join_job_steps_total counter")
+    lines.append(f'kp2_join_job_steps_total{{outcome="success"}} {_METRICS.get("job_steps_completed_total", 0)}')
+    lines.append(f'kp2_join_job_steps_total{{outcome="failed"}} {_METRICS.get("job_steps_failed_total", 0)}')
+    lines.append("# HELP kp2_join_job_duration_seconds Wall-clock duration of a completed job/unjoin run.")
+    lines.append("# TYPE kp2_join_job_duration_seconds summary")
+    lines.append(f'kp2_join_job_duration_seconds_sum {_METRICS.get("job_duration_seconds_sum", 0.0)}')
+    lines.append(f'kp2_join_job_duration_seconds_count {_METRICS.get("job_duration_seconds_count", 0)}')
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/metrics")
+def metrics(
+    _role: str = Depends(require_operator),
+    db: sqlite3.Connection = Depends(get_conn),
+) -> PlainTextResponse:
+    return PlainTextResponse(_render_metrics(db), media_type="text/plain; version=0.0.4")
 
 
 # -- token administration (operator only) --------------------------------------
@@ -598,7 +728,8 @@ def submit_request(
     # where to look -- not to invent a retention policy for it here.
     held = store.count_requests(db)
     if held >= STORE_QUOTA:
-        store.log_refusal(db, actor=_refusal_actor(request), event="quota")
+        _refuse(db, actor=_refusal_actor(request), event="quota")
+        _metric_inc("rate_limited_total")
         raise HTTPException(
             429,
             f"the join store already holds {held} request records, the limit this "
@@ -634,7 +765,7 @@ def submit_request(
             "payload": raw,
             "rejection": {"check": exc.check, "message": exc.message},
         }
-        store.save_request(db, record, actor=role, event="rejected", detail={"check": exc.check})
+        _save(db, record, actor=role, event="rejected", detail={"check": exc.check})
         return record
 
     key = payload.code.lower()
@@ -662,7 +793,7 @@ def submit_request(
                 + job.scrub(exc.stderr, JOB_SECRETS),
             },
         }
-        store.save_request(db, record, actor=role, event="rejected", detail={"check": "generate_dry_run"})
+        _save(db, record, actor=role, event="rejected", detail={"check": "generate_dry_run"})
         return record
 
     record = {
@@ -692,7 +823,7 @@ def submit_request(
             for code, (declared, required) in vctx.contract_fields.items()
         },
     }
-    store.save_request(db, record, actor=role, event="submitted")
+    _save(db, record, actor=role, event="submitted")
     return record
 
 
@@ -848,13 +979,6 @@ def list_requests(
 # the SQLite singleton reaches it as store._JOB_LOCK, same as store.py's own
 # functions do).
 
-JOB_SECRETS = {
-    "ss_admin_user": ADMIN_USER,
-    "ss_admin_password": ADMIN_PASSWORD,
-    "token_pin": TOKEN_PIN,
-}
-
-
 def _blocking_job_lock(conn):
     """store.job_lock() blocks on SQLite (a plain threading.Lock) but is
     non-blocking on Postgres (pg_try_advisory_lock, raises LockBusy
@@ -893,6 +1017,55 @@ def _blocking_job_lock(conn):
     return _cm()
 
 
+# -- in-process metrics (E.2) -------------------------------------------------
+# A counter dict, hand-rolled -- no prometheus_client (Global constraints:
+# no new Python dependency for E.1/E.2). Per-process, cleared by a restart,
+# exactly like the rate limiter's own _BUCKETS a few sections up -- the same
+# trade, for the same reason: there is one process and no replica to
+# reconcile against. "Requests by state" and "store quota usage" are
+# deliberately NOT kept here -- those are read live off the store at scrape
+# time (store.count_requests_by_state/count_requests, GET /metrics below),
+# reusing the existing SELECT COUNT(*) pattern rather than a second,
+# driftable tally of the same fact.
+_METRICS: dict[str, float] = {
+    "rate_limited_total": 0,
+    "job_steps_completed_total": 0,
+    "job_steps_failed_total": 0,
+    "job_duration_seconds_sum": 0.0,
+    "job_duration_seconds_count": 0,
+}
+_METRICS_LOCK = threading.Lock()
+
+
+def _metric_inc(name: str, amount: float = 1) -> None:
+    with _METRICS_LOCK:
+        _METRICS[name] = _METRICS.get(name, 0) + amount
+
+
+def _metric_observe_duration(name: str, seconds: float) -> None:
+    with _METRICS_LOCK:
+        _METRICS[f"{name}_sum"] = _METRICS.get(f"{name}_sum", 0.0) + seconds
+        _METRICS[f"{name}_count"] = _METRICS.get(f"{name}_count", 0) + 1
+
+
+def _job_log_with_metrics(join_id: str):
+    """job.run()/job.unjoin()'s `log=` argument: every event is a JSON log
+    line (_job_log) AND, for the two events that name a step outcome,
+    a bump of the matching counter above -- one call site, so the log and
+    the metric can never read a different event stream."""
+
+    def log(event: str, **fields) -> None:
+        _job_log(join_id, event, **fields)
+        if event in ("job.step.end", "unjoin.step.end"):
+            outcome = fields.get("outcome")
+            if outcome == "success" or outcome == "reversed":
+                _metric_inc("job_steps_completed_total")
+            elif outcome == "failed":
+                _metric_inc("job_steps_failed_total")
+
+    return log
+
+
 def _run_job(request_id: str) -> None:
     # This is a background thread, never the request thread -- it opens and
     # closes its own connection rather than sharing the request-scoped one
@@ -915,16 +1088,21 @@ def _run_job(request_id: str) -> None:
             record = _load_request(conn, request_id)
             if record is None:  # deleted while queued
                 return
+            t0 = time.monotonic()
             try:
                 job.run(record, PACK_DIR, secrets=JOB_SECRETS,
-                        save=lambda r: store.save_request(conn, r, actor="system", event="job"))
+                        save=lambda r: _save(conn, r, actor="system", event="job"),
+                        log=_job_log_with_metrics(request_id))
             except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
                 record["state"] = "FAILED"
                 record["error"] = {
                     "step": record.get("last_completed_step"),
                     "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
                 }
-                store.save_request(conn, record, actor="system", event="state:*->FAILED")
+                _save(conn, record, actor="system", event="state:*->FAILED")
+                _job_log(request_id, "job.finished", state="FAILED", error=record["error"]["message"])
+            finally:
+                _metric_observe_duration("job_duration_seconds", time.monotonic() - t0)
 
 
 def _start_job(request_id: str) -> None:
@@ -1001,7 +1179,7 @@ def approve_request(
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": message}
         record["decision_reference"] = decision_reference
-        store.save_request(db, record, actor="operator", event="state:SUBMITTED->FAILED")
+        _save(db, record, actor="operator", event="state:SUBMITTED->FAILED")
         raise HTTPException(500, message) from exc
     except writer.GenerateFailure as exc:
         # The config was written and generate.py refused it. apply_real has
@@ -1017,7 +1195,7 @@ def approve_request(
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": stderr}
         record["decision_reference"] = decision_reference
-        store.save_request(db, record, actor="operator", event="state:SUBMITTED->FAILED")
+        _save(db, record, actor="operator", event="state:SUBMITTED->FAILED")
         raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
@@ -1031,7 +1209,7 @@ def approve_request(
     # config.commit gate step (docs/production-delta.md row 33).
     record["commit_gate"] = _COMMIT_GATE
     record["queued"] = store.job_lock_held(db)
-    store.save_request(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
+    _save(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
     _start_job(request_id)
     return record
 
@@ -1059,7 +1237,7 @@ def resume_request(
     if record["state"] not in ("FAILED", "BLOCKED"):
         raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED or BLOCKED")
     record["queued"] = store.job_lock_held(db)
-    store.save_request(db, record, actor="operator", event="resume")
+    _save(db, record, actor="operator", event="resume")
     _start_job(request_id)
     return record
 
@@ -1086,7 +1264,7 @@ def reject_request(
     record["state"] = "REJECTED"
     record["rejection"] = {"check": "operator", "message": reason}
     record["rejected_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    store.save_request(db, record, actor="operator", event="rejected")
+    _save(db, record, actor="operator", event="rejected")
     return record
 
 
@@ -1114,7 +1292,7 @@ def add_refresh(
         "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "endpoints": endpoints,
     })
-    store.save_request(db, record, actor="operator", event="refresh")
+    _save(db, record, actor="operator", event="refresh")
     return record
 
 
@@ -1148,16 +1326,21 @@ def _run_unjoin(request_id: str) -> None:
             record = _load_request(conn, request_id)
             if record is None:
                 return
+            t0 = time.monotonic()
             try:
                 job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS,
-                           save=lambda r: store.save_request(conn, r, actor="system", event="unjoin"))
+                           save=lambda r: _save(conn, r, actor="system", event="unjoin"),
+                           log=_job_log_with_metrics(request_id))
             except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
                 record["error"] = {
                     "step": record.get("last_reversed_step"),
                     "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
                 }
-                store.save_request(conn, record, actor="system", event="state:*->RETIRING(error)")
+                _save(conn, record, actor="system", event="state:*->RETIRING(error)")
+                _job_log(request_id, "unjoin.finished", state="RETIRING(error)", error=record["error"]["message"])
                 return
+            finally:
+                _metric_observe_duration("job_duration_seconds", time.monotonic() - t0)
             if record.get("state") != "RETIRED":
                 return  # the walk stopped; record["error"] says where. DELETE again to resume.
 
@@ -1206,7 +1389,7 @@ def _run_unjoin(request_id: str) -> None:
                 # entry to delete, and nothing to forget to delete. Its own
                 # onboarding/<key>/ record stays as evidence of what was revoked.
                 writer.write_catalogue(PACK_DIR)
-            store.save_request(conn, record, actor="system",
+            _save(conn, record, actor="system",
                                 event="config_removed" if record.get("config_removed") else "state:RETIRED->RETIRING")
 
 
@@ -1271,6 +1454,6 @@ def retire_member(
     # what is left for them whether or not they come back for the final record.
     record["retire_instruction"] = job.retire_instruction(schema.JoinPayload(**record["payload"]))
     record["queued"] = store.job_lock_held(db)
-    store.save_request(db, record, actor="operator", event="state:ACTIVE->RETIRING")
+    _save(db, record, actor="operator", event="state:ACTIVE->RETIRING")
     _start_unjoin(record["id"])
     return record
