@@ -970,14 +970,45 @@ authenticate by session login and XSRF token, not by API key.
 `docs/plans/production-hardening-plan.md` Phase A) are a ceiling sized with
 real headroom over the measured steady-state figures above, not a corset --
 but if a container genuinely leaks past it, the OOM kill does **not** show up
-as an OOM message anywhere this pack's own tooling looks. `docker inspect`
-reports `OOMKilled: true` on the container, but `acceptance.sh` and
-`scripts/verify.sh` only ever see the *symptom*: a Security Server that was
-`healthy` stops answering its healthcheck and, with `restart: unless-stopped`
-now in place, comes back up a few seconds later having lost in-memory state
-(the token unlock, for one). Diagnose an unexplained healthcheck flap with
-`docker inspect <container> --format '{{.State.OOMKilled}}'` before assuming
-it is the propagation flake described below.
+as an OOM message anywhere this pack's own tooling looks, and on a Security
+Server it usually does **not** even stop the container. A Security Server
+runs supervisord over several JVMs (signer, proxy, the admin service, the
+add-ons); the kernel's cgroup OOM killer picks whichever process is using
+the most memory at the moment the cgroup's limit is hit, which is normally
+one of those JVMs, not PID 1 (supervisord). supervisord restarts the killed
+process on its own, the container itself never exits, `docker inspect
+--format '{{.State.OOMKilled}}'` stays `false`, and `restart: unless-stopped`
+never fires -- so that check only tells you something when the *whole*
+container was killed (a smaller process, like a mock or console/join-api,
+where the app itself is PID 1). What `acceptance.sh`/`scripts/verify.sh`
+actually see in the JVM case is a `healthy` Security Server that starts
+failing its healthcheck (the killed JVM stops answering :4000, or the
+add-ons stop running under `supervisorctl status`) without the container
+ever restarting. Two diagnostics that work regardless of which process was
+picked: `docker inspect <container> --format '{{json .State.Health.Log}}'`
+(the healthcheck's own recent failures, which may show the transition even
+when `OOMKilled` doesn't) and, on the host, `journalctl -k | grep -i oom` (or
+`dmesg | grep -i oom` where journald isn't available) -- the kernel logs
+every OOM kill it performs, container-internal or not. Check both before
+assuming an unexplained healthcheck flap is the propagation flake described
+below.
+
+One more consequence of setting `mem_limit` worth knowing, not just a
+ceiling: a container-aware JVM (the default since JDK 10, and what these
+images ship) sizes its default heap off the **cgroup memory limit**, not the
+host's total RAM, once one is set. Before Phase A, every JVM in this pack
+sized itself off the laptop's full RAM; now it sizes off whatever
+`mem_limit` says instead -- a behaviour change, not just a ceiling. The
+measured steady-state figures in the table above **predate** `mem_limit`
+existing at all (they were captured while every JVM still sized off host
+RAM), and `mem_limit` was set with headroom over those pre-`mem_limit`
+numbers, not re-measured against a JVM now sizing its heap off the new
+cgroup limit -- worth a `docker stats --no-stream` pass against a live
+`cs`/`ss-*` once this has run for a while, to confirm the new sizing
+ergonomics land where headroom was assumed rather than closer to the
+ceiling. A future change to `mem_limit` is therefore not purely "raise or
+lower the ceiling" -- it also changes how much heap the JVM inside decides
+to use, which can itself change steady-state memory behaviour.
 
 A security server's Test CA-issued OCSP response has a bounded freshness window:
 after roughly ten hours idle, the signer starts rejecting the server's own

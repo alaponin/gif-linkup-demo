@@ -28,14 +28,27 @@ x-sidecar: &sidecar
   networks: [linkup]
   depends_on: [cs, ca]
   restart: unless-stopped
-  # Steady-state budget: a from-zero boot passes well within 30x5s=2.5min on
-  # a laptop. hurl/compose.hurl.yml overrides this per ss-* with a 10-minute
-  # (120x5s) budget for the persisted-volume restart case that file's own
-  # comment documents -- this file's budget is not that case.
+  # Steady-state budget, sized off measured reality, not a round guess:
+  # docs/production-delta.md's "Current measured figures"/"Where deploy time
+  # goes" tables record cold containers-healthy at 215-234s across real runs.
+  # start_period means a failing probe during that window reports "starting",
+  # never "unhealthy" -- exactly the false-alarm surface an operator/monitor
+  # cares about, and the thing task-1's own verification first shipped
+  # without actually exercising (a cold `--full` always runs under the Hurl
+  # overlay's 120-retry override, never this file alone; the base-file-only
+  # cold boot in task-1-report.md's fix pass is what actually proved this
+  # number). 240s covers the worst measured figure (234s) with a margin for
+  # slower hardware (a droplet, not the reference laptop); the 6x5s=30s after
+  # start_period ends is genuine steady-state retry budget, not boot time --
+  # total 270s before "unhealthy" is possible. hurl/compose.hurl.yml overrides
+  # this per ss-* with a 10-minute (120x5s) budget for the persisted-volume
+  # restart case that file's own comment documents -- this file's budget is
+  # not that case.
   healthcheck:
     test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
     interval: 5s
-    retries: 30
+    retries: 6
+    start_period: 240s
   # Measured steady state ~2.2-2.3 GiB per server (docs/production-delta.md's
   # "Current measured figures") -- headroom, not a corset, so a leak trips
   # this before the host swaps, and a runbook.md note explains an OOM kill
@@ -66,12 +79,14 @@ services:
       - cs-db:/var/lib/postgresql/16/main
       - cs-conf:/etc/xroad
     networks: [linkup]
-    # Same probe/budget shape as x-sidecar's healthcheck above; overridden
-    # to a 10-minute budget by hurl/compose.hurl.yml.
+    # Same probe/budget/start_period shape as x-sidecar's healthcheck above
+    # (see its comment for the measured figures this is sized from);
+    # overridden to a 10-minute budget by hurl/compose.hurl.yml.
     healthcheck:
       test: ["CMD", "curl", "-f", "-k", "https://localhost:4000"]
       interval: 5s
-      retries: 30
+      retries: 6
+      start_period: 240s
     # Measured steady state ~1.8-2.0 GiB (docs/production-delta.md).
     mem_limit: 3000m
     cpus: 2
@@ -210,6 +225,11 @@ services:
     # one (HEALTHCHECK against /api/health), which Compose inherits from the
     # built image whenever a service does not override it; docker inspect
     # already reports Health.Status without repeating it here.
+    # ESTIMATE, not measured -- unlike every other mem_limit in this file,
+    # docs/production-delta.md's measured-figures table has no console/
+    # join-api row. A small single-process uvicorn app reading a few YAML/CSV
+    # files; revisit with a real `docker stats --no-stream console` figure if
+    # this ever flaps.
     mem_limit: 256m
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8090:8000"]
@@ -276,6 +296,12 @@ services:
     # one (HEALTHCHECK against /health), which Compose inherits from the
     # built image whenever a service does not override it; docker inspect
     # already reports Health.Status without repeating it here.
+    # ESTIMATE, not measured -- unlike every other mem_limit in this file,
+    # docs/production-delta.md's measured-figures table has no console/
+    # join-api row. Sized larger than console's since job.py shells out to a
+    # local hurl subprocess during job steps. Revisit with a real
+    # `docker stats --no-stream join-api` figure taken during a live join if
+    # this ever flaps.
     mem_limit: 512m
     networks: [linkup]
     ports: ["${XROAD_BIND:-127.0.0.1}:8091:8000"]

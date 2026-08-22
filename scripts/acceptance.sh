@@ -117,7 +117,12 @@ check_healthcheck_present() {  # $1 = container name
   status=$(docker inspect "$1" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null)
   [ -n "$status" ]
 }
-for hc_host in cs ca app-pnia app-plr app-ptsb "${SS_ORDER[@]}"; do
+# app-* derived the same way scripts/seed.sh does (every app-* the compose
+# files define, not a fixed list) -- so a joined member's own mock (e.g.
+# app-ptsb once it's not the canonical fixture) is covered without this list
+# drifting silently the day a mock is added or removed.
+mapfile -t _HC_APPS < <("${COMPOSE[@]}" config --services | grep '^app-')
+for hc_host in cs ca "${_HC_APPS[@]}" "${SS_ORDER[@]}"; do
   check_hc() { check_healthcheck_present "$hc_host"; }
   check "2.1.health(${hc_host})" "${hc_host} reports a Docker healthcheck (State.Health.Status present)" check_hc
 done
