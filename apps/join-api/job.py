@@ -317,8 +317,10 @@ def build_sequence(
     "required" at run() -- job.py never reads deployment.yaml itself),
     prepends a `config.commit` step (kind: "gate", actor: "operator") before
     everything else: a read-only check, run by run() below, that
-    configs/member-<key>/, manifest.yaml and onboarding/<key>/ are committed
-    before this join is allowed to touch the live federation at all. See
+    configs/member-<key>/, manifest.yaml, onboarding/<key>/ and
+    onboarding/catalogue.yaml are committed before this join is allowed to
+    touch the live federation at all -- writer._written_paths(key)'s own
+    four paths. See
     run()'s own docstring for what the step does; here it is only planned.
 
     Both shapes share a prologue (the job's own re-establishment of what cold
@@ -924,15 +926,23 @@ PROBE_INTERPRETERS: dict[str, Callable[[JobStep, dict], bool]] = {
 
 
 def _commit_gate_blocked_message(repo_root: pathlib.Path, pack_dir: pathlib.Path, payload: JoinPayload) -> str | None:
-    """None if configs/member-<key>/, manifest.yaml and onboarding/<key>/ are
-    committed (the gate passes); otherwise the BLOCKED message the console
-    and the API surface verbatim -- retire_instruction()'s own pattern, a
-    dict with a human-readable instruction rather than a bare error.
+    """None if configs/member-<key>/, manifest.yaml, onboarding/<key>/ and
+    onboarding/catalogue.yaml are committed (the gate passes) -- the same
+    four paths writer._written_paths(key) names as everything a join
+    actually writes; otherwise the BLOCKED message the console and the API
+    surface verbatim -- retire_instruction()'s own pattern, a dict with a
+    human-readable instruction rather than a bare error. Naming all four
+    here, not three, also closes a second bug the missing fourth used to
+    cause: an operator who committed only what an earlier version of this
+    message named left onboarding/catalogue.yaml dirty, so the very next
+    join's approval hit apply_real()'s whole-tree DirtyCheckoutError for a
+    reason this gate had just told them was resolved.
 
     Read-only, like every other git call this container makes
     (writer.member_git_status_dirty shells out to `git status`, never `git
     commit` -- the committer is the operator, on the host)."""
     key = payload.code.lower()
+    paths = f"configs/member-{key}/, manifest.yaml, onboarding/{key}/ and {writer.CATALOGUE_PATH}"
     try:
         dirty = writer.member_git_status_dirty(repo_root, pack_dir, key)
     except writer.GitCheckFailure as exc:
@@ -940,19 +950,18 @@ def _commit_gate_blocked_message(repo_root: pathlib.Path, pack_dir: pathlib.Path
         # _live_uncommitted and writer.apply_real's own pre-write refusal
         # already follow for this exact class of failure.
         return (
-            f"could not check whether configs/member-{key}/, manifest.yaml and "
-            f"onboarding/{key}/ are committed: {exc}. Treating that the same as "
-            "uncommitted -- resolve the git problem on the Docker host, then "
+            f"could not check whether {paths} are committed: {exc}. Treating that the "
+            "same as uncommitted -- resolve the git problem on the Docker host, then "
             "resume this request."
         )
     if not dirty.strip():
         return None
     return (
-        f"configs/member-{key}/, manifest.yaml and onboarding/{key}/ are not committed. "
+        f"{paths} are not committed. "
         f"join_workflow.commit_gate: required refuses to make {payload.code} live on the "
         "running federation before the version-controlled description of it is committed. "
         "On the Docker host:\n"
-        f"  git add configs/member-{key}/ manifest.yaml onboarding/{key}/\n"
+        f"  git add configs/member-{key}/ manifest.yaml onboarding/{key}/ {writer.CATALOGUE_PATH}\n"
         f'  git commit -m "join: add member {payload.code}"\n'
         "then resume this request.\n\n"
         f"{dirty}"
@@ -1024,7 +1033,8 @@ def run(
     job.py itself never reads that file), build_sequence() prepends a
     `config.commit` gate step. Reached, it runs writer.member_git_status_dirty
     scoped to this join's own paths (configs/member-<key>/, manifest.yaml,
-    onboarding/<key>/) -- a read, never a write or a `git commit`: the pack's
+    onboarding/<key>/ and onboarding/catalogue.yaml -- writer._written_paths(key)'s
+    own four) -- a read, never a write or a `git commit`: the pack's
     standing posture is that every git call inside this container is a read,
     and the committer is the operator, on the host, who has a git identity
     this API cannot manufacture. Clean: the step passes and the job proceeds

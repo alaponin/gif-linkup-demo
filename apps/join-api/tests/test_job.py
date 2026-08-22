@@ -553,10 +553,45 @@ def test_a_dirty_members_own_paths_blocks_at_the_gate_with_the_commit_instructio
     message = record["blocked"]["message"]
     assert "git add" in message and "git commit" in message
     assert "configs/member-ptsb" in message
+    # The instruction always names all four of writer._written_paths()'s
+    # paths, not just whichever one is actually dirty right now -- a partial
+    # commit would leave one of the other three uncommitted and dirty the
+    # NEXT join's apply_real() refuses on.
+    assert "onboarding/catalogue.yaml" in message
+    assert "onboarding/ptsb" in message
+    assert "manifest.yaml" in message
     # Never advanced -- a resume replans the same sequence and hits the gate
     # again from the top, exactly like the member-server BLOCKED case.
     assert record.get("last_completed_step") is None
     # The gate never ran a single X-Road call: it BLOCKS before cs.init.
+    assert hurl.calls == []
+
+
+def test_a_dirty_catalogue_alone_blocks_at_the_gate_too(tmp_path):
+    """Regression for the Critical review finding: member_git_status_dirty's
+    pathspec used to name only three of writer._written_paths(key)'s four
+    paths (missing onboarding/catalogue.yaml, which lives BESIDE, not under,
+    onboarding/<key>/ -- so "onboarding/<key>" alone never matched it). A
+    join could reach ACTIVE with the catalogue entry uncommitted, exactly the
+    window row 33 exists to close -- caught live when a real gated-join
+    proof committed 8 files and the catalogue was not one of them. Dirtying
+    ONLY the catalogue here (configs/member-ptsb/ and manifest.yaml are
+    untouched from the committed baseline) proves the fourth path is
+    actually watched now."""
+    repo_root, pack = _committed_pack(tmp_path)
+    # onboarding/ is not among writer._COPY_ITEMS -- _committed_pack's
+    # throwaway copy has no onboarding/ tree at all until apply_real() (or a
+    # test) writes one, same reason the other tests here mkdir
+    # configs/member-ptsb/ by hand rather than expecting it pre-copied.
+    (pack / "onboarding").mkdir()
+    (pack / "onboarding" / "catalogue.yaml").write_text("subsystems: []\n")
+    hurl = FakeHurl()
+    record = _run_gated(_record(commit_gate="required"), pack, repo_root, hurl)
+    assert record["state"] == "BLOCKED"
+    assert record["blocked"]["step"] == "config.commit"
+    message = record["blocked"]["message"]
+    assert "onboarding/catalogue.yaml" in message
+    assert "git add" in message and "onboarding/catalogue.yaml" in message.split("git add", 1)[1].split("\n", 1)[0]
     assert hurl.calls == []
 
 

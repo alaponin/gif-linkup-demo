@@ -348,16 +348,17 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     live-but-uncommitted flag, nothing gates. Flip it to `required` and
     approval inserts a `config.commit` step before the job ever touches the
     running federation: it checks (read-only — `git status`, never `git
-    commit`) that `configs/member-<key>/`, `manifest.yaml` and
-    `onboarding/<key>/` are committed, exactly the three trees
-    `writer.apply_real()`'s pre-write refusal already watches, scoped to
-    this one join. Clean, it passes silently and the job proceeds. Dirty (the
-    ordinary case — the config was only just written), the request goes
-    **`BLOCKED`** with `{step: "config.commit"}` and a message naming the
-    exact host-side commands:
+    commit`) that `configs/member-<key>/`, `manifest.yaml`,
+    `onboarding/<key>/` and `onboarding/catalogue.yaml` are committed —
+    `writer._written_paths()`'s own four paths, everything a join actually
+    writes, scoped to this one join rather than `writer.apply_real()`'s
+    whole-tree pre-write refusal. Clean, it passes silently and the job
+    proceeds. Dirty (the ordinary case — the config was only just written),
+    the request goes **`BLOCKED`** with `{step: "config.commit"}` and a
+    message naming the exact host-side commands:
 
     ```
-    git add configs/member-<key>/ manifest.yaml onboarding/<key>/
+    git add configs/member-<key>/ manifest.yaml onboarding/<key>/ onboarding/catalogue.yaml
     git commit -m "join: add member <CODE>"
     ```
 
