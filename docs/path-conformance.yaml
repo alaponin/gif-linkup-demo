@@ -432,11 +432,20 @@ clauses:
   clause: Exit test part 3 -- is its monitoring data arriving centrally?
   status: named-absence
   note: >-
-    Add-ons emit to no collector. Deliberate: an installed add-on with a
-    declared absent collector is the pack's counter-example for the path's own
-    point, and adding X-Road Metrics later closes it without a retrofit.
+    Add-ons emit to no collector -- still true, and still deliberate. Spiked
+    (Task 5, docs/decisions/xroad-metrics-notes.md): a live
+    getSecurityServerOperationalData call, routed the way any ordinary
+    service call already is, proves the add-ons' data is genuinely reachable
+    and correctly shaped for the collector to ingest -- so the earlier
+    "closes it without a retrofit" framing overstated how easy the rest is.
+    What is missing is NIIS's own packaging (no maintained container image
+    for the collector stack, a MongoDB requirement the existing datastore
+    plan never priced in, a multi-host footprint even at NIIS's own
+    "simplified" testing scale), not this pack's federation. No-go for now,
+    with evidence, not a silent drop.
   evidence:
     - {path: docs/production-delta.md, symbol: "no collector"}
+    - {path: docs/decisions/xroad-metrics-notes.md}
 
 # -- G5 ----------------------------------------------------------------------
 

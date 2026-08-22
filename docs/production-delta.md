@@ -457,9 +457,30 @@ reason this is a defensible incompleteness rather than an oversight:
 "Installing them at G4 is trivial; retrofitting them across an installed
 base is a campaign" — the add-ons prove the "trivial" half live (four
 servers, no deploy-time cost), and the absent collector is documented next
-to it rather than hidden. `xroad-metrics` (NIIS, open source) is the
-component that would close G4's third exit test; adding it is out of scope
-here and left for later.
+to it rather than hidden.
+
+**Task 5's spike (`docs/decisions/xroad-metrics-notes.md`), the specific
+finding, not the vague one this row used to carry:** wiring up NIIS's
+`xroad-metrics` collector is a **no-go for this task**, with evidence, not
+a silent drop. The half this row used to leave open — "does the add-on's
+data actually reach a collector?" — is answered **yes, live**: a
+hand-built `getSecurityServerOperationalData` SOAP call, routed the same
+way any ordinary service call already is (a member's own hosting security
+server, no new registration, no new certificate), returned real buffered
+operational records in the exact shape the collector module ingests
+(`clientMemberCode`, `serviceCode`, `requestInTs`/`responseOutTs`,
+`succeeded`, `statusCode`, ...) — proof the add-ons produce *usable* data,
+not just that they run. What blocks wiring up the *collector stack itself*
+is not this pack's federation, it's NIIS's own packaging: no maintained
+container image for any of the collector/corrector/reports/opendata/
+anonymizer modules (Ubuntu `.deb` + systemd + cron only), a **second
+database engine** the existing datastore plan never priced in (MongoDB is
+the collector/corrector's actual primary store; the `kp2_metrics` Postgres
+database already named in `docs/plans/join-datastore-postgres-
+digitalocean-plan.md` only ever covered the downstream anonymized-opendata
+tier), and a footprint NIIS's own docs size at a minimum of two dedicated
+hosts even for "simplified" testing. The sub-item returns to the backlog
+with that evidence rather than being forced in to look done.
 
 **Un-join walk, confirmed unaffected — by reasoning and live.**
 `hurl/steps.py`'s `REVERSAL_ORDER` (`service.acl`, `service.publish`,
