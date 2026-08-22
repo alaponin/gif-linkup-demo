@@ -412,6 +412,22 @@ def check_join_policy(join_config: dict, manifest: dict) -> None:
         )
 
 
+# deployment.yaml's join_workflow: block -- currently just commit_gate
+# (docs/production-delta.md row 33); the production-hardening plan's later
+# phases add enforce_ownership and require_https_spec_url to this same
+# block. Kept here rather than inlined into main() so it is unit-testable
+# the same way check_policy()/check_join_policy() are, and so a value this
+# code does not recognise fails loudly at generate time rather than an
+# apps/join-api process silently treating a typo as "advisory".
+def check_join_workflow(deployment: dict) -> None:
+    commit_gate = (deployment.get("join_workflow") or {}).get("commit_gate", "advisory")
+    if commit_gate not in ("advisory", "required"):
+        raise SystemExit(
+            f"generate.py: deployment.yaml join_workflow.commit_gate {commit_gate!r} is not "
+            "'advisory' or 'required'."
+        )
+
+
 def write(name: str, src: str, body: str) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / name).write_text(HEADER.format(src=src) + body.lstrip("\n"))
@@ -750,6 +766,7 @@ def main() -> None:
             f"generate.py: deployment.yaml target {deployment.get('target')!r} is not "
             "supported -- only 'docker-local' is implemented today."
         )
+    check_join_workflow(deployment)
     core = load("configs/x-road-bus/federation-core.yaml")
     check_policy(core)
     check_join_policy(load("configs/x-road-bus/join-policy.yaml"), manifest)

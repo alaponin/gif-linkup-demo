@@ -43,3 +43,10 @@ datastore:
   # PostgreSQL cluster (see runbook.md's "The Postgres join store" section);
   # DSN comes from .env (KP2_JOIN_DB_URL), never from this file.
   kind: sqlite
+
+join_workflow:
+  # advisory (default): today's behaviour -- the console shows the
+  # live-but-uncommitted flag, nothing gates. required: the job BLOCKS at
+  # config.commit until the member's config, manifest.yaml and
+  # onboarding/<key>/ are committed (docs/production-delta.md row 33).
+  commit_gate: advisory
