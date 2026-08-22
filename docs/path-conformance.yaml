@@ -447,10 +447,19 @@ clauses:
   note: >-
     Fetched and parsed at validation time, not merely declared; operations are
     screened against the join policy's allowed methods. The contract is
-    referenced by URL and is not copied into the onboarding record.
+    referenced by URL and is not copied into the onboarding record. The fetch
+    itself now runs in apps/spec-fetcher/, a separate credential-free
+    container on its own internal: true Docker network (docs/production-
+    delta.md row 41) -- join-api delegates to it over HTTP and fails closed
+    (SpecFetcherUnavailable) rather than fetching in-process if it is ever
+    unreachable.
   evidence:
     - {path: apps/join-api/validate.py, symbol: _check_backend_reachability}
     - {path: apps/join-api/validate.py, symbol: _check_allowed_methods}
+    - {path: apps/join-api/validate.py, symbol: SpecFetcherUnavailable}
+    - {path: apps/spec-fetcher/app.py, symbol: fetch}
+    - {path: docker-compose.yml, symbol: "internal: true"}
+    - {path: scripts/acceptance.sh, symbol: "2.7.2"}
 
 - id: G5.2
   section: G5

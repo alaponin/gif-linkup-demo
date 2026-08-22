@@ -217,6 +217,25 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   **not** touch a running federation: the member stays registered there
   until `scripts/teardown.sh --purge` — or until you un-join it properly
   (below), which calls this script for you at the end.
+- **The spec fetch at request-validation time runs in a separate,
+  credential-free container.** When a payload's `spec_url` and the
+  `servers[].url` inside the OpenAPI document it returns are fetched
+  during `POST /requests` (check 9a `spec_url_origin` and check 9
+  `backend_reachability`, `validate.py`), that fetch is delegated over HTTP
+  to `apps/spec-fetcher/` rather than made in-process from `join-api` —
+  `join-api` holds `JOB_SECRETS` and a route to every admin API on
+  `linkup`; `spec-fetcher` holds neither, and sits on its own `specs`
+  network (`internal: true`), which has no route to `cs`/`ca`/any `ss-*`
+  and no external egress (`docs/production-delta.md` row 41). `join-api`
+  fails the request closed — `backend_reachability`, naming
+  `SPEC_FETCHER_URL` — if that service is unreachable, rather than ever
+  falling back to fetching the applicant's URL itself. `scripts/join.sh up`
+  brings `spec-fetcher` up alongside `join-api` automatically; there is no
+  separate command to start it. **This is a different fetch from `member.sh
+  drift`/`refresh` below**, which run *after* a member is already joined,
+  from an operator-invoked shell inside `join-api` on `linkup` — that path
+  did not move, is not applicant-triggered at request time, and is a
+  narrower, already-vetted-member surface than the one row 41 closes.
 - **Drift:** `scripts/member.sh drift <key>` — re-fetches a joined member's
   *current* OpenAPI spec and diffs its endpoint set against the baseline
   captured at join time. No auth, no HTTP to the join
