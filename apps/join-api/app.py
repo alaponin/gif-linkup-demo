@@ -766,6 +766,7 @@ def submit_request(
             "rejection": {"check": exc.check, "message": exc.message},
         }
         _save(db, record, actor=role, event="rejected", detail={"check": exc.check})
+        _job_log(request_id, "request.rejected", check=exc.check)
         return record
 
     key = payload.code.lower()
@@ -794,6 +795,7 @@ def submit_request(
             },
         }
         _save(db, record, actor=role, event="rejected", detail={"check": "generate_dry_run"})
+        _job_log(request_id, "request.rejected", check="generate_dry_run")
         return record
 
     record = {
@@ -824,6 +826,7 @@ def submit_request(
         },
     }
     _save(db, record, actor=role, event="submitted")
+    _job_log(request_id, "request.submitted", submitted_by=submitted_by)
     return record
 
 
@@ -1180,6 +1183,7 @@ def approve_request(
         record["error"] = {"step": "config.write", "message": message}
         record["decision_reference"] = decision_reference
         _save(db, record, actor="operator", event="state:SUBMITTED->FAILED")
+        _job_log(request_id, "request.approve_failed", step="config.write", error=message)
         raise HTTPException(500, message) from exc
     except writer.GenerateFailure as exc:
         # The config was written and generate.py refused it. apply_real has
@@ -1196,6 +1200,7 @@ def approve_request(
         record["error"] = {"step": "config.write", "message": stderr}
         record["decision_reference"] = decision_reference
         _save(db, record, actor="operator", event="state:SUBMITTED->FAILED")
+        _job_log(request_id, "request.approve_failed", step="config.write", error=stderr)
         raise HTTPException(409, f"hurl/generate.py rejected the written config:\n{stderr}") from exc
 
     record["state"] = "APPROVED"
@@ -1210,6 +1215,7 @@ def approve_request(
     record["commit_gate"] = _COMMIT_GATE
     record["queued"] = store.job_lock_held(db)
     _save(db, record, actor="operator", event="state:SUBMITTED->APPROVED")
+    _job_log(request_id, "request.approved", decision_reference=decision_reference)
     _start_job(request_id)
     return record
 
@@ -1238,6 +1244,7 @@ def resume_request(
         raise HTTPException(409, f"request {request_id} is {record['state']}, not FAILED or BLOCKED")
     record["queued"] = store.job_lock_held(db)
     _save(db, record, actor="operator", event="resume")
+    _job_log(request_id, "request.resume", from_state=record["state"])
     _start_job(request_id)
     return record
 
@@ -1265,6 +1272,7 @@ def reject_request(
     record["rejection"] = {"check": "operator", "message": reason}
     record["rejected_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     _save(db, record, actor="operator", event="rejected")
+    _job_log(request_id, "request.rejected", check="operator", reason=reason)
     return record
 
 
@@ -1455,5 +1463,6 @@ def retire_member(
     record["retire_instruction"] = job.retire_instruction(schema.JoinPayload(**record["payload"]))
     record["queued"] = store.job_lock_held(db)
     _save(db, record, actor="operator", event="state:ACTIVE->RETIRING")
+    _job_log(record["id"], "member.retiring", key=key)
     _start_unjoin(record["id"])
     return record
