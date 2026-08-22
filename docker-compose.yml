@@ -74,10 +74,17 @@ x-mock: &mock
   depends_on:
     ca:
       condition: service_healthy
-  # Measured ~32 MiB steady (docs/production-delta.md) -- generous headroom
-  # for a single small FastAPI process serving a CSV in memory, now two
-  # (plain :8000 and TLS :8443).
-  mem_limit: 128m
+  # MEASURED, twice. ~32 MiB steady (docs/production-delta.md) when this
+  # container ran ONE uvicorn process; ~65 MiB steady since row 18 added the
+  # second, TLS listener on :8443 beside the plain :8000 one -- `docker stats
+  # --no-stream app-plr` reads 64.9-66.4 MiB across all three mocks, idle and
+  # after 60 round trips on each listener. 128m was chosen against the
+  # one-process figure and was never revisited, leaving under 2x headroom on
+  # a limit whose whole job is to be headroom: a mock that OOM-kills presents
+  # as a healthcheck flap (see runbook.md), not an OOM log line, which is the
+  # worst way to spend an afternoon. 256m restores the ~4x margin the 32 MiB
+  # figure originally bought.
+  mem_limit: 256m
 
 services:
   cs:
@@ -282,6 +289,16 @@ services:
     container_name: spec-fetcher
     profiles: ["demo"]
     restart: unless-stopped
+    # Same reason x-mock has it: apps/spec-fetcher/app.py builds its SSL
+    # context at IMPORT time, and SPEC_FETCHER_CA_BUNDLE below names a file
+    # inside the `ca-certs` volume the `ca` container populates. Start before
+    # the CA has written it and load_verify_locations() raises a bare
+    # FileNotFoundError -- a crash loop with no explanation, not a wait.
+    # `restart: unless-stopped` would eventually get there; ordering means it
+    # never has to.
+    depends_on:
+      ca:
+        condition: service_healthy
     # No healthcheck: key here -- apps/spec-fetcher/Dockerfile already
     # declares one (HEALTHCHECK against /health), which Compose inherits
     # from the built image whenever a service does not override it; docker
@@ -333,6 +350,14 @@ services:
     user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
     restart: unless-stopped
+    # Same reason x-mock and spec-fetcher have it: apps/console/xroad.py
+    # builds its exchange SSL context at IMPORT time from
+    # KP2_XROAD_CA_BUNDLE below, a file inside the `ca-certs` volume the `ca`
+    # container populates. Without this the console crash-loops on a bare
+    # FileNotFoundError whenever it wins the race against the CA.
+    depends_on:
+      ca:
+        condition: service_healthy
     # No healthcheck: key here -- apps/console/Dockerfile already declares
     # one (HEALTHCHECK against /api/health), which Compose inherits from the
     # built image whenever a service does not override it; docker inspect

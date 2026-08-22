@@ -405,7 +405,7 @@ disappearing case this section describes cannot recur silently.
 | `--fast` | ~50–53s, 331 tests (330 passed, 1 skipped) |
 | `--live` | ~80–81s |
 | `--full` (cold, single topology, four Security Servers) | ~13 min (~780s) — `out/deploy-timings.txt`: roughly 150–200s containers-healthy, ~400s Hurl admin-API run, plus `--fast`/teardown/seed/acceptance/console-smoke around it |
-| RAM, steady state (`docker stats --no-stream`) | ~11 GiB — four Security Servers ~2.2–2.3 GiB each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB, two mock providers ~32 MiB each; includes the monitoring add-ons, which cost nothing extra to deploy |
+| RAM, steady state (`docker stats --no-stream`) | ~11 GiB — four Security Servers ~2.2–2.3 GiB each, Central Server ~1.8–2.0 GiB, Test CA ~88 MiB, mock providers ~65 MiB each, up from ~32 MiB before each grew a second, TLS listener; includes the monitoring add-ons, which cost nothing extra to deploy |
 | Hosted join → `ACTIVE, verified: true` | well under two minutes |
 | Hosted un-join → `RETIRED` | a few seconds |
 | Own-server bring-up (`join-agent.sh`) | 76–100s |

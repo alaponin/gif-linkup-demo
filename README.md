@@ -14,7 +14,8 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
   every one of them at once and installs nothing.
 - **~11 GiB RAM** in steady state, measured live (`docker stats --no-stream`:
   four Security Servers ~2.2–2.3 GiB each, Central Server ~1.8 GiB, Test CA
-  ~88 MiB, two mock providers ~32 MiB each). Fits a 16 GB host.
+  ~88 MiB, mock providers ~65 MiB each, up from ~32 MiB before each grew a
+  second, TLS listener). Fits a 16 GB host.
 - **~15 GB free disk:** ~4.6 GB of pinned images (Security Server Sidecar
   2.31 GB, pulled once and shared by all four servers; Central Server 1.78 GB;
   Test CA 542 MB), ~1 GB of locally built mock / console / join-api images,
