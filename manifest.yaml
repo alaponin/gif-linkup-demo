@@ -61,12 +61,6 @@ identity:
       subsystem: IDENTITY
       subsystem_description: Authoritative person identity register
       origin: canonical
-    ptsb:
-      code: PTSB
-      name: Progressa Tertiary Scholarship Board
-      subsystem: SCHOLARSHIP
-      subsystem_description: Scholarship award register
-      origin: joined
 modules:
   - id: "federation-core"
     video_ref: "5.5"   # Topic 5 subtopic this module realises

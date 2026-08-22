@@ -38,19 +38,3 @@ services:
   access:
   - PROGRESSA/GOV/PNEA/EXAMS
   entry: onboarding/pnia/04-catalogue/identity-api.md
-- id: PROGRESSA/GOV/PTSB/SCHOLARSHIP/awards-api
-  provider:
-    key: ptsb
-    code: PTSB
-    name: Progressa Tertiary Scholarship Board
-  service_code: awards-api
-  contract: http://app-ptsb:8000/spec.yaml
-  semantic:
-    entity: award
-    anchor: CEDS
-  pattern: digital_registries_lookup
-  lawful_basis: confirm-cite-the-decree-article
-  sla: onboarding/ptsb/03-sla/awards-api.md
-  access:
-  - PROGRESSA/GOV/PNEA/EXAMS
-  entry: onboarding/ptsb/04-catalogue/awards-api.md
