@@ -1090,7 +1090,10 @@ def _live_uncommitted(key: str) -> bool | None:
         repo_root = PACK_DIR.resolve().parents[2]
         rel = PACK_DIR.resolve().relative_to(repo_root)
         proc = subprocess.run(
-            ["git", "-C", str(repo_root), "status", "--porcelain",
+            # --no-optional-locks for the same reason writer.py's _git_status
+            # carries it: .git is mounted read-only into this container, and
+            # `git status` otherwise rewrites .git/index as it reads.
+            ["git", "--no-optional-locks", "-C", str(repo_root), "status", "--porcelain",
              str(rel / "configs" / f"member-{key}"), str(rel / "manifest.yaml")],
             capture_output=True, text=True, timeout=5, check=True,
         )

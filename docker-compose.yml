@@ -424,17 +424,29 @@ services:
     # inside the container. generate.py resolves its own PACK root as
     # Path(__file__).resolve().parent.parent -- i.e. relative to wherever
     # hurl/generate.py itself sits -- so it needs the whole pack tree present
-    # at the same relative layout, writable. It also runs `git status
+    # at the same relative layout. It also runs `git status
     # --porcelain configs/ manifest.yaml`,
     # which needs the enclosing .git -- the real git root, three levels above
-    # this pack directory. So: bind-mount the whole monorepo checkout,
-    # read-write, at a path that preserves that relative layout, rather than
-    # a curated per-file subset. One-time decision; this mount is not
-    # revisited per task.
+    # this pack directory. So: bind-mount the whole monorepo checkout at a
+    # path that preserves that relative layout, rather than a curated
+    # per-file subset.
+    #
+    # READ-ONLY, though, with the handful of paths a join actually writes
+    # mounted read-write back over it (see volumes: below). Docker mounts
+    # each path independently, so this is the kernel drawing the boundary,
+    # not file ownership: scripts/, apps/, infra/, .git and .env are
+    # unwritable to this container by mount flag, whatever it runs as. That
+    # is half of what closes docs/security-review-2026-08-23.md's finding H1
+    # (container -> host root); the other half is the host no longer sourcing
+    # anything this container can write (scripts/lib-core.sh's
+    # kp2_load_env/kp2_load_topology) and infra/ci/remote-deploy.sh's
+    # ownership backstop.
     build: ./apps/join-api
     container_name: join-api
-    # Runs as the owner of the read-write bind mount below, overriding the
-    # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID.
+    # Runs as the owner of the read-write bind mounts below, overriding the
+    # image's `USER nobody` -- see scripts/lib-stack.sh on KP2_HOST_UID. On a
+    # laptop that is the developer; on the droplet it is the dedicated
+    # unprivileged `kp2` identity (uid 10001), never root.
     user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
     profiles: ["demo"]
     restart: unless-stopped
@@ -497,7 +509,27 @@ services:
       KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
     volumes:
       - ca-certs:/etc/ssl/testca:ro
-      - ../../..:/repo
+      - ../../..:/repo:ro
+      # The writable set, mounted back over the read-only parent above. It is
+      # exactly apps/join-api/writer.py's _written_paths (manifest.yaml,
+      # onboarding/ for CATALOGUE_PATH and onboarding/<key>/, configs/ for
+      # member-<key>/), plus out/ for the join store and hurl/ for
+      # generate.py's own outputs (scenarios/, vars.env, local.ini,
+      # topology.json, topology.sh, compose.members.yml). Nothing else in the
+      # monorepo is writable from here.
+      #
+      # hurl/ is the uncomfortable one: generate.py and steps.py live in the
+      # directory the container has to write into. The mount cannot separate
+      # them, so infra/ci/remote-deploy.sh does -- hurl/ is root:kp2 3775,
+      # sticky, so a non-owner cannot unlink or replace the root-owned code
+      # in it. And the host no longer sources hurl/topology.sh at all
+      # (scripts/lib-core.sh's kp2_load_topology reads topology.json as
+      # data), so a write in here is no longer a path to the host.
+      - ./configs:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/configs
+      - ./manifest.yaml:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/manifest.yaml
+      - ./onboarding:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/onboarding
+      - ./out:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out
+      - ./hurl:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/hurl
       # ...with one addition, for a checkout that is a git WORKTREE. There,
       # /repo/.git is not a directory but a FILE holding
       # "gitdir: <abs host path>/geatdm-framework/.git/worktrees/<name>" --
@@ -513,7 +545,14 @@ services:
       # mount with one meaning, not a worktree special case. The default is
       # for a bare `docker compose up` that never sourced join.sh: a
       # self-mount of the same .git, i.e. a no-op.
-      - ${KP2_GIT_COMMON_DIR:-../../../.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}
+      #
+      # :ro, like the /repo mount it sits inside: every git call this
+      # container makes is a read (writer.py's own docstring on why nothing
+      # here ever commits), and a writable .git is a writable hooks/
+      # directory -- code the HOST's next git command would run, as root on
+      # the droplet. `git status --no-optional-locks` (writer.py) is what
+      # keeps that read from wanting to refresh .git/index.
+      - ${KP2_GIT_COMMON_DIR:-../../../.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}:ro
       # Same optional-mount pattern as KP2_GIT_COMMON_DIR above, for the
       # Postgres cluster's CA cert (deployment.yaml's datastore.kind:
       # postgres; named by KP2_JOIN_DB_URL's sslrootcert). Unset on

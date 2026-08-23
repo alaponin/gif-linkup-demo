@@ -32,11 +32,24 @@ COPY --from=hurl /usr/lib/ /opt/hurl-lib/
 # (the first time this container actually ran POST /requests/{id}/approve
 # against a real checkout; apps/join-api/tests' git-dependent tests all run
 # `git` on the HOST via pytest, never inside this image, so nothing in
-# --fast could have caught it). `safe.directory = *` sidesteps git's
+# --fast could have caught it). safe.directory sidesteps git's
 # dubious-ownership refusal (CVE-2022-24765): the repo bind mount is owned by
-# the host user, this process runs as nobody, and every git call here is a
-# read (status only, never a write) -- see writer.py's own docstring on why
-# nothing here ever commits.
+# the host user, this process runs as an unprivileged id that is not that
+# user, and every git call here is a read (status only, never a write) -- see
+# writer.py's own docstring on why nothing here ever commits.
+#
+# /repo, not `*` (review finding L4): `*` disarms the check for every path
+# this container can see, so any repository an attacker could place inside it
+# would be trusted too -- config and hooks included. One path, the one mount
+# that needs it.
+#
+# One entry covers a git WORKTREE checkout too, which was the open question:
+# git ownership-checks the WORKTREE path, not the common .git the worktree's
+# `gitdir:` pointer names. Verified against this image with
+# GIT_TEST_ASSUME_DIFFERENT_OWNER=1 (git's own switch for forcing the
+# dubious-ownership path on a host where the ids happen to match), a worktree
+# bind-mounted at /repo and its common .git mounted beside it: `git status`
+# passes at /repo and refuses at any other mount point.
 #
 # postgresql-client (pg_dump/pg_restore) -- scripts/join-store-export.sh and
 # -import.sh run these INSIDE this image via `docker compose run --rm
@@ -49,7 +62,7 @@ COPY --from=hurl /usr/lib/ /opt/hurl-lib/
 # operational note for the runbook, not something engineered around here.
 RUN apt-get update && apt-get install -y --no-install-recommends git postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
-    && git config --system --add safe.directory '*'
+    && git config --system --add safe.directory /repo
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt

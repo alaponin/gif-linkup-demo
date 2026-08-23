@@ -890,7 +890,12 @@ def _git_status(repo_root: pathlib.Path, pack_dir: pathlib.Path, rel_paths: tupl
     try:
         rel = pack_dir.relative_to(repo_root)
         proc = subprocess.run(
-            ["git", "-C", str(repo_root), "status", "--porcelain",
+            # --no-optional-locks: `git status` normally refreshes and
+            # rewrites .git/index as a side effect of reading, and .git is
+            # mounted READ-ONLY into this container (docker-compose.yml) --
+            # the flag is git's own way of saying "read, take no lock, write
+            # nothing". Harmless on the host, load-bearing in the container.
+            ["git", "--no-optional-locks", "-C", str(repo_root), "status", "--porcelain",
              *(str(rel / p) for p in rel_paths)],
             capture_output=True,
             text=True,
