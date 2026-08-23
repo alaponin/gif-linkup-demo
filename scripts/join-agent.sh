@@ -34,7 +34,7 @@ HOSTED=$(yq_get "$CFG" security_server.hosted_on 2>/dev/null || true)
 
 UI="${SS_UI[$SS]:-}"
 REST="${SS_REST[$SS]:-}"
-{ [ -n "$UI" ] && [ -n "$REST" ]; } || fail "hurl/topology.sh has no ports for $SS -- run 'python3 hurl/generate.py' first"
+{ [ -n "$UI" ] && [ -n "$REST" ]; } || fail "hurl/topology.json has no ports for $SS -- run 'python3 hurl/generate.py' first"
 
 # A busy host port is a FAILURE, naming the port and the process holding it --
 # never a silent re-allocation. Re-allocating

@@ -44,11 +44,14 @@ DUMP_FILE="$(cd "$(dirname "$DUMP_FILE")" && pwd)/$(basename "$DUMP_FILE")"
 DATASTORE_KIND=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null || echo sqlite)
 [ "$DATASTORE_KIND" = "postgres" ] || fail "deployment.yaml's datastore.kind is '$DATASTORE_KIND', not 'postgres' -- there is no Postgres cluster configured to import into."
 
-# Same single-variable source-with-fallback as join-store-export.sh -- see
+# Same single-variable read-with-fallback as join-store-export.sh -- see
 # that script's comment on why this doesn't need cmd_refresh's two-variable
 # save/restore dance.
-if [ -z "${KP2_JOIN_DB_URL:-}" ] && [ -f "$PACK_DIR/.env" ]; then
-  set -a; . "$PACK_DIR/.env"; set +a
+if [ -z "${KP2_JOIN_DB_URL:-}" ]; then
+  # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
+  # join-api can write the tree it sits in and sourcing executes a file
+  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  kp2_load_env "$PACK_DIR/.env"
 fi
 case "${KP2_JOIN_DB_URL:-}" in
   ""|*CHANGEME*)

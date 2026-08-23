@@ -10,7 +10,7 @@
 #   scripts/gen-secrets.sh --force  # overwrites -- see the PIN-rotation
 #                                    # warning this prints first
 #
-# .env is sourced directly by scripts/lib-stack.sh (`set -a; . .env`), not passed
+# .env is parsed by scripts/lib-core.sh's kp2_load_env (never sourced), not passed
 # through a quoting layer, so the generated values must be safe to sit
 # unquoted on the right-hand side of a shell assignment: no $, backtick,
 # quote, backslash or whitespace (breaks the assignment itself), and no

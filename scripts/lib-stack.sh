@@ -3,15 +3,20 @@
 # Basis: NIIS X-Road admin REST API (:4000 /api/v1, API-key auth).
 # [confirm at P0]: exact endpoint paths/payloads against the xrd-dev-stack Hurl files.
 #
-# Builds on lib-core.sh: .env sourcing, the credential refusal,
+# Builds on lib-core.sh: .env loading, the credential refusal,
 # deployment.yaml parsing, the public-exposure policy, topology
-# generation/sourcing, COMPOSE/COMPOSE_ALL, and the api_key/api helpers.
+# generation/loading, COMPOSE/COMPOSE_ALL, and the api_key/api helpers.
+# Neither .env nor the topology is SOURCED any more -- both are parsed as
+# data (lib-core.sh's kp2_load_env/kp2_load_topology).
 # Safe to source only where Docker, .env and deployment.yaml are expected to
 # be present -- unlike lib-core.sh, this file can exit.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-core.sh"
 
-[ -f "$PACK_DIR/.env" ] && set -a && . "$PACK_DIR/.env" && set +a
+# PARSED, never sourced -- kp2_load_env's own comment in lib-core.sh has the
+# reason (docs/security-review-2026-08-23.md, finding H1). This used to be
+# `set -a && . "$PACK_DIR/.env" && set +a`, which executed the file.
+kp2_load_env "$PACK_DIR/.env"
 
 # Refuse a .env that is missing, still a placeholder, or still one of the
 # values this repo used to publish -- the Central Server's own fixed
@@ -70,8 +75,30 @@ POSTURE=$(yq_get "$DEPLOY_SPEC" posture 2>/dev/null || echo demo)
 # ever failed on a laptop or in --fast. So those two services run as whoever
 # runs this script -- root on the droplet, the developer on a laptop -- which
 # is in both cases the owner of the checkout they write to.
-export KP2_HOST_UID=$(id -u)
-export KP2_HOST_GID=$(id -g)
+# ...on a laptop. On the droplet those two containers now run as a dedicated
+# unprivileged identity instead -- `kp2`, uid/gid 10001, created by
+# infra/terraform/cloud-init.yaml and exported as KP2_CONTAINER_UID/GID by
+# infra/ci/remote-deploy.sh, which also chowns the handful of paths they are
+# allowed to write (docs/security-review-2026-08-23.md, finding H1). Fixed
+# ids because they have to mean the same thing on both sides of a bind
+# mount. Unset -- every laptop, --fast included -- keeps the developer's own
+# id and so the behaviour above, unchanged.
+export KP2_HOST_UID=${KP2_CONTAINER_UID:-$(id -u)}
+export KP2_HOST_GID=${KP2_CONTAINER_GID:-$(id -g)}
+# The residual: infra/ci/remote-deploy.sh sets KP2_CONTAINER_UID for its own
+# process, and a variable exported there never reaches a later SSH session.
+# So an operator running `scripts/join.sh up` or `scripts/console.sh up` by
+# hand on the droplet -- both documented, both run as root -- would put those
+# containers back on UID 0. A WARNING, not a refusal: `scripts/join.sh down`
+# is a documented kill switch and must never be the thing that refuses.
+if [ "$POSTURE" = "production" ] && [ -z "${KP2_CONTAINER_UID:-}" ] && [ "$(id -u)" = 0 ]; then
+  echo "lib-stack.sh: WARNING -- deployment.yaml sets posture: production and this
+shell is root with KP2_CONTAINER_UID unset, so the console and join-api
+containers will run as UID 0 against their bind mounts. That is the posture
+docs/security-review-2026-08-23.md's finding H1 is about. Export
+KP2_CONTAINER_UID=10001 KP2_CONTAINER_GID=10001 before bringing either up,
+as infra/ci/remote-deploy.sh does." >&2
+fi
 # A non-loopback bind publishes, with no authentication, the X-Road proxy
 # ports (X-Road-Client is a self-asserted header, not a credential), the
 # admin UIs, and the Test CA's signing endpoint -- see the message below.
@@ -145,21 +172,24 @@ esac
 # One source of truth for topology (admin-UI port, REST port, stand-up order,
 # which SS hosts which subsystem, and which joined members own a container) --
 # generated once by hurl/generate.py (from configs/ + manifest.yaml) into
-# hurl/topology.sh (declares SS_UI, SS_REST, SS_ORDER and HOST_SS with
-# exactly the values this file used to hand-declare) and
-# hurl/compose.members.yml (joined members' compose blocks, read below).
-# apps/console reads the same generation run's hurl/topology.json -- one
-# topology, not hand-kept copies. Must run before COMPOSE/COMPOSE_ALL are
-# built: compose.members.yml has to exist before its `-f` flag can be added.
+# hurl/topology.json and hurl/compose.members.yml (joined members' compose
+# blocks, read below). apps/console reads the same file -- one topology, not
+# hand-kept copies. Must run before COMPOSE/COMPOSE_ALL are built:
+# compose.members.yml has to exist before its `-f` flag can be added.
 # ss-pnia's 5100/5180 (not 5000/5080, which collides with macOS's AirPlay
 # Receiver) is pinned in hurl/generate.py's PINNED_PORTS table -- see its
 # comment.
-TOPOLOGY_SH="$PACK_DIR/hurl/topology.sh"
-if [ ! -f "$TOPOLOGY_SH" ]; then
+#
+# PARSED from topology.json, not sourced from the topology.sh generate.py
+# still writes beside it: join-api can write hurl/, and `. hurl/topology.sh`
+# would execute whatever it found there as root
+# (docs/security-review-2026-08-23.md, finding H1). See kp2_load_topology in
+# lib-core.sh, including the one pair it deliberately does not carry over.
+TOPOLOGY_JSON="$PACK_DIR/hurl/topology.json"
+if [ ! -f "$TOPOLOGY_JSON" ]; then
   ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
 fi
-[ -f "$TOPOLOGY_SH" ] || { echo "lib-stack.sh: $TOPOLOGY_SH still missing after running generate.py" >&2; exit 1; }
-. "$TOPOLOGY_SH"
+kp2_load_topology "$TOPOLOGY_JSON"
 
 # The Test CA's PUBLIC certificate, on the host, for a caller that has to
 # verify a TLS hop into the federation -- the consumer's client proxy on

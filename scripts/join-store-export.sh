@@ -56,10 +56,13 @@ DATASTORE_KIND=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null |
 # cmd_refresh's two-variable save/restore dance around sourcing .env (that
 # dance exists so sourcing .env for one missing variable doesn't clobber an
 # operator's deliberately-exported OTHER variable) -- with a single
-# variable there is nothing to clobber, so: source .env only when
+# variable there is nothing to clobber, so: read .env only when
 # KP2_JOIN_DB_URL isn't already in the environment.
-if [ -z "${KP2_JOIN_DB_URL:-}" ] && [ -f "$PACK_DIR/.env" ]; then
-  set -a; . "$PACK_DIR/.env"; set +a
+if [ -z "${KP2_JOIN_DB_URL:-}" ]; then
+  # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
+  # join-api can write the tree it sits in and sourcing executes a file
+  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  kp2_load_env "$PACK_DIR/.env"
 fi
 case "${KP2_JOIN_DB_URL:-}" in
   ""|*CHANGEME*)

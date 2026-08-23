@@ -20,8 +20,11 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-core.sh"
 
-if [ -z "${KP2_DB_CA_CERT:-}" ] && [ -f "$PACK_DIR/.env" ]; then
-  set -a; . "$PACK_DIR/.env"; set +a
+if [ -z "${KP2_DB_CA_CERT:-}" ]; then
+  # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
+  # join-api can write the tree it sits in and sourcing executes a file
+  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  kp2_load_env "$PACK_DIR/.env"
 fi
 [ -n "${KP2_DB_CA_CERT:-}" ] || fail "KP2_DB_CA_CERT is unset in the environment and $PACK_DIR/.env -- this is the host path to write the CA cert to (see .env.example)."
 

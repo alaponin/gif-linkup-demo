@@ -13,6 +13,16 @@ ownership -- the class of bug that only appears on a real Linux host, i.e. only
 in the deploy that matters. The fix is compose's `user:` (KP2_HOST_UID, exported
 by scripts/lib-stack.sh); this test stops the next read-write service from being
 added without it.
+
+KP2_HOST_UID is now `${KP2_CONTAINER_UID:-$(id -u)}`, not a bare `id -u`
+(docs/security-review-2026-08-23.md, finding H1: on the droplet `id -u` was 0,
+so join-api parsed applicant payloads as root). infra/ci/remote-deploy.sh
+exports KP2_CONTAINER_UID=10001 -- the dedicated `kp2` identity that owns
+exactly the paths those containers may write -- and nothing else does, so a
+laptop still gets the developer's own id and the mounts it writes are still
+its own. What this test asserts is unchanged either way: a service that
+bind-mounts host files read-write must follow that owner, never pin a fixed
+foreign id of its own.
 """
 from __future__ import annotations
 
@@ -66,13 +76,62 @@ def test_rw_bind_mount_services_do_not_run_as_a_fixed_foreign_user():
 
 def test_lib_stack_exports_the_ids_compose_interpolates():
     """The default in compose is 0:0; unexported, a laptop would write root-owned
-    files into the developer's own checkout. lib-stack.sh must actually set them."""
+    files into the developer's own checkout. lib-stack.sh must actually set them
+    -- and with KP2_CONTAINER_UID unset (every laptop, --fast included) it must
+    still resolve to `id -u`, unchanged. The indirection exists for exactly one
+    caller, infra/ci/remote-deploy.sh."""
     lib = (PACK / "scripts/lib-stack.sh").read_text()
-    assert "export KP2_HOST_UID=$(id -u)" in lib
-    assert "export KP2_HOST_GID=$(id -g)" in lib
+    assert "export KP2_HOST_UID=${KP2_CONTAINER_UID:-$(id -u)}" in lib
+    assert "export KP2_HOST_GID=${KP2_CONTAINER_GID:-$(id -g)}" in lib
+
+    deploy = (PACK / "infra/ci/remote-deploy.sh").read_text()
+    assert "export KP2_CONTAINER_UID=10001" in deploy
+    assert "export KP2_CONTAINER_GID=10001" in deploy
+
+    # remote-deploy.sh's export covers CI only -- an operator running
+    # `scripts/join.sh up` by hand on the droplet is a later SSH session that
+    # never saw it, and would put the containers back on UID 0. Warned about,
+    # deliberately not refused (`join.sh down` is a documented kill switch).
+    assert '[ "$POSTURE" = "production" ] && [ -z "${KP2_CONTAINER_UID:-}" ]' in lib
+
+
+def test_the_droplet_identity_exists_and_owns_what_the_containers_write():
+    """The uid remote-deploy.sh pins has to be a real, unprivileged account on
+    the droplet -- cloud-init creates it, and remote-deploy.sh recreates it,
+    because `terraform apply` refreshes an existing droplet without re-running
+    cloud-init. And it has to own the writable set, or join-api dies on its
+    first mkdir exactly as it did as `nobody`."""
+    cloud_init = (PACK / "infra/terraform/cloud-init.yaml").read_text()
+    assert "useradd -u 10001 -g kp2 -M -s /usr/sbin/nologin kp2" in cloud_init
+
+    deploy = (PACK / "infra/ci/remote-deploy.sh").read_text()
+    assert "useradd -u 10001 -g kp2 -M -s /usr/sbin/nologin kp2" in deploy
+    assert "chown -R kp2:kp2 configs manifest.yaml onboarding out" in deploy
+    # hurl/ holds root-owned code (generate.py, steps.py) beside container-
+    # written output. Sticky, so a non-owner cannot unlink or rename the code.
+    assert "chmod 3775 hurl" in deploy
+    # .env: readable by the containers (generate.py's read_env), writable by
+    # neither.
+    assert "chmod 640 .env" in deploy
+
+    # ...and the generated files INSIDE that sticky directory must end up
+    # kp2's, not root's. They are gitignored, so `rsync --delete` removes them
+    # and lib-stack.sh regenerates them by running generate.py as root during
+    # the deploy -- left root-owned 644 under the sticky bit, the container
+    # could neither rewrite nor unlink hurl/topology.json and the next join
+    # would fail. Which is also why the handover runs again on the way out.
+    assert 'chown -R kp2:kp2 "hurl/$generated"' in deploy
+    assert "trap 'harden_container_paths || true' EXIT" in deploy
+    for generated in ("scenarios", "vars.env", "local.ini", "topology.json",
+                      "topology.sh", "compose.members.yml"):
+        assert generated in deploy, (
+            f"hurl/{generated} is one of hurl/generate.py's outputs (see "
+            f".gitignore) but remote-deploy.sh does not hand it to kp2"
+        )
 
 
 if __name__ == "__main__":
     test_rw_bind_mount_services_do_not_run_as_a_fixed_foreign_user()
     test_lib_stack_exports_the_ids_compose_interpolates()
+    test_the_droplet_identity_exists_and_owns_what_the_containers_write()
     print("ok")
