@@ -952,7 +952,12 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
 - **§6.3 — cluster destruction gate.** Destroying the cluster is:
   `scripts/join-store-export.sh` (which verifies its own output with
   `pg_restore --list` internally), move the resulting dump somewhere
-  durable, **only then** `terraform destroy` in `infra/terraform-db/`.
+  durable, **only then** `terraform destroy` in `infra/terraform-db/`. The
+  export lands in `$KP2_EXPORT_DIR` (owner-only, `umask 077`) — on a laptop
+  that is the `out/join-migrated/` convention `scripts/migrate-join-store.py`
+  also uses, unchanged; on the droplet `infra/ci/remote-deploy.sh` sets it to
+  `/opt/kp2/exports`, deliberately outside `out/`, which is bind-mounted
+  read-write into `join-api`.
   `lifecycle { prevent_destroy = true }` on the cluster resource
   (`infra/terraform-db/main.tf`) means a bare `terraform destroy` refuses —
   this is structural, not just procedural, by design: destroying the

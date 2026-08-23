@@ -150,9 +150,22 @@ def _archive(join_dir: pathlib.Path, tokens_path: pathlib.Path) -> None:
         print("archive: nothing to do (no source files left)")
         return
     dest = PACK_DIR / "out" / "join-migrated" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest.mkdir(parents=True, exist_ok=True)
+    # Owner-only, the same convention join-store-export.sh's `umask 077`
+    # applies to its dump -- this directory holds the same kind of evidence
+    # (request records with applicant contact/payload data, issued tokens).
+    # umask only governs *creation*, so it covers the mkdir here; it does
+    # NOT cover shutil.move below (a rename of an already-existing file
+    # preserves that file's own mode), so each moved file is chmod'd
+    # explicitly.
+    old_umask = os.umask(0o077)
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    finally:
+        os.umask(old_umask)
     for path in files:
-        shutil.move(str(path), str(dest / path.name))
+        moved = dest / path.name
+        shutil.move(str(path), str(moved))
+        moved.chmod(0o600)
     print(f"archive: moved {len(files)} file(s) to {dest}")
 
 

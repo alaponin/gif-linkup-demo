@@ -127,6 +127,13 @@ def test_fresh_migration_imports_rows_and_archives_source_files(tmp_path):
     archived_names = {p.name for p in archived[0].iterdir()}
     assert archived_names == {"req-aaaaaaaa.json", "req-bbbbbbbb.json", "join-tokens.json"}
 
+    # owner-only: the archive directory and every file moved into it (the
+    # same evidence a Postgres dump carries -- applicant contact/payload
+    # data, issued tokens) must not be group- or world-readable.
+    assert archived[0].stat().st_mode & 0o077 == 0
+    for name in archived_names:
+        assert (archived[0] / name).stat().st_mode & 0o077 == 0
+
 
 def test_second_run_is_a_no_op(tmp_path):
     pack = _make_pack(tmp_path)

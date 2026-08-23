@@ -28,6 +28,21 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-core.sh"
 
+# Owner-only from here on: both $DEST_DIR (mkdir, below) and $DUMP_FILE (the
+# host-side redirect further down) inherit this, so the dump -- the whole
+# join store, applicant contact/payload data and the token table included --
+# is never group- or world-readable. A chmod after the fact would leave a
+# window; umask before either is created does not.
+umask 077
+
+# Where exports land. Defaults to the laptop-local convention
+# (out/join-migrated/, same as scripts/migrate-join-store.py's own archive
+# directory) so docker-local's zero-setup path is unchanged; set to
+# /opt/kp2/exports by infra/ci/remote-deploy.sh on the droplet, which is
+# outside every container bind mount -- the half of the join-store-export
+# finding a umask alone cannot fix.
+: "${KP2_EXPORT_DIR:=$PACK_DIR/out/join-migrated}"
+
 # Missing deployment.yaml defaults to "sqlite", same as app.py's own
 # _DATASTORE_KIND resolution -- a pack with no deployment.yaml at all has
 # nothing Postgres to export from either.
@@ -49,7 +64,7 @@ case "${KP2_JOIN_DB_URL:-}" in
 esac
 
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-DEST_DIR="$PACK_DIR/out/join-migrated/$TIMESTAMP"
+DEST_DIR="$KP2_EXPORT_DIR/$TIMESTAMP"
 mkdir -p "$DEST_DIR"
 DUMP_FILE="$DEST_DIR/kp2_join.dump"
 
@@ -88,7 +103,14 @@ docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
 # bind mount just for this -- the dump now lives on the host, not inside
 # whatever throwaway container pg_dump ran in.
 log "verifying the export opens (pg_restore --list)"
+# --user, not the compose service's own default: the dump is 0600 (umask
+# 077, above), so this one-shot container must run as its owner to read it.
+# Needed on a laptop today (join-api's default user may differ from the
+# operator invoking this script) and after Phase B unconditionally, once
+# join-api's default user becomes the dedicated `kp2` identity, which will
+# never own an operator-created dump.
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
+  --user "$(id -u):$(id -g)" \
   -v "$DUMP_FILE:/tmp/kp2-join-export-verify.dump:ro" \
   join-api pg_restore --list /tmp/kp2-join-export-verify.dump
 

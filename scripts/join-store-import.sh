@@ -25,7 +25,14 @@
 set -euo pipefail
 . "$(dirname "$0")/lib-core.sh"
 
-DUMP_FILE=${1:?"Usage: scripts/join-store-import.sh <dump-file>"}
+# Same default as join-store-export.sh's $KP2_EXPORT_DIR -- not used to
+# locate $1 below (this script always takes an explicit path), just so the
+# usage message below can point an operator at where exports actually land
+# on this host (out/join-migrated/ on a laptop, /opt/kp2/exports on the
+# droplet, per infra/ci/remote-deploy.sh).
+: "${KP2_EXPORT_DIR:=$PACK_DIR/out/join-migrated}"
+
+DUMP_FILE=${1:?"Usage: scripts/join-store-import.sh <dump-file>  (join-store-export.sh writes dumps under \$KP2_EXPORT_DIR, currently $KP2_EXPORT_DIR)"}
 [ -f "$DUMP_FILE" ] || fail "no dump file at $DUMP_FILE"
 # Absolute path -- the bind mount below needs one, and a relative $1 would
 # otherwise resolve against whatever directory happened to be current when

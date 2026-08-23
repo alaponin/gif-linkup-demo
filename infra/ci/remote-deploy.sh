@@ -9,6 +9,12 @@ set -euo pipefail
 PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
 cd "$PACK"
 
+# Postgres join-store exports (scripts/join-store-export.sh) land here, not
+# under $PACK/out/ -- that tree is bind-mounted read-write into join-api, so
+# a chmod on the dump cannot keep it out of the container's reach the way a
+# path outside every mount does.
+export KP2_EXPORT_DIR=/opt/kp2/exports
+
 # deploy.sh replays the whole Hurl init sequence (deploy.sh -> hurl/
 # run-linkup.sh --setup), which is NOT idempotent over an already-
 # initialised federation. So: if the stack is already live, default to
