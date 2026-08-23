@@ -75,29 +75,44 @@ POSTURE=$(yq_get "$DEPLOY_SPEC" posture 2>/dev/null || echo demo)
 # ever failed on a laptop or in --fast. So those two services run as whoever
 # runs this script -- root on the droplet, the developer on a laptop -- which
 # is in both cases the owner of the checkout they write to.
-# ...on a laptop. On the droplet those two containers now run as a dedicated
+# ...on a laptop. On the droplet those two containers run as a dedicated
 # unprivileged identity instead -- `kp2`, uid/gid 10001, created by
-# infra/terraform/cloud-init.yaml and exported as KP2_CONTAINER_UID/GID by
-# infra/ci/remote-deploy.sh, which also chowns the handful of paths they are
-# allowed to write (docs/security-review-2026-08-23.md, finding H1). Fixed
-# ids because they have to mean the same thing on both sides of a bind
-# mount. Unset -- every laptop, --fast included -- keeps the developer's own
-# id and so the behaviour above, unchanged.
+# infra/terraform/cloud-init.yaml, which infra/ci/remote-deploy.sh also
+# chowns the handful of writable paths to
+# (docs/security-review-2026-08-23.md, finding H1). Fixed ids because they
+# have to mean the same thing on both sides of a bind mount.
+#
+# RESOLVED FROM THE HOST, not from an exported variable. An earlier version of
+# this change relied on infra/ci/remote-deploy.sh exporting
+# KP2_CONTAINER_UID -- and that script never starts these two containers.
+# infra/ci/console-publish.sh does, in its OWN ssh session, which never saw
+# the export, so on every normal deploy both came up as UID 0 anyway and
+# stayed there (`restart: unless-stopped`). At UID 0 the ownership and
+# sticky-bit backstop is worth nothing -- CAP_DAC_OVERRIDE/CAP_FOWNER go
+# straight through it, and this pack sets no cap_drop, security_opt or
+# userns_mode -- so H1's whole chain was still open. Found in review.
+#
+# So: if this host has the account, use it, whoever is running this script --
+# CI, console-publish.sh, or an operator by hand. Nothing has to remember an
+# export, which is the only version of this that cannot be forgotten once.
+# `id -u kp2` rather than a hardcoded 10001: the ACCOUNT is the contract, and
+# a wrong id here would be a loud "cannot write", never a quiet root.
+# KP2_CONTAINER_UID still wins when set, and a laptop has no kp2 account, so
+# there it resolves to `id -u` exactly as before.
+if [ -z "${KP2_CONTAINER_UID:-}" ] && _kp2_uid=$(id -u kp2 2>/dev/null); then
+  KP2_CONTAINER_UID=$_kp2_uid
+  KP2_CONTAINER_GID=$(id -g kp2)
+  unset _kp2_uid
+fi
 export KP2_HOST_UID=${KP2_CONTAINER_UID:-$(id -u)}
 export KP2_HOST_GID=${KP2_CONTAINER_GID:-$(id -g)}
-# The residual: infra/ci/remote-deploy.sh sets KP2_CONTAINER_UID for its own
-# process, and a variable exported there never reaches a later SSH session.
-# So an operator running `scripts/join.sh up` or `scripts/console.sh up` by
-# hand on the droplet -- both documented, both run as root -- would put those
-# containers back on UID 0. A WARNING, not a refusal: `scripts/join.sh down`
-# is a documented kill switch and must never be the thing that refuses.
-if [ "$POSTURE" = "production" ] && [ -z "${KP2_CONTAINER_UID:-}" ] && [ "$(id -u)" = 0 ]; then
-  echo "lib-stack.sh: WARNING -- deployment.yaml sets posture: production and this
-shell is root with KP2_CONTAINER_UID unset, so the console and join-api
-containers will run as UID 0 against their bind mounts. That is the posture
-docs/security-review-2026-08-23.md's finding H1 is about. Export
-KP2_CONTAINER_UID=10001 KP2_CONTAINER_GID=10001 before bringing either up,
-as infra/ci/remote-deploy.sh does." >&2
+if [ "$KP2_HOST_UID" = 0 ]; then
+  echo "lib-stack.sh: WARNING -- the console and join-api containers will run as
+UID 0 against their bind mounts, which is the posture
+docs/security-review-2026-08-23.md's finding H1 is about. This host has no
+`kp2` account and KP2_CONTAINER_UID is unset. On a droplet, run
+infra/ci/remote-deploy.sh (it creates the account and chowns the writable
+set) before bringing either container up." >&2
 fi
 # A non-loopback bind publishes, with no authentication, the X-Road proxy
 # ports (X-Road-Client is a self-asserted header, not a credential), the
@@ -187,7 +202,11 @@ esac
 # lib-core.sh, including the one pair it deliberately does not carry over.
 TOPOLOGY_JSON="$PACK_DIR/hurl/topology.json"
 if [ ! -f "$TOPOLOGY_JSON" ]; then
-  ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
+  ( cd "$PACK_DIR" && python3 -B hurl/generate.py >/dev/null )
+  # Its own message: kp2_load_topology's missing-file refusal says "run
+  # generate.py first", which is the wrong advice on the one path where it
+  # has just run and produced nothing.
+  [ -f "$TOPOLOGY_JSON" ] || { echo "lib-stack.sh: $TOPOLOGY_JSON still missing after running hurl/generate.py" >&2; exit 1; }
 fi
 kp2_load_topology "$TOPOLOGY_JSON"
 

@@ -773,8 +773,16 @@ def _run_generate(generate_py: pathlib.Path) -> subprocess.CompletedProcess:
     No env= is passed: generate.py reads its own .env from disk (read_env()),
     never from the environment, so there is no credential to route through
     here (global constraint: credentials never leave the process this way)."""
+    # -B: never write hurl/__pycache__. generate.py imports steps.py, and
+    # hurl/ is a directory BOTH this container and the host's root write into
+    # (docker-compose.yml, infra/ci/remote-deploy.sh) -- a __pycache__ owned
+    # by whoever ran first is bytecode the other one then imports, validated
+    # only by the source's mtime and size. No cache, nothing to import. The
+    # same flag is on every host-side invocation (scripts/lib-stack.sh,
+    # scripts/member.sh, hurl/run-linkup.sh), and remote-deploy.sh removes any
+    # legacy directory, because -B stops the WRITE and not the read.
     return subprocess.run(
-        [sys.executable, str(generate_py)],
+        [sys.executable, "-B", str(generate_py)],
         cwd=str(generate_py.parent.parent),
         capture_output=True,
         text=True,

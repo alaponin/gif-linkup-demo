@@ -18,6 +18,22 @@ set -euo pipefail
 
 PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
 
+# THIS is the script that starts the console and join-api on the droplet --
+# remote-deploy.sh never does, and this runs in its own ssh session, so
+# nothing that script exported reaches here. Before this line both containers
+# came up as UID 0 on every normal deploy and stayed there
+# (`restart: unless-stopped`), which is exactly the posture
+# docs/security-review-2026-08-23.md's finding H1 is about: at UID 0 the
+# ownership/sticky-bit backstop is bypassed outright by CAP_DAC_OVERRIDE.
+#
+# scripts/lib-stack.sh now also resolves this from the `kp2` account
+# directly, so this export is belt-and-braces rather than the only thing
+# holding it up -- but it is the visible statement of intent at the two calls
+# that matter, and remote-deploy.sh (which runs first in the same CI job) has
+# guaranteed the account exists by now.
+export KP2_CONTAINER_UID=10001
+export KP2_CONTAINER_GID=10001
+
 # Fails before the htpasswd file or any listener exists -- same fail-closed
 # ordering as the KP2_CONSOLE_HTPASSWD guard above and `nginx -t` below.
 # :443 is a production public surface; deployment.yaml must say so on

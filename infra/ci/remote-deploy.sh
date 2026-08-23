@@ -23,9 +23,15 @@ export KP2_EXPORT_DIR=/opt/kp2/exports
 # join-api parses applicant-controlled payloads and bind-mounts this
 # checkout; it used to do that as UID 0, because this script runs as root and
 # scripts/lib-stack.sh took the containers' uid from `id -u`
-# (docs/security-review-2026-08-23.md, finding H1). Here -- and only here; a
-# laptop still gets the developer's own id -- it runs as the dedicated
-# unprivileged `kp2` identity instead.
+# (docs/security-review-2026-08-23.md, finding H1). It now runs as the
+# dedicated unprivileged `kp2` identity instead.
+#
+# This export covers THIS process only, and this script never starts the
+# console or join-api -- infra/ci/console-publish.sh does, in its own ssh
+# session. That gap is why scripts/lib-stack.sh now resolves the identity from
+# the `kp2` account directly rather than trusting anyone to export it; these
+# two lines are the explicit statement for the paths that run before the
+# account is guaranteed to exist.
 export KP2_CONTAINER_UID=10001
 export KP2_CONTAINER_GID=10001
 
@@ -61,6 +67,13 @@ harden_container_paths() {
   # rewrite nor unlink them, and the next join would fail on
   # `hurl/topology.json`. Hence also the EXIT trap: everything root wrote
   # during the deploy is handed over on the way out.
+  #
+  # Same hazard, one level down: generate.py imports steps.py, so whoever
+  # runs it first owns hurl/__pycache__ and the other one then imports that
+  # bytecode -- validated only by the source's mtime and size. Every
+  # invocation now passes -B, which stops the WRITE but not the read, so the
+  # legacy directory has to go.
+  rm -rf hurl/__pycache__
   chown -R root:kp2 hurl
   chmod 3775 hurl
   # Exactly generate.py's outputs -- the same set .gitignore lists.
@@ -84,7 +97,7 @@ harden_container_paths
 # acceptance.sh), so the ownership that matters is the ownership the
 # containers are left with, not the one they started with. `|| true` because
 # an EXIT trap must never change the exit status this script is reporting.
-trap 'harden_container_paths || true' EXIT
+trap 'harden_container_paths || true' EXIT INT TERM HUP
 
 # deploy.sh replays the whole Hurl init sequence (deploy.sh -> hurl/
 # run-linkup.sh --setup), which is NOT idempotent over an already-

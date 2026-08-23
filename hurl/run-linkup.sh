@@ -44,7 +44,7 @@ esac
 
 # Regenerate first: the scenarios are artefacts of configs/, never hand-edited.
 log "regenerating scenarios from configs/"
-python3 hurl/generate.py
+python3 -B hurl/generate.py
 
 mkdir -p "$BUILD_DIR"
 cat hurl/scenarios/*.hurl > "$BUILD_DIR/setup.hurl"

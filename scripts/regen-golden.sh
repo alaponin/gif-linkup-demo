@@ -39,7 +39,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 log "deployment corpus"
-python3 hurl/generate.py --out "$TMP/deployment" --env tests/golden/env.fixture
+python3 -B hurl/generate.py --out "$TMP/deployment" --env tests/golden/env.fixture
 
 log "hosted-fixture corpus"
 "$PY" - "$TMP" <<'PY'

@@ -130,8 +130,13 @@ path = sys.argv[1]
 OK = re.compile(r'^[A-Za-z0-9_.:-]+$')
 PORT = re.compile(r'^[0-9]{1,5}$')
 
-def ck(what, value, pattern=OK):
-    text = str(value)
+def ck(what, node, key, pattern=OK):
+    # A missing key is a malformed topology, not a traceback: same curated
+    # refusal as a value that fails the charset check.
+    if key not in node:
+        sys.exit(f"kp2_load_topology: {path}: {what} has no '{key}' -- "
+                 f"re-run 'python3 hurl/generate.py'")
+    text = str(node[key])
     if not pattern.match(text):
         sys.exit(f"kp2_load_topology: {path}: {what} is not a plain "
                  f"[A-Za-z0-9_.:-] token: {text!r}")
@@ -152,16 +157,19 @@ if not servers:
 
 out = []
 for s in servers:
-    host = ck("security_servers[].host", s["host"])
+    host = ck("security_servers[]", s, "host")
     out.append(("SS_ORDER", "-", host))
-    out.append(("SS_UI", host, ck("host_ui_port", s["host_ui_port"], PORT)))
-    out.append(("SS_REST", host, ck("host_proxy_port", s["host_proxy_port"], PORT)))
+    out.append(("SS_UI", host, ck("security_servers[]", s, "host_ui_port", PORT)))
+    out.append(("SS_REST", host, ck("security_servers[]", s, "host_proxy_port", PORT)))
     out.append(("SS_REST_TLS", host,
-                ck("host_proxy_tls_port", s["host_proxy_tls_port"], PORT)))
+                ck("security_servers[]", s, "host_proxy_tls_port", PORT)))
 for s in subsystems:
-    pair = ck("member_code", s["member_code"]) + ":" + ck("subsystem_code", s["subsystem_code"])
-    out.append(("HOST_SS", pair, ck("hosted_on", s["hosted_on"])))
-    out.append(("CLIENT_CONN", pair, ck("connection_type", s.get("connection_type", "HTTP"))))
+    pair = (ck("subsystems[]", s, "member_code") + ":"
+            + ck("subsystems[]", s, "subsystem_code"))
+    out.append(("HOST_SS", pair, ck("subsystems[]", s, "hosted_on")))
+    out.append(("CLIENT_CONN", pair,
+                ck("subsystems[]", {"connection_type": s.get("connection_type", "HTTP")},
+                   "connection_type")))
 print("\n".join("\t".join(row) for row in out))
 PY
   ) || fail "could not read $path -- see the message above"

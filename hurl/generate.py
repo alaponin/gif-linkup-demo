@@ -513,7 +513,11 @@ def render(name: str, **kw) -> str:
 
 
 def dn_escape(value: str) -> str:
-    """Escape a comma for RFC 2253 DN embedding in a subject_field_values value.
+    # r""" : the docstring below spells out a literal backslash-comma, which
+    # is an invalid escape sequence in a normal string -- a SyntaxWarning
+    # today and an error in a future Python. Visible now that every caller
+    # passes -B (no bytecode cache to hide the recompile).
+    r"""Escape a comma for RFC 2253 DN embedding in a subject_field_values value.
 
     Confirmed necessary at P0: the Security Server's admin API
     joins subject_field_values into a single DN string server-side without

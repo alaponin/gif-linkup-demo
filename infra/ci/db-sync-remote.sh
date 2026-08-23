@@ -18,6 +18,22 @@ PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
 CA_PATH="/opt/kp2/do-db-ca.crt"
 cd "$PACK"
 
+# The two `docker compose run --rm join-api` calls below are the one place in
+# this pack that reaches that image WITHOUT going through scripts/lib-stack.sh,
+# so nothing else resolves the containers' uid for them and
+# docker-compose.yml's `${KP2_HOST_UID:-0}` default would make them UID 0 --
+# the posture docs/security-review-2026-08-23.md's finding H1 is about. Set
+# directly here, not via KP2_CONTAINER_UID, because KP2_CONTAINER_UID is a
+# lib-stack.sh input and lib-stack.sh is not in this path.
+#
+# 10001 literally, and it is fine that this runs BEFORE remote-deploy.sh has
+# created the `kp2` account: both calls are throwaway `run --rm` invocations
+# that only talk to Postgres (store.init's postgres branch returns before it
+# touches the filesystem; dump-records only reads), so an id with no host
+# account behind it yet has nothing it needs to write.
+export KP2_HOST_UID=10001
+export KP2_HOST_GID=10001
+
 # One scratch dir, one trap. The .env this builds carries both DSNs, so an
 # abort between writing it and `install`-ing it must not leave it behind.
 TMP=$(mktemp -d)

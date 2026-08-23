@@ -44,6 +44,15 @@ _WRITABLE = {
     "console": {"/out"},
 }
 
+# The four X-Road sidecars mount hurl/local.ini (one of generate.py's own
+# outputs, so join-api-writable) read-write, into vendor images this task does
+# not touch. Nothing here reads it back on the host, so it is not H1's
+# container-to-host-root chain -- but it IS the same "a file join-api can
+# write is consumed by something else" shape as hurl/compose.members.yml, and
+# both are recorded as open residuals in docs/production-delta.md rather than
+# closed here. Listed so a genuinely NEW service still fails the test below.
+_KNOWN_UNCHANGED = {"/etc/xroad/conf.d/local.ini"}
+
 
 def _bind_mounts(service: str) -> list[str]:
     """Host-path mounts (./x, ../x, /x, or a ${VAR} that expands to one).
@@ -83,11 +92,17 @@ def test_join_api_mounts_dot_git_read_only():
 
 
 def test_no_read_write_mount_outside_the_known_writable_set():
-    for service, allowed in _WRITABLE.items():
+    # EVERY service, not just the two in _WRITABLE: a service absent from that
+    # table is allowed no read-write host mount at all, which is the honest
+    # default for one nobody has thought about yet.
+    for service in COMPOSE["services"]:
+        allowed = _WRITABLE.get(service, set())
         for mount in _bind_mounts(service):
             if mount.endswith(":ro"):
                 continue
             target = _target_of(mount)
+            if target in _KNOWN_UNCHANGED:
+                continue
             assert target in allowed, (
                 f"{service} mounts {mount!r} read-write, and {target} is not "
                 f"in the writable set {sorted(allowed)}. join-api parses "

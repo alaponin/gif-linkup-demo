@@ -14,20 +14,24 @@ in the deploy that matters. The fix is compose's `user:` (KP2_HOST_UID, exported
 by scripts/lib-stack.sh); this test stops the next read-write service from being
 added without it.
 
-KP2_HOST_UID is now `${KP2_CONTAINER_UID:-$(id -u)}`, not a bare `id -u`
-(docs/security-review-2026-08-23.md, finding H1: on the droplet `id -u` was 0,
-so join-api parsed applicant payloads as root). infra/ci/remote-deploy.sh
-exports KP2_CONTAINER_UID=10001 -- the dedicated `kp2` identity that owns
-exactly the paths those containers may write -- and nothing else does, so a
-laptop still gets the developer's own id and the mounts it writes are still
-its own. What this test asserts is unchanged either way: a service that
-bind-mounts host files read-write must follow that owner, never pin a fixed
-foreign id of its own.
+KP2_HOST_UID is no longer a bare `id -u` (docs/security-review-2026-08-23.md,
+finding H1: on the droplet `id -u` was 0, so join-api parsed applicant
+payloads as root). lib-stack.sh resolves it from the `kp2` account when the
+host has one, with KP2_CONTAINER_UID as an override -- resolved from the HOST
+rather than from an exported variable because the first version of this fix
+relied on remote-deploy.sh's export and remote-deploy.sh is the one CI script
+that never starts these containers. A laptop has no kp2 account, so it still
+gets the developer's own id. What this test asserts is unchanged either way:
+a service that bind-mounts host files read-write must follow that owner,
+never pin a fixed foreign id of its own.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import re
+import subprocess
+import tempfile
 
 import yaml
 
@@ -77,9 +81,8 @@ def test_rw_bind_mount_services_do_not_run_as_a_fixed_foreign_user():
 def test_lib_stack_exports_the_ids_compose_interpolates():
     """The default in compose is 0:0; unexported, a laptop would write root-owned
     files into the developer's own checkout. lib-stack.sh must actually set them
-    -- and with KP2_CONTAINER_UID unset (every laptop, --fast included) it must
-    still resolve to `id -u`, unchanged. The indirection exists for exactly one
-    caller, infra/ci/remote-deploy.sh."""
+    -- and with neither KP2_CONTAINER_UID nor a kp2 account (every laptop,
+    --fast included) it must still resolve to `id -u`, unchanged."""
     lib = (PACK / "scripts/lib-stack.sh").read_text()
     assert "export KP2_HOST_UID=${KP2_CONTAINER_UID:-$(id -u)}" in lib
     assert "export KP2_HOST_GID=${KP2_CONTAINER_GID:-$(id -g)}" in lib
@@ -87,12 +90,6 @@ def test_lib_stack_exports_the_ids_compose_interpolates():
     deploy = (PACK / "infra/ci/remote-deploy.sh").read_text()
     assert "export KP2_CONTAINER_UID=10001" in deploy
     assert "export KP2_CONTAINER_GID=10001" in deploy
-
-    # remote-deploy.sh's export covers CI only -- an operator running
-    # `scripts/join.sh up` by hand on the droplet is a later SSH session that
-    # never saw it, and would put the containers back on UID 0. Warned about,
-    # deliberately not refused (`join.sh down` is a documented kill switch).
-    assert '[ "$POSTURE" = "production" ] && [ -z "${KP2_CONTAINER_UID:-}" ]' in lib
 
 
 def test_the_droplet_identity_exists_and_owns_what_the_containers_write():
@@ -130,8 +127,84 @@ def test_the_droplet_identity_exists_and_owns_what_the_containers_write():
         )
 
 
+def test_every_ci_script_that_starts_these_containers_sets_the_identity():
+    """The test that would have caught it.
+
+    The first version of this work asserted only that remote-deploy.sh
+    exports KP2_CONTAINER_UID -- and remote-deploy.sh is the one CI script
+    that never starts the console or join-api. infra/ci/console-publish.sh
+    does, in its own ssh session, so both came up as UID 0 on every normal
+    deploy and stayed there (`restart: unless-stopped`), with the whole
+    ownership/sticky-bit backstop bypassed by CAP_DAC_OVERRIDE. Assert
+    against what the scripts DO, not against the one we happened to edit.
+
+    lib-stack.sh resolving the identity from the `kp2` account is the fix
+    that cannot be forgotten; this keeps the explicit statement at the call
+    sites, and catches a new CI script that starts a container by a route
+    lib-stack.sh is not on -- which is exactly what db-sync-remote.sh is.
+    """
+    starts = re.compile(r"(console|join)\.sh\"?\s+up|docker compose run\b")
+    for script in sorted((PACK / "infra" / "ci").glob("*.sh")):
+        text = script.read_text()
+        # Code, not prose: infra/ci/db-sync.sh runs on the CI RUNNER and only
+        # MENTIONS `docker compose run` in a comment about the script it pipes
+        # over ssh. Matching comments would demand an export from a script
+        # that starts nothing.
+        code = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+        if not starts.search(code):
+            continue
+        # Either name works: KP2_CONTAINER_UID for a script that goes through
+        # lib-stack.sh, KP2_HOST_UID for one (db-sync-remote.sh) that reaches
+        # docker compose directly and so is not on lib-stack.sh's path.
+        assert re.search(r"^export KP2_(CONTAINER|HOST)_UID=", text, re.M), (
+            f"infra/ci/{script.name} starts a container that bind-mounts this "
+            f"checkout, but exports neither KP2_CONTAINER_UID nor "
+            f"KP2_HOST_UID -- so docker-compose.yml's `${{KP2_HOST_UID:-0}}` "
+            f"default runs it as UID 0 against those mounts, which is finding "
+            f"H1 (docs/security-review-2026-08-23.md)."
+        )
+        assert re.search(r"^export KP2_(CONTAINER|HOST)_GID=", text, re.M), (
+            f"infra/ci/{script.name} sets a uid but not a gid"
+        )
+
+
+def test_lib_stack_resolves_the_identity_from_the_host_not_from_an_export():
+    """`id -u kp2` on a host that has the account, whoever is running.
+
+    The export in remote-deploy.sh covers one process; this covers every
+    caller, including console-publish.sh's separate ssh session and an
+    operator running `scripts/join.sh up` by hand.
+    """
+    lib = (PACK / "scripts/lib-stack.sh").read_text()
+    assert "_kp2_uid=$(id -u kp2 2>/dev/null)" in lib
+
+    # ...and prove it, rather than only reading it: a stub `id` that answers
+    # for a kp2 account must move KP2_HOST_UID off this process's own uid.
+    stub = pathlib.Path(tempfile.mkdtemp()) / "bin"
+    stub.mkdir()
+    (stub / "id").write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$*" in *kp2*) [ "$1" = -u ] && echo 10001 || echo 10002;; '
+        '*) exec /usr/bin/id "$@";; esac\n'
+    )
+    (stub / "id").chmod(0o755)
+    script = f'. "{PACK}/scripts/lib-stack.sh" >/dev/null 2>&1; echo "$KP2_HOST_UID:$KP2_HOST_GID"'
+    env = {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}"}
+    env.pop("KP2_CONTAINER_UID", None)
+    env.pop("KP2_CONTAINER_GID", None)
+    got = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
+    assert got.stdout.strip() == "10001:10002", (got.stdout, got.stderr)
+
+    # No kp2 account (every laptop): the developer's own id, unchanged. This
+    # is the global constraint the whole phase had to preserve.
+    plain = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env | {"PATH": os.environ["PATH"]})
+    assert plain.stdout.strip() == f"{os.getuid()}:{os.getgid()}", (plain.stdout, plain.stderr)
+
+
 if __name__ == "__main__":
     test_rw_bind_mount_services_do_not_run_as_a_fixed_foreign_user()
     test_lib_stack_exports_the_ids_compose_interpolates()
     test_the_droplet_identity_exists_and_owns_what_the_containers_write()
+    test_every_ci_script_that_starts_these_containers_sets_the_identity()
+    test_lib_stack_resolves_the_identity_from_the_host_not_from_an_export()
     print("ok")

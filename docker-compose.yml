@@ -518,6 +518,16 @@ services:
       # topology.json, topology.sh, compose.members.yml). Nothing else in the
       # monorepo is writable from here.
       #
+      # Two of these are WIDER than what a join strictly writes, and both are
+      # recorded rather than trimmed. configs/ is mounted whole, so
+      # configs/x-road-bus/join-policy.yaml -- the policy join-api itself
+      # enforces -- is writable by the container it constrains; only
+      # configs/member-<key>/ actually needs to be. And hurl/ carries
+      # compose.members.yml, which the HOST later feeds to
+      # `docker compose -f ... up` as root: not this phase's sourcing chain,
+      # but the same "a file join-api writes is interpreted elsewhere" shape.
+      # See docs/production-delta.md's container-identity row.
+      #
       # hurl/ is the uncomfortable one: generate.py and steps.py live in the
       # directory the container has to write into. The mount cannot separate
       # them, so infra/ci/remote-deploy.sh does -- hurl/ is root:kp2 3775,

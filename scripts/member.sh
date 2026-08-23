@@ -111,7 +111,7 @@ if not removed:
 path.write_text("".join(out))
 PY
 
-  ( cd "$PACK_DIR" && python3 hurl/generate.py >/dev/null )
+  ( cd "$PACK_DIR" && python3 -B hurl/generate.py >/dev/null )
   log "removed configs/member-$key/ and manifest.yaml identity.members.$key. Regenerated."
   log "the live federation (if one is running) still holds '$key' until: scripts/teardown.sh --purge"
 }
