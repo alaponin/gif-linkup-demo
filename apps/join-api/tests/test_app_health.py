@@ -268,11 +268,11 @@ def test_log_records_are_scrubbed_when_the_secret_arrives_as_a_non_string_value(
 
 
 def test_live_log_secrets_never_include_the_disabled_sentinel_value():
-    """app._LOG_SECRETS (built from JOB_SECRETS + OPERATOR_TOKEN +
-    APPLICANT_TOKEN, guarding the sentinel) must never carry the literal
-    string "disabled" as a value, in THIS process's actual configured
-    secret set -- not just in a simulation of the guard."""
-    assert "disabled" not in app._LOG_SECRETS.values()
+    """app._SINK_SECRETS (built from JOB_SECRETS + OPERATOR_TOKEN +
+    APPLICANT_TOKEN + any DSN passwords, guarding the sentinel) must never
+    carry the literal string "disabled" as a value, in THIS process's
+    actual configured secret set -- not just in a simulation of the guard."""
+    assert "disabled" not in app._SINK_SECRETS.values()
 
 
 def test_disabled_sentinel_is_never_scrubbed_even_when_it_is_the_applicant_token():
@@ -281,7 +281,7 @@ def test_disabled_sentinel_is_never_scrubbed_even_when_it_is_the_applicant_token
     marker, not a secret. This test's own env sets a real applicant token,
     not the sentinel (test_app_health.py's module-level os.environ block),
     so it calls app._log_secrets -- the actual function app.py uses to
-    build _LOG_SECRETS, not a reimplementation of its guard -- with a
+    build _SINK_SECRETS, not a reimplementation of its guard -- with a
     literal "disabled" applicant_token, to exercise the branch this
     fixture environment cannot produce live."""
     log_secrets = app._log_secrets(app.JOB_SECRETS, app.OPERATOR_TOKEN, "disabled")

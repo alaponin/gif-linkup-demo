@@ -1058,9 +1058,15 @@ def apply_real(
                 # that pre-dates this join (an empty configs/member-<key>/,
                 # say). Not a rollback failure, and not this join's doing:
                 # note it on the original error rather than replacing it with
-                # a scarier one. stderr is left out on purpose -- generate.py
-                # reads .env, so its output can carry the token PIN, and a
-                # note travels into logs no caller scrubs (job.scrub).
+                # a scarier one. stderr is left out on purpose -- not because
+                # it is unscrubbable (app.py's job.scrub call sites now
+                # scrub every persisted/returned sink against _SINK_SECRETS,
+                # which would cover this stderr too, same as any other), but
+                # because this note is terse by choice: it points the
+                # operator at the command to run by hand rather than
+                # inlining a second subprocess's raw output into the first
+                # exception's note. Adding it back is a separate judgement
+                # call.
                 exc.add_note(
                     f"rolled back cleanly, but `python3 hurl/generate.py` then exited "
                     f"{regenerated.returncode} over the RESTORED inputs -- the pack was "

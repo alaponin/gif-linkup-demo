@@ -30,6 +30,7 @@ import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlsplit
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -190,8 +191,25 @@ def _log_secrets(job_secrets: dict[str, str], operator_token: str, applicant_tok
     return secrets
 
 
-_LOG_SECRETS = _log_secrets(JOB_SECRETS, OPERATOR_TOKEN, APPLICANT_TOKEN)
-_LOG = logging_setup.configure("kp2.join-api", _LOG_SECRETS)
+_SINK_SECRETS = _log_secrets(JOB_SECRETS, OPERATOR_TOKEN, APPLICANT_TOKEN)
+
+# hurl/generate.py reads the whole .env (writer.py's own comment on the
+# omitted regenerated.stderr note says so), so its stderr can carry
+# KP2_JOIN_DB_URL/KP2_JOIN_DB_URL_RO's password too, on the Postgres path --
+# neither DSN is in JOB_SECRETS. Read straight from the environment, not
+# from the validated KP2_JOIN_DB_URL below (which is None outside
+# kind: postgres): the leak is in whatever generate.py's subprocess sees in
+# .env, independent of which backend this process picked. URL-form
+# (.env.example:32), so urlsplit's .password is enough -- stdlib, and it
+# does not pull psycopg into the sqlite path. Different job from
+# store.py's _mask_dsn, which redacts the whole DSN in store-local
+# exceptions, not a password substring out of arbitrary subprocess output.
+for _dsn_env in ("KP2_JOIN_DB_URL", "KP2_JOIN_DB_URL_RO"):
+    _dsn_password = urlsplit(os.environ.get(_dsn_env, "")).password
+    if _dsn_password:
+        _SINK_SECRETS[_dsn_env.lower()] = _dsn_password
+
+_LOG = logging_setup.configure("kp2.join-api", _SINK_SECRETS)
 
 # -- store backend selection (plan §1.6) ---------------------------------------
 # deployment.yaml's datastore.kind: the seam that makes `kind: postgres` fail
@@ -839,7 +857,7 @@ def submit_request(
                 # generate.py reads, so a traceback out of that subprocess
                 # could carry a credential into a persisted record.
                 "message": f"hurl/generate.py rejected this join (exit {exc.returncode}):\n"
-                + job.scrub(exc.stderr, JOB_SECRETS),
+                + job.scrub(exc.stderr, _SINK_SECRETS),
             },
         }
         _save(db, record, actor=role, event="rejected", detail={"check": "generate_dry_run"})
@@ -1160,7 +1178,7 @@ def _run_job(request_id: str) -> None:
                 record["state"] = "FAILED"
                 record["error"] = {
                     "step": record.get("last_completed_step"),
-                    "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+                    "message": job.scrub(f"{type(exc).__name__}: {exc}", _SINK_SECRETS),
                 }
                 _save(conn, record, actor="system", event="state:*->FAILED")
                 _job_log(request_id, "job.finished", state="FAILED", error=record["error"]["message"])
@@ -1238,7 +1256,7 @@ def approve_request(
         # pack back, so the tree really does need a human. FAILED, not a
         # rejection, and scrubbed for the same reason as GenerateFailure
         # below -- the message can quote a subprocess that read .env.
-        message = job.scrub(str(exc), JOB_SECRETS)
+        message = job.scrub(str(exc), _SINK_SECRETS)
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": message}
         record["decision_reference"] = decision_reference
@@ -1255,7 +1273,7 @@ def approve_request(
         # subprocess reads .env, so a traceback out of it could carry the
         # admin password or the token PIN, and this string is both persisted
         # and returned.
-        stderr = job.scrub(exc.stderr, JOB_SECRETS)
+        stderr = job.scrub(exc.stderr, _SINK_SECRETS)
         record["state"] = "FAILED"
         record["error"] = {"step": "config.write", "message": stderr}
         record["decision_reference"] = decision_reference
@@ -1402,7 +1420,7 @@ def _run_unjoin(request_id: str) -> None:
             except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
                 record["error"] = {
                     "step": record.get("last_reversed_step"),
-                    "message": job.scrub(f"{type(exc).__name__}: {exc}", JOB_SECRETS),
+                    "message": job.scrub(f"{type(exc).__name__}: {exc}", _SINK_SECRETS),
                 }
                 _save(conn, record, actor="system", event="state:*->RETIRING(error)")
                 _job_log(request_id, "unjoin.finished", state="RETIRING(error)", error=record["error"]["message"])
@@ -1448,7 +1466,7 @@ def _run_unjoin(request_id: str) -> None:
                 record["error"] = {
                     "step": "config.remove",
                     "message": f"the federation no longer holds {key}, but scripts/member.sh remove "
-                    f"{key} failed (exit {proc.returncode}):\n{job.scrub(proc.stderr or proc.stdout, JOB_SECRETS)}",
+                    f"{key} failed (exit {proc.returncode}):\n{job.scrub(proc.stderr or proc.stdout, _SINK_SECRETS)}",
                 }
             else:
                 record["config_removed"] = True

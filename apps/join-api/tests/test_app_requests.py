@@ -11,6 +11,7 @@ afterwards would have no effect -- reassigning the module attribute does.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import pathlib
 import sys
@@ -22,6 +23,11 @@ os.environ["XROAD_ADMIN_PASSWORD"] = "secret"
 os.environ["XROAD_TOKEN_PIN"] = "1234"
 os.environ["KP2_JOIN_APPLICANT_TOKEN"] = "test-applicant-token"
 os.environ["KP2_JOIN_OPERATOR_TOKEN"] = "test-operator-token"
+# _DATASTORE_KIND stays "sqlite" here (no deployment.yaml at this PACK_DIR),
+# so KP2_JOIN_DB_URL is never actually connected to -- it only needs to be
+# present for _SINK_SECRETS to pick its password up at import time, the
+# same way hurl/generate.py's subprocess would see it in a real .env.
+os.environ["KP2_JOIN_DB_URL"] = "postgresql://joinapi:s3cr3t-dsn-pw@db:5432/join"
 
 _spec = importlib.util.spec_from_file_location(
     "join_api_app_requests", pathlib.Path(__file__).resolve().parent.parent / "app.py"
@@ -160,6 +166,41 @@ def test_submit_response_never_carries_a_credential(client):
         app_module.OPERATOR_TOKEN,
     ):
         assert secret not in body
+
+
+def test_a_generate_failure_at_submission_is_scrubbed_of_the_full_sink_secret_set(client, monkeypatch):
+    """dry_run_diff's GenerateFailure stderr goes into a REJECTED record AND
+    the applicant's own response body (app.py's dry_run_diff except-clause,
+    docstring: "stderr is passed through verbatim" -- scrubbed first). Before
+    this fix that scrub used JOB_SECRETS (the three Hurl credentials only),
+    not app._SINK_SECRETS -- so hurl/generate.py reading the whole .env
+    (writer.py's own comment on this) could hand an applicant the operator's
+    bearer token, its own bearer token back with the wrong casing intact, or
+    the join-api database's password, in a response IT received directly."""
+    operator_token = app_module.OPERATOR_TOKEN
+    applicant_token = app_module.APPLICANT_TOKEN
+    dsn_password = "s3cr3t-dsn-pw"  # matches KP2_JOIN_DB_URL set at module import, above
+    stderr = (
+        f"Traceback ...\nKP2_JOIN_OPERATOR_TOKEN={operator_token}\n"
+        f"KP2_JOIN_APPLICANT_TOKEN={applicant_token}\n"
+        f"KP2_JOIN_DB_URL=postgresql://joinapi:{dsn_password}@db:5432/join\n"
+    )
+
+    def boom(*args, **kwargs):
+        raise writer.GenerateFailure(stderr, 1)
+
+    monkeypatch.setattr(app_module.writer, "dry_run_diff", boom)
+    resp = client.post("/requests", json=_payload(), headers=AUTH)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["state"] == "REJECTED"
+
+    stored = app_module.store.load_request(app_module._conn(), body["id"])
+    for blob in (resp.text, json.dumps(stored)):
+        assert operator_token not in blob
+        assert applicant_token not in blob
+        assert dsn_password not in blob
+        assert blob.count("***") == 3
 
 
 # -- GET /requests/{id} ----------------------------------------------------------
@@ -306,3 +347,41 @@ def test_the_shared_token_disabled_plus_ownership_enforced_closes_the_loop(tmp_p
 
     old_shared = {"Authorization": "Bearer test-applicant-token", CONSOLE_HEADER: "1"}
     assert client.get("/requests/r1", headers=old_shared).status_code == 403
+
+
+# -- regression guard (0.1/M3) --------------------------------------------------
+
+
+def test_no_job_scrub_call_site_passes_the_narrow_job_secrets_set():
+    """0.1 (M3)'s actual defect: six job.scrub(...) call sites at
+    persisted-record/HTTP-response sinks passed JOB_SECRETS (the three Hurl
+    credentials only) instead of the wider _SINK_SECRETS (JOB_SECRETS plus
+    the operator/applicant bearer tokens and any DSN password) -- so
+    hurl/generate.py's whole-.env stderr could leak a token or a database
+    password straight into a REJECTED/FAILED record or a response body. The
+    behavioural test above only proves today's six call sites got fixed;
+    this is the one that stops an eventual seventh from regressing to the
+    narrow set. job.run(..., secrets=JOB_SECRETS)/job.unjoin(...,
+    secrets=JOB_SECRETS) are a different thing -- the credential set Hurl
+    is actually handed, not a scrub set -- and are excluded here by
+    matching the `job.scrub(` call shape specifically, not every
+    JOB_SECRETS reference in the file."""
+    import ast
+
+    tree = ast.parse((pathlib.Path(__file__).resolve().parent.parent / "app.py").read_text())
+    offending = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "scrub"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "job"
+        and any(isinstance(arg, ast.Name) and arg.id == "JOB_SECRETS" for arg in node.args)
+    ]
+    assert not offending, (
+        f"app.py line(s) {offending}: job.scrub(..., JOB_SECRETS) scrubs a persisted "
+        "record or HTTP response with the narrow three-credential set -- use "
+        "_SINK_SECRETS, which also covers the operator/applicant bearer tokens and "
+        "any DSN password."
+    )
