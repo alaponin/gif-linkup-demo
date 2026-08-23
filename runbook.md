@@ -696,6 +696,26 @@ but wherever it calls for a *live* drill against an actual cluster or
 droplet, it is marked **Status: documented, not yet run** — a plain fact
 to say, not something to paper over.
 
+**The CI path does most of this section for you.** On the workflow path
+(`kp2-federation.yml`), once `deployment.yaml` says `datastore.kind:
+postgres`, the `db-sync` step (`infra/ci/db-sync.sh` +
+`db-sync-remote.sh`) runs on every `up`/`deploy`, before
+`remote-deploy.sh`, and automates the whole chain from **Provisioning**
+below through "set `.env`'s `KP2_JOIN_DB_URL`": it applies
+`infra/terraform-db/` with the current droplet's id (creating the cluster
+on the first run, re-trusting a re-created droplet on every later one),
+ships the CA cert, writes the three `KP2_JOIN_DB_URL*`/`KP2_DB_CA_CERT`
+keys into the droplet's `.env`, and bootstraps the schema **as admin**,
+in exactly the order this section mandates. What stays manual on that
+path: committing the `deployment.yaml` flips themselves (`datastore.kind`,
+`commit_gate` and friends — config-as-code, deliberately), everything
+under "Backup, restore and recovery", and cluster destruction (§6.3 —
+never a CI action, by design). Note the recorded posture change: the DSNs
+now transit the CI runner (masked, never argv, never logged), which grants
+CI nothing it could not already read via `DO_TOKEN` from DO's API. The
+procedures below remain the reference for laptop-driven deploys and for
+understanding what the step does.
+
 **Provisioning.** `cd infra/terraform-db && terraform init
 -backend-config=backend.hcl`, then the standard `terraform apply` flow —
 the module's own comments (`main.tf`, `variables.tf`) are the reference for
@@ -897,8 +917,11 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
   purge/redeploy cycle on a live droplet is documented, not yet run.
 
 - **§6.2 — droplet destroyed and re-created.** Three things must be
-  restored, and today nothing in this pack's CI automates any of them — a
-  human has to notice and act:
+  restored. **On the CI path, all three are automated:** the workflow's
+  `db-sync` step (`infra/ci/db-sync.sh`) re-runs on every `up`, so a fresh
+  droplet gets the firewall re-trust, the CA cert and the `.env` keys
+  before the deploy step even starts. The list below is what that step
+  does — and remains the manual procedure for laptop-driven deploys:
   1. **`.env`'s `KP2_JOIN_DB_URL`.** The droplet's copy dies with it. The
      DB password is DO-issued, not regenerated the way
      `scripts/gen-secrets.sh` regenerates the X-Road demo credentials —
@@ -915,14 +938,16 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
      apply with a new id replaces the old rule rather than stacking it.
   3. **The CA cert.** Stable per cluster, but it lives on the droplet's
      disk — re-run `scripts/fetch-db-ca-cert.sh`.
-  **Named explicitly:** step 2 is a manual
-  step today. Nothing watches for a droplet replacement and re-applies the
-  DB module automatically — miss it, and the cluster firewall keeps
+  **Named explicitly:** step 2 is only automatic when the workflow does
+  the deploying. On a laptop-driven re-provision nothing watches for the
+  droplet replacement — miss the re-apply, and the cluster firewall keeps
   trusting a droplet that no longer exists; join-api loses connectivity
-  with no automated signal beyond the resulting connection failures.
+  with no automated signal beyond the resulting connection failures. (The
+  CI path cannot miss it: `db-sync.sh` re-asserts the rule before every
+  deploy, which is why it exists.)
   Status: the drill that would exercise this end to end (destroy the
-  droplet, re-provision, confirm the trusted-sources step is what makes the
-  first connect succeed) is documented, not yet run.
+  droplet, re-provision via the workflow, confirm the db-sync step is what
+  makes the first connect succeed) is documented, not yet run.
 
 - **§6.3 — cluster destruction gate.** Destroying the cluster is:
   `scripts/join-store-export.sh` (which verifies its own output with

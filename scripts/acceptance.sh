@@ -531,8 +531,13 @@ _27_join_store="$OUT_DIR/join-store/join-store.sqlite3"
 if [ "$_27_datastore_kind" = "postgres" ]; then
   _27_join_store=$(mktemp)
   trap 'rm -f "$_27_join_store"' EXIT
+  # </dev/null: remote-deploy.sh is fed to `ssh ... bash -s`, so that bash is
+  # reading its own source from stdin and has not read ahead. `compose run`
+  # defaults to --interactive (-T only drops the TTY) and would drain the
+  # rest of remote-deploy.sh into the container -- its closing line silently
+  # never runs. Only reachable on the Postgres branch, which CI now takes.
   docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
-    python -m store dump-records > "$_27_join_store" \
+    python -m store dump-records </dev/null > "$_27_join_store" \
     || fail "2.7: could not read the join store via 'docker compose run join-api python -m store dump-records'"
 fi
 

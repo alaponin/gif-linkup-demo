@@ -4,7 +4,14 @@
 # (.env.example). Run after `terraform apply` in infra/terraform-db/, or
 # after any droplet re-provision: the cert is stable per cluster but
 # lives on the droplet's disk, so plan §6.2 has the provision step
-# re-download it rather than assume it survived. This script is only the
+# re-download it rather than assume it survived.
+#
+# LAPTOP-ONLY, and the CI path does not need it: this script shells out
+# to `terraform output` against infra/terraform-db's state, which needs
+# terraform plus the Spaces backend credentials -- neither of which the
+# droplet has (cloud-init deliberately installs no terraform). On the
+# workflow path, infra/ci/db-sync.sh reads the same output on the runner
+# and pushes the cert to the droplet over SSH instead. This script is only the
 # CA-cert leg of that section's three-things-must-survive checklist --
 # KP2_JOIN_DB_URL in .env is an operator's manual edit (plan §4's "where
 # secrets rest" decision), and re-adding the new droplet to the cluster's
