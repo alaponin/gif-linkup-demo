@@ -280,7 +280,13 @@ def _resolve_posture_switch(*, posture: str, block_name: str, block: dict, key: 
         return implied
     explicit = block[key]
     if posture == "production" and explicit != production:
-        acknowledged = key in (block.get("acknowledge_permissive") or [])
+        ack_list = block.get("acknowledge_permissive", [])
+        if not isinstance(ack_list, list) or not all(isinstance(item, str) for item in ack_list):
+            raise RuntimeError(
+                f"join-api: deployment.yaml {block_name}.acknowledge_permissive "
+                f"{ack_list!r} is not a list of strings."
+            )
+        acknowledged = key in ack_list
         if not acknowledged:
             raise RuntimeError(
                 f"join-api: deployment.yaml posture: production implies "

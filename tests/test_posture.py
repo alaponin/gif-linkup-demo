@@ -83,6 +83,36 @@ join_workflow:
     assert module._REQUIRE_HTTPS_SPEC_URL is True
 
 
+def test_a_scalar_acknowledge_permissive_is_a_hard_failure_not_a_substring_match(tmp_path):
+    """Reviewer finding on ab84b75: `key in (block.get(...) or [])` used `in`
+    on whatever YAML produced -- a scalar string acknowledges via Python's
+    substring `in`, so `acknowledge_permissive: enforce_ownership` (a scalar,
+    not a list) or even a typo like `commit_gates_off` would silently
+    acknowledge `commit_gate`. Must refuse instead."""
+    deployment_yaml = """
+posture: production
+join_workflow:
+  enforce_ownership: false
+  acknowledge_permissive: enforce_ownership
+"""
+    with pytest.raises(RuntimeError, match="acknowledge_permissive"):
+        _import_app(tmp_path, deployment_yaml)
+
+
+def test_a_non_list_acknowledge_permissive_is_a_hard_failure_not_a_traceback(tmp_path):
+    """acknowledge_permissive: true used to raise a bare
+    TypeError: argument of type 'bool' is not iterable -- must be the pack's
+    own RuntimeError idiom instead."""
+    deployment_yaml = """
+posture: production
+join_workflow:
+  enforce_ownership: false
+  acknowledge_permissive: true
+"""
+    with pytest.raises(RuntimeError, match="acknowledge_permissive"):
+        _import_app(tmp_path, deployment_yaml)
+
+
 def test_demo_posture_and_absent_posture_reproduce_todays_behaviour(tmp_path):
     explicit_demo = _import_app(tmp_path, "posture: demo\n")
     assert explicit_demo._COMMIT_GATE == "advisory"
