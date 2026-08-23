@@ -173,6 +173,18 @@ real federation (not a demonstration) is at stake. This is a
 recommendation, not an implementation — a real target's deploy tooling
 makes the actual choice.
 
+**On the droplet `.env` is `root:kp2` mode 640, not 600.** Two containers
+have to *read* it — `hurl/generate.py`'s `read_env()` and
+`apps/join-api/writer.py`'s `_COPY_ITEMS` both do, inside `join-api` — and
+that container no longer runs as root (see `docs/production-delta.md`'s
+container-identity row). 640 with `kp2` as the group is what lets it read
+while the read-only `/repo` mount and root ownership keep it from writing;
+`infra/ci/remote-deploy.sh` sets both on every deploy, because the
+workflow's `rsync --chown=root:root` resets them. Still unreadable to every
+other account on the host, which is the property the 600 above was for. On
+a laptop nothing changes: `gen-secrets.sh` writes 600 and the container runs
+as the developer, who owns the file.
+
 ## Image acquisition at deploy time
 
 The stack pulls from Docker Hub and `ghcr.io` during deployment. A
