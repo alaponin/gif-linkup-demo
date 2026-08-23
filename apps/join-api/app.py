@@ -227,20 +227,89 @@ try:
     _deployment_doc = yaml.safe_load((PACK_DIR / "deployment.yaml").read_text()) or {}
 except FileNotFoundError:
     _deployment_doc = {}
+    # security-review-remediation-plan.md Phase A (H3): a missing/truncated
+    # deployment.yaml used to silently mean "every safe default is off", with
+    # no signal anywhere. Silence was the bug -- so this fallback stays (many
+    # unit tests point PACK_DIR at a throwaway fixture directory with no
+    # deployment.yaml at all), but it can no longer be quiet about it. _LOG
+    # is configured a few lines up, immediately after _SINK_SECRETS.
+    _LOG.warning(
+        "deployment.yaml not found at %s -- falling back to posture: demo "
+        "(join_workflow.commit_gate=advisory, enforce_ownership=false, "
+        "require_https_spec_url=false). A missing file must never be how a "
+        "deployment ends up in the permissive posture.",
+        PACK_DIR / "deployment.yaml",
+    )
 _DATASTORE_KIND = (_deployment_doc.get("datastore") or {}).get("kind", "sqlite")
 store.backend_for(_DATASTORE_KIND)
 
+# deployment.yaml's posture (security-review-remediation-plan.md Phase A,
+# H3): "demo" (default, docker-local) changes nothing below -- the three
+# join_workflow switches keep their own historical defaults. "production"
+# IMPLIES the safe value of each of the three (table in the plan's A.2).
+# An explicit join_workflow key still wins over the implication, but under
+# posture: production an explicit value that is NOT the safe one is a
+# startup refusal unless the same key is also named in
+# join_workflow.acknowledge_permissive -- deliberate, and it shows, the same
+# two-statement idiom network.bind/network.acknowledge_public_exposure
+# already uses (scripts/lib-stack.sh). Validated the same way commit_gate's
+# own value already was: a typo must fail loudly at startup, never quietly
+# resolve to "demo".
+_POSTURE = _deployment_doc.get("posture", "demo")
+if _POSTURE not in ("demo", "production"):
+    raise RuntimeError(
+        f"join-api: deployment.yaml posture {_POSTURE!r} is not 'demo' or 'production'."
+    )
+
+
+def _resolve_posture_switch(*, posture: str, block_name: str, block: dict, key: str, demo, production):
+    """One posture-implied switch, generalised over `block_name`/`block`/
+    `key` rather than hard-coded to join_workflow's three -- a later phase
+    (Phase C's Hurl `--insecure` gate) reuses this under a different key, in
+    a different block, with its own `acknowledge_permissive` list living
+    beside it, the same way join_workflow's does.
+
+    `demo`/`production` are the two posture-implied values. An explicit
+    `key` in `block` always wins over the implication; under
+    posture: production an explicit value other than `production` (a
+    "permissive" override) is a startup refusal unless `key` is also named
+    in `block`'s own `acknowledge_permissive` list.
+    """
+    implied = production if posture == "production" else demo
+    if key not in block:
+        return implied
+    explicit = block[key]
+    if posture == "production" and explicit != production:
+        acknowledged = key in (block.get("acknowledge_permissive") or [])
+        if not acknowledged:
+            raise RuntimeError(
+                f"join-api: deployment.yaml posture: production implies "
+                f"{block_name}.{key} = {production!r}, but it is set explicitly "
+                f"to {explicit!r} without naming {key!r} in "
+                f"{block_name}.acknowledge_permissive. Either remove the "
+                f"override (posture: production already implies {production!r}) "
+                "or add it to acknowledge_permissive to confirm this is "
+                "deliberate."
+            )
+    return explicit
+
+
+_JOIN_WORKFLOW = _deployment_doc.get("join_workflow") or {}
+
 # deployment.yaml's join_workflow.commit_gate (docs/production-delta.md row
-# 33): "advisory" (default, docker-local) is today's behaviour -- the
-# console shows the live-but-uncommitted flag, nothing gates. "required"
-# (the droplet target) makes approve_request stamp this value onto the
-# record, which job.py reads back at run() time to decide whether to plan a
-# config.commit gate step -- job.py itself never reads deployment.yaml (same
-# split _DATASTORE_KIND above makes). hurl/generate.py's check_join_workflow
-# admits the same two values at generation time; this is the join-api
-# process's own copy of that same refusal, so a bad value fails loudly at
-# startup here too rather than silently defaulting to "advisory".
-_COMMIT_GATE = (_deployment_doc.get("join_workflow") or {}).get("commit_gate", "advisory")
+# 33, switched by posture:): "advisory" (default, docker-local) is today's
+# behaviour -- the console shows the live-but-uncommitted flag, nothing
+# gates. "required" (posture: production) makes approve_request stamp this
+# value onto the record, which job.py reads back at run() time to decide
+# whether to plan a config.commit gate step -- job.py itself never reads
+# deployment.yaml (same split _DATASTORE_KIND above makes). hurl/generate.py's
+# check_join_workflow admits the same two values at generation time; this is
+# the join-api process's own copy of that same refusal, so a bad value fails
+# loudly at startup here too rather than silently defaulting to "advisory".
+_COMMIT_GATE = _resolve_posture_switch(
+    posture=_POSTURE, block_name="join_workflow", block=_JOIN_WORKFLOW, key="commit_gate",
+    demo="advisory", production="required",
+)
 if _COMMIT_GATE not in ("advisory", "required"):
     raise RuntimeError(
         f"join-api: deployment.yaml join_workflow.commit_gate {_COMMIT_GATE!r} is not "
@@ -248,14 +317,17 @@ if _COMMIT_GATE not in ("advisory", "required"):
     )
 
 # deployment.yaml's join_workflow.enforce_ownership (docs/production-delta.md
-# row 28): False (default, docker-local) is today's behaviour -- any
-# applicant or operator credential may read any request record. True (the
-# droplet target) turns on the one comparison this module used to promise
-# was missing -- see _owns_record below, applied to GET /requests/{id}. Read
-# and validated here, next to _COMMIT_GATE, for the same reason: a bad value
-# fails loudly at startup rather than an app.py route silently treating a
-# typo as "false".
-_ENFORCE_OWNERSHIP = (_deployment_doc.get("join_workflow") or {}).get("enforce_ownership", False)
+# row 28, switched by posture:): False (default, docker-local) is today's
+# behaviour -- any applicant or operator credential may read any request
+# record. True (posture: production) turns on the one comparison this
+# module used to promise was missing -- see _owns_record below, applied to
+# GET /requests/{id}. Read and validated here, next to _COMMIT_GATE, for the
+# same reason: a bad value fails loudly at startup rather than an app.py
+# route silently treating a typo as "false".
+_ENFORCE_OWNERSHIP = _resolve_posture_switch(
+    posture=_POSTURE, block_name="join_workflow", block=_JOIN_WORKFLOW, key="enforce_ownership",
+    demo=False, production=True,
+)
 if not isinstance(_ENFORCE_OWNERSHIP, bool):
     raise RuntimeError(
         f"join-api: deployment.yaml join_workflow.enforce_ownership {_ENFORCE_OWNERSHIP!r} is not "
@@ -263,16 +335,18 @@ if not isinstance(_ENFORCE_OWNERSHIP, bool):
     )
 
 # deployment.yaml's join_workflow.require_https_spec_url (docs/production-
-# delta.md row 18): False (default, docker-local) is the transition -- an
-# http spec_url is accepted exactly as it always was, which is what lets
-# this pack's own fixtures move to https ahead of the switch rather than
-# with it. True (the droplet target) makes validate.py's https_spec_url
-# check REJECT a plain-http spec_url before check 9 ever fetches it. Read
-# and validated here beside _COMMIT_GATE/_ENFORCE_OWNERSHIP for the third
-# time for the same reason: a typo must fail loudly at startup, never
-# quietly become "false" and leave the production posture off.
-_REQUIRE_HTTPS_SPEC_URL = (_deployment_doc.get("join_workflow") or {}).get(
-    "require_https_spec_url", False
+# delta.md row 18, switched by posture:): False (default, docker-local) is
+# the transition -- an http spec_url is accepted exactly as it always was,
+# which is what lets this pack's own fixtures move to https ahead of the
+# switch rather than with it. True (posture: production) makes validate.py's
+# https_spec_url check REJECT a plain-http spec_url before check 9 ever
+# fetches it. Read and validated here beside _COMMIT_GATE/_ENFORCE_OWNERSHIP
+# for the third time for the same reason: a typo must fail loudly at
+# startup, never quietly become "false" and leave the production posture
+# off.
+_REQUIRE_HTTPS_SPEC_URL = _resolve_posture_switch(
+    posture=_POSTURE, block_name="join_workflow", block=_JOIN_WORKFLOW, key="require_https_spec_url",
+    demo=False, production=True,
 )
 if not isinstance(_REQUIRE_HTTPS_SPEC_URL, bool):
     raise RuntimeError(

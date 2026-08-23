@@ -365,6 +365,24 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     state is not persisted (`apps/join-api/job.py`'s own docstring: nothing
     named `*_xsrf_token` is ever written to disk) rather than replaying the
     whole sequence from scratch.
+  - **One statement instead of three (`posture: production`):**
+    `deployment.yaml`'s `posture:` key (default `demo`) implies the safe
+    value of all three switches below at once -- `commit_gate: required`,
+    `enforce_ownership: true`, `require_https_spec_url: true`:
+
+    ```yaml
+    posture: production
+    ```
+
+    An explicit `join_workflow` key still wins over the implication, but
+    under `posture: production` an explicit *permissive* value is a startup
+    refusal unless the same key is also named in
+    `join_workflow.acknowledge_permissive` -- the same two-statement idiom
+    `network.bind`/`network.acknowledge_public_exposure` already uses
+    (`scripts/lib-stack.sh`). The three bullets below still apply
+    individually: set `posture: production` for the droplet target and
+    leave them at their defaults, or flip one deliberately and acknowledge
+    it.
   - **Committing before go-live (`join_workflow.commit_gate: required`,
     the droplet target's posture):** `deployment.yaml`'s default,
     `advisory`, is what everything above describes — the console shows a

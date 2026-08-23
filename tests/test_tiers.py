@@ -119,3 +119,38 @@ def test_check_exposure_fails_on_unacknowledged_public_bind(tmp_path):
         f"no acknowledge_public_exposure, but passed:\n{result.stdout}\n{result.stderr}"
     )
     assert "0.0.0.0" in result.stdout, f"expected exposed ports listed in output:\n{result.stdout}"
+
+
+def test_lib_stack_refuses_non_loopback_bind_under_production_posture(tmp_path):
+    """security-review-remediation-plan.md Phase A (H3): scripts/lib-stack.sh
+    refuses posture: production with a non-loopback network.bind outright --
+    no acknowledge_public_exposure setting can override it, mirroring the
+    Test CA rule immediately below it in that file. Sourced (via
+    KP2_DEPLOY_SPEC, the same test-only override check-exposure.sh already
+    has) rather than run as its own script -- lib-stack.sh's own header says
+    it is meant to be sourced, not executed. The real .env's credentials are
+    used as-is (this repo's own dev .env, real values -- lib-stack.sh's
+    credential refusal would otherwise fire first and mask the check this
+    test targets); the refusal this test targets is reached, and the process
+    exits, before anything Docker-related runs."""
+    text = (PACK / "deployment.yaml").read_text()
+    assert "posture: demo" in text, "deployment.yaml no longer states posture: demo by default -- update this fixture"
+    assert "bind: 127.0.0.1" in text, "deployment.yaml no longer binds loopback by default -- update this fixture"
+    tmp_deploy = tmp_path / "deployment.yaml"
+    tmp_deploy.write_text(
+        text.replace("posture: demo", "posture: production").replace("bind: 127.0.0.1", "bind: 0.0.0.0")
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", ". scripts/lib-stack.sh"],
+        cwd=PACK,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "KP2_DEPLOY_SPEC": str(tmp_deploy)},
+    )
+    assert result.returncode != 0, (
+        f"scripts/lib-stack.sh should refuse posture: production with a "
+        f"non-loopback network.bind, but passed:\n{result.stdout}\n{result.stderr}"
+    )
+    assert "posture: production" in result.stderr, f"expected the refusal to name posture: production:\n{result.stderr}"
+    assert "no acknowledge_public_exposure setting" in result.stderr, result.stderr

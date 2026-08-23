@@ -17,6 +17,23 @@ set -euo pipefail
 : "${KP2_CONSOLE_HTPASSWD:?pass the pre-hashed htpasswd line via env}"
 
 PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+
+# Fails before the htpasswd file or any listener exists -- same fail-closed
+# ordering as the KP2_CONSOLE_HTPASSWD guard above and `nginx -t` below.
+# :443 is a production public surface; deployment.yaml must say so on
+# purpose (security-review-remediation-plan.md Phase A, H3) rather than this
+# script publishing it because it happened to run.
+POSTURE=$(python3 -c "
+import sys, yaml
+print((yaml.safe_load(open(sys.argv[1])) or {}).get('posture', 'demo'))
+" "$PACK/deployment.yaml")
+if [ "$POSTURE" != "production" ]; then
+  echo "console-publish.sh: deployment.yaml posture is ${POSTURE:-demo}, not
+production. Refusing to publish :443 -- set posture: production in
+deployment.yaml first (see docs/production-delta.md)." >&2
+  exit 1
+fi
+
 IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)
 
 # 1. The thing being exposed must be running: remote-deploy.sh stops at

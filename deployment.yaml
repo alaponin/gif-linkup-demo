@@ -7,6 +7,16 @@
 # first -- it states what every other dimension below has to become.
 target: docker-local   # only supported value today. Future: itu-cloud, vm
 
+# One statement instead of three separate flips. "production" IMPLIES the
+# safe value of each of the three join_workflow keys below (commit_gate:
+# required, enforce_ownership: true, require_https_spec_url: true) -- an
+# explicit join_workflow key still wins, but an explicit *permissive* value
+# under posture: production is a startup refusal unless the same key is
+# also named in join_workflow.acknowledge_permissive. See
+# apps/join-api/app.py's posture handling and docs/production-delta.md rows
+# 18, 28 and 33.
+posture: demo        # demo (default) | production
+
 network:
   # Host interface every published port binds to. 127.0.0.1 keeps the whole
   # stack reachable from this machine and from nowhere else. Reaching it from

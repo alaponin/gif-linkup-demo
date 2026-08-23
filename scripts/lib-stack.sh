@@ -43,7 +43,12 @@ unset _cred_var
 
 # deployment.yaml is the analyst-facing spec (X-Road version pins, network
 # bind); .env carries only secrets.
-DEPLOY_SPEC="$PACK_DIR/deployment.yaml"
+#
+# KP2_DEPLOY_SPEC overrides the path -- tests only (tests/test_tiers.py),
+# same override scripts/check-exposure.sh already has and for the same
+# reason: exercise a refusal against a throwaway deployment.yaml without
+# touching the real one.
+DEPLOY_SPEC="${KP2_DEPLOY_SPEC:-$PACK_DIR/deployment.yaml}"
 export XROAD_VERSION=$(yq_get "$DEPLOY_SPEC" xroad.version)
 export XROAD_CS_TAG=$(yq_get "$DEPLOY_SPEC" xroad.cs_tag)
 export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
@@ -53,6 +58,7 @@ export TESTCA_TAG=$(yq_get "$DEPLOY_SPEC" xroad.testca_tag)
 export XROAD_CS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.cs_digest)
 export XROAD_SS_DIGEST=$(yq_get "$DEPLOY_SPEC" xroad.ss_digest)
 export XROAD_BIND=$(yq_get "$DEPLOY_SPEC" network.bind)
+POSTURE=$(yq_get "$DEPLOY_SPEC" posture 2>/dev/null || echo demo)
 
 # Both demo images run as `nobody` (their Dockerfiles), but console mounts
 # ./out and join-api mounts the whole checkout READ-WRITE -- and on the droplet
@@ -74,6 +80,23 @@ export KP2_HOST_GID=$(id -g)
 case "$XROAD_BIND" in
   127.0.0.1|::1|localhost) ;;
   *)
+    # posture: production cannot be acknowledged onto a public bind either --
+    # a production deployment's public surface is nginx on 443
+    # (infra/ci/console-publish.sh), never a published compose port, so there
+    # is no legitimate shape where both are true. Checked first, and before
+    # the ordinary acknowledge_public_exposure escape below: this refusal has
+    # no escape at all, same as the Test CA rule immediately after it.
+    if [ "$POSTURE" = "production" ]; then
+      echo "lib-stack.sh: deployment.yaml sets posture: production with
+network.bind=$XROAD_BIND. Refused -- no acknowledge_public_exposure setting
+can override this one.
+
+A production deployment's public surface is nginx on 443
+(infra/ci/console-publish.sh), never a published compose port. Reach this
+stack over an SSH tunnel or a VPN instead, or drop posture: production if
+this really is a demo host." >&2
+      exit 1
+    fi
     # The Test CA cannot be acknowledged onto a public bind -- unlike the
     # rest of this exposure, there is no legitimate reason to want it there.
     CA_IN_COMPOSE=$(python3 - "$PACK_DIR/docker-compose.yml" <<'PY'

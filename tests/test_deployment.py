@@ -27,6 +27,16 @@ def test_the_committed_deployment_yaml_passes():
     )
 
 
+def test_the_committed_deployment_yaml_states_a_posture_explicitly():
+    """security-review-remediation-plan.md Phase A (H3): posture: demo (the
+    docker-local default) must be spelled out in the committed file, not
+    left to app.py's own default -- the point of the key is that a reviewer
+    reading deployment.yaml sees the deployment's posture as one word,
+    without inferring it from the absence of a line."""
+    deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
+    assert deployment.get("posture") == "demo"
+
+
 def test_a_missing_join_workflow_block_defaults_to_advisory():
     check_join_workflow({})  # does not raise
 
