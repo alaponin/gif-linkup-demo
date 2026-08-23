@@ -953,11 +953,19 @@ the droplet's own stack is ephemeral around it. Four events, four rules.
   `scripts/join-store-export.sh` (which verifies its own output with
   `pg_restore --list` internally), move the resulting dump somewhere
   durable, **only then** `terraform destroy` in `infra/terraform-db/`. The
-  export lands in `$KP2_EXPORT_DIR` (owner-only, `umask 077`) — on a laptop
-  that is the `out/join-migrated/` convention `scripts/migrate-join-store.py`
-  also uses, unchanged; on the droplet `infra/ci/remote-deploy.sh` sets it to
-  `/opt/kp2/exports`, deliberately outside `out/`, which is bind-mounted
-  read-write into `join-api`.
+  export lands in `$KP2_EXPORT_DIR` (owner-only, `umask 077`), which
+  defaults to the `out/join-migrated/` convention
+  `scripts/migrate-join-store.py` also uses — fine on a laptop, but `out/`
+  is bind-mounted read-write into `join-api` on the droplet, so **run the
+  export there with the variable set explicitly:**
+  ```
+  KP2_EXPORT_DIR=/opt/kp2/exports scripts/join-store-export.sh
+  ```
+  `infra/ci/remote-deploy.sh` exports this same `/opt/kp2/exports` default
+  too, but only into its own CI-driven deploy process — cluster destruction
+  is never a CI action (§6.4 below), so that export does not reach this
+  interactive, operator-run command; setting it on this command line is
+  what actually gets the dump outside every container mount here.
   `lifecycle { prevent_destroy = true }` on the cluster resource
   (`infra/terraform-db/main.tf`) means a bare `terraform destroy` refuses —
   this is structural, not just procedural, by design: destroying the

@@ -37,10 +37,13 @@ umask 077
 
 # Where exports land. Defaults to the laptop-local convention
 # (out/join-migrated/, same as scripts/migrate-join-store.py's own archive
-# directory) so docker-local's zero-setup path is unchanged; set to
-# /opt/kp2/exports by infra/ci/remote-deploy.sh on the droplet, which is
-# outside every container bind mount -- the half of the join-store-export
-# finding a umask alone cannot fix.
+# directory) so docker-local's zero-setup path is unchanged. This script is
+# run interactively on the droplet (runbook.md §6.3, cluster destruction is
+# never a CI action) -- infra/ci/remote-deploy.sh's own export of this same
+# variable covers only its own CI-driven process, not that later shell, so
+# the operator must set KP2_EXPORT_DIR=/opt/kp2/exports on the command line
+# there themselves. Outside every container bind mount, which is the half
+# of the join-store-export finding a umask alone cannot fix.
 : "${KP2_EXPORT_DIR:=$PACK_DIR/out/join-migrated}"
 
 # Missing deployment.yaml defaults to "sqlite", same as app.py's own

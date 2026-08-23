@@ -20,8 +20,11 @@ REMOTE_DEPLOY_SH = (PACK / "infra" / "ci" / "remote-deploy.sh").read_text()
 
 
 def test_export_script_sets_owner_only_umask_before_creating_the_dest_dir():
-    umask_at = EXPORT_SH.index("umask 077")
-    mkdir_at = EXPORT_SH.index('mkdir -p "$DEST_DIR"')
+    # rindex, not index: a future header-comment mention of the phrase (like
+    # the pg_restore/--user comment already has, for "pg_dump -Fc" et al.)
+    # must not make this pass against prose instead of the real command.
+    umask_at = EXPORT_SH.rindex("umask 077")
+    mkdir_at = EXPORT_SH.rindex('mkdir -p "$DEST_DIR"')
     assert umask_at < mkdir_at, 'umask 077 must run before mkdir -p "$DEST_DIR"'
 
 

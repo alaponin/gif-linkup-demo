@@ -9,10 +9,13 @@ set -euo pipefail
 PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
 cd "$PACK"
 
-# Postgres join-store exports (scripts/join-store-export.sh) land here, not
-# under $PACK/out/ -- that tree is bind-mounted read-write into join-api, so
-# a chmod on the dump cannot keep it out of the container's reach the way a
-# path outside every mount does.
+# This process's own default, only -- scripts/join-store-export.sh is never
+# called from this (or any other CI) script; cluster destruction (runbook.md
+# §6.3/§6.4) is deliberately never a CI action. Sets the convention for the
+# day something here does call it. The operator-run path is what matters
+# today: runbook.md's §6.3 has the operator export this same value on the
+# command line before running join-store-export.sh interactively, since a
+# variable exported in this process never reaches that later SSH session.
 export KP2_EXPORT_DIR=/opt/kp2/exports
 
 # deploy.sh replays the whole Hurl init sequence (deploy.sh -> hurl/

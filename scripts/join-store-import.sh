@@ -27,9 +27,11 @@ set -euo pipefail
 
 # Same default as join-store-export.sh's $KP2_EXPORT_DIR -- not used to
 # locate $1 below (this script always takes an explicit path), just so the
-# usage message below can point an operator at where exports actually land
-# on this host (out/join-migrated/ on a laptop, /opt/kp2/exports on the
-# droplet, per infra/ci/remote-deploy.sh).
+# usage message below reflects this shell's actual value: out/join-migrated/
+# unless the operator exported KP2_EXPORT_DIR=/opt/kp2/exports first, which
+# runbook.md's §6.3 has them do on the droplet (infra/ci/remote-deploy.sh's
+# own export of the same variable is for its CI-driven process only and
+# never reaches this interactive shell).
 : "${KP2_EXPORT_DIR:=$PACK_DIR/out/join-migrated}"
 
 DUMP_FILE=${1:?"Usage: scripts/join-store-import.sh <dump-file>  (join-store-export.sh writes dumps under \$KP2_EXPORT_DIR, currently $KP2_EXPORT_DIR)"}
