@@ -66,29 +66,39 @@ _LOG = logging.getLogger("kp2.console.xroad")
 # Each entry is (client, pin_fingerprint) -- see _admin_pin_fingerprint()'s
 # own docstring for why the fingerprint is kept and re-checked on every
 # call, not just built once. Found in review.
-_ADMIN_CLIENTS: dict[str, tuple[httpx.Client, object]] = {}
+_ADMIN_CLIENTS: dict[str, tuple[httpx.Client, tuple[str, int, int, int] | None]] = {}
 _ADMIN_CLIENTS_LOCK = threading.Lock()
 _WARNED_UNPINNED: set[str] = set()
 
 
-def _admin_pin_fingerprint(host: str) -> tuple[str, int] | None:
+def _admin_pin_fingerprint(host: str) -> tuple[str, int, int, int] | None:
     """What admin_client(host) would pin against RIGHT NOW, cheaply -- the
-    pinned pem's path and mtime, or None when unpinned. Comparing this
-    against the fingerprint a cached client was built from is what makes
-    admin_client() notice a certificate that did not exist yet at first
-    contact (this console started before hurl/run-linkup.sh's capture
+    pinned pem's path, mtime, inode and size, or None when unpinned.
+    Comparing this against the fingerprint a cached client was built from is
+    what makes admin_client() notice a certificate that did not exist yet at
+    first contact (this console started before hurl/run-linkup.sh's capture
     step, or before a member's own server was joined and captured by
     scripts/join-agent.sh) or that changed since (a redeploy while this
     process kept running) -- without this, the trust decision made on the
     FIRST call to a host was frozen for the container's entire lifetime,
     silently, which is a worse failure mode than the fallback it was
-    supposed to be temporary cover for."""
+    supposed to be temporary cover for.
+
+    mtime alone is not reliable here (found in review, second pass):
+    scripts/lib-stack.sh's _capture_admin_cert() writes via mv (rename(2)),
+    which carries the source file's mtime over rather than stamping a fresh
+    one -- confirmed live, a captured cert's mtime does not change across a
+    re-capture that produced different bytes. Inode DOES change on every
+    mv -- also confirmed live -- so it is included, free (same stat() call),
+    alongside size as a second independent signal against the coarser mtime
+    resolution a Docker bind mount can have."""
     cert_dir = os.environ.get("KP2_XROAD_ADMIN_CERT_DIR")
     if not cert_dir:
         return None
     pem = pathlib.Path(cert_dir) / f"{host}.pem"
     try:
-        return (str(pem), pem.stat().st_mtime_ns)
+        st = pem.stat()
+        return (str(pem), st.st_mtime_ns, st.st_ino, st.st_size)
     except OSError:
         return None
 
@@ -136,7 +146,19 @@ def admin_client(host: str) -> httpx.Client:
     that outlives a redeploy, must not stay pinned to a stale decision --
     or stuck unverified -- for its whole process lifetime. The check is one
     stat() (_admin_pin_fingerprint), cheap enough to run on every call
-    rather than on a timer."""
+    rather than on a timer.
+
+    Closing the STALE client here, not merely dropping the reference, is
+    what makes this safe to call from a caller that never sees the old one
+    again -- but AdminSession does not hold `self._client` the way it looks
+    like it might: its `_client` is a property that calls this function
+    fresh on every access (see AdminSession's own comment on why), so a
+    close here never orphans a long-lived session on a dead transport.
+
+    A cert landing between this function's fingerprint read (outside the
+    lock) and _admin_ssl_context()'s own re-read (inside it, below) tags a
+    correctly-pinned client with a stale fingerprint -- self-correcting: the
+    next call recomputes the fingerprint fresh and rebuilds once more."""
     fingerprint = _admin_pin_fingerprint(host)
     with _ADMIN_CLIENTS_LOCK:
         cached = _ADMIN_CLIENTS.get(host)
@@ -191,8 +213,26 @@ class AdminSession:
         self.host = host
         self._user = user
         self._password = password
-        self._client = client or admin_client(host)
+        # NOT bound once at construction (found in review, second pass): a
+        # cached AdminSession (app.py's _SESSIONS, one per host, kept for the
+        # process lifetime) would otherwise keep using the client that was
+        # current the moment it first logged in -- and admin_client()'s
+        # cache-invalidation (this module's own docstring on
+        # _admin_pin_fingerprint) CLOSES the stale client once the pin state
+        # changes, which would make every later call through a cached session
+        # raise RuntimeError("client has been closed") forever, with no retry
+        # path (_request only retries on 401, never on a dead transport).
+        # Resolved fresh on every access instead, through the same property
+        # below -- so a session picks up a rebuilt (and now-pinned) client
+        # exactly like a fresh one would, and closing the old client is safe.
+        # `client=` (every test in this module) still pins one client for the
+        # session's whole life, same as before.
+        self._explicit_client = client
         self._login()
+
+    @property
+    def _client(self) -> httpx.Client:
+        return self._explicit_client or admin_client(self.host)
 
     def _login(self) -> None:
         """A login is a SERVER-SIDE session on that Security Server's admin

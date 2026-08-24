@@ -407,16 +407,69 @@ def test_admin_client_rebuilds_when_the_pin_state_changes(monkeypatch, tmp_path)
     (tmp_path / "ss-late-capture.pem").write_bytes((FIXTURES / "pinned-admin-cert.pem").read_bytes())
     pinned = xroad.admin_client("ss-late-capture")
     assert pinned is not unpinned
+    # The stale client is actually closed, not merely dropped -- this is
+    # what AdminSession's `_client` property (resolved fresh on every
+    # access, never cached on the instance) makes safe. Found missing in
+    # review, second pass: this assertion would have caught the original
+    # bug (AdminSession DID cache `_client` at __init__) on its own.
+    assert unpinned.is_closed
 
     # And calling again with the SAME (now pinned) state is still cached.
     pinned_again = xroad.admin_client("ss-late-capture")
     assert pinned_again is pinned
+    assert not pinned.is_closed
+
+
+def test_admin_client_rebuilds_when_the_pinned_certificate_changes(monkeypatch, tmp_path):
+    """The present -> CHANGED transition (a redeploy while this process
+    keeps running), not just absent -> present -- and specifically a
+    same-mtime replacement, the case mtime alone cannot detect. Found in
+    review, second pass: scripts/lib-stack.sh's _capture_admin_cert() writes
+    via `mv` (rename(2)), which carries the source file's mtime over rather
+    than stamping a fresh one -- confirmed live, a re-capture that produced
+    different bytes did not change the destination's mtime. Inode DOES
+    change on every such replacement, which is why _admin_pin_fingerprint()
+    includes it."""
+    import os
+
+    import xroad
+
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(tmp_path))
+    cert_a, _key_a = _self_signed(tmp_path, "cycled-a")
+    cert_b, _key_b = _self_signed(tmp_path, "cycled-b")
+    pinned_pem = tmp_path / "ss-cycled.pem"
+
+    def replace_with_same_mtime(source: pathlib.Path):
+        # The same technique scripts/lib-stack.sh's _capture_admin_cert()
+        # uses (write a .tmp, then move it into place) -- mv/rename(2)
+        # carries the SOURCE's mtime, so forcing both temp files to an
+        # identical mtime here reproduces the exact case where mtime alone
+        # would miss the change.
+        tmp = tmp_path / "ss-cycled.pem.tmp"
+        tmp.write_bytes(source.read_bytes())
+        os.utime(tmp, (1_700_000_000, 1_700_000_000))
+        os.replace(tmp, pinned_pem)
+
+    replace_with_same_mtime(cert_a)
+    first = xroad.admin_client("ss-cycled")
+
+    replace_with_same_mtime(cert_b)
+    second = xroad.admin_client("ss-cycled")
+
+    assert second is not first
+    assert first.is_closed
 
 
 def test_admin_session_defaults_to_the_pinned_admin_client(monkeypatch):
     """AdminSession's default client (no client= override, unlike every
     other test in this module) is admin_client(host) -- not a bare
-    verify=False client shared across every host."""
+    verify=False client shared across every host. Resolved through the
+    `_client` PROPERTY on every access, not bound once at __init__ (found
+    in review, second pass: a cached AdminSession must follow admin_client()'s
+    own cache-invalidation, or a client it closed out from under a stale
+    binding would break every later call on that session forever) -- so
+    `fake_admin_client` is called more than once here, and that is the
+    point, not a loosened assertion."""
     import xroad
 
     fake_client = httpx.Client(transport=httpx.MockTransport(_login_response))
@@ -428,7 +481,7 @@ def test_admin_session_defaults_to_the_pinned_admin_client(monkeypatch):
 
     monkeypatch.setattr(xroad, "admin_client", fake_admin_client)
     session = AdminSession("ss-pinned-test-3", "xrd", "secret")
-    assert seen_hosts == ["ss-pinned-test-3"]
+    assert seen_hosts and set(seen_hosts) == {"ss-pinned-test-3"}
     assert session._client is fake_client
 
 
