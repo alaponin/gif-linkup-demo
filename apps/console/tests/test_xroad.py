@@ -320,7 +320,7 @@ def _reset_admin_client_cache():
 
     yield
     with xroad._ADMIN_CLIENTS_LOCK:
-        for client in xroad._ADMIN_CLIENTS.values():
+        for client, _fingerprint in xroad._ADMIN_CLIENTS.values():
             client.close()
         xroad._ADMIN_CLIENTS.clear()
     xroad._WARNED_UNPINNED.clear()
@@ -385,6 +385,32 @@ def test_admin_client_is_pinned_and_cached_per_host(monkeypatch):
         assert first is second
     finally:
         (FIXTURES / "ss-pinned-test-2.pem").unlink()
+
+
+def test_admin_client_rebuilds_when_the_pin_state_changes(monkeypatch, tmp_path):
+    """The cache is keyed on more than the host name -- a certificate
+    captured AFTER the first call (this console started before
+    hurl/run-linkup.sh's capture step, or before scripts/join-agent.sh
+    captured a newly joined member's own server) must not leave this host
+    pinned to `verify=False` for the rest of the process's life. Found in
+    review: the original cache kept the client built on the FIRST call
+    forever, silently."""
+    import xroad
+
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(tmp_path))
+
+    # First call: nothing captured yet -- unpinned.
+    unpinned = xroad.admin_client("ss-late-capture")
+
+    # A certificate now appears, as it would once hurl/run-linkup.sh (or
+    # join-agent.sh) captures it.
+    (tmp_path / "ss-late-capture.pem").write_bytes((FIXTURES / "pinned-admin-cert.pem").read_bytes())
+    pinned = xroad.admin_client("ss-late-capture")
+    assert pinned is not unpinned
+
+    # And calling again with the SAME (now pinned) state is still cached.
+    pinned_again = xroad.admin_client("ss-late-capture")
+    assert pinned_again is pinned
 
 
 def test_admin_session_defaults_to_the_pinned_admin_client(monkeypatch):

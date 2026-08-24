@@ -62,9 +62,35 @@ _LOG = logging.getLogger("kp2.console.xroad")
 # admin host is now pinned against ITS OWN captured certificate -- httpx
 # fixes `verify=` at Client construction, so one trust decision cannot serve
 # every host once the decision differs per host.
-_ADMIN_CLIENTS: dict[str, httpx.Client] = {}
+#
+# Each entry is (client, pin_fingerprint) -- see _admin_pin_fingerprint()'s
+# own docstring for why the fingerprint is kept and re-checked on every
+# call, not just built once. Found in review.
+_ADMIN_CLIENTS: dict[str, tuple[httpx.Client, object]] = {}
 _ADMIN_CLIENTS_LOCK = threading.Lock()
 _WARNED_UNPINNED: set[str] = set()
+
+
+def _admin_pin_fingerprint(host: str) -> tuple[str, int] | None:
+    """What admin_client(host) would pin against RIGHT NOW, cheaply -- the
+    pinned pem's path and mtime, or None when unpinned. Comparing this
+    against the fingerprint a cached client was built from is what makes
+    admin_client() notice a certificate that did not exist yet at first
+    contact (this console started before hurl/run-linkup.sh's capture
+    step, or before a member's own server was joined and captured by
+    scripts/join-agent.sh) or that changed since (a redeploy while this
+    process kept running) -- without this, the trust decision made on the
+    FIRST call to a host was frozen for the container's entire lifetime,
+    silently, which is a worse failure mode than the fallback it was
+    supposed to be temporary cover for."""
+    cert_dir = os.environ.get("KP2_XROAD_ADMIN_CERT_DIR")
+    if not cert_dir:
+        return None
+    pem = pathlib.Path(cert_dir) / f"{host}.pem"
+    try:
+        return (str(pem), pem.stat().st_mtime_ns)
+    except OSError:
+        return None
 
 
 def _admin_ssl_context(host: str) -> ssl.SSLContext | bool:
@@ -99,15 +125,27 @@ def _admin_ssl_context(host: str) -> ssl.SSLContext | bool:
 
 
 def admin_client(host: str) -> httpx.Client:
-    """The pooled, pinned client for `host`'s :4000 admin API -- created
-    once per host, reused for every AdminSession and reachability probe
-    against it (app.py's /api/topology). Public: AdminSession.__init__ and
-    app.py's reachability probe both need one, and there is exactly one way
-    to build it."""
+    """The pooled, pinned client for `host`'s :4000 admin API -- reused for
+    every AdminSession and reachability probe against it (app.py's
+    /api/topology), for as long as the trust decision it was built with
+    hasn't changed. Public: AdminSession.__init__ and app.py's reachability
+    probe both need one, and there is exactly one way to build it.
+
+    Re-checked on every call, not just built once (found in review): a
+    console that started before its host's certificate was captured, or
+    that outlives a redeploy, must not stay pinned to a stale decision --
+    or stuck unverified -- for its whole process lifetime. The check is one
+    stat() (_admin_pin_fingerprint), cheap enough to run on every call
+    rather than on a timer."""
+    fingerprint = _admin_pin_fingerprint(host)
     with _ADMIN_CLIENTS_LOCK:
-        client = _ADMIN_CLIENTS.get(host)
-        if client is None:
-            client = _ADMIN_CLIENTS[host] = httpx.Client(verify=_admin_ssl_context(host), timeout=10.0)
+        cached = _ADMIN_CLIENTS.get(host)
+        if cached is not None and cached[1] == fingerprint:
+            return cached[0]
+        if cached is not None:
+            cached[0].close()
+        client = httpx.Client(verify=_admin_ssl_context(host), timeout=10.0)
+        _ADMIN_CLIENTS[host] = (client, fingerprint)
         return client
 
 
@@ -116,7 +154,7 @@ def close_admin_clients() -> None:
     close one SHARED_CLIENT; now there is one per host actually contacted,
     so this closes whichever of those were ever created."""
     with _ADMIN_CLIENTS_LOCK:
-        for client in _ADMIN_CLIENTS.values():
+        for client, _fingerprint in _ADMIN_CLIENTS.values():
             client.close()
         _ADMIN_CLIENTS.clear()
 

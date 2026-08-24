@@ -51,35 +51,46 @@ trap 'rm -f "$jar"' EXIT
 token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
 RAW_TMP=$(mktemp -d)
 
-_capture() {  # $1=name $2=context $3...=curl args (after -ksi)
+# Pinned against PNIA_SS's own captured certificate (security-review-
+# remediation-plan.md Phase C, M1) -- the three admin-API captures below
+# were still raw `curl -k`, bypassing api_key()/api()'s pinning entirely,
+# because they need the full response (headers + body, for mkfixture.py)
+# that api()'s `curl -sf` throws away. Found in review: fixed by pinning
+# _capture() itself rather than switching to api(). exchange_access_denied
+# below is a DIFFERENT call -- the plain-HTTP r1/consumer proxy on :8080,
+# never :4000 -- and passes no security flags of its own for that reason.
+_admin_curl_opts "$PNIA_SS"
+ADMIN_OPTS=("${_ADMIN_CURL_OPTS[@]}")
+
+_capture() {  # $1=name $2=context $3...=curl args (after -si)
   local name=$1 context=$2; shift 2
-  curl -ksi "$@" > "$RAW_TMP/$name.raw"
+  curl -si "$@" > "$RAW_TMP/$name.raw"
   python3 "$PACK_DIR/scripts/mkfixture.py" "$RAW_TMP/$name.raw" "$OUT_DIR/$name.json" "$context"
 }
 
 log "capturing read_acl_404"
 _capture read_acl_404 \
   "GET /clients/{id}/service-clients/{subject}/access-rights where subject is not a service-client on this resource at all" \
-  -b "$jar" -X GET "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${UNGRANTED_SUBJECT}/access-rights" \
+  "${ADMIN_OPTS[@]}" -b "$jar" -X GET "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${UNGRANTED_SUBJECT}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}"
 
 log "capturing grant_409_duplicate"
 _capture grant_409_duplicate \
   "POST /clients/{id}/service-clients/{subject}/access-rights granting a right already held" \
-  -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+  "${ADMIN_OPTS[@]}" -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
 
 log "revoking, capturing revoke_409_not_found, then restoring the grant"
-curl -ksf -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+curl -sf "${ADMIN_OPTS[@]}" -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
 _capture revoke_409_not_found \
   "POST /clients/{id}/service-clients/{subject}/access-rights/delete revoking a right already revoked" \
-  -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
+  "${ADMIN_OPTS[@]}" -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights/delete" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}"
-curl -ksf -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
+curl -sf "${ADMIN_OPTS[@]}" -b "$jar" -X POST "https://${XROAD_BIND}:${SS_UI[$PNIA_SS]}/api/v1/clients/${CLIENT_ID}/service-clients/${SUBJECT_ID}/access-rights" \
   -H "X-XSRF-TOKEN: ${token}" -H "Content-Type: application/json" \
   -d "{\"items\":[{\"service_code\":\"${SVC}\"}]}" -o /dev/null
 
