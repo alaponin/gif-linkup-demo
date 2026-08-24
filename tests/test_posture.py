@@ -56,6 +56,10 @@ def test_production_posture_implies_all_three_safe_values_with_no_keys_present(t
     assert module._COMMIT_GATE == "required"
     assert module._ENFORCE_OWNERSHIP is True
     assert module._REQUIRE_HTTPS_SPEC_URL is True
+    # Phase C, M1: posture: production implies hurl_insecure=False -- Hurl's
+    # --insecure TLS to the admin API is not allowed without an explicit
+    # acknowledgement, same idiom, same acknowledge_permissive list.
+    assert module._HURL_INSECURE_ALLOWED is False
 
 
 def test_production_posture_refuses_an_unacknowledged_explicit_permissive_value(tmp_path):
@@ -118,6 +122,7 @@ def test_demo_posture_and_absent_posture_reproduce_todays_behaviour(tmp_path):
     assert explicit_demo._COMMIT_GATE == "advisory"
     assert explicit_demo._ENFORCE_OWNERSHIP is False
     assert explicit_demo._REQUIRE_HTTPS_SPEC_URL is False
+    assert explicit_demo._HURL_INSECURE_ALLOWED is True
 
     # No deployment.yaml at all -- app.py's own FileNotFoundError fallback,
     # which many unit tests already rely on. Must resolve identically to an
@@ -127,6 +132,43 @@ def test_demo_posture_and_absent_posture_reproduce_todays_behaviour(tmp_path):
     assert absent_file._COMMIT_GATE == "advisory"
     assert absent_file._ENFORCE_OWNERSHIP is False
     assert absent_file._REQUIRE_HTTPS_SPEC_URL is False
+    assert absent_file._HURL_INSECURE_ALLOWED is True
+
+
+def test_production_posture_refuses_unacknowledged_hurl_insecure(tmp_path):
+    deployment_yaml = """
+posture: production
+join_workflow:
+  hurl_insecure: true
+"""
+    with pytest.raises(RuntimeError, match="hurl_insecure"):
+        _import_app(tmp_path, deployment_yaml)
+
+
+def test_production_posture_admits_hurl_insecure_once_acknowledged(tmp_path):
+    deployment_yaml = """
+posture: production
+join_workflow:
+  hurl_insecure: true
+  acknowledge_permissive: [hurl_insecure]
+"""
+    module = _import_app(tmp_path, deployment_yaml)
+    assert module._HURL_INSECURE_ALLOWED is True
+    # The other three switches are untouched -- still implied by
+    # posture: production.
+    assert module._COMMIT_GATE == "required"
+    assert module._ENFORCE_OWNERSHIP is True
+    assert module._REQUIRE_HTTPS_SPEC_URL is True
+
+
+def test_a_non_bool_hurl_insecure_is_a_hard_failure(tmp_path):
+    deployment_yaml = """
+posture: demo
+join_workflow:
+  hurl_insecure: "yes"
+"""
+    with pytest.raises(RuntimeError, match="hurl_insecure"):
+        _import_app(tmp_path, deployment_yaml)
 
 
 def test_absent_deployment_yaml_logs_a_loud_warning_naming_the_posture(tmp_path, capsys):

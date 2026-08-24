@@ -388,10 +388,17 @@ services:
       # consumer's TLS client-proxy against once a consumer's
       # connection_type is HTTPS_NO_AUTH (docs/production-delta.md row 19).
       # Public certificate only, from the same `ca-certs` volume
-      # spec-fetcher gets. NOT used for the :4000 admin API, which still
-      # presents the sidecar's own self-signed proxy-ui certificate --
-      # that one is a separate, still-open demo compromise xroad.py names.
+      # spec-fetcher gets. NOT used for the :4000 admin API -- xroad.py's
+      # AdminSession pins that separately, see KP2_XROAD_ADMIN_CERT_DIR.
       KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
+      # Each admin API's own :4000 certificate, TOFU-captured at deploy time
+      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem
+      # (security-review-remediation-plan.md Phase C, M1) -- xroad.py's
+      # AdminSession pins against it instead of running verify=False. No new
+      # mount: out/xroad-admin-certs is a subdirectory of the ./out bind
+      # mount below, which this container already has read-write for the
+      # ACL journal.
+      KP2_XROAD_ADMIN_CERT_DIR: /out/xroad-admin-certs
     volumes:
       - ca-certs:/etc/ssl/testca:ro
       - ./deployment.yaml:/pack/deployment.yaml:ro
@@ -412,6 +419,15 @@ services:
       # single-writer rule (join-api is the sole writer while it is
       # running) is a convention this mount does not, and cannot, enforce.
       - ./out:/out
+      # ...with one exception: out/xroad-admin-certs, this container's own
+      # pinned trust anchors (KP2_XROAD_ADMIN_CERT_DIR above). A read-only
+      # child mount OVER the read-write parent, listed after it so it wins
+      # -- the same shape join-api's own /repo:ro-with-rw-children mount
+      # uses, inverted. Without this, the plan's own text ("mounts that
+      # directory read-only into console and join-api") was not actually
+      # true: this container could rewrite the certificates it pins
+      # against. Found in review.
+      - ./out/xroad-admin-certs:/out/xroad-admin-certs:ro
 
   join-api:
     # KP2 member-join API -- demo only, never production (see
@@ -507,6 +523,16 @@ services:
       # against this file, never with verification off
       # (docs/production-delta.md row 19).
       KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
+      # Each admin API's own :4000 certificate, TOFU-captured at deploy time
+      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem
+      # (security-review-remediation-plan.md Phase C, M1). job.py's own
+      # admin-API calls stay on Hurl --insecure (gated on posture, not
+      # pinned -- decision 3 in the plan) and never read this; it is for
+      # scripts/member.sh's admin-session calls (refresh), which run inside
+      # this container (the NETWORK_HINT in that script says so). No new
+      # mount: out/xroad-admin-certs is a subdirectory of the ./out bind
+      # mount below.
+      KP2_XROAD_ADMIN_CERT_DIR: /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out/xroad-admin-certs
     volumes:
       - ca-certs:/etc/ssl/testca:ro
       - ../../..:/repo:ro
@@ -539,6 +565,13 @@ services:
       - ./manifest.yaml:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/manifest.yaml
       - ./onboarding:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/onboarding
       - ./out:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out
+      # ...with one exception: out/xroad-admin-certs, this container's own
+      # pinned trust anchors (KP2_XROAD_ADMIN_CERT_DIR above). A read-only
+      # child mount OVER the read-write parent, listed after it so it wins.
+      # Without this, the container that parses applicant-controlled
+      # payloads could rewrite the certificates its own scripts/member.sh
+      # calls pin against. Found in review.
+      - ./out/xroad-admin-certs:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out/xroad-admin-certs:ro
       - ./hurl:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/hurl
       # ...with one addition, for a checkout that is a git WORKTREE. There,
       # /repo/.git is not a directory but a FILE holding

@@ -1046,6 +1046,7 @@ def run(
     blocked_poll_interval: float = BLOCKED_POLL_INTERVAL_SECONDS,
     repo_root: pathlib.Path | None = None,
     log: Callable[..., None] | None = None,
+    hurl_insecure_allowed: bool = True,
 ) -> dict:
     """Drive `record` (an out/join/<id>.json request) to ACTIVE, FAILED or
     BLOCKED, persisting after every step via `save`. Mutates and returns the
@@ -1097,9 +1098,30 @@ def run(
     imports `logging` (module docstring): app.py's own `_job_log` is what
     turns these calls into JSON-lines records, scrubbed the same way every
     other error path here already is.
+
+    `hurl_insecure_allowed` (security-review-remediation-plan.md Phase C,
+    M1): app.py resolves this from deployment.yaml's posture the same way
+    it resolves commit_gate -- job.py itself never reads that file (this
+    docstring's own commit_gate paragraph explains why). True (docker-local
+    default) is today's behaviour: every Hurl call and reachability probe in
+    this module still runs with the admin API's TLS unverified, because
+    re-plumbing that path to verify is deliberately out of this plan's
+    scope. False means posture: production and no
+    join_workflow.acknowledge_permissive: [hurl_insecure] -- refused before
+    any network call, the same "resume" StepFailure pattern a few lines
+    below uses, which is why this check runs before record["state"] is even
+    set to RUNNING.
     """
     if log is None:
         log = lambda *_a, **_k: None  # noqa: E731 -- see docstring above
+    if not hurl_insecure_allowed:
+        raise StepFailure(
+            "posture",
+            "deployment.yaml posture: production disallows Hurl's --insecure TLS to "
+            "the admin API without an explicit acknowledgement. Add "
+            "join_workflow.hurl_insecure: true and \"hurl_insecure\" to "
+            "join_workflow.acknowledge_permissive to run this workflow anyway.",
+        )
     payload = JoinPayload(**record["payload"])
     sequence = build_sequence(pack_dir, payload, commit_gate=record.get("commit_gate") == "required")
     constants = build_constants(pack_dir, payload, secrets)
@@ -1595,6 +1617,7 @@ def unjoin(
     run_hurl: Callable[[str, str, dict], dict] = _default_run_hurl,
     retry_interval: float = RETRY_INTERVAL_SECONDS,
     log: Callable[..., None] | None = None,
+    hurl_insecure_allowed: bool = True,
 ) -> dict:
     """Walk `record`'s completed steps backwards, undoing each. Mutates and
     returns the record, persisting after every entry via `save`.
@@ -1613,10 +1636,21 @@ def unjoin(
     backwards there is no such "not yet".
 
     `log`, same seam and same no-op default as run()'s own -- see that
-    docstring.
+    docstring. `hurl_insecure_allowed`, same gate and same reason, also
+    run()'s own docstring: refused before record["retire_started_at"] is
+    even set, which leaves the record exactly where it started (RETIRING,
+    set by the caller before this function is entered) -- not a new state.
     """
     if log is None:
         log = lambda *_a, **_k: None  # noqa: E731
+    if not hurl_insecure_allowed:
+        raise StepFailure(
+            "posture",
+            "deployment.yaml posture: production disallows Hurl's --insecure TLS to "
+            "the admin API without an explicit acknowledgement. Add "
+            "join_workflow.hurl_insecure: true and \"hurl_insecure\" to "
+            "join_workflow.acknowledge_permissive to run this workflow anyway.",
+        )
     payload = JoinPayload(**record["payload"])
     _, steps = _hurl_modules(pack_dir)
     # commit_gate deliberately not threaded through here (contrast run()):

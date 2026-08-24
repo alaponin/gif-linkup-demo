@@ -128,6 +128,26 @@ until [ "$(docker inspect -f '{{.State.Health.Status}}' "${_HEALTH_TARGETS[@]}" 
 done
 CONTAINERS_HEALTHY=$(date +%s)
 
+# TOFU-pin every admin API's own :4000 certificate (security-review-
+# remediation-plan.md Phase C, M1) -- captured here, not left to whichever
+# caller happens to hit that host first, so console and join-api see a
+# populated out/xroad-admin-certs/ the moment they start (docker-compose.yml
+# mounts a read-only child over that subdirectory of the ./out mount in
+# both). Regenerated on every cold deploy: a changed certificate after this
+# point is a fact worth failing on later (apps/console/xroad.py and
+# lib-stack.sh's api_key()/api() would simply stop verifying that one host,
+# loudly, not silently trust the new one) -- it is never overwritten
+# mid-run. _capture_admin_cert() (scripts/lib-stack.sh) is shared with
+# scripts/join-agent.sh, which captures a newly joined member's own server
+# the same way once IT comes up -- a server this run never sees, because it
+# does not exist yet.
+log "capturing each admin API's :4000 certificate for pinning"
+_capture_admin_cert cs 4000
+for _ss in "${SS_ORDER[@]}"; do
+  _capture_admin_cert "$_ss" "${SS_UI[$_ss]}"
+done
+unset _ss
+
 # --verbose, not --very-verbose: the latter prints full request BODIES, which
 # for the login and token-init scenarios means cs_admin_password,
 # ss_admin_password and token_pin land in the terminal on every deploy and in

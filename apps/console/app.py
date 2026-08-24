@@ -290,10 +290,10 @@ async def _lifespan(app: FastAPI):
     # harmlessly, under the same lock.
     if startup_reset_task is not None:
         startup_reset_task.cancel()
-    xroad.SHARED_CLIENT.close()
+    xroad.close_admin_clients()
     # The consumer hop's own pool, separate since docs/production-delta.md
-    # row 19 stopped it sharing SHARED_CLIENT's trust decision -- and so a
-    # second thing to close, or the leak this shutdown exists to prevent
+    # row 19 stopped it sharing the admin clients' trust decision -- and so
+    # a second thing to close, or the leak this shutdown exists to prevent
     # just moved to the other client.
     xroad.EXCHANGE_CLIENT.close()
 
@@ -323,9 +323,10 @@ def get_topology():
     servers = []
     for ss in TRUTH.topology["security_servers"]:
         try:
-            # The shared pool, not a client per server per poll: this
-            # endpoint is polled every 30s and never closed one of them.
-            resp = xroad.SHARED_CLIENT.get(
+            # This server's own pinned, pooled client -- not a client per
+            # server per poll: this endpoint is polled every 30s and never
+            # closed one of them.
+            resp = xroad.admin_client(ss['host']).get(
                 f"https://{ss['host']}:{ss['ui_port']}", timeout=3.0
             )
             reachable = resp.status_code == 200

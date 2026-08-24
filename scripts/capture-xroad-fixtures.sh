@@ -42,6 +42,12 @@ PNIA_SS=${HOST_SS[PNIA:IDENTITY]}
 PLR_SS=${HOST_SS[PLR:ENROLMENT]}
 
 jar=$(api_key "${XROAD_BIND}:${SS_UI[$PNIA_SS]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
+# api_key() leaves an authenticated cookie jar behind in mktemp's directory
+# with no cleanup of its own (security-review-remediation-plan.md Phase C,
+# review finding L6) -- this script's own responsibility, since api_key()
+# is shared by callers (scripts/acceptance.sh) that manage a jar's lifetime
+# very differently.
+trap 'rm -f "$jar"' EXIT
 token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
 RAW_TMP=$(mktemp -d)
 

@@ -81,4 +81,13 @@ log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server ima
 # volumes), but a needless restart and a lost health signal are both worth
 # avoiding.
 "${COMPOSE_ALL[@]}" up -d --wait --wait-timeout "${JOIN_AGENT_WAIT:-600}" "$SS"
+
+# TOFU-pin $SS's own :4000 certificate now, not later (security-review-
+# remediation-plan.md Phase C, M1) -- hurl/run-linkup.sh's own capture pass
+# ran before this member joined and never saw this server; without this,
+# console's reachability probe and every admin caller would fall back to
+# unverified TLS for it, silently, until someone happened to notice.
+# _capture_admin_cert() is shared with hurl/run-linkup.sh (scripts/lib-stack.sh).
+_capture_admin_cert "$SS" "$UI"
+
 log "$SS is healthy -- resume the BLOCKED join request (the console's Resume button, or POST /requests/<id>/resume)"

@@ -7,14 +7,22 @@
 # first -- it states what every other dimension below has to become.
 target: docker-local   # only supported value today. Future: itu-cloud, vm
 
-# One statement instead of three separate flips. "production" IMPLIES the
-# safe value of each of the three join_workflow keys below (commit_gate:
-# required, enforce_ownership: true, require_https_spec_url: true) -- an
-# explicit join_workflow key still wins, but an explicit *permissive* value
-# under posture: production is a startup refusal unless the same key is
-# also named in join_workflow.acknowledge_permissive. See
+# One statement instead of four separate flips. "production" IMPLIES the
+# safe value of each of four join_workflow keys (commit_gate: required,
+# enforce_ownership: true, require_https_spec_url: true, hurl_insecure:
+# false) -- an explicit join_workflow key still wins, but an explicit
+# *permissive* value under posture: production is a startup refusal unless
+# the same key is also named in join_workflow.acknowledge_permissive. See
 # apps/join-api/app.py's posture handling and docs/production-delta.md rows
-# 18, 28 and 33.
+# 18, 19, 28 and 33.
+#
+# hurl_insecure: false means the join workflow REFUSES TO RUN AT ALL under
+# posture: production until acknowledged -- Hurl's TLS to the admin API is
+# not re-plumbed to verify (security-review-remediation-plan.md Phase C
+# decision 3), so "production and not acknowledged" means every join and
+# un-join fails closed, not that it silently tries to verify a certificate
+# nothing can issue. Add `join_workflow: {hurl_insecure: true,
+# acknowledge_permissive: [hurl_insecure]}` to run the workflow anyway.
 posture: demo        # demo (default) | production
 
 network:

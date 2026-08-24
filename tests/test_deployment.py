@@ -50,12 +50,14 @@ def test_an_invented_commit_gate_value_is_a_hard_failure():
         check_join_workflow({"join_workflow": {"commit_gate": "enforced"}})
 
 
-# enforce_ownership (row 28) and require_https_spec_url (row 18) landed in the
-# same join_workflow: block two phases apart, and neither extended this check
-# -- so a typo in either passed generate time and was caught only by
-# apps/join-api/app.py's own startup validation, inside a container, after a
-# deploy. Both are booleans in app.py; these assert generate.py agrees.
-@pytest.mark.parametrize("key", ["enforce_ownership", "require_https_spec_url"])
+# enforce_ownership (row 28), require_https_spec_url (row 18) and
+# hurl_insecure (row 19, security-review-remediation-plan.md Phase C) landed
+# in the same join_workflow: block across three phases, and the first two
+# didn't extend this check when they landed -- so a typo passed generate
+# time and was caught only by apps/join-api/app.py's own startup
+# validation, inside a container, after a deploy. All three are booleans in
+# app.py; these assert generate.py agrees.
+@pytest.mark.parametrize("key", ["enforce_ownership", "require_https_spec_url", "hurl_insecure"])
 def test_the_boolean_switches_admit_both_booleans(key):
     check_join_workflow({"join_workflow": {key: True}})   # does not raise
     check_join_workflow({"join_workflow": {key: False}})  # does not raise
@@ -64,7 +66,7 @@ def test_the_boolean_switches_admit_both_booleans(key):
 # "true" is the one that matters: YAML quoting turns the posture ON into a
 # string, app.py rejects it -- but only after generate.py has already written
 # a whole federation's worth of output believing the switch is fine.
-@pytest.mark.parametrize("key", ["enforce_ownership", "require_https_spec_url"])
+@pytest.mark.parametrize("key", ["enforce_ownership", "require_https_spec_url", "hurl_insecure"])
 @pytest.mark.parametrize("bad", ["true", "yes", 1, None])
 def test_a_non_boolean_switch_value_is_a_hard_failure(key, bad):
     with pytest.raises(SystemExit, match=key):

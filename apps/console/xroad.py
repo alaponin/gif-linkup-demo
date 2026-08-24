@@ -12,37 +12,113 @@ X-Road. Two distinct clients, because they hit two distinct surfaces:
 The two now differ in exactly one way, and it is the point of
 docs/production-delta.md row 19:
 
-- AdminSession still runs with verify=False. The :4000 admin UI presents
-  the sidecar's own self-signed proxy-ui certificate, which nothing issues
-  and nothing can verify; that is a demo compromise this row does NOT
-  close and the delta table still carries.
-- exchange() does NOT. A consumer's TLS client proxy presents an internal
-  TLS certificate the federation's CA issued for that server's name
-  (hurl's ss.internal_tls_cert step), so this connection is verified
-  against KP2_XROAD_CA_BUNDLE like any other real TLS client. Turning
-  verification off here would leave the hop encrypted against an observer
-  and open to anyone able to answer for `ss-pnea` -- which is not a smaller
-  version of the property row 19 claims, it is the absence of it.
+- AdminSession is TOFU-pinned (security-review-remediation-plan.md Phase C,
+  M1), not unverified. The :4000 admin UI presents the sidecar's own
+  self-signed proxy-ui certificate, which nothing issues, so there is no CA
+  to verify it against -- but hurl/run-linkup.sh captures each server's own
+  certificate at deploy time into KP2_XROAD_ADMIN_CERT_DIR/<host>.pem, and
+  that captured leaf is trusted as its own root from then on. This closes
+  "any attacker on the path" and does NOT close "an attacker was on the
+  path during the very first deploy, before the certificate was captured"
+  -- the same honesty caveat scripts/lib-stack.sh's testca_bundle()
+  already carries for the Test CA. Hostname verification stays off: the
+  certificate's CN/SAN name the container's own runtime hostname, which is
+  neither predictable nor what any caller here connects with. No captured
+  certificate for a host (not yet deployed through run-linkup.sh, or a unit
+  test with no cert directory at all) falls back to verify=False, logged
+  once -- the demo compromise this row used to describe unconditionally is
+  now the exception, not the rule.
+- exchange() has always been different. A consumer's TLS client proxy
+  presents an internal TLS certificate the federation's CA issued for that
+  server's name (hurl's ss.internal_tls_cert step), so this connection is
+  verified against KP2_XROAD_CA_BUNDLE like any other real TLS client.
+  Turning verification off here would leave the hop encrypted against an
+  observer and open to anyone able to answer for `ss-pnea` -- which is not
+  a smaller version of the property row 19 claims, it is the absence of it.
 """
 from __future__ import annotations
 
 import dataclasses
+import logging
 import os
+import pathlib
 import ssl
+import threading
 import time
 
 import httpx
 
-# One pooled client for every call this container makes, instead of a fresh
-# httpx.Client per AdminSession and per exchange() -- those were never
-# closed, so a console left open for a demo accumulated one connection pool
-# per poll (the page polls /api/topology and /api/acl every 30s) until the
-# garbage collector happened to reap them. Reusing one pool also keeps the
-# TLS handshake off every repeat call. httpx.Client is thread-safe, which
-# matters here: FastAPI runs this app's sync endpoints in a threadpool.
-# Per-request `timeout=` still overrides this default where a caller wants a
-# shorter one (app.py's reachability probe).
-SHARED_CLIENT = httpx.Client(verify=False, timeout=10.0)
+_LOG = logging.getLogger("kp2.console.xroad")
+
+# One pooled client PER ADMIN HOST, instead of a fresh httpx.Client per call
+# -- those were never closed, so a console left open for a demo accumulated
+# one connection pool per poll (the page polls /api/topology and /api/acl
+# every 30s) until the garbage collector happened to reap them. Reusing a
+# pool also keeps the TLS handshake off every repeat call. httpx.Client is
+# thread-safe, which matters here: FastAPI runs this app's sync endpoints in
+# a threadpool.
+#
+# Per host, not one shared client (the old SHARED_CLIENT), because each
+# admin host is now pinned against ITS OWN captured certificate -- httpx
+# fixes `verify=` at Client construction, so one trust decision cannot serve
+# every host once the decision differs per host.
+_ADMIN_CLIENTS: dict[str, httpx.Client] = {}
+_ADMIN_CLIENTS_LOCK = threading.Lock()
+_WARNED_UNPINNED: set[str] = set()
+
+
+def _admin_ssl_context(host: str) -> ssl.SSLContext | bool:
+    """Trust decision for one admin host's :4000 (module docstring: TOFU
+    pinning, security-review-remediation-plan.md Phase C). The pinned file
+    is named exactly `host` because that is the same string every caller
+    here already uses as the admin host -- hurl/run-linkup.sh captures it
+    under that name for the same reason.
+
+    check_hostname is off even when a pinned certificate is found: its
+    CN/SAN name the sidecar container's own runtime hostname (verified live
+    -- a random per-container value, never `host`), so hostname matching
+    would fail even against the correct, captured certificate. What this
+    verifies is "the same certificate this server presented at capture
+    time", not "a certificate naming this server".
+    """
+    cert_dir = os.environ.get("KP2_XROAD_ADMIN_CERT_DIR")
+    pem = pathlib.Path(cert_dir) / f"{host}.pem" if cert_dir else None
+    if pem is None or not pem.is_file():
+        if host not in _WARNED_UNPINNED:
+            _WARNED_UNPINNED.add(host)
+            _LOG.warning(
+                "xroad.py: no pinned certificate for admin host %r (KP2_XROAD_ADMIN_CERT_DIR=%r) "
+                "-- falling back to verify=False for this host's :4000 admin API. Run "
+                "hurl/run-linkup.sh to capture it.",
+                host, cert_dir,
+            )
+        return False
+    ctx = ssl.create_default_context(cafile=str(pem))
+    ctx.check_hostname = False
+    return ctx
+
+
+def admin_client(host: str) -> httpx.Client:
+    """The pooled, pinned client for `host`'s :4000 admin API -- created
+    once per host, reused for every AdminSession and reachability probe
+    against it (app.py's /api/topology). Public: AdminSession.__init__ and
+    app.py's reachability probe both need one, and there is exactly one way
+    to build it."""
+    with _ADMIN_CLIENTS_LOCK:
+        client = _ADMIN_CLIENTS.get(host)
+        if client is None:
+            client = _ADMIN_CLIENTS[host] = httpx.Client(verify=_admin_ssl_context(host), timeout=10.0)
+        return client
+
+
+def close_admin_clients() -> None:
+    """Shutdown counterpart to admin_client() -- app.py's lifespan used to
+    close one SHARED_CLIENT; now there is one per host actually contacted,
+    so this closes whichever of those were ever created."""
+    with _ADMIN_CLIENTS_LOCK:
+        for client in _ADMIN_CLIENTS.values():
+            client.close()
+        _ADMIN_CLIENTS.clear()
 
 
 def _exchange_ssl_context() -> ssl.SSLContext:
@@ -58,8 +134,8 @@ def _exchange_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-# Separate from SHARED_CLIENT on purpose -- see this module's docstring for
-# why the two clients no longer share a trust decision. Same pooling
+# Separate from the admin clients on purpose -- see this module's docstring
+# for why the two never share a trust decision. Same pooling
 # rationale, same thread-safety.
 EXCHANGE_CLIENT = httpx.Client(verify=_exchange_ssl_context(), timeout=10.0)
 
@@ -77,7 +153,7 @@ class AdminSession:
         self.host = host
         self._user = user
         self._password = password
-        self._client = client or SHARED_CLIENT
+        self._client = client or admin_client(host)
         self._login()
 
     def _login(self) -> None:

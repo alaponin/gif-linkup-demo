@@ -144,7 +144,10 @@ def _fake_r1(
     return call
 
 
-def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, server_up=None, log=None) -> dict:
+def _run(
+    record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, server_up=None, log=None,
+    hurl_insecure_allowed=True,
+) -> dict:
     def save(rec: dict) -> None:
         if saves is not None:
             saves.append(json.loads(json.dumps(rec)))
@@ -164,6 +167,7 @@ def _run(record: dict, hurl: FakeHurl, *, r1=None, saves: list | None = None, se
         retry_interval=0,
         blocked_poll_interval=0,
         log=log,
+        hurl_insecure_allowed=hurl_insecure_allowed,
     )
 
 
@@ -314,6 +318,30 @@ def test_a_hosted_join_runs_to_active_and_verified():
     assert record["verified"] is True
     assert record["last_completed_step"] == "join.r1_verify"
     assert hurl.calls == EXPECTED_IDS[:-1]
+
+
+def test_hurl_insecure_not_allowed_refuses_before_any_hurl_call():
+    """security-review-remediation-plan.md Phase C, M1: posture: production
+    without join_workflow.acknowledge_permissive: [hurl_insecure] must stop
+    run() before it does anything network-shaped -- not run Hurl anyway and
+    fail on the first response, and not silently try to verify a
+    certificate nothing can issue (decision 3: the Hurl path is not
+    re-plumbed to verify TLS in this plan)."""
+    hurl = FakeHurl()
+    saves: list = []
+    with pytest.raises(job.StepFailure, match="posture: production"):
+        _run(_record(), hurl, saves=saves, hurl_insecure_allowed=False)
+    assert hurl.calls == []
+    assert saves == []
+
+
+def test_hurl_insecure_allowed_true_is_unaffected():
+    """The default (docker-local, posture: demo) -- explicit True must
+    behave exactly like every other test in this module, which never passes
+    this argument at all."""
+    hurl = FakeHurl()
+    record = _run(_record(), hurl, hurl_insecure_allowed=True)
+    assert record["state"] == "ACTIVE"
 
 
 def test_captures_are_parsed_out_of_the_report_and_threaded_into_later_steps():
@@ -1484,12 +1512,32 @@ def _active(**overrides) -> dict:
     return record
 
 
-def _unjoin(record: dict, hurl: ReverseHurl, saves: list | None = None) -> dict:
+def _unjoin(
+    record: dict, hurl: ReverseHurl, saves: list | None = None, *, hurl_insecure_allowed=True,
+) -> dict:
     def save(rec: dict) -> None:
         if saves is not None:
             saves.append(json.loads(json.dumps(rec)))
 
-    return job.unjoin(record, REAL_PACK_DIR, secrets=SECRETS, save=save, run_hurl=hurl, retry_interval=0)
+    return job.unjoin(
+        record, REAL_PACK_DIR, secrets=SECRETS, save=save, run_hurl=hurl, retry_interval=0,
+        hurl_insecure_allowed=hurl_insecure_allowed,
+    )
+
+
+def test_unjoin_hurl_insecure_not_allowed_refuses_before_any_hurl_call():
+    """Same gate as run()'s own (security-review-remediation-plan.md Phase
+    C, M1), and the same reason unjoin()'s docstring gives for raising
+    before record["retire_started_at"] is set: the record is left exactly
+    where it started (RETIRING), not moved to a new state."""
+    record = _active()
+    hurl = ReverseHurl()
+    saves: list = []
+    with pytest.raises(job.StepFailure, match="posture: production"):
+        _unjoin(record, hurl, saves, hurl_insecure_allowed=False)
+    assert hurl.calls == []
+    assert saves == []
+    assert record["state"] == "RETIRING"
 
 
 def _reversed_ids(hurl: ReverseHurl) -> list[str]:

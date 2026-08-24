@@ -48,6 +48,14 @@ if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1
 fi
 command -v jq   >/dev/null 2>&1 || FAILURES+=("jq")
 command -v curl >/dev/null 2>&1 || FAILURES+=("curl")
+# security-review-remediation-plan.md Phase C (M1): hurl/run-linkup.sh
+# captures each admin API's certificate with `openssl s_client`, and
+# lib-stack.sh's api_key()/api() pin against it with `openssl x509`/`pkey`/
+# `dgst` -- curl has no CLI-only way to verify a chain while skipping
+# hostname checking (the pinned certificate's CN is the container's own
+# runtime hostname, never the address these functions connect to), so
+# --pinnedpubkey is the mechanism, and it needs the SPKI hash computed here.
+command -v openssl >/dev/null 2>&1 || FAILURES+=("openssl")
 
 if ! command -v python3 >/dev/null 2>&1; then
   FAILURES+=("python3")
@@ -161,7 +169,7 @@ print_warnings() {
 }
 
 if [ "${#FAILURES[@]}" -eq 0 ] && [ "${#ENV_PROBLEMS[@]}" -eq 0 ]; then
-  echo "preflight: docker, docker compose (v2), jq, curl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, a monorepo git checkout at the expected depth, and every .env key the deploy requires are all present."
+  echo "preflight: docker, docker compose (v2), jq, curl, openssl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, a monorepo git checkout at the expected depth, and every .env key the deploy requires are all present."
   print_warnings
   exit 0
 fi
@@ -185,6 +193,10 @@ for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
     curl)
       echo "- curl not found" >&2
       hint "sudo apt-get install -y curl" "brew install curl" >&2
+      ;;
+    openssl)
+      echo "- openssl not found (needed to capture and pin the admin API's certificate)" >&2
+      hint "sudo apt-get install -y openssl" "brew install openssl" >&2
       ;;
     python3)
       echo "- python3 not found" >&2

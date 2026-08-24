@@ -359,6 +359,28 @@ if not isinstance(_REQUIRE_HTTPS_SPEC_URL, bool):
         f"join-api: deployment.yaml join_workflow.require_https_spec_url "
         f"{_REQUIRE_HTTPS_SPEC_URL!r} is not true or false."
     )
+
+# deployment.yaml's join_workflow.hurl_insecure (security-review-remediation-
+# plan.md Phase C, M1): True (default, docker-local) is today's behaviour --
+# job.run()/job.unjoin() run Hurl with --insecure against the admin API's
+# unverifiable self-signed certificate, same as always. False
+# (posture: production) makes job.run()/job.unjoin() refuse outright before
+# any network call: re-plumbing the Hurl path to verify TLS is deliberately
+# out of this plan's scope (decision 3), so "production and not
+# acknowledged" means the join workflow does not run insecurely, not that
+# it silently tries to verify a certificate nothing can issue. Same
+# _resolve_posture_switch, same join_workflow.acknowledge_permissive list
+# the three switches above already share -- exactly what that helper's own
+# docstring anticipated this phase would do.
+_HURL_INSECURE_ALLOWED = _resolve_posture_switch(
+    posture=_POSTURE, block_name="join_workflow", block=_JOIN_WORKFLOW, key="hurl_insecure",
+    demo=True, production=False,
+)
+if not isinstance(_HURL_INSECURE_ALLOWED, bool):
+    raise RuntimeError(
+        f"join-api: deployment.yaml join_workflow.hurl_insecure {_HURL_INSECURE_ALLOWED!r} is not "
+        "true or false."
+    )
 # Same _required_token refusal APPLICANT_TOKEN/OPERATOR_TOKEN get above,
 # applied to the Postgres DSN: unset or still the .env.example CHANGEME
 # placeholder must fail loudly at startup, not hand psycopg a string it will
@@ -1256,7 +1278,8 @@ def _run_job(request_id: str) -> None:
             try:
                 job.run(record, PACK_DIR, secrets=JOB_SECRETS,
                         save=lambda r: _save(conn, r, actor="system", event="job"),
-                        log=_job_log_with_metrics(request_id))
+                        log=_job_log_with_metrics(request_id),
+                        hurl_insecure_allowed=_HURL_INSECURE_ALLOWED)
             except Exception as exc:  # noqa: BLE001 -- a crashed job must not leave RUNNING forever
                 record["state"] = "FAILED"
                 record["error"] = {
@@ -1499,7 +1522,8 @@ def _run_unjoin(request_id: str) -> None:
             try:
                 job.unjoin(record, PACK_DIR, secrets=JOB_SECRETS,
                            save=lambda r: _save(conn, r, actor="system", event="unjoin"),
-                           log=_job_log_with_metrics(request_id))
+                           log=_job_log_with_metrics(request_id),
+                           hurl_insecure_allowed=_HURL_INSECURE_ALLOWED)
             except Exception as exc:  # noqa: BLE001 -- same contract as _run_job's
                 record["error"] = {
                     "step": record.get("last_reversed_step"),

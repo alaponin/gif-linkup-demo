@@ -388,7 +388,7 @@ cmd_refresh() {
            "$PACK_DIR/out/join-store/join-store.sqlite3" \
            "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" \
            "$datastore_kind" "$PACK_DIR/docker-compose.yml" <<'PY'
-import datetime, http.cookiejar, json, os, shutil, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
+import datetime, http.cookiejar, json, os, pathlib, shutil, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
 
 import yaml
 
@@ -440,12 +440,38 @@ def _spec_ssl_context():
 # X-Road's admin API authenticates by SESSION LOGIN, not an API key: POST
 # /login with form params, keep the JSESSIONID cookie, and send the
 # XSRF-TOKEN cookie's value back as an X-XSRF-TOKEN header on every call
-# (docs/decisions/xroad-770-notes.md section 1). Certificate verification is
-# off for the same reason run-linkup.sh passes --insecure: the Test CA's
-# certificates are self-signed.
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
+# (docs/decisions/xroad-770-notes.md section 1).
+#
+# TOFU-pinned, not ssl.CERT_NONE (security-review-remediation-plan.md Phase
+# C, M1): hurl/run-linkup.sh captures each server's own :4000 certificate at
+# deploy time into KP2_XROAD_ADMIN_CERT_DIR/<host>.pem -- `host` here is the
+# same topology host string that names the file, resolved from
+# hurl/topology.json a few lines up. check_hostname stays off even when a
+# pinned certificate is found: its CN/SAN name the container's own runtime
+# hostname, never `host`. No captured certificate (KP2_XROAD_ADMIN_CERT_DIR
+# unset, or this host not yet deployed through run-linkup.sh) falls back to
+# the old ssl.CERT_NONE -- apps/console/xroad.py's _admin_ssl_context() does
+# the identical thing, for the identical reason.
+def _admin_ssl_context(admin_host):
+    cert_dir = os.environ.get("KP2_XROAD_ADMIN_CERT_DIR")
+    pem = pathlib.Path(cert_dir) / f"{admin_host}.pem" if cert_dir else None
+    if pem is None or not pem.is_file():
+        print(
+            f"member.sh: no pinned certificate for admin host {admin_host!r} "
+            f"(KP2_XROAD_ADMIN_CERT_DIR={cert_dir!r}) -- falling back to unverified TLS "
+            "for this host's :4000 admin API. Run hurl/run-linkup.sh to capture it.",
+            file=sys.stderr,
+        )
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    ctx = ssl.create_default_context(cafile=str(pem))
+    ctx.check_hostname = False
+    return ctx
+
+
+ctx = _admin_ssl_context(host)
 jar = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(
     urllib.request.HTTPSHandler(context=ctx), urllib.request.HTTPCookieProcessor(jar)

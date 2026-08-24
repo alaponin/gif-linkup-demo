@@ -172,6 +172,13 @@ done
 check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
   local ss=${HOST_SS[$1]} sub=${1##*:}
   local key; key=$(api_key "${XROAD_BIND}:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
+  # RETURN, not EXIT: this runs under retry() (12 attempts per pair), so a
+  # jar per call left in /tmp with no cleanup was L6's actual shape here --
+  # not one leaked jar but dozens across a run. RETURN is function-scoped
+  # and fires on every exit path (including the jq -e failure below), and
+  # unlike EXIT it cannot collide with this script's own EXIT traps
+  # elsewhere (grep this file for `trap ... EXIT`). Found in review.
+  trap 'rm -f "$key"' RETURN
   api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" /clients \
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
@@ -205,6 +212,10 @@ done
 check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service code, $4 = expected subjects (JSON array)
   local ss=$1 client_id=$2 svc=$3 want_json=$4
   local key; key=$(api_key "${XROAD_BIND}:${SS_UI[$ss]}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}")
+  # RETURN, not EXIT -- see check_client_registered()'s identical comment
+  # above. This function has two early `|| return 1` exits below; RETURN
+  # covers both.
+  trap 'rm -f "$key"' RETURN
   api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients" \
     | jq -e --argjson want "$want_json" '([.[].id] | sort) == ($want | sort)' >/dev/null || return 1
   local subj
@@ -1109,6 +1120,10 @@ PY
       local ui=${SS_UI[$host_dns]:-} key token want
       [ -n "$ui" ] || return 1
       key=$(api_key "${XROAD_BIND}:${ui}" "${XROAD_ADMIN_USER}" "${XROAD_ADMIN_PASSWORD}") || return 1
+      # RETURN, not EXIT -- see check_client_registered()'s identical
+      # comment above. Set after the key exists (an earlier `|| return 1`
+      # above never created one), and covers every `|| return 1` below.
+      trap 'rm -f "$key"' RETURN
       api GET "${XROAD_BIND}:${ui}" "$key" /clients \
         | jq -e --arg c "$code" 'map(select(.member_code == $c)) | length == 0' >/dev/null || return 1
       token=$(api GET "${XROAD_BIND}:${ui}" "$key" /tokens/0) || return 1

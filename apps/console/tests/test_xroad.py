@@ -1,8 +1,15 @@
 """Unit tests for apps/console/xroad.py. httpx.MockTransport stubs every
-response -- no network, no Docker, no live stack required."""
+response -- no network, no Docker, no live stack required. The one
+exception is test_admin_ssl_context_rejects_a_different_certificate below,
+which opens a real loopback TLS socket -- see its own docstring for why
+MockTransport cannot prove the property it proves."""
 import json
 import pathlib
+import socket
+import ssl
+import subprocess
 import sys
+import threading
 
 import httpx
 import pytest
@@ -263,10 +270,10 @@ def test_exchange_defaults_to_the_exchange_pool(monkeypatch):
     """The leak this replaced: exchange() built a fresh, never-closed
     httpx.Client on every call, and the counter tab calls it per lookup.
 
-    EXCHANGE_CLIENT, not SHARED_CLIENT: the two stopped sharing a trust
-    decision at docs/production-delta.md row 19 -- SHARED_CLIENT still runs
-    verify=False for the unverifiable :4000 admin certificate, and the
-    consumer hop must never inherit that."""
+    EXCHANGE_CLIENT, not an admin_client(): the two stopped sharing a trust
+    decision at docs/production-delta.md row 19 -- the admin clients pin
+    (or, unpinned, run verify=False for) the unverifiable :4000 admin
+    certificate, and the consumer hop must never inherit that."""
     import xroad
 
     seen = []
@@ -299,3 +306,189 @@ def test_the_consumer_hop_never_runs_with_verification_off():
     ctx = xroad._exchange_ssl_context()
     assert ctx.verify_mode is ssl.CERT_REQUIRED
     assert ctx.check_hostname is True
+
+
+# -- admin-API TOFU pinning (security-review-remediation-plan.md Phase C, M1) -
+
+
+@pytest.fixture(autouse=True)
+def _reset_admin_client_cache():
+    """admin_client() memoises by host in a module-level dict -- these tests
+    each construct one for a throwaway host name, so the cache must not leak
+    into another test (or another test module) that reuses the same name."""
+    import xroad
+
+    yield
+    with xroad._ADMIN_CLIENTS_LOCK:
+        for client in xroad._ADMIN_CLIENTS.values():
+            client.close()
+        xroad._ADMIN_CLIENTS.clear()
+    xroad._WARNED_UNPINNED.clear()
+
+
+def test_shared_client_no_longer_exists():
+    """The old module-level SHARED_CLIENT ran verify=False for every host,
+    unconditionally -- removed outright, not left as a dead, temptingly
+    reusable escape hatch, once every caller moved to admin_client(host)."""
+    import xroad
+
+    assert not hasattr(xroad, "SHARED_CLIENT")
+
+
+def test_admin_ssl_context_pins_the_captured_certificate(monkeypatch):
+    """A host with a captured certificate at KP2_XROAD_ADMIN_CERT_DIR/<host>.pem
+    gets a verifying context built from exactly that file -- and
+    check_hostname stays off, because the certificate's CN is the
+    container's own runtime hostname, never the admin host name callers
+    connect with (verified live -- see the module docstring)."""
+    import ssl
+
+    import xroad
+
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(FIXTURES))
+    (FIXTURES / "ss-pinned-test.pem").write_bytes((FIXTURES / "pinned-admin-cert.pem").read_bytes())
+    try:
+        ctx = xroad._admin_ssl_context("ss-pinned-test")
+        assert isinstance(ctx, ssl.SSLContext)
+        assert ctx.verify_mode is ssl.CERT_REQUIRED
+        assert ctx.check_hostname is False
+    finally:
+        (FIXTURES / "ss-pinned-test.pem").unlink()
+
+
+def test_admin_ssl_context_falls_back_to_unverified_when_unpinned(monkeypatch, tmp_path):
+    """No captured certificate for this host (not yet deployed through
+    hurl/run-linkup.sh, or KP2_XROAD_ADMIN_CERT_DIR unset entirely, as in
+    every test above that passes client= directly) -- verify=False, same as
+    before this phase, so docker-local's zero-setup demo path is unaffected
+    the first time a container starts."""
+    import xroad
+
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(tmp_path))
+    assert xroad._admin_ssl_context("ss-never-captured") is False
+
+    monkeypatch.delenv("KP2_XROAD_ADMIN_CERT_DIR")
+    assert xroad._admin_ssl_context("ss-never-captured-2") is False
+
+
+def test_admin_client_is_pinned_and_cached_per_host(monkeypatch):
+    """admin_client() builds the client from _admin_ssl_context(host), and
+    the same host returns the SAME client object -- the pooling
+    admin_client()'s own docstring promises."""
+    import xroad
+
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(FIXTURES))
+    (FIXTURES / "ss-pinned-test-2.pem").write_bytes((FIXTURES / "pinned-admin-cert.pem").read_bytes())
+    try:
+        first = xroad.admin_client("ss-pinned-test-2")
+        second = xroad.admin_client("ss-pinned-test-2")
+        assert first is second
+    finally:
+        (FIXTURES / "ss-pinned-test-2.pem").unlink()
+
+
+def test_admin_session_defaults_to_the_pinned_admin_client(monkeypatch):
+    """AdminSession's default client (no client= override, unlike every
+    other test in this module) is admin_client(host) -- not a bare
+    verify=False client shared across every host."""
+    import xroad
+
+    fake_client = httpx.Client(transport=httpx.MockTransport(_login_response))
+    seen_hosts = []
+
+    def fake_admin_client(host):
+        seen_hosts.append(host)
+        return fake_client
+
+    monkeypatch.setattr(xroad, "admin_client", fake_admin_client)
+    session = AdminSession("ss-pinned-test-3", "xrd", "secret")
+    assert seen_hosts == ["ss-pinned-test-3"]
+    assert session._client is fake_client
+
+
+def _self_signed(out_dir: pathlib.Path, cn: str) -> pathlib.Path:
+    """A throwaway self-signed cert+key pair, generated fresh rather than
+    committed -- there is no reason to keep a private key, even a test-only
+    one, in the repo when openssl (already a hard preflight.sh requirement)
+    can make one in milliseconds."""
+    cert = out_dir / f"{cn}.pem"
+    key = out_dir / f"{cn}.key"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(key), "-out", str(cert), "-days", "1", "-subj", f"/CN={cn}"],
+        check=True, capture_output=True,
+    )
+    return cert, key
+
+
+def _serve_one_tls_connection(cert: pathlib.Path, key: pathlib.Path):
+    """Binds a loopback TLS listener presenting `cert`/`key`, accepts
+    exactly one connection in a background thread, and returns the port
+    once bound. Used only by the test below."""
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(str(cert), str(key))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.listen(1)
+    sock.settimeout(5)
+
+    def accept_once():
+        try:
+            conn, _ = sock.accept()
+            try:
+                with server_ctx.wrap_socket(conn, server_side=True):
+                    pass
+            except ssl.SSLError:
+                pass  # the client refused the handshake -- expected in the mismatch case
+        except socket.timeout:
+            pass
+        finally:
+            sock.close()
+
+    thread = threading.Thread(target=accept_once, daemon=True)
+    thread.start()
+    return port, thread
+
+
+def test_admin_ssl_context_rejects_a_different_certificate(tmp_path, monkeypatch):
+    """The security property _admin_ssl_context() exists for, proven against
+    a real TLS handshake -- every other test in this module only inspects
+    the returned ssl.SSLContext's attributes (verify_mode, check_hostname),
+    which proves the context is CONFIGURED to verify, not that it actually
+    REJECTS an impostor. A live socket is the only way to prove that:
+    httpx.MockTransport never performs a TLS handshake at all."""
+    import xroad
+
+    cert_a, key_a = _self_signed(tmp_path, "server-a")
+    cert_b, _key_b = _self_signed(tmp_path, "server-b")
+
+    # Pinned to A, server presents A -- must succeed.
+    port, thread = _serve_one_tls_connection(cert_a, key_a)
+    ctx = ssl.create_default_context(cafile=str(cert_a))
+    ctx.check_hostname = False
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        with ctx.wrap_socket(sock):
+            pass  # no exception -- the matching pin verified
+    thread.join(5)
+
+    # Pinned to B, server presents A -- must fail, not silently pass.
+    port, thread = _serve_one_tls_connection(cert_a, key_a)
+    ctx = ssl.create_default_context(cafile=str(cert_b))
+    ctx.check_hostname = False
+    with pytest.raises(ssl.SSLCertVerificationError):
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+            with ctx.wrap_socket(sock):
+                pass
+    thread.join(5)
+
+    # And this is exactly the context _admin_ssl_context() builds: same
+    # cafile+check_hostname=False shape, not a hand-rolled stand-in.
+    cert_dir = tmp_path / "pinned"
+    cert_dir.mkdir()
+    (cert_dir / "some-host.pem").write_bytes(cert_a.read_bytes())
+    monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(cert_dir))
+    real_ctx = xroad._admin_ssl_context("some-host")
+    assert real_ctx.verify_mode is ssl.CERT_REQUIRED
+    assert real_ctx.check_hostname is False

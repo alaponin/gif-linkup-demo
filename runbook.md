@@ -365,10 +365,11 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     state is not persisted (`apps/join-api/job.py`'s own docstring: nothing
     named `*_xsrf_token` is ever written to disk) rather than replaying the
     whole sequence from scratch.
-  - **One statement instead of three (`posture: production`):**
+  - **One statement instead of four (`posture: production`):**
     `deployment.yaml`'s `posture:` key (default `demo`) implies the safe
-    value of all three switches below at once -- `commit_gate: required`,
-    `enforce_ownership: true`, `require_https_spec_url: true`:
+    value of four switches at once -- `commit_gate: required`,
+    `enforce_ownership: true`, `require_https_spec_url: true`, and
+    `hurl_insecure: false`:
 
     ```yaml
     posture: production
@@ -379,10 +380,37 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     refusal unless the same key is also named in
     `join_workflow.acknowledge_permissive` -- the same two-statement idiom
     `network.bind`/`network.acknowledge_public_exposure` already uses
-    (`scripts/lib-stack.sh`). The three bullets below still apply
-    individually: set `posture: production` for the droplet target and
-    leave them at their defaults, or flip one deliberately and acknowledge
-    it.
+    (`scripts/lib-stack.sh`). The three bullets below cover the first
+    three; the fourth is not a behaviour change but a refusal to run at
+    all -- see the bullet immediately after them.
+
+  - **`hurl_insecure: false` (the droplet target's posture) -- the join
+    workflow refuses to run, not the reverse of a behaviour toggle:**
+    `apps/join-api/job.py`'s Hurl calls to the admin API are TOFU-pinned in
+    every OTHER caller (`apps/console/xroad.py`, `scripts/member.sh`,
+    `scripts/lib-stack.sh`'s `api_key()`/`api()`,
+    `docs/decisions/xroad-admin-tofu-pinning.md`), but Hurl's own trust
+    configuration is deliberately not re-plumbed to pin
+    (security-review-remediation-plan.md Phase C, decision 3). So under
+    `posture: production`, every `POST /requests/{id}/approve` and every
+    un-join fails immediately with a `posture` error naming the fix, until
+    `deployment.yaml` states:
+
+    ```yaml
+    posture: production
+    join_workflow:
+      hurl_insecure: true
+      acknowledge_permissive: [hurl_insecure]
+    ```
+
+    There is no accredited certificate for the admin API today, so a
+    droplet deployment needs this acknowledgement to run the join workflow
+    at all -- `deployment.yaml` as committed here still carries
+    `posture: demo`, so setting `posture: production` for a real deploy
+    means adding this block in the same change, not discovering the
+    refusal at the first approval. Read it as "we know the admin API is
+    unverified beyond TOFU, in writing", not as a switch to flip and
+    forget.
   - **Committing before go-live (`join_workflow.commit_gate: required`,
     the droplet target's posture):** `deployment.yaml`'s default,
     `advisory`, is what everything above describes — the console shows a

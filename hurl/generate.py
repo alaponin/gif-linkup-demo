@@ -471,15 +471,19 @@ def check_join_workflow(deployment: dict) -> None:
             f"generate.py: deployment.yaml join_workflow.commit_gate {commit_gate!r} is not "
             "'advisory' or 'required'."
         )
-    # The two later switches that landed in the same block and were never
-    # added here -- so a typo in either reached generate time unremarked and
-    # only apps/join-api/app.py's own startup check caught it, in a container,
-    # after a deploy. Both are booleans there (`isinstance(..., bool)`), and
+    # The later switches that landed in the same block and were never added
+    # here -- so a typo in one reached generate time unremarked and only
+    # apps/join-api/app.py's own startup check caught it, in a container,
+    # after a deploy. All are booleans there (`isinstance(..., bool)`), and
     # this mirrors that exactly: YAML's `yes`/`on`/`"false"` all parse to
     # something that is NOT a bool, and every one of them would silently mean
     # "off" -- the production posture quietly not applied, which is the worst
     # possible failure mode for a switch whose whole job is to be on.
-    for key in ("enforce_ownership", "require_https_spec_url"):
+    # hurl_insecure (security-review-remediation-plan.md Phase C) is the
+    # third addition to this same list, for the same reason the comment
+    # above already names -- do not let a fourth switch repeat this omission
+    # without reading this comment first.
+    for key in ("enforce_ownership", "require_https_spec_url", "hurl_insecure"):
         value = block.get(key, False)
         if not isinstance(value, bool):
             raise SystemExit(

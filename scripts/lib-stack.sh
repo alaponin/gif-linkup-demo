@@ -233,6 +233,35 @@ testca_bundle() {
   printf '%s\n' "$out"
 }
 
+# TOFU-pin ONE admin host's :4000 certificate (security-review-remediation-
+# plan.md Phase C, M1) into out/xroad-admin-certs/<name>.pem -- the source
+# _admin_curl_opts() and every Python caller (apps/console/xroad.py,
+# scripts/member.sh) pin against. Shared here, not copied, because it has
+# TWO callers with different lifecycles: hurl/run-linkup.sh captures the
+# four canonical servers (and cs) right after a cold deploy, and
+# scripts/join-agent.sh captures a NEWLY JOINED member's own server right
+# after ITS `--wait` returns -- a server that did not exist at the last
+# run-linkup.sh run and would otherwise stay permanently unpinned (every
+# caller falling back to unverified TLS for it, silently until this
+# change's own warnings). Found in review.
+#
+# A capture failure is a WARNING, not a script failure: the caller-side
+# fallback (verify=False / curl -k alone, now all logged) is exactly
+# today's behaviour, and a server that is healthy per Docker but whose TLS
+# listener is not yet answering must not block whatever brought it up.
+_capture_admin_cert() {
+  local name="$1" port="$2" out
+  out="$PACK_DIR/out/xroad-admin-certs/${name}.pem"
+  mkdir -p "$(dirname "$out")"
+  if ! { echo | openssl s_client -connect "${XROAD_BIND}:${port}" -servername "$name" 2>/dev/null \
+       | openssl x509 -outform PEM > "${out}.tmp" 2>/dev/null; } || [ ! -s "${out}.tmp" ]; then
+    rm -f "${out}.tmp"
+    echo "$(basename "$0"): WARNING -- could not capture ${name}'s :4000 admin certificate ($XROAD_BIND:$port); callers fall back to unverified TLS for this host until the next successful capture." >&2
+    return 0
+  fi
+  mv "${out}.tmp" "$out"
+}
+
 # Sets REST_BASE and the REST_OPTS curl-argument array for reaching one
 # subsystem's OWN Security Server as that subsystem's information system.
 # $1 is a MEMBER:SUBSYSTEM pair, the same key HOST_SS and CLIENT_CONN use.
@@ -292,12 +321,94 @@ COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl
 # docs/decisions/xroad-770-notes.md §1. (An earlier draft here used POST /api/v1/api-keys
 # with basic auth. That was wrong and would have failed on the first call.)
 
+# Reverse of SS_UI (security-review-remediation-plan.md Phase C, M1):
+# api_key()/api() only ever receive XROAD_BIND:port, never a dns name --
+# every call site inherited that shape from when curl ran with plain -k and
+# no host distinction mattered. Recovering the dns name from the one
+# topology array that already maps it the other way is cheaper than
+# changing every call site's signature for a fact this file already knows.
+# The Central Server's admin port is fixed at 4000 and is not a member of
+# SS_UI (it is not a Security Server) -- acceptance.sh's own
+# `api_key ${XROAD_BIND}:4000 xrd secret` is the one caller that hits it.
+_admin_host_for_port() {
+  local port="$1" ss
+  if [ "$port" = 4000 ]; then
+    printf 'cs'
+    return 0
+  fi
+  for ss in "${!SS_UI[@]}"; do
+    if [ "${SS_UI[$ss]}" = "$port" ]; then
+      printf '%s' "$ss"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# TOFU pin for one admin host's :4000 (security-review-remediation-plan.md
+# Phase C, M1). hurl/run-linkup.sh captures each server's own certificate at
+# deploy time into out/xroad-admin-certs/<host>.pem. curl has no CLI-only
+# flag for "verify the chain but skip the hostname" -- the pinned
+# certificate's CN/SAN name the container's own runtime hostname, never
+# XROAD_BIND, exactly the reason apps/console/xroad.py's
+# _admin_ssl_context() runs with check_hostname=False rather than a
+# --resolve trick. --pinnedpubkey is curl's equivalent: -k skips the
+# (impossible, for a self-signed leaf) chain and hostname check, and
+# --pinnedpubkey adds back a real one -- the SHA-256 hash of the CAPTURED
+# certificate's public key must match what the server presents on this
+# call, not merely "some self-signed certificate" (verified live: a wrong
+# hash is curl exit 90, "SSL: public key does not match pinned public
+# key"). Sets _ADMIN_CURL_OPTS, the same array-output convention
+# rest_base() already uses for REST_OPTS. No captured certificate for this
+# host (not yet deployed through run-linkup.sh, or a caller -- like
+# capture-xroad-fixtures.sh's very first call -- that runs before this
+# phase existed) falls back to -k alone, the old behaviour.
+_admin_curl_opts() {
+  local admin_host="$1" pem hash
+  _ADMIN_CURL_OPTS=(-k)
+  if [ -z "$admin_host" ]; then
+    echo "lib-stack.sh: no admin host resolved for this call -- falling back to unverified TLS (-k alone) for it." >&2
+    return 0
+  fi
+  pem="$PACK_DIR/out/xroad-admin-certs/${admin_host}.pem"
+  if [ ! -f "$pem" ]; then
+    echo "lib-stack.sh: no pinned certificate for admin host '$admin_host' ($pem) -- falling back to unverified TLS (-k alone) for it. Run hurl/run-linkup.sh to capture it." >&2
+    return 0
+  fi
+  # The whole pipeline's success is tested by an `if`, never a bare
+  # statement or a trailing `[ -n "$hash" ] && ...`: under the caller's
+  # `set -e`, a failing openssl stage (an unreadable or malformed pem --
+  # the exact case this function exists to fall back gracefully from) would
+  # otherwise abort the WHOLE CALLING SCRIPT instead of just falling back
+  # to -k alone, and so would this function returning non-zero when $hash
+  # comes back empty -- api_key()/api() call this as a bare statement, not
+  # inside an `if`. Found in review.
+  #
+  # `set -o pipefail` scoped to the inner subshell, not inherited from the
+  # caller: without it, `openssl x509` failing (e.g. a truncated pem) still
+  # lets `dgst`/`base64` run on EMPTY input and print the SHA-256 of zero
+  # bytes -- a real, non-empty-looking hash that is not this certificate's
+  # key at all (found live: a corrupt fixture produced
+  # 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=, the well-known empty-input
+  # digest, and `[ -n "$hash" ]` alone did not catch it).
+  if hash=$( (set -o pipefail; openssl x509 -in "$pem" -pubkey -noout \
+      | openssl pkey -pubin -outform der \
+      | openssl dgst -sha256 -binary | base64) 2>/dev/null) && [ -n "$hash" ]; then
+    _ADMIN_CURL_OPTS+=(--pinnedpubkey "sha256//$hash")
+  else
+    echo "lib-stack.sh: could not compute a public-key pin from $pem (unreadable or malformed) -- falling back to unverified TLS (-k alone) for '$admin_host'." >&2
+  fi
+  return 0
+}
+
 # api_key <host:port> <user> <pass>  -> prints the path to a logged-in cookie jar.
 # Kept under this name for call-site compatibility; it is a session handle.
 api_key() {
-  local hostport=$1 user=$2 pass=$3 jar
+  local hostport=$1 user=$2 pass=$3 jar admin_host
+  admin_host=$(_admin_host_for_port "${hostport##*:}") || admin_host=""
+  _admin_curl_opts "$admin_host"
   jar=$(mktemp)
-  curl -ksf -c "$jar" -X POST "https://${hostport}/login" \
+  curl -sf "${_ADMIN_CURL_OPTS[@]}" -c "$jar" -X POST "https://${hostport}/login" \
     --data-urlencode "username=${user}" --data-urlencode "password=${pass}" \
     >/dev/null || { rm -f "$jar"; return 1; }
   printf '%s' "$jar"
@@ -305,9 +416,11 @@ api_key() {
 
 # api <method> <host:port> <session-jar> <path> [json-body]
 api() {
-  local method=$1 hostport=$2 jar=$3 path=$4 body=${5:-} token
+  local method=$1 hostport=$2 jar=$3 path=$4 body=${5:-} token admin_host
   token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
-  local args=(-ksf -b "$jar" -X "$method" "https://${hostport}/api/v1${path}" \
+  admin_host=$(_admin_host_for_port "${hostport##*:}") || admin_host=""
+  _admin_curl_opts "$admin_host"
+  local args=("${_ADMIN_CURL_OPTS[@]}" -sf -b "$jar" -X "$method" "https://${hostport}/api/v1${path}" \
               -H "X-XSRF-TOKEN: ${token}" \
               -H 'Content-Type: application/json')
   [ -n "$body" ] && args+=(-d "$body")
@@ -316,4 +429,7 @@ api() {
 
 # Exported so retry can be used from subshells if ever needed; acceptance.sh
 # defines its checks as same-shell functions and does not depend on this.
-export -f api_key api
+# _admin_host_for_port/_admin_curl_opts must travel with api_key/api -- both
+# call them internally. _capture_admin_cert travels with both its callers
+# (hurl/run-linkup.sh, scripts/join-agent.sh) for the same reason.
+export -f api_key api _admin_host_for_port _admin_curl_opts _capture_admin_cert
