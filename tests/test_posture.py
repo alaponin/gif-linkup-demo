@@ -1,7 +1,7 @@
-"""Tests for deployment.yaml's `posture:` key (security-review-remediation-
-plan.md Phase A, H3) -- apps/join-api/app.py's own startup resolution of it
-into the three join_workflow switches (commit_gate, enforce_ownership,
-require_https_spec_url), and the acknowledge_permissive escape hatch.
+"""Tests for deployment.yaml's `posture:` key -- apps/join-api/app.py's own
+startup resolution of it into the three join_workflow switches (commit_gate,
+enforce_ownership, require_https_spec_url), and the acknowledge_permissive
+escape hatch.
 
 Each test imports apps/join-api/app.py fresh, by path under a distinct
 module name -- the same technique
@@ -56,8 +56,8 @@ def test_production_posture_implies_all_three_safe_values_with_no_keys_present(t
     assert module._COMMIT_GATE == "required"
     assert module._ENFORCE_OWNERSHIP is True
     assert module._REQUIRE_HTTPS_SPEC_URL is True
-    # Phase C, M1: posture: production implies hurl_insecure=False -- Hurl's
-    # --insecure TLS to the admin API is not allowed without an explicit
+    # posture: production implies hurl_insecure=False -- Hurl's --insecure
+    # TLS to the admin API is not allowed without an explicit
     # acknowledgement, same idiom, same acknowledge_permissive list.
     assert module._HURL_INSECURE_ALLOWED is False
 
@@ -126,8 +126,9 @@ def test_demo_posture_and_absent_posture_reproduce_todays_behaviour(tmp_path):
 
     # No deployment.yaml at all -- app.py's own FileNotFoundError fallback,
     # which many unit tests already rely on. Must resolve identically to an
-    # explicit posture: demo, and must not raise: the fallback stays, only
-    # its silence is what this task removes.
+    # explicit posture: demo, and must not raise: the fallback stays, but it
+    # now warns loudly instead of resolving silently (see the loud-warning
+    # test below).
     absent_file = _import_app(tmp_path / "no-deployment-yaml", None)
     assert absent_file._COMMIT_GATE == "advisory"
     assert absent_file._ENFORCE_OWNERSHIP is False

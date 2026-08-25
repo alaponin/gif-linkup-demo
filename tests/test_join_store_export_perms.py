@@ -1,10 +1,12 @@
-"""Shell-source-text assertions for join-store-export.sh's permission fix
-(security-review-remediation-plan.md §0.2).
+"""Shell-source-text assertions for join-store-export.sh's permission fix:
+the exported Postgres dump must land owner-only (0600), not world- or
+group-readable, since it is a full copy of the join store including
+applicant PII and secrets.
 
 No shell-level test harness for join-store-export.sh -- it shells out to
 `docker compose run` against a real Postgres-backed join-api, which is not
-worth standing up here (the plan's own **Tests** note says so explicitly).
-This stops the next regression the way test_compose_rw_mount_user.py stops
+worth standing up here just to prove a umask and an ordering. This stops
+the next regression the way test_compose_rw_mount_user.py stops
 lib-stack.sh's export lines: parse the script's own source text for the
 actual mechanism (the `umask 077` line, the ordering, the `--user` flag),
 not a behavioural snapshot this suite cannot exercise.

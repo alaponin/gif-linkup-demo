@@ -67,12 +67,11 @@ def test_applicant_locations_disable_basic_auth():
 
 
 def test_join_requests_location_bounds_the_request_body():
-    """E.3, in-app-and-nginx: `client_max_body_size` on the `location =
-    /join/requests` block (where POST /requests lands) must match
-    apps/join-api/app.py's own MAX_BODY_BYTES -- join-api enforces this
-    in-app too (`:8091` is reachable directly, not only through nginx), but
-    nginx's own cap is the first line of defence and the two must agree, not
-    just both exist."""
+    """`client_max_body_size` on the `location = /join/requests` block (where
+    POST /requests lands) must match apps/join-api/app.py's own
+    MAX_BODY_BYTES -- join-api enforces this in-app too (`:8091` is
+    reachable directly, not only through nginx), but nginx's own cap is the
+    first line of defence and the two must agree, not just both exist."""
     text = CONF.read_text()
     block = re.search(r"location\s*=\s*/join/requests\s*\{(.*?)\n    \}", text, re.S).group(1)
     match = re.search(r"client_max_body_size\s+(\S+);", block)

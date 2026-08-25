@@ -15,9 +15,9 @@ and a local http.server serving the "current" spec -- which is a real
 fetch, because that is what drift does.
 
 drift's fetch now runs origin.py's origin_error before it and
-no_redirect_opener for it (security-review-remediation-plan.md Phase D,
-M2), which unconditionally refuses an IP-literal spec_url -- so the fixture
-spec_url below is a host NAME, not the local http.server's raw 127.0.0.1,
+no_redirect_opener for it, which unconditionally refuses an IP-literal
+spec_url -- so the fixture spec_url below is a host NAME, not the local
+http.server's raw 127.0.0.1,
 and a `sitecustomize.py` dropped onto the drift subprocess's PYTHONPATH
 resolves that name back to 127.0.0.1 (no real DNS record, no /etc/hosts
 edit, no root needed -- the module the `site` module auto-imports at
@@ -247,14 +247,15 @@ def test_the_baseline_is_never_rewritten_by_reading_drift(pack):
     assert "refreshes" not in record
 
 
-# -- the origin check (security-review-remediation-plan.md Phase D, M2) -------
+# -- the origin check: refuse IP-literal spec_urls and redirects off the
+# -- declared allowlist ------------------------------------------------------
 
 
 def test_drift_refuses_a_redirect_rather_than_walking_it_off_the_allowlist(pack, _redirect_server):
     """spec_url itself is on join.spec_url_hosts (SPEC_HOST) -- origin_error
     lets it through -- but the server answers with a 302 to a host nobody
-    declared. Before this task, urllib.request.urlopen would have followed
-    that redirect with no allowlist and no IP-literal refusal at all
+    declared. Before this check existed, urllib.request.urlopen would have
+    followed that redirect with no allowlist and no IP-literal refusal at all
     (docs/production-delta.md row 41). no_redirect_opener refuses it
     outright, so this is reported the same way an unreachable spec is:
     printed, drift continues to the next service, and the run still exits

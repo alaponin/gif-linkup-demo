@@ -122,8 +122,8 @@ def test_check_exposure_fails_on_unacknowledged_public_bind(tmp_path):
 
 
 def test_lib_stack_refuses_non_loopback_bind_under_production_posture(tmp_path):
-    """security-review-remediation-plan.md Phase A (H3): scripts/lib-stack.sh
-    refuses posture: production with a non-loopback network.bind outright --
+    """scripts/lib-stack.sh refuses posture: production with a non-loopback
+    network.bind outright --
     no acknowledge_public_exposure setting can override it, mirroring the
     Test CA rule immediately below it in that file. Sourced (via
     KP2_DEPLOY_SPEC, the same test-only override check-exposure.sh already

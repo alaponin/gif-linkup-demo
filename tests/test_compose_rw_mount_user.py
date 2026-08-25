@@ -14,13 +14,13 @@ in the deploy that matters. The fix is compose's `user:` (KP2_HOST_UID, exported
 by scripts/lib-stack.sh); this test stops the next read-write service from being
 added without it.
 
-KP2_HOST_UID is no longer a bare `id -u` (docs/security-review-2026-08-23.md,
-finding H1: on the droplet `id -u` was 0, so join-api parsed applicant
-payloads as root). lib-stack.sh resolves it from the `kp2` account when the
-host has one, with KP2_CONTAINER_UID as an override -- resolved from the HOST
-rather than from an exported variable because the first version of this fix
-relied on remote-deploy.sh's export and remote-deploy.sh is the one CI script
-that never starts these containers. A laptop has no kp2 account, so it still
+KP2_HOST_UID is no longer a bare `id -u`: on the droplet `id -u` was 0, so
+join-api parsed applicant payloads as root. lib-stack.sh resolves it from the
+`kp2` account when the host has one, with KP2_CONTAINER_UID as an override --
+resolved from the HOST rather than from an exported variable because the
+first version of this fix relied on remote-deploy.sh's export and
+remote-deploy.sh is the one CI script that never starts these containers. A
+laptop has no kp2 account, so it still
 gets the developer's own id. What this test asserts is unchanged either way:
 a service that bind-mounts host files read-write must follow that owner,
 never pin a fixed foreign id of its own.
@@ -160,8 +160,8 @@ def test_every_ci_script_that_starts_these_containers_sets_the_identity():
             f"infra/ci/{script.name} starts a container that bind-mounts this "
             f"checkout, but exports neither KP2_CONTAINER_UID nor "
             f"KP2_HOST_UID -- so docker-compose.yml's `${{KP2_HOST_UID:-0}}` "
-            f"default runs it as UID 0 against those mounts, which is finding "
-            f"H1 (docs/security-review-2026-08-23.md)."
+            f"default runs it as UID 0 against those bind-mounted, "
+            f"applicant-writable paths."
         )
         assert re.search(r"^export KP2_(CONTAINER|HOST)_GID=", text, re.M), (
             f"infra/ci/{script.name} sets a uid but not a gid"
@@ -196,7 +196,8 @@ def test_lib_stack_resolves_the_identity_from_the_host_not_from_an_export():
     assert got.stdout.strip() == "10001:10002", (got.stdout, got.stderr)
 
     # No kp2 account (every laptop): the developer's own id, unchanged. This
-    # is the global constraint the whole phase had to preserve.
+    # is the invariant lib-stack.sh must preserve no matter which branch it
+    # resolves through.
     plain = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env | {"PATH": os.environ["PATH"]})
     assert plain.stdout.strip() == f"{os.getuid()}:{os.getgid()}", (plain.stdout, plain.stderr)
 

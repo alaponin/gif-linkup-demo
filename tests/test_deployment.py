@@ -28,11 +28,10 @@ def test_the_committed_deployment_yaml_passes():
 
 
 def test_the_committed_deployment_yaml_states_a_posture_explicitly():
-    """security-review-remediation-plan.md Phase A (H3): posture: demo (the
-    docker-local default) must be spelled out in the committed file, not
-    left to app.py's own default -- the point of the key is that a reviewer
-    reading deployment.yaml sees the deployment's posture as one word,
-    without inferring it from the absence of a line."""
+    """posture: demo (the docker-local default) must be spelled out in the
+    committed file, not left to app.py's own default -- the point of the key
+    is that a reviewer reading deployment.yaml sees the deployment's posture
+    as one word, without inferring it from the absence of a line."""
     deployment = yaml.safe_load((PACK / "deployment.yaml").read_text())
     assert deployment.get("posture") == "demo"
 
@@ -51,9 +50,9 @@ def test_an_invented_commit_gate_value_is_a_hard_failure():
 
 
 # enforce_ownership (row 28), require_https_spec_url (row 18) and
-# hurl_insecure (row 19, security-review-remediation-plan.md Phase C) landed
-# in the same join_workflow: block across three phases, and the first two
-# didn't extend this check when they landed -- so a typo passed generate
+# hurl_insecure (row 19) landed in the same join_workflow: block in separate
+# rounds of work, and the first two didn't extend this check when they
+# landed -- so a typo passed generate
 # time and was caught only by apps/join-api/app.py's own startup
 # validation, inside a container, after a deploy. All three are booleans in
 # app.py; these assert generate.py agrees.

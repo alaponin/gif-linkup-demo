@@ -2,9 +2,10 @@
 
 `. "$PACK_DIR/hurl/topology.sh"` executed a file join-api can write --
 hurl/ has to stay writable, because generate.py runs inside that container
-and writes its outputs there (docs/security-review-2026-08-23.md, finding
-H1). scripts/lib-core.sh's kp2_load_topology parses hurl/topology.json
-instead, the same file apps/console/truth.py has always read.
+and writes its outputs there, so sourcing it hands whatever it contains a
+bash eval on the host. scripts/lib-core.sh's kp2_load_topology parses
+hurl/topology.json instead, the same file apps/console/truth.py has always
+read.
 
 Two things have to hold, and this file asserts both against the COMMITTED
 golden pair (tests/golden/deployment/{topology.json,topology.sh} -- one

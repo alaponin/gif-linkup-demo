@@ -1,11 +1,10 @@
 """join-api's monorepo mount is read-only, and its writable set stays small.
 
-Finding H1 (docs/security-review-2026-08-23.md): join-api parses
-applicant-controlled payloads, and it used to bind-mount the WHOLE monorepo
-read-write -- scripts/, apps/, infra/, .git and .env included -- while host
-scripts running as root sourced .env and hurl/topology.sh out of that same
-tree. Code execution inside the container was therefore root on the host at
-the next `scripts/console.sh status`.
+join-api parses applicant-controlled payloads, and it used to bind-mount the
+WHOLE monorepo read-write -- scripts/, apps/, infra/, .git and .env included
+-- while host scripts running as root sourced .env and hurl/topology.sh out
+of that same tree. Code execution inside the container was therefore root on
+the host at the next `scripts/console.sh status`.
 
 The mount half of the fix is `../../..:/repo:ro` plus a named read-write
 child per path a join actually writes. Docker mounts each path
@@ -45,12 +44,13 @@ _WRITABLE = {
 }
 
 # The four X-Road sidecars mount hurl/local.ini (one of generate.py's own
-# outputs, so join-api-writable) read-write, into vendor images this task does
-# not touch. Nothing here reads it back on the host, so it is not H1's
-# container-to-host-root chain -- but it IS the same "a file join-api can
-# write is consumed by something else" shape as hurl/compose.members.yml, and
-# both are recorded as open residuals in docs/production-delta.md rather than
-# closed here. Listed so a genuinely NEW service still fails the test below.
+# outputs, so join-api-writable) read-write, into vendor images this repo
+# does not build or control. Nothing here reads it back on the host, so it
+# is not a container-to-host-root escalation -- but it IS the same "a file
+# join-api can write is consumed by something else" shape as
+# hurl/compose.members.yml, and both are recorded as open residuals in
+# docs/production-delta.md rather than closed here. Listed so a genuinely
+# NEW service still fails the test below.
 _KNOWN_UNCHANGED = {"/etc/xroad/conf.d/local.ini"}
 
 
@@ -76,7 +76,7 @@ def _target_of(mount: str) -> str:
 def test_join_api_mounts_the_monorepo_read_only():
     assert "../../..:/repo:ro" in _bind_mounts("join-api"), (
         "join-api must mount the monorepo read-only. Without the :ro every "
-        "other part of the H1 fix is decoration: the container can rewrite "
+        "other safeguard here is decoration: the container can rewrite "
         "scripts/lib-stack.sh, apps/join-api/writer.py or .env directly."
     )
 
@@ -107,9 +107,8 @@ def test_no_read_write_mount_outside_the_known_writable_set():
                 f"{service} mounts {mount!r} read-write, and {target} is not "
                 f"in the writable set {sorted(allowed)}. join-api parses "
                 f"applicant-controlled payloads: a new read-write path is a "
-                f"new way for one to reach the host (finding H1). Either add "
-                f"`:ro`, or add the path here with the reason it has to be "
-                f"writable."
+                f"new way for one to reach the host. Either add `:ro`, or "
+                f"add the path here with the reason it has to be writable."
             )
 
 

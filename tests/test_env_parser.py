@@ -2,11 +2,11 @@
 
 `set -a; . "$PACK_DIR/.env"` does not assign, it EXECUTES: every line runs as
 shell. join-api can write parts of the tree .env sits in and the host scripts
-run as root on the droplet, so one appended `X=$(...)` was root on the host at
-the next `scripts/console.sh status` (docs/security-review-2026-08-23.md,
-finding H1). The whole point of the helper is that nothing in the file is
-evaluated, so the tests that matter are: a command substitution is REFUSED
-rather than run, and a legitimately awkward value still survives byte-exact.
+run as root on the droplet, so one appended `X=$(...)` was root on the host
+at the next `scripts/console.sh status`. The whole point of the helper is
+that nothing in the file is evaluated, so the tests that matter are: a
+command substitution is REFUSED rather than run, and a legitimately awkward
+value still survives byte-exact.
 
 The DSN case is not decoration either. `.env.example` and
 infra/ci/db-sync-remote.sh both carry prose warnings about `&` backgrounding
