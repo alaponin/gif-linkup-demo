@@ -76,11 +76,14 @@ def _seed() -> None:
 
 
 def _fetch(_: int) -> int:
-    """GET /requests/{id} -- an ordinary read route, gated by
-    require_applicant (its own Depends(get_conn)) and then _load_request
-    (store.load_request on the same connection): two uses of one
-    request-scoped connection, exactly the shape that crosses threads under
-    real concurrency."""
+    """GET /requests/{id} -- an ordinary read route. The bearer token here
+    is the static applicant token, so require_applicant (E.1) returns
+    without ever opening a connection -- the route's own
+    db: Depends(get_conn), read by _load_request (store.load_request), is
+    now the ONLY connection this request opens, and it is still resolved on
+    one FastAPI worker thread and used from whichever thread the event loop
+    schedules the handler on next: exactly the shape that crosses threads
+    under real concurrency."""
     req = urllib.request.Request(
         f"http://127.0.0.1:{PORT}/requests/{REQUEST_ID}",
         headers={"Authorization": "Bearer test-applicant-token", "X-KP2-Console": "1"},

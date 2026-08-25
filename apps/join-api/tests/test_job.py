@@ -1882,3 +1882,29 @@ def test_a_step_the_forward_run_never_reached_is_not_reversed():
     record = _unjoin(record, hurl)
     assert record["state"] == "RETIRED"
     assert _reversed_ids(hurl) == ["ss.client_add", "ss.sign_key_csr", "cs.members_member"]
+
+
+def test_every_subprocess_run_in_job_passes_a_timeout():
+    """E.4, parse-level regression guard -- same shape as writer.py's own
+    (test_writer.py), same reasoning: the single Hurl subprocess.run() call
+    in this file learned timeout=HURL_STEP_TIMEOUT_S this phase, and this is
+    what stops a future subprocess.run() added here from silently going back
+    to none, holding app.py's single job lock indefinitely."""
+    import ast
+
+    tree = ast.parse((pathlib.Path(__file__).resolve().parent.parent / "job.py").read_text())
+    offending = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+        and not any(kw.arg == "timeout" for kw in node.keywords)
+    ]
+    assert not offending, (
+        f"job.py line(s) {offending}: subprocess.run() with no timeout= -- a hung Hurl "
+        "child would hold the job lock forever, and the RUNNING recovery sweep only "
+        "runs at process restart (security-review-remediation-plan.md E.4)."
+    )

@@ -106,6 +106,19 @@ R1_RETRY_BUDGET = 54
 BLOCKED_POLL_ATTEMPTS = 15
 BLOCKED_POLL_INTERVAL_SECONDS = 2.0
 
+# Without a cap, a hung Hurl child holds app.py's single job lock
+# indefinitely -- the RUNNING recovery sweep (store.recover_interrupted)
+# only runs at process restart, so a stuck step otherwise blocks every
+# other join until someone notices and restarts the process
+# (security-review-remediation-plan.md E.4). Sized generously against
+# docs/deployment-targets.md's own measured figures: the WHOLE Hurl
+# admin-API run, every step of a 4-Security-Server topology together,
+# measures 462-504s end to end -- a single step is a small fraction of
+# that. 300s is comfortably above any observed single step while still
+# being far short of the 462-504s whole-run figure, so a run this catches
+# is genuinely stuck, not merely slow.
+HURL_STEP_TIMEOUT_S = 300
+
 # Confirmed live (docs/decisions/xroad-770-notes.md): a federation left
 # idle overnight fails every cross-server call with this, which reads like a
 # certificate fault and is not one.
@@ -695,7 +708,14 @@ def _default_run_hurl(
         for name, value in argv_vars.items():
             args += ["--variable", f"{name}={value}"]
         args += ["--report-json", str(report_dir), str(step_file)]
-        proc = subprocess.run(args, capture_output=True, text=True, env=HURL_ENV)
+        # timeout=HURL_STEP_TIMEOUT_S (E.4): a subprocess.TimeoutExpired here
+        # is caught by every caller of run_hurl (_execute/_execute_reverse
+        # wrap it in `except Exception` and raise StepFailure; _probe/
+        # _reversal_probe treat any exception as "not there yet"/"not gone"),
+        # so it already surfaces as this job's own failure type -- StepFailure
+        # -- and already gets scrubbed there (`scrub(exc.message, secrets)`)
+        # exactly like any other step failure. No separate except needed here.
+        proc = subprocess.run(args, capture_output=True, text=True, env=HURL_ENV, timeout=HURL_STEP_TIMEOUT_S)
         report_path = report_dir / "report.json"
         if not report_path.exists():
             # Hurl never got as far as writing a report (bad arguments, a

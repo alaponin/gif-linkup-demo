@@ -66,6 +66,26 @@ def test_applicant_locations_disable_basic_auth():
         assert "auth_basic off" in block, block
 
 
+def test_join_requests_location_bounds_the_request_body():
+    """E.3, in-app-and-nginx: `client_max_body_size` on the `location =
+    /join/requests` block (where POST /requests lands) must match
+    apps/join-api/app.py's own MAX_BODY_BYTES -- join-api enforces this
+    in-app too (`:8091` is reachable directly, not only through nginx), but
+    nginx's own cap is the first line of defence and the two must agree, not
+    just both exist."""
+    text = CONF.read_text()
+    block = re.search(r"location\s*=\s*/join/requests\s*\{(.*?)\n    \}", text, re.S).group(1)
+    match = re.search(r"client_max_body_size\s+(\S+);", block)
+    assert match, f"no client_max_body_size in the /join/requests block:\n{block}"
+    assert match.group(1) == "256k"
+
+    app_py = (pathlib.Path(__file__).resolve().parent.parent
+              / "apps/join-api/app.py").read_text()
+    app_match = re.search(r"MAX_BODY_BYTES\s*=\s*(\d+)\s*\*\s*(\d+)", app_py)
+    assert app_match, "apps/join-api/app.py: MAX_BODY_BYTES not found in the expected shape"
+    assert int(app_match.group(1)) * int(app_match.group(2)) == 256 * 1024
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

@@ -204,3 +204,135 @@ def test_sla_rejects_unknown_field():
             services=[{"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml",
                        "sla": _sla(not_a_real_field=True)}],
         ))
+
+
+# -- E.2: string max_length / list max_length bounds -----------------------
+# security-review-remediation-plan.md Phase E.2's own table, applied
+# verbatim. Every bound below: accepts at exactly n, rejects at n+1 -- the
+# brief's own instruction, not "somewhere past n".
+
+_SERVICE = {"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml"}
+
+
+def _services(n: int) -> list[dict]:
+    """n distinct, otherwise-valid Service entries -- for the `services`
+    list-length bound, not the `code`/`spec_url` string bounds (their own
+    tests below use one service each)."""
+    return [{"code": f"svc-{i}", "spec_url": "http://app-ptsb:8000/spec.yaml"} for i in range(n)]
+
+
+def test_code_max_length_is_64():
+    JoinPayload(**_consume_only(code="X" * 64))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(code="X" * 65))
+
+
+def test_subsystem_max_length_is_64():
+    JoinPayload(**_consume_only(subsystem="X" * 64))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(subsystem="X" * 65))
+
+
+def test_security_server_code_max_length_is_64():
+    raw = _consume_only()
+    raw["security_server"]["code"] = "X" * 64
+    JoinPayload(**raw)
+    raw["security_server"]["code"] = "X" * 65
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**raw)
+
+
+def test_name_max_length_is_200():
+    JoinPayload(**_consume_only(name="X" * 200))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(name="X" * 201))
+
+
+def test_security_server_dns_name_max_length_is_200():
+    raw = _consume_only()
+    raw["security_server"]["dns_name"] = "X" * 200
+    JoinPayload(**raw)
+    raw["security_server"]["dns_name"] = "X" * 201
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**raw)
+
+
+def test_hosted_on_max_length_is_200():
+    raw = _consume_only()
+    raw["security_server"]["hosted_on"] = "X" * 200
+    JoinPayload(**raw)
+    raw["security_server"]["hosted_on"] = "X" * 201
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**raw)
+
+
+def test_spec_url_max_length_is_2048():
+    base = "http://app-ptsb:8000/" + "s" * (2048 - len("http://app-ptsb:8000/"))
+    assert len(base) == 2048
+    JoinPayload(**_consume_only(services=[{"code": "awards-api", "spec_url": base}]))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(services=[{"code": "awards-api", "spec_url": base + "x"}]))
+
+
+def test_subsystem_description_max_length_is_2000():
+    JoinPayload(**_consume_only(subsystem_description="X" * 2000))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(subsystem_description="X" * 2001))
+
+
+def test_service_lawful_basis_max_length_is_500():
+    JoinPayload(**_consume_only(services=[{**_SERVICE, "lawful_basis": "X" * 500}]))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(services=[{**_SERVICE, "lawful_basis": "X" * 501}]))
+
+
+def test_member_requirements_lawful_basis_max_length_is_500():
+    JoinPayload(**_consume_only(member_requirements=_requirements(lawful_basis="X" * 500)))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(member_requirements=_requirements(lawful_basis="X" * 501)))
+
+
+def test_technical_contact_max_length_is_500():
+    JoinPayload(**_consume_only(member_requirements=_requirements(technical_contact="X" * 500)))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(member_requirements=_requirements(technical_contact="X" * 501)))
+
+
+@pytest.mark.parametrize("field", [
+    "availability", "response_time", "support_hours",
+    "incident_response", "change_notice", "signatory",
+])
+def test_sla_field_max_length_is_500(field):
+    JoinPayload(**_consume_only(services=[{**_SERVICE, "sla": _sla(**{field: "X" * 500})}]))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(services=[{**_SERVICE, "sla": _sla(**{field: "X" * 501})}]))
+
+
+def test_services_max_length_is_50_items():
+    JoinPayload(**_consume_only(services=_services(50)))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(services=_services(51)))
+
+
+def test_access_max_length_is_200_items():
+    JoinPayload(**_consume_only(services=[{**_SERVICE, "access": [f"a{i}" for i in range(200)]}]))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(services=[{**_SERVICE, "access": [f"a{i}" for i in range(201)]}]))
+
+
+def test_requested_access_max_length_is_200_items():
+    JoinPayload(**_consume_only(requested_access=[f"a{i}" for i in range(200)]))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(requested_access=[f"a{i}" for i in range(201)]))
+
+
+def test_semantic_fields_max_length_is_200_items():
+    JoinPayload(**_consume_only(
+        services=[_SERVICE],
+        semantic={"entity": "award", "key": "award_id", "fields": [f"f{i}" for i in range(200)]},
+    ))
+    with pytest.raises(pydantic.ValidationError):
+        JoinPayload(**_consume_only(
+            services=[_SERVICE],
+            semantic={"entity": "award", "key": "award_id", "fields": [f"f{i}" for i in range(201)]},
+        ))

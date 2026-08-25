@@ -138,3 +138,33 @@ def test_startup_refuses_when_unmigrated_json_files_sit_beside_an_empty_store():
     finally:
         os.environ.clear()
         os.environ.update(env_backup)
+
+
+def test_a_malformed_bearer_token_opens_no_store_connection(monkeypatch):
+    """E.1: require_applicant's well-formedness gate must reject garbage
+    BEFORE store.connect() is ever called for the issued-token DB fallback
+    -- a bad-token flood should cost a regex, not a connection. Counting
+    fake in the same style test_store.py's RacingConnection subclass uses
+    to intercept a call the stdlib type does not support monkeypatching
+    directly -- here it's simpler still: store.connect is a plain module
+    function, so wrapping it in place is enough."""
+    from fastapi.testclient import TestClient
+
+    calls = []
+    real_connect = store.connect
+
+    def counting_connect(*args, **kwargs):
+        calls.append(1)
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(store, "connect", counting_connect)
+
+    client = TestClient(app.app)
+    # 8 characters: fails _TOKEN_WELLFORMED_RE's {16,64} length bound
+    # regardless of alphabet, so this is unambiguously malformed, not
+    # merely "a token nobody issued".
+    resp = client.get("/catalogue", headers={
+        "Authorization": "Bearer tooshort", "X-KP2-Console": "1",
+    })
+    assert resp.status_code == 403
+    assert calls == []

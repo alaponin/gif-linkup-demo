@@ -164,6 +164,17 @@ Nothing in this pack runs the registry per-step yet — that is Plan B's job.
 Plan A's value is that the sequence now has a name and a checked contract
 independent of any executor.
 
+Plan B has since landed as `apps/join-api/job.py`: one `hurl` child process
+per step (not the concatenated file above), run through `run_hurl()`.
+Each of those invocations carries `timeout=HURL_STEP_TIMEOUT_S` (job.py,
+300s) — a hung admin-API call must not hold `job.py`'s single job lock
+indefinitely, since the `RUNNING`-record recovery sweep only runs at
+process restart. Sized against the whole-run figures this document's
+neighbours measure: `docs/deployment-targets.md`'s Hurl admin-API run is
+462–504s end to end across a full 4-Security-Server topology, so 300s for
+one step is comfortably above anything observed while still well short of
+that whole-run figure.
+
 ## Do not hand-edit
 
 `scenarios/` and `vars.env` are artefacts. The identifiers come from

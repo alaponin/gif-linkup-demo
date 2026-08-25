@@ -119,6 +119,35 @@ def test_submit_rejects_bad_schema_with_check_schema(client):
     assert body["rejection"]["check"] == "schema"
 
 
+def test_oversized_body_gets_413(client):
+    """E.3: the in-app body-size middleware, not schema.py's own
+    max_length -- a body over app_module.MAX_BODY_BYTES is rejected before
+    it is ever parsed as JSON, let alone validated against JoinPayload."""
+    huge = _payload(subsystem_description="x" * (app_module.MAX_BODY_BYTES + 1000))
+    resp = client.post("/requests", json=huge, headers=AUTH)
+    assert resp.status_code == 413
+
+
+def test_51_services_is_rejected_by_schema_not_a_spec_fetch_storm(client):
+    """E.2's `services` bound (50) is enforced by JoinPayload itself, at
+    parse time -- the 51st entry must never reach check 9 (the per-service
+    spec fetch): a request naming 51 fake spec_urls would otherwise cost 51
+    outbound fetch attempts before failing. Proven the same way
+    test_submit_rejects_bad_schema_with_check_schema does: check == "schema",
+    reached without ever calling out to app-ptsb or app-plr (the fixture
+    services below reuse a spec_url no real backend on this pack serves --
+    a fetch attempt would time out, not just fail fast)."""
+    services = [
+        {"code": f"svc-{i}", "spec_url": "http://nonexistent-backend-that-must-never-be-fetched:8000/spec.yaml"}
+        for i in range(51)
+    ]
+    resp = client.post("/requests", json=_payload(services=services), headers=AUTH)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["state"] == "REJECTED"
+    assert body["rejection"]["check"] == "schema"
+
+
 def test_submit_rejects_a_canonical_code(client):
     resp = client.post(
         "/requests",

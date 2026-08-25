@@ -897,3 +897,30 @@ def test_apply_real_refuses_when_onboarding_is_dirty(tmp_path):
     with pytest.raises(writer.DirtyCheckoutError):
         writer.apply_real(pack, "ptsb", _payload(), repo_root=repo_root)
     assert not (pack / "configs" / "member-ptsb").exists()
+
+
+def test_every_subprocess_run_in_writer_passes_a_timeout():
+    """E.4, parse-level regression guard -- the same style
+    test_app_requests.py's test_no_job_scrub_call_site_passes_the_narrow_job_
+    secrets_set uses to catch a call-site regression by parsing the source,
+    not by exercising it. _run_generate and _git_status both learned a
+    timeout= this phase; this is what stops a future subprocess.run() call
+    added to this file from silently going back to none."""
+    import ast
+
+    tree = ast.parse((pathlib.Path(__file__).resolve().parent.parent / "writer.py").read_text())
+    offending = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+        and not any(kw.arg == "timeout" for kw in node.keywords)
+    ]
+    assert not offending, (
+        f"writer.py line(s) {offending}: subprocess.run() with no timeout= -- a hung "
+        "child would block the caller (the request thread, for _run_generate) "
+        "indefinitely (security-review-remediation-plan.md E.4)."
+    )

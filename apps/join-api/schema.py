@@ -18,6 +18,14 @@ to make a join look canonical.
 extra="forbid" everywhere: a payload with an unrecognised key (a typo, or a
 deliberate "origin": "canonical") is a schema-validation failure (check 1),
 not a silently-ignored extra field.
+
+Every string field below also carries Field(max_length=...), and every list
+field a matching item-count bound (security-review-remediation-plan.md
+E.2): unbounded before this, and a REJECTED submission persists the
+attacker's body verbatim ("payload": raw, app.py's submit_request) -- so an
+unbounded field was an unbounded amount of evidence this store would hold
+per request, not just an unbounded parse. The numbers are the plan's own
+table, applied verbatim, nothing invented here.
 """
 from __future__ import annotations
 
@@ -42,11 +50,11 @@ class BackendAuth(str, Enum):
 
 
 class SecurityServer(_Strict):
-    code: str
-    dns_name: str
+    code: str = Field(max_length=64)
+    dns_name: str = Field(max_length=200)
     # A DNS name an EXISTING member already owns: this member's subsystem
     # becomes an extra client on that server and owns no container at all.
-    hosted_on: str | None = None
+    hosted_on: str | None = Field(default=None, max_length=200)
     # Plan C: this member brings up its OWN Security Server (job.py's
     # own-server branch). Deliberately an EXPLICIT opt-in rather
     # than inferred from an absent hosted_on -- configs/x-road-bus/join-policy.yaml's
@@ -67,27 +75,27 @@ class SLA(_Strict):
     demo's own targets need to stay editable prose ("99.5% monthly uptime"),
     not a schema-enforced number."""
 
-    availability: str
-    response_time: str
-    support_hours: str
-    incident_response: str
-    change_notice: str
-    signatory: str
+    availability: str = Field(max_length=500)
+    response_time: str = Field(max_length=500)
+    support_hours: str = Field(max_length=500)
+    incident_response: str = Field(max_length=500)
+    change_notice: str = Field(max_length=500)
+    signatory: str = Field(max_length=500)
 
 
 class Service(_Strict):
-    code: str
-    spec_url: str
+    code: str = Field(max_length=64)
+    spec_url: str = Field(max_length=2048)
     # Consumer subsystems this service's ACL grants, PROGRESSA/GOV/<CODE>/
     # <SUBSYSTEM> form -- configs/member-pnia/pnia.yaml's own access: shape.
-    access: list[str] = Field(default_factory=list)
+    access: list[str] = Field(default_factory=list, max_length=200)
     # The decree article this exchange relies on, or "consent" --
     # free text, "[confirm: cite the decree article]" where a demo has no
     # real one to cite. Recorded and surfaced, never resolved against
     # anything: Module 2's decree is not in this pack, so there is nothing
     # to check it against, and a resolution check against a file we also
     # wrote would prove nothing.
-    lawful_basis: str | None = None
+    lawful_basis: str | None = Field(default=None, max_length=500)
     # Optional at the schema level, enforced at validate.py instead (spec
     # S8-style: a missing SLA on a published service is a REJECTED request
     # naming the check, not a parse failure) -- required for a provider,
@@ -113,7 +121,7 @@ class ExchangePattern(str, Enum):
 class Semantic(_Strict):
     entity: str
     key: str
-    fields: list[str]
+    fields: list[str] = Field(max_length=200)
     # Optional: making it required would reject every existing config until
     # all are classified against ExchangePattern.
     pattern: ExchangePattern | None = None
@@ -142,23 +150,23 @@ class MemberRequirements(_Strict):
     has_registered_identity: bool
     standards_portfolio_adopted: bool
     data_conformant: bool
-    lawful_basis: str | None = None
-    technical_contact: str
+    lawful_basis: str | None = Field(default=None, max_length=500)
+    technical_contact: str = Field(max_length=500)
 
 
 class JoinPayload(_Strict):
-    code: str
-    name: str
-    subsystem: str
-    subsystem_description: str
+    code: str = Field(max_length=64)
+    name: str = Field(max_length=200)
+    subsystem: str = Field(max_length=64)
+    subsystem_description: str = Field(max_length=2000)
     security_server: SecurityServer
     # Omit entirely (empty list) if this agency only consumes -- prompts/
     # member.md's own wording, carried into the API.
-    services: list[Service] = Field(default_factory=list)
+    services: list[Service] = Field(default_factory=list, max_length=50)
     semantic: Semantic | None = None
     backend: Backend
     member_requirements: MemberRequirements
     # Recorded and surfaced to the operator, never acted on by this API
     # -- a provider granting access is that provider's own
     # config, which this API cannot touch.
-    requested_access: list[str] = Field(default_factory=list)
+    requested_access: list[str] = Field(default_factory=list, max_length=200)

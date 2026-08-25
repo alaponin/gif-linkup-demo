@@ -762,6 +762,15 @@ def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> N
     manifest_path.write_text(updated)
 
 
+# dry_run_diff runs SYNCHRONOUSLY on the request thread from POST /requests
+# (app.py's submit_request) -- without a cap here, a hung generate.py (or
+# ~40 of them, one per concurrent request) holds its worker thread forever
+# and exhausts the AnyIO worker pool (security-review-remediation-plan.md
+# E.4). apply_real's own call is on the same code path, off a background
+# thread (app.py's _run_job), where the same cap still bounds a stuck job.
+_GENERATE_TIMEOUT_S = 120
+
+
 def _run_generate(generate_py: pathlib.Path) -> subprocess.CompletedProcess:
     """python3 <generate_py>. cwd is the pack root the invoked file itself
     sits under -- matches `cd "$PACK_DIR" && python3 hurl/generate.py`, the
@@ -781,12 +790,26 @@ def _run_generate(generate_py: pathlib.Path) -> subprocess.CompletedProcess:
     # same flag is on every host-side invocation (scripts/lib-stack.sh,
     # scripts/member.sh, hurl/run-linkup.sh), and remote-deploy.sh removes any
     # legacy directory, because -B stops the WRITE and not the read.
-    return subprocess.run(
-        [sys.executable, "-B", str(generate_py)],
-        cwd=str(generate_py.parent.parent),
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            [sys.executable, "-B", str(generate_py)],
+            cwd=str(generate_py.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=_GENERATE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Surfaced as GenerateFailure, the SAME failure type a non-zero exit
+        # already raises at both call sites below -- their own except
+        # clauses (app.py's submit_request/approve_request) already scrub
+        # exc.stderr through _SINK_SECRETS before persisting or returning
+        # it, exactly as they do for a real generate.py rejection, so a
+        # timeout gets that same treatment for free.
+        raise GenerateFailure(
+            f"hurl/generate.py did not exit within {_GENERATE_TIMEOUT_S}s (timed out).\n"
+            f"stdout:\n{exc.stdout or ''}\nstderr:\n{exc.stderr or ''}",
+            returncode=None,
+        ) from exc
 
 
 def _render_diff(key: str, new_config: str, manifest_before: str, manifest_after: str) -> str:
@@ -889,6 +912,14 @@ def _restore(pack_dir: pathlib.Path, saved: dict) -> None:
             shutil.copy2(dest, target)
 
 
+# A plain read against a repo mounted read-only into this container --
+# _live_uncommitted (app.py) already uses timeout=5 for the same kind of
+# call; 10s here gives a slightly larger tree (configs/, manifest.yaml,
+# onboarding/ together, vs. one member's own paths there) a bit more room
+# (security-review-remediation-plan.md E.4).
+_GIT_STATUS_TIMEOUT_S = 10
+
+
 def _git_status(repo_root: pathlib.Path, pack_dir: pathlib.Path, rel_paths: tuple[str, ...]) -> str:
     """The read `git status --porcelain <paths>` shared by _git_status_dirty
     (apply_real's whole-tree pre-write refusal) and member_git_status_dirty
@@ -908,13 +939,19 @@ def _git_status(repo_root: pathlib.Path, pack_dir: pathlib.Path, rel_paths: tupl
             capture_output=True,
             text=True,
             check=True,
+            timeout=_GIT_STATUS_TIMEOUT_S,
         )
-    except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, OSError) as exc:
         # ValueError: pack_dir is not under repo_root. CalledProcessError:
         # repo_root is not a git repo (or some other structural git failure).
-        # OSError: git itself is missing. None of these mean "clean" --
-        # the caller must refuse exactly as it would for a genuinely dirty
-        # checkout, not silently proceed.
+        # TimeoutExpired: `git status` did not exit within
+        # _GIT_STATUS_TIMEOUT_S. OSError: git itself is missing. None of
+        # these mean "clean" -- the caller must refuse exactly as it would
+        # for a genuinely dirty checkout, not silently proceed. Folded into
+        # this same except (rather than a second branch) because every
+        # caller of this function already treats GitCheckFailure identically
+        # regardless of cause -- see writer.GitCheckFailure's own docstring
+        # and job.py's _commit_gate_blocked_message.
         raise GitCheckFailure(f"could not check whether {pack_dir} is a clean checkout: {exc}") from exc
     return proc.stdout
 

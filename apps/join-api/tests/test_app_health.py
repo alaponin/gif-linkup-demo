@@ -35,10 +35,6 @@ from starlette.requests import Request  # noqa: E402
 CONSOLE_HEADER = "X-KP2-Console"
 
 
-def _conn():
-    return app.store.connect(app.store.init(app.OUT_DIR))
-
-
 def _request(headers: dict[str, str]) -> Request:
     scope = {
         "type": "http",
@@ -68,18 +64,21 @@ def test_health_response_never_carries_a_credential():
 
 def test_require_applicant_accepts_the_applicant_token():
     req = _request({"authorization": "Bearer test-applicant-token"})
-    assert app.require_applicant(req, _conn()) == "applicant"
+    assert app.require_applicant(req) == "applicant"
 
 
 def test_require_applicant_accepts_the_operator_token_too():
     req = _request({"authorization": "Bearer test-operator-token"})
-    assert app.require_applicant(req, _conn()) == "operator"
+    assert app.require_applicant(req) == "operator"
 
 
 def test_require_applicant_rejects_an_unknown_token():
+    """The bearer value here ("not-a-real-token") is well-formed (E.1's
+    regex only screens out garbage, not merely-wrong tokens) -- so this
+    exercises the DB fallback path, not the well-formedness gate."""
     req = _request({"authorization": "Bearer not-a-real-token"})
     try:
-        app.require_applicant(req, _conn())
+        app.require_applicant(req)
         assert False, "expected HTTPException"
     except app.HTTPException as exc:
         assert exc.status_code == 403
@@ -88,7 +87,7 @@ def test_require_applicant_rejects_an_unknown_token():
 def test_require_applicant_rejects_a_missing_header():
     req = _request({})
     try:
-        app.require_applicant(req, _conn())
+        app.require_applicant(req)
         assert False, "expected HTTPException"
     except app.HTTPException as exc:
         assert exc.status_code == 401

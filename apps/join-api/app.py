@@ -68,15 +68,30 @@ OUT_DIR = pathlib.Path(os.environ.get("OUT_DIR", "/out"))
 # cached at import time: this file's own test fixtures reassign
 # app_module.OUT_DIR per test for isolation (the same pattern the old
 # file-backed _requests_dir() relied on by re-reading the OUT_DIR global on
-# every call), and store.init() is idempotent, so re-running it here is the
-# cheap way to keep that working for the store too.
+# every call). store.init() is idempotent, but it is NOT cheap -- on
+# Postgres it opens a connection, holds a transaction with
+# pg_advisory_xact_lock, scans schema_version and re-runs both grants.sql
+# DO-blocks, every single call (security-review-remediation-plan.md E.1).
+# _INIT_CACHE memoises its result on (OUT_DIR, kind, db_url) instead of
+# calling it fresh every time -- OUT_DIR is part of the key for exactly the
+# reason above: it is the one thing that legitimately changes from call to
+# call within a single process (a test fixture), and keying on it keeps
+# each OUT_DIR's own store isolated from every other one's cache entry.
+_INIT_CACHE: dict[tuple, pathlib.Path | str] = {}
+_INIT_CACHE_LOCK = threading.Lock()
+
+
+def _cached_init() -> pathlib.Path | str:
+    key = (OUT_DIR, _DATASTORE_KIND, KP2_JOIN_DB_URL)
+    with _INIT_CACHE_LOCK:
+        cached = _INIT_CACHE.get(key)
+        if cached is None:
+            cached = _INIT_CACHE[key] = store.init(OUT_DIR, kind=_DATASTORE_KIND, db_url=KP2_JOIN_DB_URL)
+        return cached
 
 
 def _conn(*, readonly: bool = False):
-    return store.connect(
-        store.init(OUT_DIR, kind=_DATASTORE_KIND, db_url=KP2_JOIN_DB_URL),
-        readonly=readonly,
-    )
+    return store.connect(_cached_init(), readonly=readonly)
 
 
 def get_conn():
@@ -450,12 +465,26 @@ def _bearer_token(request: Request) -> str:
 # miscounted as a request row by construction.
 _TOKEN_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
+# The cheap gate E.1 asks for, run before EITHER the static-token compare_
+# digest or the DB fallback, so a garbage bearer token never reaches either.
+# Not secrets.token_urlsafe(24)'s own alphabet ([A-Za-z0-9_-]) alone: that is
+# what an ISSUED token (issue_token below) looks like, but
+# APPLICANT_TOKEN/OPERATOR_TOKEN come from scripts/gen-secrets.sh, whose
+# ALPHABET ('A-Za-z0-9@%+_.-') is deliberately wider (that script's own
+# comment: "narrower than [shell-safe download], letters, digits, and a
+# small set of punctuation with no meaning to bash"). A regex matching only
+# token_urlsafe's alphabet would reject a live, correctly-configured
+# operator/applicant token the moment gen-secrets.sh happened to draw an
+# '@', '%', '+' or '.' -- so this covers both alphabets' characters, at
+# both lengths (24 for gen-secrets.sh, 32 for token_urlsafe(24)).
+_TOKEN_WELLFORMED_RE = re.compile(r"^[A-Za-z0-9@%+._-]{16,64}$")
+
 
 def _token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> str:
+def require_applicant(request: Request) -> str:
     """Applicant may read any request -- any valid token, applicant
     or operator, satisfies this dependency. Used by read/submit routes.
 
@@ -465,8 +494,20 @@ def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_con
     POST /requests records as submitted_by. A row that is revoked or expired
     (plan §1.4) is treated as no match, same as a token nobody ever issued --
     falls through to the 403 below, exactly like today's
-    revocation-takes-effect-on-next-request behaviour, with expiry added."""
+    revocation-takes-effect-on-next-request behaviour, with expiry added.
+
+    No `db: Depends(get_conn)` parameter (security-review-remediation-plan.md
+    E.1): that used to make FastAPI open a connection on EVERY call, before
+    this function's own body -- and therefore before either compare_digest
+    below -- ever ran, so a flood of bad tokens cost a Postgres connection,
+    an advisory-lock transaction and a schema scan apiece. A connection is
+    now opened, via _conn() directly, only on the path that actually needs
+    one: the issued-token digest lookup, after both static tokens have
+    already failed to match."""
     token = _bearer_token(request)
+    if not _TOKEN_WELLFORMED_RE.fullmatch(token):
+        _LOG.info("auth.rejected", extra={"extra_fields": {"role": "applicant", "actor": _refusal_actor(request)}})
+        raise HTTPException(403, "token does not match either configured role")
     if secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
     # APPLICANT_TOKEN == "disabled" (row 28, docs/production-delta.md):
@@ -477,12 +518,13 @@ def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_con
     # server-side (docker-compose.yml's own comment), never this one.
     if APPLICANT_TOKEN != "disabled" and secrets.compare_digest(token, APPLICANT_TOKEN):
         return "applicant"
-    row = store.find_token(db, _token_digest(token))
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    if row is not None and row["revoked_at"] is None and (
-        row["expires_at"] is None or row["expires_at"] > now
-    ):
-        return f"applicant:{row['name']}"
+    with contextlib.closing(_conn()) as db:
+        row = store.find_token(db, _token_digest(token))
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        if row is not None and row["revoked_at"] is None and (
+            row["expires_at"] is None or row["expires_at"] > now
+        ):
+            return f"applicant:{row['name']}"
     # Auth failure: the token DIGEST PREFIX only, never the raw token --
     # same rule and same helper (_refusal_actor, defined below in this
     # file) the 429 refusal path already applies to a bearer token that
@@ -493,9 +535,12 @@ def require_applicant(request: Request, db: sqlite3.Connection = Depends(get_con
 
 def require_operator(request: Request) -> str:
     """Approve, reject and resume are operator-only -- the
-    applicant token is rejected here, not just left unchecked."""
+    applicant token is rejected here, not just left unchecked. Same
+    well-formedness gate as require_applicant, before the one compare_digest
+    this dependency ever does -- it never touches the store at all, so E.1's
+    only change here is skipping compare_digest on obvious garbage."""
     token = _bearer_token(request)
-    if secrets.compare_digest(token, OPERATOR_TOKEN):
+    if _TOKEN_WELLFORMED_RE.fullmatch(token) and secrets.compare_digest(token, OPERATOR_TOKEN):
         return "operator"
     _LOG.info("auth.rejected", extra={"extra_fields": {"role": "operator", "actor": _refusal_actor(request)}})
     raise HTTPException(403, "operator token required for this endpoint")
@@ -589,6 +634,57 @@ def rate_limit(request: Request, db: sqlite3.Connection = Depends(get_conn)) -> 
 
 
 app = FastAPI(title="KP2 member-join API")
+
+
+# -- request body size limit (E.3) --------------------------------------------
+# :8091 is reachable directly on loopback and through the console proxy
+# (docker-compose.yml), not only through nginx -- so this has to exist
+# in-app too, not only at the edge. infra/nginx/kp2-console.conf's
+# `client_max_body_size 256k;` on the `location = /join/requests` block is
+# the SAME number (that file's own comment names this constant back);
+# stated once in each file's own comment naming the other, per the plan's
+# instruction, rather than duplicated silently.
+#
+# Content-Length alone is not trustworthy -- a caller can omit it entirely
+# (chunked transfer-encoding has none) or simply lie -- so this reads the
+# body itself and counts bytes as they stream in, rejecting the moment the
+# running total crosses the limit rather than buffering the whole thing
+# first to find out. Added BEFORE the request-id middleware below (in
+# Starlette's `@app.middleware("http")` stack, the LAST one added wraps
+# OUTERMOST) so that request-id is outermost and still stamps X-Request-Id
+# on a 413 this middleware returns early.
+MAX_BODY_BYTES = 256 * 1024
+
+
+@app.middleware("http")
+async def _body_size_limit_middleware(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            declared = None  # malformed header -- the byte-count loop below still catches an oversized body
+        if declared is not None and declared > MAX_BODY_BYTES:
+            return PlainTextResponse(
+                f"request body of {declared} bytes exceeds this API's {MAX_BODY_BYTES} byte limit",
+                status_code=413,
+            )
+    total = 0
+    chunks: list[bytes] = []
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_BODY_BYTES:
+            return PlainTextResponse(
+                f"request body exceeds this API's {MAX_BODY_BYTES} byte limit", status_code=413,
+            )
+        chunks.append(chunk)
+    # Caches the body on the Request the same way Starlette's own .body()
+    # would (it checks hasattr(self, "_body") first) -- every downstream
+    # read (FastAPI's `raw: dict` JSON parsing included) gets this same
+    # already-drained content instead of trying to read the ASGI channel a
+    # second time.
+    request._body = b"".join(chunks)
+    return await call_next(request)
 
 
 # -- request-id middleware (E.1) ----------------------------------------------
