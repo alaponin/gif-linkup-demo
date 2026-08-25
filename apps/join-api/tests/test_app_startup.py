@@ -112,10 +112,10 @@ def test_a_non_running_record_is_left_untouched_by_the_sweep():
 
 
 def test_startup_refuses_when_unmigrated_json_files_sit_beside_an_empty_store():
-    """plan §2's migration refusal (app.py's module-level startup block):
-    out/join/*.json files beside a DB that holds none must stop the process
-    from starting, naming scripts/migrate-join-store.py, rather than quietly
-    serving an empty store while unmigrated evidence sits next to it."""
+    """app.py's module-level startup block must refuse to start: out/join/*.json
+    files beside a DB that holds none must stop the process from starting,
+    naming scripts/migrate-join-store.py, rather than quietly serving an
+    empty store while unmigrated evidence sits next to it."""
     stale_out = pathlib.Path("/tmp/join-api-test-out-startup-refusal")
     stale_requests = stale_out / "join"
     stale_requests.mkdir(parents=True, exist_ok=True)
@@ -141,11 +141,11 @@ def test_startup_refuses_when_unmigrated_json_files_sit_beside_an_empty_store():
 
 
 def test_a_malformed_bearer_token_opens_no_store_connection(monkeypatch):
-    """E.1: require_applicant's well-formedness gate must reject garbage
-    BEFORE store.connect() is ever called for the issued-token DB fallback
-    -- a bad-token flood should cost a regex, not a connection. Counting
-    fake in the same style test_store.py's RacingConnection subclass uses
-    to intercept a call the stdlib type does not support monkeypatching
+    """require_applicant's well-formedness gate must reject garbage BEFORE
+    store.connect() is ever called for the issued-token DB fallback -- a
+    bad-token flood should cost a regex, not a connection. Counting fake in
+    the same style test_store.py's RacingConnection subclass uses to
+    intercept a call the stdlib type does not support monkeypatching
     directly -- here it's simpler still: store.connect is a plain module
     function, so wrapping it in place is enough."""
     from fastapi.testclient import TestClient
@@ -171,12 +171,12 @@ def test_a_malformed_bearer_token_opens_no_store_connection(monkeypatch):
 
 
 def test_get_conn_and_rate_limit_deps_are_ordered_after_auth_in_every_route():
-    """security-review-remediation-plan.md E.1 relies on FastAPI resolving
-    Depends() parameters in signature order, aborting on the first one that
-    raises: require_applicant/require_operator must be declared BEFORE any
-    Depends(get_conn) or Depends(rate_limit) parameter in a route's
-    signature, or a malformed bearer token stops short-circuiting the store
-    connection E.1 was specifically about avoiding. The test above
+    """FastAPI resolves Depends() parameters in signature order, aborting on
+    the first one that raises: require_applicant/require_operator must be
+    declared BEFORE any Depends(get_conn) or Depends(rate_limit) parameter
+    in a route's signature, or a malformed bearer token stops
+    short-circuiting the store connection it's supposed to avoid opening.
+    The test above
     (test_a_malformed_bearer_token_opens_no_store_connection) only proves
     the well-formedness gate inside require_applicant itself works -- it
     hits /catalogue, which has no get_conn dependency at all, so it proves
@@ -250,7 +250,6 @@ def test_get_conn_and_rate_limit_deps_are_ordered_after_auth_in_every_route():
         "Depends(require_operator) parameter in the signature. FastAPI resolves "
         "Depends() in signature order, aborting on the first one that raises -- "
         "this ordering is what makes a malformed or invalid bearer token 403 "
-        "before any store connection or rate-limit lookup opens one "
-        "(security-review-remediation-plan.md E.1). Move the auth dependency "
-        "earlier in the parameter list."
+        "before any store connection or rate-limit lookup opens one. Move "
+        "the auth dependency earlier in the parameter list."
     )

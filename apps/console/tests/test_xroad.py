@@ -308,7 +308,7 @@ def test_the_consumer_hop_never_runs_with_verification_off():
     assert ctx.check_hostname is True
 
 
-# -- admin-API TOFU pinning (security-review-remediation-plan.md Phase C, M1) -
+# -- admin-API TOFU pinning --------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -360,8 +360,8 @@ def test_admin_ssl_context_falls_back_to_unverified_when_unpinned(monkeypatch, t
     """No captured certificate for this host (not yet deployed through
     hurl/run-linkup.sh, or KP2_XROAD_ADMIN_CERT_DIR unset entirely, as in
     every test above that passes client= directly) -- verify=False, same as
-    before this phase, so docker-local's zero-setup demo path is unaffected
-    the first time a container starts."""
+    before TOFU pinning existed, so docker-local's zero-setup demo path is
+    unaffected the first time a container starts."""
     import xroad
 
     monkeypatch.setenv("KP2_XROAD_ADMIN_CERT_DIR", str(tmp_path))

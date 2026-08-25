@@ -12,11 +12,11 @@ X-Road. Two distinct clients, because they hit two distinct surfaces:
 The two now differ in exactly one way, and it is the point of
 docs/production-delta.md row 19:
 
-- AdminSession is TOFU-pinned (security-review-remediation-plan.md Phase C,
-  M1), not unverified. The :4000 admin UI presents the sidecar's own
-  self-signed proxy-ui certificate, which nothing issues, so there is no CA
-  to verify it against -- but hurl/run-linkup.sh captures each server's own
-  certificate at deploy time into KP2_XROAD_ADMIN_CERT_DIR/<host>.pem, and
+- AdminSession is TOFU-pinned, not unverified. The :4000 admin UI presents
+  the sidecar's own self-signed proxy-ui certificate, which nothing issues,
+  so there is no CA to verify it against -- but hurl/run-linkup.sh captures
+  each server's own certificate at deploy time into
+  KP2_XROAD_ADMIN_CERT_DIR/<host>.pem, and
   that captured leaf is trusted as its own root from then on. This closes
   "any attacker on the path" and does NOT close "an attacker was on the
   path during the very first deploy, before the certificate was captured"
@@ -105,10 +105,9 @@ def _admin_pin_fingerprint(host: str) -> tuple[str, int, int, int] | None:
 
 def _admin_ssl_context(host: str) -> ssl.SSLContext | bool:
     """Trust decision for one admin host's :4000 (module docstring: TOFU
-    pinning, security-review-remediation-plan.md Phase C). The pinned file
-    is named exactly `host` because that is the same string every caller
-    here already uses as the admin host -- hurl/run-linkup.sh captures it
-    under that name for the same reason.
+    pinning). The pinned file is named exactly `host` because that is the
+    same string every caller here already uses as the admin host --
+    hurl/run-linkup.sh captures it under that name for the same reason.
 
     check_hostname is off even when a pinned certificate is found: its
     CN/SAN name the sidecar container's own runtime hostname (verified live

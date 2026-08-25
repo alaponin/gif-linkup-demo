@@ -155,9 +155,9 @@ def test_a_revoked_token_stops_working_on_the_next_request(client):
 
 
 def test_an_expired_token_is_rejected_on_the_next_request(client):
-    """expires_at is enforced in require_applicant (plan §1.4). Backdating
-    the row via a raw UPDATE is simpler and faster than sleeping past a real
-    expiry, and exercises the same comparison a real expiry would."""
+    """expires_at is enforced in require_applicant. Backdating the row via a
+    raw UPDATE is simpler and faster than sleeping past a real expiry, and
+    exercises the same comparison a real expiry would."""
     resp = client.post("/tokens", json={"agency": "ptsb", "expires_in_days": 1}, headers=OPERATOR)
     assert resp.status_code == 201, resp.text
     token = resp.json()["token"]
@@ -169,8 +169,8 @@ def test_an_expired_token_is_rejected_on_the_next_request(client):
 
 
 def test_reissuing_a_revoked_name_is_still_refused(client):
-    """plan §1.4's ruling: a revoked name cannot be reused -- the issuance
-    stays on the books as evidence rather than being cleared for reuse."""
+    """A revoked name cannot be reused -- the issuance stays on the books
+    as evidence rather than being cleared for reuse."""
     _issue(client, "ptsb")
     client.request("DELETE", "/tokens/ptsb", headers=OPERATOR)
     resp = client.post("/tokens", json={"agency": "ptsb"}, headers=OPERATOR)
@@ -329,8 +329,8 @@ def test_the_operator_token_cannot_be_set_to_the_disabled_sentinel(tmp_path):
 
 
 def test_a_hand_set_operator_token_outside_the_wellformed_shape_refuses_at_startup(tmp_path):
-    """E.1's _TOKEN_WELLFORMED_RE is a new constraint on every INCOMING
-    bearer token -- but scripts/gen-secrets.sh is not the only way an
+    """_TOKEN_WELLFORMED_RE is a constraint on every INCOMING bearer token
+    -- but scripts/gen-secrets.sh is not the only way an
     operator can set KP2_JOIN_OPERATOR_TOKEN/KP2_JOIN_APPLICANT_TOKEN.
     `openssl rand -base64 N`, a plausible hand-rolled alternative, includes
     '/' roughly 40% of the time, and '/' is not in the regex's class. Without

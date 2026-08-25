@@ -77,7 +77,7 @@ def _seed() -> None:
 
 def _fetch(_: int) -> int:
     """GET /requests/{id} -- an ordinary read route. The bearer token here
-    is the static applicant token, so require_applicant (E.1) returns
+    is the static applicant token, so require_applicant returns
     without ever opening a connection -- the route's own
     db: Depends(get_conn), read by _load_request (store.load_request), is
     now the ONLY connection this request opens, and it is still resolved on

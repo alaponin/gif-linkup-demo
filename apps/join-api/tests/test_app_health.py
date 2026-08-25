@@ -73,9 +73,10 @@ def test_require_applicant_accepts_the_operator_token_too():
 
 
 def test_require_applicant_rejects_an_unknown_token():
-    """The bearer value here ("not-a-real-token") is well-formed (E.1's
-    regex only screens out garbage, not merely-wrong tokens) -- so this
-    exercises the DB fallback path, not the well-formedness gate."""
+    """The bearer value here ("not-a-real-token") is well-formed (the
+    well-formedness regex only screens out garbage, not merely-wrong
+    tokens) -- so this exercises the DB fallback path, not the
+    well-formedness gate."""
     req = _request({"authorization": "Bearer not-a-real-token"})
     try:
         app.require_applicant(req)
@@ -140,7 +141,7 @@ def test_console_origin_guard_accepts_a_matching_origin():
     app._require_console_origin(req)  # does not raise
 
 
-# -- structured logging (E.1, docs/production-delta.md row 34) ---------------
+# -- structured logging (docs/production-delta.md row 34) -------------------
 
 def _captured_log_lines(fn) -> list[dict]:
     """Runs `fn()` with app._LOG's real handler pointed at an in-memory
@@ -314,7 +315,7 @@ def test_job_log_with_metrics_bumps_the_matching_step_counter():
     assert app._METRICS["job_steps_failed_total"] == before_failed + 1
 
 
-# -- GET /metrics (E.2, docs/production-delta.md row 34) ---------------------
+# -- GET /metrics (docs/production-delta.md row 34) --------------------------
 
 def test_metrics_rejects_a_missing_bearer_token():
     client = TestClient(app.app)

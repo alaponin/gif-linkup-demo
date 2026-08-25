@@ -1,6 +1,6 @@
 """Unit tests for apps/join-api/origin.py -- the shared SSRF containment
-rule (security-review-remediation-plan.md Phase D, M2). test_validate.py's
-own test_spec_url_origin_refuses_before_anything_is_fetched already proves
+rule. test_validate.py's own
+test_spec_url_origin_refuses_before_anything_is_fetched already proves
 this logic end to end through validate.py's wrapper; this file tests the
 extracted module directly, plus no_redirect_opener, which validate.py does
 not use (it fetches via httpx with follow_redirects=False) but

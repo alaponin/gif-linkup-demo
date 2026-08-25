@@ -1,8 +1,8 @@
 """apps/console/app.py -- the read and write API for the KP2
 demonstration console. The browser talks only to this service; this is the
-only thing in the demo that talks to X-Road (see the plan's Architecture
-section). Credentials come from the environment (.env via Docker Compose),
-read here once, never returned in a response or logged.
+only thing in the demo that talks to X-Road. Credentials come from the
+environment (.env via Docker Compose), read here once, never returned in a
+response or logged.
 """
 from __future__ import annotations
 
@@ -63,8 +63,7 @@ WATCHDOG_POLL_S = 10
 # closed by giving the two files distinct names) -- replaces the previous
 # "uvicorn configures the root handlers, so this lands in `docker logs
 # console` with no setup of our own" default, for consistency with
-# apps/join-api's own structured logging (production-hardening-plan.md's
-# E.1).
+# apps/join-api's own structured logging.
 _LOG = logging_setup.configure("kp2.console", {"admin_password": ADMIN_PASSWORD, "join_operator_token": JOIN_OPERATOR_TOKEN})
 
 # _mutate_acl is reached from `def` (not

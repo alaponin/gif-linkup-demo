@@ -206,10 +206,10 @@ def test_sla_rejects_unknown_field():
         ))
 
 
-# -- E.2: string max_length / list max_length bounds -----------------------
-# security-review-remediation-plan.md Phase E.2's own table, applied
-# verbatim. Every bound below: accepts at exactly n, rejects at n+1 -- the
-# brief's own instruction, not "somewhere past n".
+# -- string max_length / list max_length bounds -----------------------------
+# Every bound below: accepts at exactly n, rejects at n+1 -- an off-by-one
+# in either direction would silently widen or tighten the DoS-sized input
+# ceilings these fields are meant to enforce.
 
 _SERVICE = {"code": "awards-api", "spec_url": "http://app-ptsb:8000/spec.yaml"}
 

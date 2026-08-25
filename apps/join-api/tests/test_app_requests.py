@@ -120,16 +120,16 @@ def test_submit_rejects_bad_schema_with_check_schema(client):
 
 
 def test_oversized_body_gets_413(client):
-    """E.3: the in-app body-size middleware, not schema.py's own
-    max_length -- a body over app_module.MAX_BODY_BYTES is rejected before
-    it is ever parsed as JSON, let alone validated against JoinPayload."""
+    """The in-app body-size middleware, not schema.py's own max_length --
+    a body over app_module.MAX_BODY_BYTES is rejected before it is ever
+    parsed as JSON, let alone validated against JoinPayload."""
     huge = _payload(subsystem_description="x" * (app_module.MAX_BODY_BYTES + 1000))
     resp = client.post("/requests", json=huge, headers=AUTH)
     assert resp.status_code == 413
 
 
 def test_51_services_is_rejected_by_schema_not_a_spec_fetch_storm(client):
-    """E.2's `services` bound (50) is enforced by JoinPayload itself, at
+    """The `services` bound (50) is enforced by JoinPayload itself, at
     parse time -- the 51st entry must never reach check 9 (the per-service
     spec fetch): a request naming 51 fake spec_urls would otherwise cost 51
     outbound fetch attempts before failing. Proven the same way
@@ -362,8 +362,8 @@ def test_ownership_off_by_default_cross_agency_reads_still_succeed(client):
 
 
 def test_the_shared_token_disabled_plus_ownership_enforced_closes_the_loop(tmp_path):
-    """The production posture this task exists for: the shared credential
-    is off AND ownership is on. An issued per-agency token reads its own
+    """The production posture: the shared credential is off AND ownership
+    is on. An issued per-agency token reads its own
     record; the old shared-token value is refused outright (403, not merely
     denied by ownership -- require_applicant never even reaches the
     ownership check for a credential it does not recognise at all)."""
@@ -378,11 +378,11 @@ def test_the_shared_token_disabled_plus_ownership_enforced_closes_the_loop(tmp_p
     assert client.get("/requests/r1", headers=old_shared).status_code == 403
 
 
-# -- regression guard (0.1/M3) --------------------------------------------------
+# -- regression guard: job.scrub(...) call sites use the wide secrets set --
 
 
 def test_no_job_scrub_call_site_passes_the_narrow_job_secrets_set():
-    """0.1 (M3)'s actual defect: six job.scrub(...) call sites at
+    """The defect this guards against: six job.scrub(...) call sites at
     persisted-record/HTTP-response sinks passed JOB_SECRETS (the three Hurl
     credentials only) instead of the wider _SINK_SECRETS (JOB_SECRETS plus
     the operator/applicant bearer tokens and any DSN password) -- so
