@@ -168,3 +168,89 @@ def test_a_malformed_bearer_token_opens_no_store_connection(monkeypatch):
     })
     assert resp.status_code == 403
     assert calls == []
+
+
+def test_get_conn_and_rate_limit_deps_are_ordered_after_auth_in_every_route():
+    """security-review-remediation-plan.md E.1 relies on FastAPI resolving
+    Depends() parameters in signature order, aborting on the first one that
+    raises: require_applicant/require_operator must be declared BEFORE any
+    Depends(get_conn) or Depends(rate_limit) parameter in a route's
+    signature, or a malformed bearer token stops short-circuiting the store
+    connection E.1 was specifically about avoiding. The test above
+    (test_a_malformed_bearer_token_opens_no_store_connection) only proves
+    the well-formedness gate inside require_applicant itself works -- it
+    hits /catalogue, which has no get_conn dependency at all, so it proves
+    nothing about parameter ORDER on a route that has one. This is a
+    parse-level regression guard for that ordering, in the same style
+    test_writer.py's test_every_subprocess_run_in_writer_passes_a_timeout
+    and test_app_requests.py's test_no_job_scrub_call_site_passes_the_
+    narrow_job_secrets_set use: walk app.py's AST rather than exercise it,
+    so a future route that reorders its Depends() parameters fails this
+    test even though every existing behavioural test would stay green (a
+    reordered-but-still-well-formed token still 403s the same way)."""
+    import ast
+
+    tree = ast.parse((pathlib.Path(__file__).resolve().parent.parent / "app.py").read_text())
+
+    AUTH_DEPS = {"require_applicant", "require_operator"}
+    GUARDED_DEPS = {"get_conn", "rate_limit"}
+
+    def _depends_name(node) -> str | None:
+        """The dependency callable's name out of a `Depends(name)` default
+        expression -- every route dependency in this file is exactly that
+        shape (a bare Depends(<Name>) call, never Depends(lambda ...) or a
+        parametrised factory) -- or None if this default isn't one."""
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "Depends"
+            and len(node.args) == 1
+            and isinstance(node.args[0], ast.Name)
+        ):
+            return node.args[0].id
+        return None
+
+    offending = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        # @app.get(...)/@app.post(...)/etc -- NOT @app.middleware("http"),
+        # which shares the same `app.<attr>(...)` decorator shape but wraps
+        # a (request, call_next) function with no Depends() parameters at
+        # all (_body_size_limit_middleware, _request_id_middleware above).
+        is_route = any(
+            isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Attribute)
+            and dec.func.attr in ("get", "post", "put", "delete", "patch")
+            and isinstance(dec.func.value, ast.Name)
+            and dec.func.value.id == "app"
+            for dec in node.decorator_list
+        )
+        if not is_route:
+            continue
+        args = node.args.posonlyargs + node.args.args
+        defaults = [None] * (len(args) - len(node.args.defaults)) + list(node.args.defaults)
+        params = list(zip(args, defaults)) + list(zip(node.args.kwonlyargs, node.args.kw_defaults))
+        auth_index = None
+        guarded_index = None
+        for i, (_arg, default) in enumerate(params):
+            if default is None:
+                continue
+            dep = _depends_name(default)
+            if dep in AUTH_DEPS and auth_index is None:
+                auth_index = i
+            if dep in GUARDED_DEPS and guarded_index is None:
+                guarded_index = i
+        if guarded_index is not None and (auth_index is None or auth_index > guarded_index):
+            offending.append((node.name, node.lineno))
+
+    assert not offending, (
+        f"app.py route(s) {offending}: a Depends(get_conn)/Depends(rate_limit) "
+        "parameter appears with no preceding Depends(require_applicant)/"
+        "Depends(require_operator) parameter in the signature. FastAPI resolves "
+        "Depends() in signature order, aborting on the first one that raises -- "
+        "this ordering is what makes a malformed or invalid bearer token 403 "
+        "before any store connection or rate-limit lookup opens one "
+        "(security-review-remediation-plan.md E.1). Move the auth dependency "
+        "earlier in the parameter list."
+    )
