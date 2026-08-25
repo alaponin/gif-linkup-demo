@@ -48,8 +48,8 @@ PY
 # droplet. So no host script may ever `source` or execute a file that
 # container can reach: `. .env` and `. hurl/topology.sh` do not assign, they
 # EXECUTE -- one appended line and the next `scripts/console.sh status` is
-# root on the host (docs/security-review-2026-08-23.md, finding H1). The two
-# helpers below read those files as DATA instead, with no shell evaluation
+# root on the host. The two helpers below read those files as DATA
+# instead, with no shell evaluation
 # anywhere in the path.
 #
 # Both fail closed. A line neither can read is refused, never skipped: a line

@@ -3,7 +3,7 @@
 # CA certificate and writes it to the path KP2_DB_CA_CERT points at
 # (.env.example). Run after `terraform apply` in infra/terraform-db/, or
 # after any droplet re-provision: the cert is stable per cluster but
-# lives on the droplet's disk, so plan §6.2 has the provision step
+# lives on the droplet's disk, so runbook.md §6.2 has the provision step
 # re-download it rather than assume it survived.
 #
 # LAPTOP-ONLY, and the CI path does not need it: this script shells out
@@ -13,8 +13,8 @@
 # workflow path, infra/ci/db-sync.sh reads the same output on the runner
 # and pushes the cert to the droplet over SSH instead. This script is only the
 # CA-cert leg of that section's three-things-must-survive checklist --
-# KP2_JOIN_DB_URL in .env is an operator's manual edit (plan §4's "where
-# secrets rest" decision), and re-adding the new droplet to the cluster's
+# KP2_JOIN_DB_URL in .env is an operator's manual edit (docs/deployment-targets.md's
+# "Where secrets rest" decision), and re-adding the new droplet to the cluster's
 # trusted sources is `terraform apply` itself, once infra/terraform-db's
 # var.droplet_id is updated to the new droplet's id.
 set -euo pipefail
@@ -23,7 +23,8 @@ set -euo pipefail
 if [ -z "${KP2_DB_CA_CERT:-}" ]; then
   # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
   # join-api can write the tree it sits in and sourcing executes a file
-  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  # rather than reading it -- a `.env` line an attacker appended would run
+  # as this host shell the moment it was sourced.
   kp2_load_env "$PACK_DIR/.env"
 fi
 [ -n "${KP2_DB_CA_CERT:-}" ] || fail "KP2_DB_CA_CERT is unset in the environment and $PACK_DIR/.env -- this is the host path to write the CA cert to (see .env.example)."

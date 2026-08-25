@@ -59,11 +59,10 @@ if [ -z "$(docker ps -q -f "name=^${SS}$")" ]; then
 fi
 
 log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server image takes a few minutes to become healthy"
-# COMPOSE_ALL, not COMPOSE: base-compose hardening (docs/plans/
-# production-hardening-plan.md Phase A) put a steady-state healthcheck on cs
-# in docker-compose.yml itself, closing the original version of this
-# regression -- narrower COMPOSE no longer means "cs has no healthcheck at
-# all" the way it did when this was found live (cs reported no
+# COMPOSE_ALL, not COMPOSE: base-compose hardening put a steady-state
+# healthcheck on cs in docker-compose.yml itself, closing the original
+# version of this regression -- narrower COMPOSE no longer means "cs has no
+# healthcheck at all" the way it did when this was found live (cs reported no
 # Config.Healthcheck whatsoever after a join-agent.sh run). But
 # hurl/compose.hurl.yml still OVERRIDES cs's budget to a longer one
 # (retries: 120 vs the base file's 30), a real difference between the
@@ -82,8 +81,7 @@ log "bringing up $SS (admin UI :$UI, proxy :$REST) -- a cold Security Server ima
 # avoiding.
 "${COMPOSE_ALL[@]}" up -d --wait --wait-timeout "${JOIN_AGENT_WAIT:-600}" "$SS"
 
-# TOFU-pin $SS's own :4000 certificate now, not later (security-review-
-# remediation-plan.md Phase C, M1) -- hurl/run-linkup.sh's own capture pass
+# TOFU-pin $SS's own :4000 certificate now, not later -- hurl/run-linkup.sh's own capture pass
 # ran before this member joined and never saw this server; without this,
 # console's reachability probe and every admin caller would fall back to
 # unverified TLS for it, silently, until someone happened to notice.

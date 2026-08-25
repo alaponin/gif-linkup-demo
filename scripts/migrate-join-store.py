@@ -43,7 +43,7 @@ import store  # noqa: E402
 
 
 def _refuse_if_join_api_running() -> None:
-    """Single-writer rule (plan §1.3): a host-side write is only safe while
+    """Single-writer rule: a host-side write is only safe while
     join-api is not also writing. Docker being unavailable, or the compose
     project simply not being up, is NOT a refusal -- only an actually
     RUNNING join-api container blocks this script."""
@@ -58,7 +58,8 @@ def _refuse_if_join_api_running() -> None:
     if result.returncode == 0 and result.stdout.strip():
         raise SystemExit(
             "migrate-join-store.py: join-api is running -- it is the sole writer "
-            "while it is running (plan §1.3). Stop it first: "
+            "while it is running, so a concurrent host-side write here would race it. "
+            "Stop it first: "
             "docker compose stop join-api"
         )
 

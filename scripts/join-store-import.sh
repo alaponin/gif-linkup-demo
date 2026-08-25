@@ -2,7 +2,7 @@
 # scripts/join-store-import.sh -- the counterpart to join-store-export.sh:
 # pg_restore a previously-exported dump (pg_dump -Fc format) into a
 # Postgres cluster, meant to run at provision time against an empty
-# cluster (plan §6.3). Destructive to whatever database it targets --
+# cluster (see runbook.md §6.3). Destructive to whatever database it targets --
 # this is meant to be run non-interactively by provisioning tooling, so
 # it does NOT prompt for confirmation, but it DOES print the target
 # (host/dbname, password redacted) before touching anything, so that's
@@ -50,7 +50,8 @@ DATASTORE_KIND=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null |
 if [ -z "${KP2_JOIN_DB_URL:-}" ]; then
   # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
   # join-api can write the tree it sits in and sourcing executes a file
-  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  # rather than reading it -- a `.env` line an attacker appended would run
+  # as this host shell the moment it was sourced.
   kp2_load_env "$PACK_DIR/.env"
 fi
 case "${KP2_JOIN_DB_URL:-}" in
@@ -80,7 +81,7 @@ effective_dsn="${KP2_JOIN_DB_ADMIN_URL:-$KP2_JOIN_DB_URL}"
 MASKED_DSN=$(printf '%s' "$effective_dsn" | sed -E 's#(://[^:/@]+:)[^@]*(@)#\1***\2#')
 
 log "importing $DUMP_FILE into: $MASKED_DSN"
-log "this OVERWRITES whatever is already in that database -- run only against an empty cluster (plan §6.3's provision-time import)"
+log "this OVERWRITES whatever is already in that database -- run only against an empty cluster (see runbook.md §6.3's provision-time import)"
 
 # $effective_dsn must not land in this host process's argv (visible via
 # `ps auxww` for the run's duration, which would defeat the masking

@@ -48,10 +48,9 @@ if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1
 fi
 command -v jq   >/dev/null 2>&1 || FAILURES+=("jq")
 command -v curl >/dev/null 2>&1 || FAILURES+=("curl")
-# security-review-remediation-plan.md Phase C (M1): hurl/run-linkup.sh
-# captures each admin API's certificate with `openssl s_client`, and
-# lib-stack.sh's api_key()/api() pin against it with `openssl x509`/`pkey`/
-# `dgst` -- curl has no CLI-only way to verify a chain while skipping
+# hurl/run-linkup.sh captures each admin API's certificate with
+# `openssl s_client`, and lib-stack.sh's api_key()/api() pin against it
+# with `openssl x509`/`pkey`/`dgst` -- curl has no CLI-only way to verify a chain while skipping
 # hostname checking (the pinned certificate's CN is the container's own
 # runtime hostname, never the address these functions connect to), so
 # --pinnedpubkey is the mechanism, and it needs the SPKI hash computed here.

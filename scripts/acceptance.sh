@@ -105,8 +105,8 @@ check 2.1 "instance $EXP_INSTANCE, member class $EXP_CLASS" check_21
 # healthcheck lived only in hurl/compose.hurl.yml, and a script that brought
 # up a container against a narrower Compose file set silently lost it
 # (docs/production-delta.md's "Why join-agent.sh brings containers up with
-# the full Compose file set"). Phase A (docs/plans/production-hardening-plan.md)
-# moved every long-running service's healthcheck into the base
+# the full Compose file set"). Base-compose hardening since moved every
+# long-running service's healthcheck into the base
 # docker-compose.yml so that class of loss can no longer happen quietly; this
 # check is what makes a future regression fail here instead of being found
 # live again. console/join-api are profiles: ["demo"] and not necessarily up
@@ -525,7 +525,7 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # rather than through the API) is skipped with a logged reason -- this
 # section proves the JOIN API's own effect, module 2.7, not every possible
 # way a member can join.
-# Backend dispatch (final-review fix wave): deployment.yaml's
+# Backend dispatch: deployment.yaml's
 # datastore.kind decides where the join store actually lives -- same
 # dispatch scripts/member.sh's cmd_drift already has for exactly this
 # reason. sqlite (unchanged from before Postgres existed) is a local file,
@@ -535,8 +535,9 @@ log "artefact: out/application-$NIN.json (citizen field + pre-filled fields + pr
 # join-api is already up) into a temp file both call sites below read from,
 # reimplementing the same state/code filter the SQL WHERE clauses use.
 # Without this, `db_path.is_file()` below silently sees no file on a
-# Postgres deployment and every 2.7 row is skipped -- the vacuous pass the
-# final review flagged.
+# Postgres deployment and every 2.7 row is skipped -- section 2.7 would
+# report all-green while never actually checking anything, a vacuous pass
+# indistinguishable from a real one until someone reads the skip reasons.
 _27_datastore_kind=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null || echo sqlite)
 _27_join_store="$OUT_DIR/join-store/join-store.sqlite3"
 if [ "$_27_datastore_kind" = "postgres" ]; then

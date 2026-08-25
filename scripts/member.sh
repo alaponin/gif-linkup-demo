@@ -129,11 +129,11 @@ cmd_drift() {
   # record: fail clearly here, the same house style cmd_remove uses for its
   # canonical-member refusal, rather than crash further down.
   #
-  # Backend dispatch (Task 5): deployment.yaml's datastore.kind decides
+  # Backend dispatch: deployment.yaml's datastore.kind decides
   # where that store actually lives. sqlite (the branch below, unchanged
   # from before Postgres existed) opens the file directly, read-only
   # (file:...?mode=ro): no auth, no HTTP to the join API, works whether or
-  # not it is even running (plan §1.3) -- but `mode=ro` alone does NOT
+  # not it is even running -- but `mode=ro` alone does NOT
   # actually deliver that promise for a WAL database, see the connect below.
   # postgres has no local file to open, so that
   # branch shells out to store.py's own CLI instead (`python -m store
@@ -240,8 +240,7 @@ member_dir, key, record_json, pack_dir, policy_path = sys.argv[1:6]
 # tests/test_member_drift.py's own sys.path.insert uses for store.py, and
 # scripts/migrate-join-store.py's for the same reason. Stdlib-only is what
 # makes this safe to import from a host script that has only python3 +
-# PyYAML (security-review-remediation-plan.md Phase D, M2): no pydantic, no
-# httpx pulled in.
+# PyYAML: no pydantic, no httpx pulled in.
 sys.path.insert(0, os.path.join(pack_dir, "apps", "join-api"))
 from origin import no_redirect_opener, origin_error  # noqa: E402
 
@@ -372,8 +371,8 @@ cmd_refresh() {
   # run from inside the linkup network (see the address note below), where
   # there is no curl: the join-api image is python:3.12-slim. cmd_drift
   # already answers exactly this with urllib, and so does this. Admin
-  # credentials (and, for recording the act, the operator token -- plan
-  # §1.3) come from the environment, which is where that container already
+  # credentials (and, for recording the act, the operator token) come
+  # from the environment, which is where that container already
   # has them; a host-side run falls back to .env. One loading block,
   # triggered if EITHER is still unset -- but kp2_load_env exports every
   # assignment in .env unconditionally once it runs, so the gate alone only
@@ -384,8 +383,9 @@ cmd_refresh() {
   # alone was the one missing.
   #
   # kp2_load_env (lib-core.sh), not `. .env`: sourcing executes the file,
-  # and join-api can write the tree it sits in
-  # (docs/security-review-2026-08-23.md, finding H1).
+  # and join-api can write the tree it sits in, so a `.env` line an
+  # attacker appended would run as this host shell the moment it was
+  # sourced -- reading it as data instead never evaluates anything in it.
   if [ -z "${XROAD_ADMIN_PASSWORD:-}" ] || [ -z "${KP2_JOIN_OPERATOR_TOKEN:-}" ]; then
     _prior_admin_password="${XROAD_ADMIN_PASSWORD:-}"
     _prior_operator_token="${KP2_JOIN_OPERATOR_TOKEN:-}"
@@ -400,7 +400,7 @@ cmd_refresh() {
   local topo="$PACK_DIR/hurl/topology.json"
   [ -f "$topo" ] || fail "$topo not found -- run python3 hurl/generate.py first"
 
-  # Backend dispatch (Task 5): only the direct-write fallback below (the
+  # Backend dispatch: only the direct-write fallback below (the
   # `else` branch of `if api_up:`, used when join-api is not answering)
   # needs to know this -- the API-first path above it only ever talks to
   # join-api's own HTTP endpoint, which is identical regardless of what
@@ -423,7 +423,7 @@ topo_path, key, policy_path, db_path, admin_user, admin_password, operator_token
 # apps/join-api is not a package -- same technique
 # tests/test_member_drift.py's own sys.path.insert uses for store.py.
 # Stdlib-only is what makes this safe to import from a host script that has
-# only python3 + PyYAML (security-review-remediation-plan.md Phase D, M2).
+# only python3 + PyYAML: no pydantic, no httpx pulled in.
 sys.path.insert(0, os.path.join(pack_dir, "apps", "join-api"))
 from origin import no_redirect_opener, origin_error  # noqa: E402
 
@@ -474,8 +474,7 @@ def _spec_ssl_context():
 # XSRF-TOKEN cookie's value back as an X-XSRF-TOKEN header on every call
 # (docs/decisions/xroad-770-notes.md section 1).
 #
-# TOFU-pinned, not ssl.CERT_NONE (security-review-remediation-plan.md Phase
-# C, M1): hurl/run-linkup.sh captures each server's own :4000 certificate at
+# TOFU-pinned, not ssl.CERT_NONE: hurl/run-linkup.sh captures each server's own :4000 certificate at
 # deploy time into KP2_XROAD_ADMIN_CERT_DIR/<host>.pem -- `host` here is the
 # same topology host string that names the file, resolved from
 # hurl/topology.json a few lines up. check_hostname stays off even when a
@@ -612,7 +611,7 @@ for desc in descriptions:
 # join, and drift since this refresh -- instead of a warning that can never
 # clear.
 #
-# API-first, direct-write fallback (plan §1.3): join-api is the sole writer
+# API-first, direct-write fallback: join-api is the sole writer
 # to the join store while it is running; a direct write here is safe
 # precisely when it is not, because then it's the only writer. This
 # container already runs on the `linkup` network for the admin-API calls
@@ -687,7 +686,7 @@ if api_up:
     print(f"recorded the refresh via the join API ({len(endpoints)} service(s)); "
           f"endpoint_baseline untouched")
 elif datastore_kind == "postgres":
-    # Backend dispatch (Task 5): no local sqlite file to open against
+    # Backend dispatch: no local sqlite file to open against
     # Postgres, so the same read-modify-write shape the sqlite branch below
     # does over one connection is reimplemented as two `docker compose run
     # --rm join-api python -m store ...` calls -- dump-records to find the
@@ -701,13 +700,13 @@ elif datastore_kind == "postgres":
     # NOT atomic the way the sqlite branch's single connection is: a second
     # concurrent `member.sh refresh` invocation during the gap between the
     # dump-records call and the amend-refresh call could race and clobber
-    # each other's refreshes entry. This mirrors the plan's own framing of
-    # the fallback as safe "precisely when [join-api] is not running,
-    # because then it's the only writer" -- the sqlite branch relies on the
-    # exact same operational assumption (no other process writes while the
-    # API is down), it just never had to name the race because one
-    # connection made it invisible there. No locking added for this --
-    # out of scope.
+    # each other's refreshes entry. This mirrors the same "safe precisely
+    # when join-api is not running, because then it's the only writer"
+    # assumption the API-first/direct-write comment above already makes --
+    # the sqlite branch relies on the exact same operational assumption (no
+    # other process writes while the API is down), it just never had to
+    # name the race because one connection made it invisible there. No
+    # locking added for this -- out of scope.
     #
     # Guard against the invocation context NETWORK_HINT above documents as
     # sometimes necessary (running this from inside the join-api container,
@@ -776,7 +775,7 @@ else:
         "endpoints": endpoints,
     })
     conn.execute("UPDATE requests SET record = ? WHERE id = ?", (json.dumps(best), best_id))
-    # Audit trail parity with store.save_request's own writes (plan §1.5) --
+    # Audit trail parity with store.save_request's own writes --
     # append-only table, no triggers to worry about since this only inserts.
     conn.execute(
         "INSERT INTO request_events (request_id, at, actor, event) VALUES (?, ?, 'operator', 'refresh:direct-write')",

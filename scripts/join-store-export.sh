@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/join-store-export.sh -- pg_dump -Fc of the Postgres-backed join
-# store, the procedural half of the cluster-destruction gate (plan §6.3):
-# export, verify the export opens (pg_restore --list), then destroy.
+# store, the procedural half of the cluster-destruction gate (see
+# runbook.md §6.3): export, verify the export opens (pg_restore --list),
+# then destroy.
 # DigitalOcean deletes a managed cluster's automated backups when the
 # cluster is destroyed -- there is no "restore the cluster we deleted last
 # month," so this is the last line of evidence continuity before that.
@@ -61,7 +62,8 @@ DATASTORE_KIND=$(yq_get "$PACK_DIR/deployment.yaml" datastore.kind 2>/dev/null |
 if [ -z "${KP2_JOIN_DB_URL:-}" ]; then
   # kp2_load_env (lib-core.sh) parses .env; it is never sourced, because
   # join-api can write the tree it sits in and sourcing executes a file
-  # rather than reading it (docs/security-review-2026-08-23.md, H1).
+  # rather than reading it -- a `.env` line an attacker appended would run
+  # as this host shell the moment it was sourced.
   kp2_load_env "$PACK_DIR/.env"
 fi
 case "${KP2_JOIN_DB_URL:-}" in
@@ -105,16 +107,18 @@ docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T join-api \
 
 [ -s "$DUMP_FILE" ] || fail "pg_dump exited 0 but $DUMP_FILE is empty -- something is wrong even though the command reported success"
 
-# The plan's own explicit gate step: "verify the export opens." A small
+# pg_dump exiting 0 only means the process didn't crash, not that the file
+# is a usable dump -- so before this is trusted as the evidence copy,
+# confirm pg_restore can actually read it. A small
 # bind mount just for this -- the dump now lives on the host, not inside
 # whatever throwaway container pg_dump ran in.
 log "verifying the export opens (pg_restore --list)"
 # --user, not the compose service's own default: the dump is 0600 (umask
 # 077, above), so this one-shot container must run as its owner to read it.
 # Needed on a laptop today (join-api's default user may differ from the
-# operator invoking this script) and after Phase B unconditionally, once
-# join-api's default user becomes the dedicated `kp2` identity, which will
-# never own an operator-created dump.
+# operator invoking this script) and will become needed unconditionally
+# once join-api's default user becomes the dedicated `kp2` identity, which
+# will never own an operator-created dump.
 docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
   --user "$(id -u):$(id -g)" \
   -v "$DUMP_FILE:/tmp/kp2-join-export-verify.dump:ro" \
@@ -123,4 +127,4 @@ docker compose -f "$PACK_DIR/docker-compose.yml" run --rm -T \
 trap - EXIT  # verified good -- keep the file, don't remove it on exit
 
 log "export verified: $DUMP_FILE"
-log "move this file somewhere durable before destroying the cluster (plan §6.3) -- DigitalOcean deletes automated backups when the cluster itself is destroyed, so this file is the only copy of the evidence once that happens."
+log "move this file somewhere durable before destroying the cluster -- DigitalOcean deletes automated backups when the cluster itself is destroyed, so this file is the only copy of the evidence once that happens."

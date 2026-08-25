@@ -43,19 +43,17 @@ PLR_SS=${HOST_SS[PLR:ENROLMENT]}
 
 jar=$(api_key "${XROAD_BIND}:${SS_UI[$PNIA_SS]}" "$XROAD_ADMIN_USER" "$XROAD_ADMIN_PASSWORD")
 # api_key() leaves an authenticated cookie jar behind in mktemp's directory
-# with no cleanup of its own (security-review-remediation-plan.md Phase C,
-# review finding L6) -- this script's own responsibility, since api_key()
+# with no cleanup of its own -- this script's own responsibility, since api_key()
 # is shared by callers (scripts/acceptance.sh) that manage a jar's lifetime
 # very differently.
 trap 'rm -f "$jar"' EXIT
 token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
 RAW_TMP=$(mktemp -d)
 
-# Pinned against PNIA_SS's own captured certificate (security-review-
-# remediation-plan.md Phase C, M1) -- the three admin-API captures below
-# were still raw `curl -k`, bypassing api_key()/api()'s pinning entirely,
-# because they need the full response (headers + body, for mkfixture.py)
-# that api()'s `curl -sf` throws away. Found in review: fixed by pinning
+# Pinned against PNIA_SS's own captured certificate -- the three admin-API
+# captures below were still raw `curl -k`, bypassing api_key()/api()'s
+# pinning entirely, because they need the full response (headers + body,
+# for mkfixture.py) that api()'s `curl -sf` throws away. Fixed by pinning
 # _capture() itself rather than switching to api(). exchange_access_denied
 # below is a DIFFERENT call -- the plain-HTTP r1/consumer proxy on :8080,
 # never :4000 -- and passes no security flags of its own for that reason.
