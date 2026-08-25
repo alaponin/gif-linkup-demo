@@ -109,9 +109,8 @@ BLOCKED_POLL_INTERVAL_SECONDS = 2.0
 # Without a cap, a hung Hurl child holds app.py's single job lock
 # indefinitely -- the RUNNING recovery sweep (store.recover_interrupted)
 # only runs at process restart, so a stuck step otherwise blocks every
-# other join until someone notices and restarts the process
-# (security-review-remediation-plan.md E.4). Sized generously against
-# docs/deployment-targets.md's own measured figures: the WHOLE Hurl
+# other join until someone notices and restarts the process. Sized
+# generously against docs/deployment-targets.md's own measured figures: the WHOLE Hurl
 # admin-API run, every step of a 4-Security-Server topology together,
 # measures 462-504s end to end -- a single step is a small fraction of
 # that. 300s is comfortably above any observed single step while still
@@ -708,7 +707,7 @@ def _default_run_hurl(
         for name, value in argv_vars.items():
             args += ["--variable", f"{name}={value}"]
         args += ["--report-json", str(report_dir), str(step_file)]
-        # timeout=HURL_STEP_TIMEOUT_S (E.4): a subprocess.TimeoutExpired here
+        # timeout=HURL_STEP_TIMEOUT_S: a subprocess.TimeoutExpired here
         # is caught by every caller of run_hurl (_execute/_execute_reverse
         # wrap it in `except Exception` and raise StepFailure; _probe/
         # _reversal_probe treat any exception as "not there yet"/"not gone"),
@@ -1119,14 +1118,13 @@ def run(
     turns these calls into JSON-lines records, scrubbed the same way every
     other error path here already is.
 
-    `hurl_insecure_allowed` (security-review-remediation-plan.md Phase C,
-    M1): app.py resolves this from deployment.yaml's posture the same way
-    it resolves commit_gate -- job.py itself never reads that file (this
-    docstring's own commit_gate paragraph explains why). True (docker-local
-    default) is today's behaviour: every Hurl call and reachability probe in
-    this module still runs with the admin API's TLS unverified, because
-    re-plumbing that path to verify is deliberately out of this plan's
-    scope. False means posture: production and no
+    `hurl_insecure_allowed`: app.py resolves this from deployment.yaml's
+    posture the same way it resolves commit_gate -- job.py itself never
+    reads that file (this docstring's own commit_gate paragraph explains
+    why). True (docker-local default) is today's behaviour: every Hurl call
+    and reachability probe in this module still runs with the admin API's
+    TLS unverified, because re-plumbing that path to verify TLS is a
+    separate, larger change not made here. False means posture: production and no
     join_workflow.acknowledge_permissive: [hurl_insecure] -- refused before
     any network call, the same "resume" StepFailure pattern a few lines
     below uses, which is why this check runs before record["state"] is even
@@ -1786,8 +1784,8 @@ def unjoin(
         # checkout before anyone commits the deletion. Un-join is
         # deliberately NOT gated on a commit -- the retirement record and
         # catalogue regeneration already happened above, and blocking a
-        # *removal* on a commit would invert the risk this phase closes for
-        # the forward direction: a member no longer on the federation but
+        # *removal* on a commit would invert the risk the config.commit gate
+        # closes for the forward direction: a member no longer on the federation but
         # still described in git is the safe direction to drift in, not the
         # dangerous one. `commit_pending` is evidence instead, exactly like
         # retire_instruction() -- set once here and cleared by nothing, so

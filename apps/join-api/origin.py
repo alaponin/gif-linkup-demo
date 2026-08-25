@@ -5,10 +5,9 @@ scripts/member.sh's two host-side Python heredocs (`drift`, `refresh`),
 which fetch an already-joined member's spec_url with no join-api process
 running at all.
 
-Extracted from validate.py's `_origin_error` (security-review-remediation-
-plan.md Phase D, M2) rather than duplicated into member.sh, per this pack's
-own convention (docs/conventions.md: "one rule, one place, no
-indirection"). validate.py keeps a thin wrapper of the same name that
+Extracted from validate.py's `_origin_error` into its own module rather than
+duplicated into member.sh, per this pack's own convention
+(docs/conventions.md: "one rule, one place, no indirection"). validate.py keeps a thin wrapper of the same name that
 unpacks its own `policy` dict and calls `origin_error` here; every existing
 message string is preserved byte for byte -- test_validate.py passing
 unmodified is the proof this extraction changed no behaviour.

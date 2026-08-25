@@ -765,8 +765,7 @@ def _write_member(target_dir: pathlib.Path, key: str, payload: JoinPayload) -> N
 # dry_run_diff runs SYNCHRONOUSLY on the request thread from POST /requests
 # (app.py's submit_request) -- without a cap here, a hung generate.py (or
 # ~40 of them, one per concurrent request) holds its worker thread forever
-# and exhausts the AnyIO worker pool (security-review-remediation-plan.md
-# E.4). apply_real's own call is on the same code path, off a background
+# and exhausts the AnyIO worker pool. apply_real's own call is on the same code path, off a background
 # thread (app.py's _run_job), where the same cap still bounds a stuck job.
 _GENERATE_TIMEOUT_S = 120
 
@@ -915,8 +914,7 @@ def _restore(pack_dir: pathlib.Path, saved: dict) -> None:
 # A plain read against a repo mounted read-only into this container --
 # _live_uncommitted (app.py) already uses timeout=5 for the same kind of
 # call; 10s here gives a slightly larger tree (configs/, manifest.yaml,
-# onboarding/ together, vs. one member's own paths there) a bit more room
-# (security-review-remediation-plan.md E.4).
+# onboarding/ together, vs. one member's own paths there) a bit more room.
 _GIT_STATUS_TIMEOUT_S = 10
 
 
