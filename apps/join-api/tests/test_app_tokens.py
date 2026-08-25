@@ -328,6 +328,28 @@ def test_the_operator_token_cannot_be_set_to_the_disabled_sentinel(tmp_path):
         _import_app(tmp_path, applicant_token="test-applicant-token", operator_token="disabled")
 
 
+def test_a_hand_set_operator_token_outside_the_wellformed_shape_refuses_at_startup(tmp_path):
+    """E.1's _TOKEN_WELLFORMED_RE is a new constraint on every INCOMING
+    bearer token -- but scripts/gen-secrets.sh is not the only way an
+    operator can set KP2_JOIN_OPERATOR_TOKEN/KP2_JOIN_APPLICANT_TOKEN.
+    `openssl rand -base64 N`, a plausible hand-rolled alternative, includes
+    '/' roughly 40% of the time, and '/' is not in the regex's class. Without
+    this check, a token configured that way would 403 every real request
+    forever, silently, with nothing in the logs naming why -- a startup
+    refusal here, naming scripts/gen-secrets.sh like every other
+    _required_token refusal, is the fix."""
+    with pytest.raises(RuntimeError, match="KP2_JOIN_OPERATOR_TOKEN.*gen-secrets"):
+        _import_app(tmp_path, applicant_token="test-applicant-token",
+                    operator_token="opTok/with-a-slash-in-it-1234")
+
+
+def test_a_hand_set_applicant_token_outside_the_wellformed_shape_refuses_at_startup(tmp_path):
+    """Same refusal, the other of the two _required_token(check_wellformed=True)
+    call sites."""
+    with pytest.raises(RuntimeError, match="KP2_JOIN_APPLICANT_TOKEN.*gen-secrets"):
+        _import_app(tmp_path, applicant_token="appTok/with-a-slash-in-it-1234")
+
+
 @pytest.mark.parametrize("spelling", ["Disabled", "DISABLED", "disabled ", " disabled", "  DiSaBled  "])
 def test_a_near_miss_spelling_of_the_sentinel_is_still_treated_as_disabled(tmp_path, spelling):
     """.env is shell-sourced -- a stray trailing space or a capitalised

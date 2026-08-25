@@ -127,7 +127,36 @@ JOB_SECRETS = {
 }
 
 
-def _required_token(name: str, *, allow_disabled: bool = False) -> str:
+# The cheap gate E.1 asks for on every INCOMING bearer token, run before
+# EITHER the static-token compare_digest or the DB fallback, so a garbage
+# bearer token never reaches either. Not secrets.token_urlsafe(24)'s own
+# alphabet ([A-Za-z0-9_-]) alone: that is what an ISSUED token (issue_token
+# below) looks like, but APPLICANT_TOKEN/OPERATOR_TOKEN come from
+# scripts/gen-secrets.sh, whose ALPHABET ('A-Za-z0-9@%+_.-') is deliberately
+# wider (that script's own comment: "narrower than [shell-safe download],
+# letters, digits, and a small set of punctuation with no meaning to
+# bash"). A regex matching only token_urlsafe's alphabet would reject a
+# live, correctly-configured operator/applicant token the moment
+# gen-secrets.sh happened to draw an '@', '%', '+' or '.' -- so this covers
+# both alphabets' characters, at both lengths (24 for gen-secrets.sh, 32 for
+# token_urlsafe(24)).
+#
+# Defined here, ahead of _required_token below, because _required_token's
+# own `check_wellformed` option (APPLICANT_TOKEN/OPERATOR_TOKEN's calls,
+# just past it) enforces this SAME regex on the CONFIGURED value, not just
+# the incoming one. Without that, an operator who hand-sets
+# KP2_JOIN_OPERATOR_TOKEN outside this shape (`openssl rand -base64 N`
+# includes '/' roughly 40% of the time, and '/' is not in this class) would
+# get a silent, permanent 403 lockout at request time -- every real request
+# bearing that correctly-configured-but-wrong-shape token fails the
+# well-formedness check before compare_digest ever runs, with nothing in
+# the logs naming the cause. Checking it here instead turns that into a
+# clear refusal at startup, naming scripts/gen-secrets.sh, the same as
+# every other _required_token refusal already does.
+_TOKEN_WELLFORMED_RE = re.compile(r"^[A-Za-z0-9@%+._-]{16,64}$")
+
+
+def _required_token(name: str, *, allow_disabled: bool = False, check_wellformed: bool = False) -> str:
     """scripts/lib-stack.sh refuses to run while XROAD_TOKEN_PIN or
     XROAD_ADMIN_PASSWORD are still a placeholder from .env.example
     on purpose. Same idea, applied
@@ -148,7 +177,16 @@ def _required_token(name: str, *, allow_disabled: bool = False) -> str:
     "disabled" the moment an operator forgot the .env line. Every other
     caller (KP2_JOIN_OPERATOR_TOKEN) has that same sentinel (any spelling
     of it) refused outright -- the operator credential can never be
-    disabled this way."""
+    disabled this way.
+
+    `check_wellformed=True` (APPLICANT_TOKEN/OPERATOR_TOKEN's own calls
+    only -- KP2_JOIN_DB_URL's call below leaves it False, since a DSN is not
+    a bearer token and does not fit this shape at all) additionally refuses
+    a value that does not match _TOKEN_WELLFORMED_RE, defined just above.
+    require_applicant/require_operator apply that identical regex to every
+    INCOMING bearer token; this is the other half of that same contract,
+    applied once, here, to the CONFIGURED value, rather than left to fail
+    unexplained on every request against it forever after."""
     value = os.environ.get(name, "")
     if value.strip().lower() == "disabled":
         if allow_disabled:
@@ -163,11 +201,21 @@ def _required_token(name: str, *, allow_disabled: bool = False) -> str:
             f"join-api: {name} is unset or still the .env.example placeholder. "
             "Run scripts/gen-secrets.sh to generate a real .env."
         )
+    if check_wellformed and not _TOKEN_WELLFORMED_RE.fullmatch(value):
+        raise RuntimeError(
+            f"join-api: {name} does not look like a token scripts/gen-secrets.sh "
+            "would produce (16-64 characters of letters, digits, '@', '%', '+', "
+            "'.', '_' or '-'). Every incoming bearer token is checked against this "
+            "same shape before it is ever compared -- a configured value outside "
+            "it would otherwise 403 every real request silently, forever, with "
+            "nothing in the logs naming why. Regenerate with scripts/gen-secrets.sh, "
+            "or if you set this by hand, keep it inside that character set."
+        )
     return value
 
 
-APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN", allow_disabled=True)
-OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN")
+APPLICANT_TOKEN = _required_token("KP2_JOIN_APPLICANT_TOKEN", allow_disabled=True, check_wellformed=True)
+OPERATOR_TOKEN = _required_token("KP2_JOIN_OPERATOR_TOKEN", check_wellformed=True)
 
 # -- structured logging (E.1, docs/production-delta.md row 34) --------------
 # JSON-lines to stdout, stdlib `logging` only -- join_logging.py's own
@@ -464,20 +512,6 @@ def _bearer_token(request: Request) -> str:
 # records; with one DB and two separate tables a token row can never be
 # miscounted as a request row by construction.
 _TOKEN_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-
-# The cheap gate E.1 asks for, run before EITHER the static-token compare_
-# digest or the DB fallback, so a garbage bearer token never reaches either.
-# Not secrets.token_urlsafe(24)'s own alphabet ([A-Za-z0-9_-]) alone: that is
-# what an ISSUED token (issue_token below) looks like, but
-# APPLICANT_TOKEN/OPERATOR_TOKEN come from scripts/gen-secrets.sh, whose
-# ALPHABET ('A-Za-z0-9@%+_.-') is deliberately wider (that script's own
-# comment: "narrower than [shell-safe download], letters, digits, and a
-# small set of punctuation with no meaning to bash"). A regex matching only
-# token_urlsafe's alphabet would reject a live, correctly-configured
-# operator/applicant token the moment gen-secrets.sh happened to draw an
-# '@', '%', '+' or '.' -- so this covers both alphabets' characters, at
-# both lengths (24 for gen-secrets.sh, 32 for token_urlsafe(24)).
-_TOKEN_WELLFORMED_RE = re.compile(r"^[A-Za-z0-9@%+._-]{16,64}$")
 
 
 def _token_digest(token: str) -> str:
