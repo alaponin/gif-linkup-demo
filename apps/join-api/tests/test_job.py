@@ -321,12 +321,11 @@ def test_a_hosted_join_runs_to_active_and_verified():
 
 
 def test_hurl_insecure_not_allowed_refuses_before_any_hurl_call():
-    """security-review-remediation-plan.md Phase C, M1: posture: production
-    without join_workflow.acknowledge_permissive: [hurl_insecure] must stop
-    run() before it does anything network-shaped -- not run Hurl anyway and
-    fail on the first response, and not silently try to verify a
-    certificate nothing can issue (decision 3: the Hurl path is not
-    re-plumbed to verify TLS in this plan)."""
+    """posture: production without join_workflow.acknowledge_permissive:
+    [hurl_insecure] must stop run() before it does anything network-shaped --
+    not run Hurl anyway and fail on the first response, and not silently try
+    to verify a certificate nothing can issue (decision 3: the Hurl path is
+    not re-plumbed to verify TLS)."""
     hurl = FakeHurl()
     saves: list = []
     with pytest.raises(job.StepFailure, match="posture: production"):
@@ -364,7 +363,7 @@ def test_session_tokens_are_never_persisted_but_are_still_injected():
     assert at_client_add["ss_plr_xsrf_token"]
 
 
-# -- the log= seam (E.1, docs/production-delta.md row 34) --------------------
+# -- the log= seam (docs/production-delta.md row 34) -----------------------
 # job.py never imports `logging` itself (module docstring) -- these tests
 # only assert on the EVENTS this module calls `log` with, not on any
 # formatting. app.py's own tests (test_app_health.py) cover the JSON/scrub
@@ -1526,10 +1525,9 @@ def _unjoin(
 
 
 def test_unjoin_hurl_insecure_not_allowed_refuses_before_any_hurl_call():
-    """Same gate as run()'s own (security-review-remediation-plan.md Phase
-    C, M1), and the same reason unjoin()'s docstring gives for raising
-    before record["retire_started_at"] is set: the record is left exactly
-    where it started (RETIRING), not moved to a new state."""
+    """Same gate as run()'s own, and the same reason unjoin()'s docstring
+    gives for raising before record["retire_started_at"] is set: the record
+    is left exactly where it started (RETIRING), not moved to a new state."""
     record = _active()
     hurl = ReverseHurl()
     saves: list = []
@@ -1560,9 +1558,9 @@ def test_every_step_the_walk_visits_has_an_absence_interpreter():
     REVERSAL_ABSENT by the same base id -- two hand-maintained lists of the
     same set. A REVERSAL_ORDER entry with no interpreter is a KeyError mid-walk
     (with part of the member already reversed); an interpreter for a step the
-    order never names is dead code that reads as coverage (final review
-    finding 1). tests/test_steps.py holds the third list, the registry's own
-    `reverse=` fields, to the same set."""
+    order never names is dead code that misleadingly reads as coverage for a
+    step unjoin() never actually walks. tests/test_steps.py holds the third
+    list, the registry's own `reverse=` fields, to the same set."""
     _, steps = job._hurl_modules(REAL_PACK_DIR)
     assert set(steps.REVERSAL_ORDER) == set(job.REVERSAL_ABSENT)
 
@@ -1885,11 +1883,11 @@ def test_a_step_the_forward_run_never_reached_is_not_reversed():
 
 
 def test_every_subprocess_run_in_job_passes_a_timeout():
-    """E.4, parse-level regression guard -- same shape as writer.py's own
+    """Parse-level regression guard -- same shape as writer.py's own
     (test_writer.py), same reasoning: the single Hurl subprocess.run() call
-    in this file learned timeout=HURL_STEP_TIMEOUT_S this phase, and this is
-    what stops a future subprocess.run() added here from silently going back
-    to none, holding app.py's single job lock indefinitely."""
+    in this file carries timeout=HURL_STEP_TIMEOUT_S, and this is what stops
+    a future subprocess.run() added here from silently going back to none,
+    holding app.py's single job lock indefinitely."""
     import ast
 
     tree = ast.parse((pathlib.Path(__file__).resolve().parent.parent / "job.py").read_text())
@@ -1906,5 +1904,5 @@ def test_every_subprocess_run_in_job_passes_a_timeout():
     assert not offending, (
         f"job.py line(s) {offending}: subprocess.run() with no timeout= -- a hung Hurl "
         "child would hold the job lock forever, and the RUNNING recovery sweep only "
-        "runs at process restart (security-review-remediation-plan.md E.4)."
+        "runs at process restart."
     )
