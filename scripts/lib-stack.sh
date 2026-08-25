@@ -14,7 +14,8 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-core.sh"
 
 # PARSED, never sourced -- kp2_load_env's own comment in lib-core.sh has the
-# reason (docs/security-review-2026-08-23.md, finding H1). This used to be
+# reason: a sourced .env is arbitrary shell, and this file is writable by
+# whoever can edit the checkout. This used to be
 # `set -a && . "$PACK_DIR/.env" && set +a`, which executed the file.
 kp2_load_env "$PACK_DIR/.env"
 
@@ -78,8 +79,7 @@ POSTURE=$(yq_get "$DEPLOY_SPEC" posture 2>/dev/null || echo demo)
 # ...on a laptop. On the droplet those two containers run as a dedicated
 # unprivileged identity instead -- `kp2`, uid/gid 10001, created by
 # infra/terraform/cloud-init.yaml, which infra/ci/remote-deploy.sh also
-# chowns the handful of writable paths to
-# (docs/security-review-2026-08-23.md, finding H1). Fixed ids because they
+# chowns the handful of writable paths to. Fixed ids because they
 # have to mean the same thing on both sides of a bind mount.
 #
 # RESOLVED FROM THE HOST, not from an exported variable. An earlier version of
@@ -90,7 +90,8 @@ POSTURE=$(yq_get "$DEPLOY_SPEC" posture 2>/dev/null || echo demo)
 # stayed there (`restart: unless-stopped`). At UID 0 the ownership and
 # sticky-bit backstop is worth nothing -- CAP_DAC_OVERRIDE/CAP_FOWNER go
 # straight through it, and this pack sets no cap_drop, security_opt or
-# userns_mode -- so H1's whole chain was still open. Found in review.
+# userns_mode -- so the whole chain stayed wide open at root regardless of any
+# chown done elsewhere.
 #
 # So: if this host has the account, use it, whoever is running this script --
 # CI, console-publish.sh, or an operator by hand. Nothing has to remember an
@@ -108,8 +109,9 @@ export KP2_HOST_UID=${KP2_CONTAINER_UID:-$(id -u)}
 export KP2_HOST_GID=${KP2_CONTAINER_GID:-$(id -g)}
 if [ "$KP2_HOST_UID" = 0 ]; then
   echo "lib-stack.sh: WARNING -- the console and join-api containers will run as
-UID 0 against their bind mounts, which is the posture
-docs/security-review-2026-08-23.md's finding H1 is about. This host has no
+UID 0 against their bind mounts, which lets a compromised process in either
+one write anywhere on the bind-mounted checkout, not just the paths it
+actually needs. This host has no
 `kp2` account and KP2_CONTAINER_UID is unset. On a droplet, run
 infra/ci/remote-deploy.sh (it creates the account and chowns the writable
 set) before bringing either container up." >&2
@@ -197,8 +199,7 @@ esac
 #
 # PARSED from topology.json, not sourced from the topology.sh generate.py
 # still writes beside it: join-api can write hurl/, and `. hurl/topology.sh`
-# would execute whatever it found there as root
-# (docs/security-review-2026-08-23.md, finding H1). See kp2_load_topology in
+# would execute whatever it found there as root. See kp2_load_topology in
 # lib-core.sh, including the one pair it deliberately does not carry over.
 TOPOLOGY_JSON="$PACK_DIR/hurl/topology.json"
 if [ ! -f "$TOPOLOGY_JSON" ]; then
@@ -233,8 +234,7 @@ testca_bundle() {
   printf '%s\n' "$out"
 }
 
-# TOFU-pin ONE admin host's :4000 certificate (security-review-remediation-
-# plan.md Phase C, M1) into out/xroad-admin-certs/<name>.pem -- the source
+# TOFU-pin ONE admin host's :4000 certificate into out/xroad-admin-certs/<name>.pem -- the source
 # _admin_curl_opts() and every Python caller (apps/console/xroad.py,
 # scripts/member.sh) pin against. Shared here, not copied, because it has
 # TWO callers with different lifecycles: hurl/run-linkup.sh captures the
@@ -321,7 +321,7 @@ COMPOSE_ALL=(docker compose -f "$PACK_DIR/docker-compose.yml" -f "$PACK_DIR/hurl
 # docs/decisions/xroad-770-notes.md §1. (An earlier draft here used POST /api/v1/api-keys
 # with basic auth. That was wrong and would have failed on the first call.)
 
-# Reverse of SS_UI (security-review-remediation-plan.md Phase C, M1):
+# Reverse of SS_UI:
 # api_key()/api() only ever receive XROAD_BIND:port, never a dns name --
 # every call site inherited that shape from when curl ran with plain -k and
 # no host distinction mattered. Recovering the dns name from the one
@@ -345,9 +345,9 @@ _admin_host_for_port() {
   return 1
 }
 
-# TOFU pin for one admin host's :4000 (security-review-remediation-plan.md
-# Phase C, M1). hurl/run-linkup.sh captures each server's own certificate at
-# deploy time into out/xroad-admin-certs/<host>.pem. curl has no CLI-only
+# TOFU pin for one admin host's :4000. hurl/run-linkup.sh captures each
+# server's own certificate at deploy time into
+# out/xroad-admin-certs/<host>.pem. curl has no CLI-only
 # flag for "verify the chain but skip the hostname" -- the pinned
 # certificate's CN/SAN name the container's own runtime hostname, never
 # XROAD_BIND, exactly the reason apps/console/xroad.py's

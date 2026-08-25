@@ -479,10 +479,9 @@ def check_join_workflow(deployment: dict) -> None:
     # something that is NOT a bool, and every one of them would silently mean
     # "off" -- the production posture quietly not applied, which is the worst
     # possible failure mode for a switch whose whole job is to be on.
-    # hurl_insecure (security-review-remediation-plan.md Phase C) is the
-    # third addition to this same list, for the same reason the comment
-    # above already names -- do not let a fourth switch repeat this omission
-    # without reading this comment first.
+    # hurl_insecure is the third addition to this same list, for the same
+    # reason the comment above already names -- do not let a fourth switch
+    # repeat this omission without reading this comment first.
     for key in ("enforce_ownership", "require_https_spec_url", "hurl_insecure"):
         value = block.get(key, False)
         if not isinstance(value, bool):
@@ -1133,7 +1132,7 @@ def main() -> None:
 
     # -- 3x service publication + ACLs -------------------------------------
     # Only members with services get a numbered file at all (PNEA, the
-    # consumer, never has -- same as before this task).
+    # consumer, never has).
     service_keys = [k for k in members if members[k].get("services")]
     service_scenario_no = _allocate_numbers(service_keys, PINNED_SERVICE_SCENARIO_NO, FRESH_SERVICE_SCENARIO_START)
     for key in service_keys:

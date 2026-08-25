@@ -22,8 +22,8 @@ PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
 # remote-deploy.sh never does, and this runs in its own ssh session, so
 # nothing that script exported reaches here. Before this line both containers
 # came up as UID 0 on every normal deploy and stayed there
-# (`restart: unless-stopped`), which is exactly the posture
-# docs/security-review-2026-08-23.md's finding H1 is about: at UID 0 the
+# (`restart: unless-stopped`), which lets a compromised process in either
+# container write anywhere on the bind-mounted checkout: at UID 0 the
 # ownership/sticky-bit backstop is bypassed outright by CAP_DAC_OVERRIDE.
 #
 # scripts/lib-stack.sh now also resolves this from the `kp2` account
@@ -37,8 +37,7 @@ export KP2_CONTAINER_GID=10001
 # Fails before the htpasswd file or any listener exists -- same fail-closed
 # ordering as the KP2_CONSOLE_HTPASSWD guard above and `nginx -t` below.
 # :443 is a production public surface; deployment.yaml must say so on
-# purpose (security-review-remediation-plan.md Phase A, H3) rather than this
-# script publishing it because it happened to run.
+# purpose rather than this script publishing it because it happened to run.
 POSTURE=$(python3 -c "
 import sys, yaml
 print((yaml.safe_load(open(sys.argv[1])) or {}).get('posture', 'demo'))

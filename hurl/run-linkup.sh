@@ -128,9 +128,9 @@ until [ "$(docker inspect -f '{{.State.Health.Status}}' "${_HEALTH_TARGETS[@]}" 
 done
 CONTAINERS_HEALTHY=$(date +%s)
 
-# TOFU-pin every admin API's own :4000 certificate (security-review-
-# remediation-plan.md Phase C, M1) -- captured here, not left to whichever
-# caller happens to hit that host first, so console and join-api see a
+# TOFU-pin every admin API's own :4000 certificate here -- captured now,
+# not left to whichever caller happens to hit that host first, so console
+# and join-api see a
 # populated out/xroad-admin-certs/ the moment they start (docker-compose.yml
 # mounts a read-only child over that subdirectory of the ./out mount in
 # both). Regenerated on every cold deploy: a changed certificate after this

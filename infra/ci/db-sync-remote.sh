@@ -21,8 +21,8 @@ cd "$PACK"
 # The two `docker compose run --rm join-api` calls below are the one place in
 # this pack that reaches that image WITHOUT going through scripts/lib-stack.sh,
 # so nothing else resolves the containers' uid for them and
-# docker-compose.yml's `${KP2_HOST_UID:-0}` default would make them UID 0 --
-# the posture docs/security-review-2026-08-23.md's finding H1 is about. Set
+# docker-compose.yml's `${KP2_HOST_UID:-0}` default would make them UID 0,
+# which bypasses the ownership/sticky-bit backstop outright. Set
 # directly here, not via KP2_CONTAINER_UID, because KP2_CONTAINER_UID is a
 # lib-stack.sh input and lib-stack.sh is not in this path.
 #

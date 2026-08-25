@@ -18,10 +18,9 @@ target: docker-local   # only supported value today. Future: itu-cloud, vm
 #
 # hurl_insecure: false means the join workflow REFUSES TO RUN AT ALL under
 # posture: production until acknowledged -- Hurl's TLS to the admin API is
-# not re-plumbed to verify (security-review-remediation-plan.md Phase C
-# decision 3), so "production and not acknowledged" means every join and
-# un-join fails closed, not that it silently tries to verify a certificate
-# nothing can issue. Add `join_workflow: {hurl_insecure: true,
+# not re-plumbed to verify, so "production and not acknowledged" means every
+# join and un-join fails closed, not that it silently tries to verify a
+# certificate nothing can issue. Add `join_workflow: {hurl_insecure: true,
 # acknowledge_permissive: [hurl_insecure]}` to run the workflow anyway.
 posture: demo        # demo (default) | production
 

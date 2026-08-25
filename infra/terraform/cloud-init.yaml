@@ -24,9 +24,10 @@ packages:
 
 runcmd:
   # The identity the console and join-api containers run as -- NOT root, which
-  # is what they ran as before (docs/security-review-2026-08-23.md, finding
-  # H1: join-api parses applicant-controlled payloads and bind-mounts this
-  # host's checkout). Fixed uid/gid, because they have to mean the same thing
+  # is what they ran as before, and join-api parses applicant-controlled
+  # payloads while bind-mounting this host's checkout, so root there means a
+  # compromised join-api process owns the host. Fixed uid/gid, because they
+  # have to mean the same thing
   # on both sides of a bind mount; -M and nologin, because nobody ever logs
   # in as it. infra/ci/remote-deploy.sh exports KP2_CONTAINER_UID=10001 and
   # chowns the handful of paths those containers may write; it also recreates

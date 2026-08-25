@@ -11,7 +11,7 @@
 # float in as fastapi's dependency (fastapi only requires
 # starlette>=0.46.0): both apps' requirements.txt independently resolved
 # to starlette==1.3.1, and apps/join-api/app.py's body-size-limit
-# middleware (Phase E.3) relies on private starlette internals
+# middleware relies on private starlette internals
 # (_CachedRequest.wrapped_receive's _body-before-_stream_consumed check)
 # that have changed across majors -- an unpinned install here previously
 # floated to whatever starlette was newest (1.6.0, as of this fix),

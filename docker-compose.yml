@@ -392,9 +392,9 @@ services:
       # AdminSession pins that separately, see KP2_XROAD_ADMIN_CERT_DIR.
       KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
       # Each admin API's own :4000 certificate, TOFU-captured at deploy time
-      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem
-      # (security-review-remediation-plan.md Phase C, M1) -- xroad.py's
-      # AdminSession pins against it instead of running verify=False. No new
+      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem --
+      # xroad.py's AdminSession pins against it instead of running
+      # verify=False. No new
       # mount: out/xroad-admin-certs is a subdirectory of the ./out bind
       # mount below, which this container already has read-write for the
       # ACL journal.
@@ -423,10 +423,10 @@ services:
       # pinned trust anchors (KP2_XROAD_ADMIN_CERT_DIR above). A read-only
       # child mount OVER the read-write parent, listed after it so it wins
       # -- the same shape join-api's own /repo:ro-with-rw-children mount
-      # uses, inverted. Without this, the plan's own text ("mounts that
-      # directory read-only into console and join-api") was not actually
-      # true: this container could rewrite the certificates it pins
-      # against. Found in review.
+      # uses, inverted. Without this, out/xroad-admin-certs would sit inside
+      # the read-write ./out mount above, and this container could rewrite
+      # the very certificates it pins its own TLS verification against --
+      # a compromised process could plant its own cert and trust itself.
       - ./out/xroad-admin-certs:/out/xroad-admin-certs:ro
 
   join-api:
@@ -452,8 +452,8 @@ services:
     # each path independently, so this is the kernel drawing the boundary,
     # not file ownership: scripts/, apps/, infra/, .git and .env are
     # unwritable to this container by mount flag, whatever it runs as. That
-    # is half of what closes docs/security-review-2026-08-23.md's finding H1
-    # (container -> host root); the other half is the host no longer sourcing
+    # is half of what closes off a compromised container writing to host
+    # root; the other half is the host no longer sourcing
     # anything this container can write (scripts/lib-core.sh's
     # kp2_load_env/kp2_load_topology) and infra/ci/remote-deploy.sh's
     # ownership backstop.
@@ -524,10 +524,11 @@ services:
       # (docs/production-delta.md row 19).
       KP2_XROAD_CA_BUNDLE: /etc/ssl/testca/ca.pem
       # Each admin API's own :4000 certificate, TOFU-captured at deploy time
-      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem
-      # (security-review-remediation-plan.md Phase C, M1). job.py's own
-      # admin-API calls stay on Hurl --insecure (gated on posture, not
-      # pinned -- decision 3 in the plan) and never read this; it is for
+      # by hurl/run-linkup.sh into out/xroad-admin-certs/<host>.pem.
+      # job.py's own admin-API calls stay on Hurl --insecure (gated on
+      # posture instead of pinned -- the posture check already refuses to
+      # run on anything but a demo deployment, so pinning here would only
+      # duplicate a guard that already exists) and never read this; it is for
       # scripts/member.sh's admin-session calls (refresh), which run inside
       # this container (the NETWORK_HINT in that script says so). No new
       # mount: out/xroad-admin-certs is a subdirectory of the ./out bind
@@ -550,8 +551,9 @@ services:
       # enforces -- is writable by the container it constrains; only
       # configs/member-<key>/ actually needs to be. And hurl/ carries
       # compose.members.yml, which the HOST later feeds to
-      # `docker compose -f ... up` as root: not this phase's sourcing chain,
-      # but the same "a file join-api writes is interpreted elsewhere" shape.
+      # `docker compose -f ... up` as root: not the .env/topology sourcing
+      # chain closed elsewhere in this pack, but the same "a file join-api
+      # writes is interpreted elsewhere" shape.
       # See docs/production-delta.md's container-identity row.
       #
       # hurl/ is the uncomfortable one: generate.py and steps.py live in the

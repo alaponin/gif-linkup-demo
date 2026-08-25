@@ -22,9 +22,9 @@ export KP2_EXPORT_DIR=/opt/kp2/exports
 #
 # join-api parses applicant-controlled payloads and bind-mounts this
 # checkout; it used to do that as UID 0, because this script runs as root and
-# scripts/lib-stack.sh took the containers' uid from `id -u`
-# (docs/security-review-2026-08-23.md, finding H1). It now runs as the
-# dedicated unprivileged `kp2` identity instead.
+# scripts/lib-stack.sh took the containers' uid from `id -u`, so a
+# compromised join-api process had full write access to the host checkout
+# as root. It now runs as the dedicated unprivileged `kp2` identity instead.
 #
 # This export covers THIS process only, and this script never starts the
 # console or join-api -- infra/ci/console-publish.sh does, in its own ssh
