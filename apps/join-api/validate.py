@@ -681,9 +681,10 @@ def _origin_error(label: str, url: str, policy: dict) -> str | None:
     """Thin wrapper: unpack this module's own `policy` dict shape and call
     the shared rule (apps/join-api/origin.py's `origin_error`) -- the one
     implementation, also reachable from scripts/member.sh's host-side
-    fetches (security-review-remediation-plan.md Phase D, M2). No behaviour
-    change from before the extraction; test_validate.py's cases are the
-    proof."""
+    fetches, so the SSRF-guard logic exists exactly once rather than being
+    copied between the in-process check here and the host-side script. No
+    behaviour change from before the extraction; test_validate.py's cases
+    are the proof."""
     return origin.origin_error(label, url, policy.get("spec_url_hosts"))
 
 

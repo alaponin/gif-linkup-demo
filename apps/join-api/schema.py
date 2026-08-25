@@ -20,12 +20,12 @@ deliberate "origin": "canonical") is a schema-validation failure (check 1),
 not a silently-ignored extra field.
 
 Every string field below also carries Field(max_length=...), and every list
-field a matching item-count bound (security-review-remediation-plan.md
-E.2): unbounded before this, and a REJECTED submission persists the
-attacker's body verbatim ("payload": raw, app.py's submit_request) -- so an
-unbounded field was an unbounded amount of evidence this store would hold
-per request, not just an unbounded parse. The numbers are the plan's own
-table, applied verbatim, nothing invented here.
+field a matching item-count bound: unbounded before this, and a REJECTED
+submission persists the attacker's body verbatim ("payload": raw, app.py's
+submit_request) -- so an unbounded field was an unbounded amount of
+evidence this store would hold per request, not just an unbounded parse.
+The numbers are deliberately chosen bounds, applied verbatim, nothing
+invented here.
 """
 from __future__ import annotations
 
