@@ -32,7 +32,6 @@ Two things this module deliberately does NOT do, both on purpose:
 from __future__ import annotations
 
 import dataclasses
-import ipaddress
 import os
 import pathlib
 import re
@@ -43,6 +42,7 @@ import httpx
 import pydantic
 import yaml
 
+import origin
 from schema import BackendAuth, JoinPayload
 
 # -- disk loader --------------------------------------------------------------
@@ -676,57 +676,15 @@ def contract_fields(spec: dict) -> tuple[frozenset[str], frozenset[str]]:
 # HOSTNAME, and a member that can only be named by its address has not been
 # through the naming this federation runs on.
 
-_ALLOWED_SCHEMES = frozenset({"http", "https"})
-
 
 def _origin_error(label: str, url: str, policy: dict) -> str | None:
-    """None if `url` may be fetched from this container; a rejection message
-    otherwise. Pure string work -- no DNS, no connection, so it is safe to
-    call before any I/O and cheap to call twice."""
-    allowed = policy.get("spec_url_hosts")
-    if not isinstance(allowed, list) or not allowed:
-        return (
-            "configs/x-road-bus/join-policy.yaml declares no join.spec_url_hosts "
-            "-- this API refuses to fetch any applicant-supplied URL without an "
-            "allowlist to judge it against (it runs in a container holding the "
-            "federation's admin credentials). Add the key and redeploy"
-        )
-    parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme not in _ALLOWED_SCHEMES:
-        return (
-            f"{label} {url!r} uses scheme {parsed.scheme or '(none)'!r} -- only "
-            f"{sorted(_ALLOWED_SCHEMES)} are fetched (a file:// or schemeless URL "
-            "reads this container's own filesystem, not the member's backend)"
-        )
-    host = parsed.hostname
-    if not host:
-        return f"{label} {url!r} names no host"
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        pass
-    else:
-        return (
-            f"{label} {url!r} names an IP address rather than a host name. "
-            "Addresses are refused outright -- loopback, link-local and the "
-            "cloud metadata address 169.254.169.254 among them -- regardless of "
-            "join.spec_url_hosts; name a host on that list instead"
-        )
-    if host.lower() == "localhost" or host.lower().endswith(".localhost"):
-        return (
-            f"{label} {url!r} names {host!r}, which resolves inside this "
-            "container -- the join API's own process and its credentials, never "
-            "the member's backend"
-        )
-    if host not in allowed:
-        return (
-            f"{label} {url!r} names host {host!r}, which is not in "
-            f"join.spec_url_hosts {sorted(allowed)} (configs/x-road-bus/"
-            "join-policy.yaml) -- this URL is fetched from a container that "
-            "holds the federation's admin credentials and can reach every "
-            "Security Server's admin API, so only declared hosts are contacted"
-        )
-    return None
+    """Thin wrapper: unpack this module's own `policy` dict shape and call
+    the shared rule (apps/join-api/origin.py's `origin_error`) -- the one
+    implementation, also reachable from scripts/member.sh's host-side
+    fetches (security-review-remediation-plan.md Phase D, M2). No behaviour
+    change from before the extraction; test_validate.py's cases are the
+    proof."""
+    return origin.origin_error(label, url, policy.get("spec_url_hosts"))
 
 
 def _check_spec_url_origin(ctx: ValidationContext) -> str | None:

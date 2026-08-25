@@ -228,12 +228,25 @@ PY
   fi
   [ -n "$record_json" ] || fail "no ACTIVE join-store record for '$key' -- either it was never joined through the join API (e.g. added by hand via prompts/member.md) or its join predates this feature. drift has no join-time baseline to compare against."
 
-  python3 - "$dir" "$key" "$record_json" <<'PY'
+  python3 - "$dir" "$key" "$record_json" "$PACK_DIR" \
+           "$PACK_DIR/configs/x-road-bus/join-policy.yaml" <<'PY'
 import glob, json, os, ssl, sys, urllib.request
 
 import yaml
 
-member_dir, key, record_json = sys.argv[1], sys.argv[2], sys.argv[3]
+member_dir, key, record_json, pack_dir, policy_path = sys.argv[1:6]
+
+# apps/join-api is not a package -- same technique
+# tests/test_member_drift.py's own sys.path.insert uses for store.py, and
+# scripts/migrate-join-store.py's for the same reason. Stdlib-only is what
+# makes this safe to import from a host script that has only python3 +
+# PyYAML (security-review-remediation-plan.md Phase D, M2): no pydantic, no
+# httpx pulled in.
+sys.path.insert(0, os.path.join(pack_dir, "apps", "join-api"))
+from origin import no_redirect_opener, origin_error  # noqa: E402
+
+_policy = yaml.safe_load(open(policy_path)) or {}
+ALLOWED_HOSTS = (_policy.get("join") or {}).get("spec_url_hosts")
 
 # The published spec_url is https once the mock backends serve TLS
 # (docs/production-delta.md row 18), and this image's own trust store has no
@@ -279,8 +292,20 @@ any_drift = False
 for svc in services:
     code, spec_url = svc["code"], svc["spec_url"]
     base_paths = set(baseline.get(code, []))
+    # The origin check runs before every fetch this command makes, exactly
+    # like validate.py's check 9a -- member.sh used to bypass it entirely
+    # (docs/production-delta.md row 41), calling urllib.request.urlopen
+    # directly, which follows redirects by default, with no allowlist and
+    # no IP-literal refusal. A refusal here follows drift's own idiom: print
+    # and move on to the next service, same as a fetch failure below.
+    origin_problem = origin_error(f"service {code!r}'s spec_url", spec_url, ALLOWED_HOSTS)
+    if origin_problem:
+        any_drift = True
+        print(f"{code}: refused to fetch spec_url: {origin_problem}")
+        continue
     try:
-        with urllib.request.urlopen(spec_url, timeout=10, context=_spec_ssl_context()) as resp:
+        opener = no_redirect_opener(context=_spec_ssl_context())
+        with opener.open(spec_url, timeout=10) as resp:
             spec_doc = yaml.safe_load(resp.read())
         current_paths = set((spec_doc or {}).get("paths", {}).keys())
     except Exception as exc:
@@ -387,13 +412,20 @@ cmd_refresh() {
   python3 - "$topo" "$key" "$PACK_DIR/configs/x-road-bus/join-policy.yaml" \
            "$PACK_DIR/out/join-store/join-store.sqlite3" \
            "${XROAD_ADMIN_USER:-xrd}" "$XROAD_ADMIN_PASSWORD" "$KP2_JOIN_OPERATOR_TOKEN" \
-           "$datastore_kind" "$PACK_DIR/docker-compose.yml" <<'PY'
+           "$datastore_kind" "$PACK_DIR/docker-compose.yml" "$PACK_DIR" <<'PY'
 import datetime, http.cookiejar, json, os, pathlib, shutil, ssl, sqlite3, subprocess, sys, urllib.parse, urllib.request
 
 import yaml
 
 topo_path, key, policy_path, db_path, admin_user, admin_password, operator_token, \
-    datastore_kind, compose_file = sys.argv[1:10]
+    datastore_kind, compose_file, pack_dir = sys.argv[1:11]
+
+# apps/join-api is not a package -- same technique
+# tests/test_member_drift.py's own sys.path.insert uses for store.py.
+# Stdlib-only is what makes this safe to import from a host script that has
+# only python3 + PyYAML (security-review-remediation-plan.md Phase D, M2).
+sys.path.insert(0, os.path.join(pack_dir, "apps", "join-api"))
+from origin import no_redirect_opener, origin_error  # noqa: E402
 
 # -- resolve ------------------------------------------------------------------
 # The IN-NETWORK address (host:ui_port), never the host-mapped one. This
@@ -521,14 +553,27 @@ if not descriptions:
 # contract APPROVED. Refusing here is what keeps this a governance tool
 # rather than a convenience that launders an unreviewed write endpoint onto
 # the bus.
-allowed = {m.upper() for m in ((yaml.safe_load(open(policy_path)) or {}).get("join") or {}).get("allowed_methods", [])}
+_policy_join = (yaml.safe_load(open(policy_path)) or {}).get("join") or {}
+allowed = {m.upper() for m in _policy_join.get("allowed_methods", [])}
+ALLOWED_HOSTS = _policy_join.get("spec_url_hosts")
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
 
 served, refused = {}, []
 for desc in descriptions:
     url = desc.get("url")
+    # The same origin check drift's fetch now runs, before this one --
+    # member.sh used to bypass it entirely (docs/production-delta.md row
+    # 41), calling urllib.request.urlopen directly, which follows redirects
+    # by default. refresh's own idiom on refusal is sys.exit, same as an
+    # unreachable spec below: refresh authenticates to a Security Server's
+    # admin API and mutates federation state, so it fails the whole run
+    # rather than skipping one service description.
+    origin_problem = origin_error(f"service description {desc.get('id')!r}'s url", url, ALLOWED_HOSTS)
+    if origin_problem:
+        sys.exit(f"member.sh refresh: refused to fetch {url}: {origin_problem}")
     try:
-        with urllib.request.urlopen(url, timeout=15, context=_spec_ssl_context()) as resp:
+        opener = no_redirect_opener(context=_spec_ssl_context())
+        with opener.open(url, timeout=15) as resp:
             spec = yaml.safe_load(resp.read()) or {}
     except Exception as exc:
         sys.exit(f"member.sh refresh: could not fetch the published spec at {url}: {exc}\n" + NETWORK_HINT)

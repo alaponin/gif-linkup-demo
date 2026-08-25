@@ -13,14 +13,26 @@ record seeded straight into the SQLite join store (the same technique
 tests/test_migrate_join_store.py uses -- import store.py and call into it),
 and a local http.server serving the "current" spec -- which is a real
 fetch, because that is what drift does.
+
+drift's fetch now runs origin.py's origin_error before it and
+no_redirect_opener for it (security-review-remediation-plan.md Phase D,
+M2), which unconditionally refuses an IP-literal spec_url -- so the fixture
+spec_url below is a host NAME, not the local http.server's raw 127.0.0.1,
+and a `sitecustomize.py` dropped onto the drift subprocess's PYTHONPATH
+resolves that name back to 127.0.0.1 (no real DNS record, no /etc/hosts
+edit, no root needed -- the module the `site` module auto-imports at
+interpreter startup, patching socket.getaddrinfo before member.sh's own
+python3 heredoc ever runs).
 """
 from __future__ import annotations
 
 import http.server
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 
 import pytest
@@ -29,6 +41,7 @@ import yaml
 PACK = pathlib.Path(__file__).resolve().parent.parent
 PORT = 18766
 SERVICE = "awards-api"
+SPEC_HOST = "member-drift-test-host"
 
 # apps/join-api/ is not a package -- same reason
 # scripts/migrate-join-store.py inserts this directory onto sys.path
@@ -67,19 +80,71 @@ def _spec_server():
     thread.join()
 
 
+class _RedirectHandler(http.server.BaseHTTPRequestHandler):
+    """Stands in for a host that would walk a followed redirect straight
+    off join.spec_url_hosts -- no_redirect_opener refuses the redirect
+    outright, so where it points never actually matters, only that it is
+    never followed."""
+
+    def do_GET(self):  # noqa: N802 -- stdlib method name
+        self.send_response(302)
+        self.send_header("Location", "http://evil.example.com/spec.yaml")
+        self.end_headers()
+
+    def log_message(self, *args):  # keep pytest -q output clean
+        pass
+
+
+@pytest.fixture(scope="module")
+def _redirect_server():
+    server = http.server.HTTPServer(("127.0.0.1", 0), _RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server.server_address[1]
+    server.shutdown()
+    thread.join()
+
+
+# A sitecustomize.py every drift subprocess picks up via PYTHONPATH (below),
+# resolving SPEC_HOST to the local http.server's real 127.0.0.1 -- see the
+# module docstring for why a hostname is needed at all now that
+# origin_error refuses IP literals unconditionally. Built once, at import
+# time, not per-test: its content is fixed, so a pytest fixture would only
+# add indirection every test function would have to name.
+_DRIFT_SITE_DIR = pathlib.Path(tempfile.mkdtemp(prefix="kp2-drift-sitecustomize-"))
+(_DRIFT_SITE_DIR / "sitecustomize.py").write_text(
+    "import socket\n"
+    "_orig_getaddrinfo = socket.getaddrinfo\n"
+    f"_MAP = {{{SPEC_HOST!r}: '127.0.0.1'}}\n"
+    "def _patched(host, *a, **kw):\n"
+    "    return _orig_getaddrinfo(_MAP.get(host, host), *a, **kw)\n"
+    "socket.getaddrinfo = _patched\n"
+)
+
+
 @pytest.fixture
 def pack(tmp_path):
     """Just enough pack for scripts/member.sh drift: lib-core.sh resolves
-    PACK_DIR from its own location, so the script has to run from a copy."""
+    PACK_DIR from its own location, so the script has to run from a copy.
+    Now also needs configs/x-road-bus/join-policy.yaml (drift's origin
+    check reads join.spec_url_hosts from it) and apps/join-api/origin.py
+    (drift imports origin_error/no_redirect_opener from it, stdlib-only so
+    a plain copy is enough -- no venv, no other apps/join-api module)."""
     pack = tmp_path / "pack"
     (pack / "scripts").mkdir(parents=True)
     for name in ("member.sh", "lib-core.sh"):
         shutil.copy(PACK / "scripts" / name, pack / "scripts" / name)
+    (pack / "apps" / "join-api").mkdir(parents=True)
+    shutil.copy(PACK / "apps" / "join-api" / "origin.py", pack / "apps" / "join-api" / "origin.py")
+    (pack / "configs" / "x-road-bus").mkdir(parents=True)
+    (pack / "configs" / "x-road-bus" / "join-policy.yaml").write_text(yaml.safe_dump({
+        "join": {"spec_url_hosts": [SPEC_HOST]},
+    }))
     member_dir = pack / "configs" / "member-ptsb"
     member_dir.mkdir(parents=True)
     (member_dir / "ptsb.yaml").write_text(yaml.safe_dump({
         "module": "member-ptsb",
-        "services": [{"code": SERVICE, "spec_url": f"http://127.0.0.1:{PORT}/spec.yaml"}],
+        "services": [{"code": SERVICE, "spec_url": f"http://{SPEC_HOST}:{PORT}/spec.yaml"}],
     }))
     return pack
 
@@ -100,9 +165,14 @@ def _record(pack, *, baseline, refreshes=None):
 
 
 def _drift(pack):
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        f"{_DRIFT_SITE_DIR}{os.pathsep}{existing}" if existing else str(_DRIFT_SITE_DIR)
+    )
     return subprocess.run(
         ["bash", str(pack / "scripts" / "member.sh"), "drift", "ptsb"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
 
 
@@ -175,3 +245,28 @@ def test_the_baseline_is_never_rewritten_by_reading_drift(pack):
     conn.close()
     assert record["endpoint_baseline"][SERVICE] == ["/awards/{nin}"]
     assert "refreshes" not in record
+
+
+# -- the origin check (security-review-remediation-plan.md Phase D, M2) -------
+
+
+def test_drift_refuses_a_redirect_rather_than_walking_it_off_the_allowlist(pack, _redirect_server):
+    """spec_url itself is on join.spec_url_hosts (SPEC_HOST) -- origin_error
+    lets it through -- but the server answers with a 302 to a host nobody
+    declared. Before this task, urllib.request.urlopen would have followed
+    that redirect with no allowlist and no IP-literal refusal at all
+    (docs/production-delta.md row 41). no_redirect_opener refuses it
+    outright, so this is reported the same way an unreachable spec is:
+    printed, drift continues to the next service, and the run still exits
+    non-zero."""
+    port = _redirect_server
+    member_dir = pack / "configs" / "member-ptsb"
+    (member_dir / "ptsb.yaml").write_text(yaml.safe_dump({
+        "module": "member-ptsb",
+        "services": [{"code": SERVICE, "spec_url": f"http://{SPEC_HOST}:{port}/spec.yaml"}],
+    }))
+    _record(pack, baseline=["/awards/{nin}"])
+    result = _drift(pack)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "could not fetch current spec" in result.stdout
+    assert "redirect refused" in result.stdout
