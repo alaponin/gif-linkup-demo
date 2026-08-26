@@ -27,6 +27,19 @@ APP_PY = PACK / "apps" / "join-api" / "app.py"
 _counter = itertools.count()
 
 
+@pytest.fixture(autouse=True)
+def _restore_env():
+    """_import_app points PACK_DIR (and friends) at a throwaway tmp_path pack.
+    Without this, the last scenario's PACK_DIR -- e.g. `posture: hardened` --
+    leaks into every later test file in the same pytest session, and
+    apps/join-api/tests/test_app_startup.py's fresh imports of app.py refuse
+    to start on it."""
+    backup = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(backup)
+
+
 def _import_app(tmp_path, deployment_yaml: str | None):
     """Write `deployment_yaml` (or nothing, for the absent-file case) into a
     fresh throwaway PACK_DIR, point every env var app.py's import-time code
