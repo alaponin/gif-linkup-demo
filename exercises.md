@@ -51,8 +51,12 @@ tab **3 · Who's allowed** shows the grant you just removed.
 - `scripts/acceptance.sh` now **refuses to run**, naming that journal and
   telling you to reset. This is deliberate: a suite that ran anyway would
   fail for a reason that has nothing to do with the pack.
-- **Restore the proof** (or `scripts/console.sh reset`) empties the journal,
-  the banner clears, and `scripts/acceptance.sh` is green again.
+- **Restore** puts the grant back and PNIA fills again, but the journal
+  keeps both changes and the banner stays: a restored grant is not proof
+  nothing else moved. **Reset** (the banner's button, or
+  `scripts/console.sh reset`) reverses the journal, checks the live ACL
+  equals the configured one, empties the journal and clears the banner —
+  and `scripts/acceptance.sh` is green again.
 
 **Cleanup:** `scripts/console.sh reset`.
 

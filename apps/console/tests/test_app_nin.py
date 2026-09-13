@@ -121,3 +121,19 @@ def test_three_shapes_never_reach_the_handler_over_http():
     assert client.get("/api/exchange/..%2F..%2Fenrolment-api%2Fenrolments%2F123").status_code == 404
     assert client.get("/api/exchange/..").status_code == 404
     assert client.get("/api/exchange/").status_code == 404
+
+
+def test_identity_held_fields_uses_the_client_that_trusts_the_test_ca(monkeypatch):
+    """PNIA's mock is https with a Test CA certificate; a stock-trust call
+    fails verification and the legal pane silently shows "(none)"."""
+    import httpx
+    import xroad
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"held": ["mother_name"]})
+
+    monkeypatch.setattr(xroad, "EXCHANGE_CLIENT", httpx.Client(transport=httpx.MockTransport(handler)))
+    assert app._identity_held_fields("02831663233") == ["mother_name"]
+    assert seen and seen[0].endswith("/persons/02831663233/held-fields")

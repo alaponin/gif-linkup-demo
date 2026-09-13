@@ -66,7 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git postgresql-
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
-COPY app.py schema.py store.py validate.py writer.py job.py join_logging.py .
+COPY app.py schema.py store.py validate.py writer.py job.py join_logging.py origin.py .
 COPY migrations/ migrations/
 USER nobody
 EXPOSE 8000

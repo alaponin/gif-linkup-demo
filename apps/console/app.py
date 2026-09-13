@@ -427,7 +427,12 @@ def _identity_held_fields(nin: str) -> list[str]:
     # via get_exchange, and it builds its own URL below.
     nin = _validated_nin(nin)
     try:
-        resp = httpx.get(f"{TRUTH.identity_mock_base_url}/persons/{nin}/held-fields", timeout=3.0)
+        # The mock serves https with a Test CA-issued certificate (spec_url),
+        # so the stock trust store fails verification and this would return
+        # [] -- the legal pane then read "holds but withholds: (none)" while
+        # PNIA held three undisclosed fields. EXCHANGE_CLIENT trusts that CA
+        # (KP2_XROAD_CA_BUNDLE); the call itself still never touches the bus.
+        resp = xroad.EXCHANGE_CLIENT.get(f"{TRUTH.identity_mock_base_url}/persons/{nin}/held-fields", timeout=3.0)
         resp.raise_for_status()
         return resp.json()["held"]
     except httpx.HTTPError:
