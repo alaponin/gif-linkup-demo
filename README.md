@@ -1,5 +1,10 @@
 # KP2 build pack — Government Interoperability Framework
 
+> **On the Progressa Learner Registry (PLR).** The PNEA ← PNIA + PLR exchange this pack proves is
+> the **target-state** slice that the National Learner Registry programme delivers. In the Progressa
+> baseline the PLR is planned, not started — its absence is the sector problem. The pack builds the
+> exchange the country is working towards, not one it already has.
+
 The runnable companion to the KP2 video bundle. The videos teach the build; this
 pack **is** the ready solution — the configuration the modules generate, the prompts
 that generate it, the scripts that deploy it, and the acceptance checks that prove it.
