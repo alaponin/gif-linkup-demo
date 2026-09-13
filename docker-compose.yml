@@ -429,6 +429,25 @@ services:
       # a compromised process could plant its own cert and trust itself.
       - ./out/xroad-admin-certs:/out/xroad-admin-certs:ro
 
+  capture:
+    # Films the console for a video's demo block -- scripts/demo-capture.sh
+    # runs it (`run --rm`, never `up`), apps/console/capture/ is what it does.
+    # profiles: ["film"] keeps it out of every deployment. It reaches the
+    # console by service name on linkup and publishes no port; its only
+    # write is the takes directory, as the owner of that bind mount.
+    build: ./apps/console/capture
+    profiles: ["film"]
+    user: "${KP2_HOST_UID:-0}:${KP2_HOST_GID:-0}"
+    environment:
+      HOME: /tmp   # Chromium wants a writable home; the image has none for this uid
+    networks: [linkup]
+    volumes:
+      - ./out/demo-takes:/out
+    shm_size: 1gb
+    mem_limit: 2g
+    command: ["--beats", "/capture/beats.yaml", "--console", "http://console:8000",
+              "--nin", "${KP2_FILM_NIN:-}", "--out", "/out"]
+
   join-api:
     # KP2 member-join API -- demo only, never production (see
     # docs/production-delta.md). profiles: ["demo"] keeps it off by default;

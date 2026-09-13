@@ -18,6 +18,34 @@ let counterFormRun = 0; // bumped on every runExchange -- lets an in-flight
 // reveal loop notice a newer run started (e.g. the presenter clicked a
 // different learner mid-animation) and stop touching shared DOM/tally.
 
+// ?filming=1 -- the surface apps/console/capture/capture.py films. Two takes
+// must produce the same pixels, so it hides what differs between them (clock
+// time, per-call milliseconds, the session tally, the fault's per-request
+// detail) and holds the counter's "before" beat until the capture calls
+// window.kp2film.step(), instead of an 800ms timer the screenshot races.
+// A visitor without the flag sees none of this.
+const FILMING = new URLSearchParams(location.search).get("filming") === "1";
+const kp2film = {
+  _release: null, _done: false,
+  waiting() { return this._release !== null; },
+  step() { const release = this._release; this._release = null; if (release) release(); },
+  done() { return this._done; },
+};
+if (FILMING) {
+  window.kp2film = kp2film;
+  document.addEventListener("DOMContentLoaded", () => {
+    document.body.classList.add("filming");
+    // A frame lands on a learner-facing slide, where knowledge-product codes
+    // (KP2, KP4) mean nothing -- the title keeps its words, loses its code.
+    $("header h1").textContent = "The once-only exchange, live";
+  });
+}
+function holdBefore() {
+  if (!FILMING) return sleep(BEFORE_HOLD_MS);
+  return new Promise(resolve => { kp2film._release = resolve; });
+}
+function elapsed(ms, prefix = " in ") { return FILMING ? "" : `${prefix}${ms.toFixed(0)}ms`; }
+
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
 
@@ -217,6 +245,7 @@ async function renderCounterForm(nin, data, runToken) {
   updateBreakProofButtons(data);
   updateContextLearner(nin, null, null);
 
+  kp2film._done = false;
   const fieldsEl = $("#counter-fields");
   fieldsEl.innerHTML = "";
   $("#receipts-panel").style.display = "none";
@@ -273,7 +302,7 @@ async function renderCounterForm(nin, data, runToken) {
     else providerSections.push([group, fields[0][1].member_code, statusEl, sectionRows]);
   });
 
-  await sleep(BEFORE_HOLD_MS);
+  await holdBefore();
   if (runToken !== counterFormRun) return; // superseded during the hold
 
   // ask the one question
@@ -308,7 +337,7 @@ async function renderCounterForm(nin, data, runToken) {
     }
 
     statusEl.textContent = call
-      ? `${memberName} answered in ${call.elapsed_ms.toFixed(0)}ms · served by ${hostedOn}`
+      ? `${memberName} answered${elapsed(call.elapsed_ms)} · served by ${hostedOn}`
       : `${memberName} did not answer`;
 
     for (const [name, info, row] of sectionRows) {
@@ -339,6 +368,7 @@ async function renderCounterForm(nin, data, runToken) {
     : `Run scripts/acceptance.sh to write this exchange to disk as out/application-${nin}.json.`;
   $("#receipts-toggle-btn").style.display = "inline-block";
   $("#counter-forward-btn").style.display = "inline-block";
+  kp2film._done = true;
 }
 
 // -- receipts: the raw provider responses, verbatim, plus a curl command
@@ -455,7 +485,9 @@ async function renderInspector(data) {
   $("#inspector-empty").style.display = "none";
   const contextEl = $("#inspector-context");
   contextEl.style.display = "block";
-  contextEl.textContent = `Showing the exchange run for NIN ${lastNin} at ${new Date().toLocaleTimeString()}.`;
+  contextEl.textContent = FILMING
+    ? `Showing the exchange run for NIN ${lastNin}.`
+    : `Showing the exchange run for NIN ${lastNin} at ${new Date().toLocaleTimeString()}.`;
   $("#inspector-forward-btn").style.display = "inline-block";
 
   const grid = $("#inspector-layers");
@@ -517,7 +549,7 @@ async function renderInspector(data) {
         const detail = document.createElement("div");
         detail.className = "call-detail";
         detail.textContent =
-          `${call.service}\n${call.status_code ?? "ERR"} in ${call.elapsed_ms.toFixed(0)}ms, served by ${servedBy}\n${call.url}`;
+          `${call.service}\n${call.status_code ?? "ERR"}${elapsed(call.elapsed_ms)}, served by ${servedBy}\n${call.url}`;
         el.appendChild(detail);
       });
     }
@@ -548,12 +580,16 @@ async function renderInspector(data) {
 function renderPermResult(resultEl, call) {
   if (call.denied) {
     resultEl.className = "result-box denied";
-    resultEl.innerHTML = `<strong>Denied.</strong><div class="fault">${esc(JSON.stringify(call.body))}</div>`;
+    // X-Road's fault "detail" is a per-request id -- the one field that differs take to take.
+    const body = FILMING && call.body && typeof call.body === "object"
+      ? Object.fromEntries(Object.entries(call.body).filter(([k]) => k !== "detail"))
+      : call.body;
+    resultEl.innerHTML = `<strong>Denied.</strong><div class="fault">${esc(JSON.stringify(body))}</div>`;
     return false;
   }
   if (call.status_code === 200) {
     resultEl.className = "result-box allowed";
-    resultEl.innerHTML = `<strong>Allowed.</strong> Resolved in ${call.elapsed_ms.toFixed(0)}ms.`;
+    resultEl.innerHTML = `<strong>Allowed.</strong> Resolved${elapsed(call.elapsed_ms)}.`;
     return true;
   }
   resultEl.className = "result-box";

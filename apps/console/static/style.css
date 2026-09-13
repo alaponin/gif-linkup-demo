@@ -540,3 +540,7 @@ button.action:disabled { opacity: 0.5; cursor: default; }
   color: var(--muted);
   font-size: 13px;
 }
+
+/* ?filming=1 (app.js FILMING): nothing that differs between two takes. */
+body.filming #tally-badge, body.filming .kp4-seam { display: none; }
+body.filming *, body.filming *::before, body.filming *::after { transition: none !important; animation: none !important; }

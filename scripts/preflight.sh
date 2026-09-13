@@ -161,6 +161,11 @@ if [ -n "$MEM_KIB" ] && [ "$MEM_KIB" -gt 0 ] && [ "$MEM_KIB" -lt 12582912 ]; the
   WARNINGS+=("- $(( MEM_KIB / 1048576 )) GiB RAM on this host; the federation needs ~11 GiB in steady state (runbook.md Prerequisites).")
 fi
 
+# Filming only (scripts/demo-capture.sh): the deploy never needs either.
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  WARNINGS+=("- optional: no ffmpeg -- scripts/demo-capture.sh (filming a video's demo block) needs it to encode the clip beat; its browser is the 'capture' Compose service (profile film, ~2 GB image pulled on first use).")
+fi
+
 print_warnings() {
   [ "${#WARNINGS[@]}" -eq 0 ] && return
   echo "preflight: warnings (not blocking):" >&2

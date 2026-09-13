@@ -8,7 +8,7 @@ code, lowercased; nothing hardcodes the set of keys this can be, see
 **Public spec:** NIIS X-Road subsystem registration; OpenAPI 3 service
 descriptions; access rights (ACL)
 **Realises:** no module of its own — this is the by-hand join, the path
-module `join-member` (`video_ref: "?"`) automates through the join API. It is
+module `join-member` (`video_ref` 5.4) automates through the join API. It is
 the only prompt `manifest.yaml` binds to no module, deliberately: a member
 joining is not a curriculum module.
 

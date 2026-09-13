@@ -102,7 +102,7 @@ modules:
     prompt: prompts/once-only-exchange.md
     acceptance: acceptance/once-only-exchange.md
   - id: "join-member"
-    video_ref: "?"   # see below — no existing Topic 5 subtopic covers this
+    video_ref: "5.4"   # Topic 5 subtopic this module realises (shared with register-member)
     title: "A new member joins the bus — the join API"
     building_blocks: [x-road-bus]
     config: configs/x-road-bus/join-policy.yaml

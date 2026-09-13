@@ -105,7 +105,8 @@ service lifecycle /
 the Security Servers + OpenAPI contracts +
 Gambia-grounded, Progressa-named seed data; `apps/console/` is the optional
 one-page demonstration UI, `scripts/console.sh up` — a demo asset, not a
-module, never in the acceptance path, whose **4 · Join a member** tab is a
+module, never in the acceptance path (`scripts/demo-capture.sh` films its
+beats for the Module 5 videos, `apps/console/capture/`), whose **4 · Join a member** tab is a
 thin, server-side-token-holding proxy onto `apps/join-api/` — the
 `join-member` module's own service, which validates and drives a real member
 join from a submitted payload to `ACTIVE` over the live X-Road admin API), `docs/` (production delta

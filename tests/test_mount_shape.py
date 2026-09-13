@@ -41,6 +41,9 @@ _WRITABLE = {
     # The console reconstructs a curated read-only /pack and writes only its
     # ACL journal, under /out.
     "console": {"/out"},
+    # The film profile's browser writes its takes (screenshots, text
+    # captures), and out/demo-takes is all it mounts.
+    "capture": {"/out"},
 }
 
 # The four X-Road sidecars mount hurl/local.ini (one of generate.py's own

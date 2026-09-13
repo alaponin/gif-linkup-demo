@@ -8,8 +8,8 @@ requires explicit operator approval — the same model
 already commits the federation to); this pack's own §2.3 (service-level vs
 endpoint-level access rights over a tool-generated OpenAPI spec, deferred —
 see `docs/production-delta.md` item 6)
-**Realises:** Module `join-member` (`video_ref: "?"`) — no Topic 5 subtopic
-covers this module yet; the decision is pending.
+**Realises:** Module `join-member` (`video_ref` 5.4) — subtopic 5.4 shows a
+member admitted to the bus through the join API.
 
 ## Problem
 

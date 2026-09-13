@@ -22,12 +22,13 @@ reproduce-and-diff exercise.
 | `federation-core.md` | `federation-core` | 5.5 | `configs/x-road-bus/federation-core.yaml` |
 | `register-member.md` | `register-member` | 5.4 | the three canonical member configs |
 | `once-only-exchange.md` | `once-only-exchange` | 5.6 | `configs/x-road-bus/once-only-exchange.yaml` |
-| `join-member.md` | `join-member` | `"?"` | `configs/x-road-bus/join-policy.yaml` |
+| `join-member.md` | `join-member` | 5.4 | `configs/x-road-bus/join-policy.yaml` |
 | `member.md` | — none | — | `configs/member-<key>/<key>.yaml` + a `manifest.yaml` entry |
 
 `member.md` is bound to no module on purpose: a member joining is not a
-curriculum module. `join-member`'s `video_ref` is `"?"` because no Topic 5
-subtopic covers it yet.
+curriculum module. `join-member` and `register-member` share `video_ref` 5.4:
+the video shows the two registration artefacts and a member admitted through
+the join API.
 
 ## Not here yet
 

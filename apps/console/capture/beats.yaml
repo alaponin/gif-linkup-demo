@@ -1,0 +1,120 @@
+# The demo block of video 5.6, beat by beat. Browser beats run in
+# capture.py (the `capture` Compose service, profile film); host beats
+# (host: true) run in scripts/demo-capture.sh, which owns the shell.
+#
+#   kind     frame (PNG) | clip (MP4 + its still PNG) | text (TXT)
+#   caption  the on-slide caption strip. draft_cues.py finds a slide in the
+#            narration by its distinctive words, so a caption must not reuse
+#            the key terms of the theory slides around it.
+#   actions  run in order; {nin} is the learner scripts/acceptance.sh picked
+#   assert   the expected observation (exercises.md §1,
+#            acceptance/once-only-exchange.md). A failed assertion aborts the
+#            run naming the beat and what was on screen; nothing is written
+#            for that beat.
+#
+# Actions: goto <path> · tab <name> · click <selector> · wait <selector>
+#   (visible) · wait_js <expression> · step (release the counter's held
+#   "before" beat) · scroll <selector> · pin <selector> (clip: scrolled to
+#   before every shot, so a click's scroll-into-view never reaches the film)
+#   · record_until <expression> (clip: shoot frames, releasing held beats,
+#   until true) · record_for <ms> · still (this clip frame is the slide's
+#   still) · expect <assertions> (mid-beat check).
+# Assertions: {selector, text} every match contains text · {selector, count}
+#   · {selector, visible: bool} · {js, equals}.
+video: "5.6"
+beats:
+  - id: C1-before
+    kind: frame
+    caption: "Ten blank rows: without the bus, ten questions to answer."
+    actions:
+      - goto: "/?filming=1"
+      - click: ".chip:has-text('{nin}')"
+      - wait_js: "window.kp2film.waiting()"
+      - scroll: "#counter-form-card"
+    assert:
+      - {selector: "#progress-line", text: "Without the bus, this is ten questions."}
+      - {selector: ".form-field .field-value", text: "—", count: 10}
+
+  - id: C2-after
+    kind: frame
+    caption: "Nine fields arrive the learner was never asked for."
+    actions:
+      - step: true
+      - wait_js: "window.kp2film.done()"
+      - scroll: "#counter-form-card"
+    assert:
+      - {selector: "#progress-line", text: "asked 1 · pre-filled 9 / 9"}
+      - {selector: ".provider-status", text: "answered", count: 2}
+
+  - id: C3-receipts
+    kind: text
+    caption: "Two calls, two receipts: status 200 from each provider."
+    actions:
+      - receipts: "/api/exchange/{nin}"
+    assert:
+      - {js: "receipts.map(c => c.status_code)", equals: [200, 200]}
+
+  - id: C4-layers
+    kind: frame
+    caption: "Legal, organisational, semantic, technical — read off the live response."
+    actions:
+      - tab: inspector
+      - wait: "#inspector-layers .layer-pane"
+    assert:
+      - {selector: "#inspector-layers .layer-pane", count: 4}
+      - {selector: "#inspector-layers .layer-pane >> nth=0", text: "PNIA holds but withholds: "}
+      - {js: "!document.querySelector('#inspector-layers').innerText.includes('holds but withholds: (none)')", equals: true}
+
+  - id: C5-allowed-denied
+    kind: frame
+    caption: "PNEA: allowed. PLR, asking the identical question: AccessDenied."
+    actions:
+      - tab: permissions
+      - click: "#ask-as-pnea-btn"
+      - wait: "#pnea-result.allowed"
+      - click: "#ask-as-plr-btn"
+      - wait: "#plr-result.denied"
+    assert:
+      - {selector: "#pnea-result", text: "Allowed."}
+      - {selector: "#plr-result", text: "Server.ServerProxy.AccessDenied"}
+
+  - id: C6-break-restore
+    kind: clip
+    caption: "Grant withdrawn: the PNIA half fails, PLR still fills. Grant back: whole again."
+    actions:
+      - tab: counter
+      - pin: "#counter-form-card"
+      - record_for: 1500
+      - click: "#break-proof-btn"
+      - record_until: "window.kp2film.done() && document.querySelector('.denied-group') !== null"
+      - expect:
+          - {selector: ".denied-group .provider-status", text: "denied: Server.ServerProxy.AccessDenied", count: 1}
+          - {selector: ".form-group:not(.denied-group) .provider-status", text: "answered", count: 1}
+          - {selector: "#journal-banner", visible: true}
+      - still: true
+      - record_for: 2500
+      - click: "#restore-proof-btn"
+      - record_until: "window.kp2film.done() && document.querySelector('.denied-group') === null"
+      - record_for: 2000
+      # Restore puts the grant back; only Reset empties the journal
+      # (apps/console/journal.py). Off camera: the pin keeps the form in shot.
+      - click: "#context-reset-btn"
+      - wait_js: "!document.querySelector('#journal-banner').classList.contains('dirty')"
+    assert:
+      - {selector: "#progress-line", text: "asked 1 · pre-filled 9 / 9"}
+      - {selector: "#journal-banner", visible: false}
+      - {js: "fetch('/api/acl', {headers: {'X-KP2-Console': '1'}}).then(r => r.json()).then(a => a.dirty)", equals: false}
+
+  - id: C7-application
+    kind: text
+    host: true
+    caption: "The application on disk: where every field came from."
+    assert:
+      - "nin is the only field whose source is the citizen"
+
+  - id: C8-acceptance
+    kind: text
+    host: true
+    caption: "Checks 2.6.1 to 2.6.6 green — the technical half of the go-live approval."
+    assert:
+      - "2.6.1 to 2.6.6 all PASS"

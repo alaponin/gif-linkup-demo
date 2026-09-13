@@ -7,6 +7,10 @@
 #   scripts/acceptance.sh --only 2.6      # only checks whose id is (or starts
 #                                          # with) 2.6 -- matches 2.6.1..2.6.5
 #   scripts/acceptance.sh --from 2.6      # 2.6 onward, in the same order
+#   scripts/acceptance.sh --summary       # stdout is ONLY one line per check
+#                                          # ("2.6.4  PASS  <description>"), for a
+#                                          # slide; the progress log goes to stderr.
+#                                          # Combines with --only/--from.
 #
 # Ids today are 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>),
 # 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.2,
@@ -22,12 +26,21 @@ set -euo pipefail
 
 SELECT_MODE=all
 SELECT_ARG=""
-case "${1:-}" in
-  --only) SELECT_MODE=only; SELECT_ARG=${2:?"--only needs an id, e.g. --only 2.6"} ;;
-  --from) SELECT_MODE=from; SELECT_ARG=${2:?"--from needs an id, e.g. --from 2.6"} ;;
-  "") ;;
-  *) echo "usage: scripts/acceptance.sh [--only <id> | --from <id>]" >&2; exit 1 ;;
-esac
+SUMMARY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) SELECT_MODE=only; SELECT_ARG=${2:?"--only needs an id, e.g. --only 2.6"}; shift 2 ;;
+    --from) SELECT_MODE=from; SELECT_ARG=${2:?"--from needs an id, e.g. --from 2.6"}; shift 2 ;;
+    --summary) SUMMARY=1; shift ;;
+    *) echo "usage: scripts/acceptance.sh [--only <id> | --from <id>] [--summary]" >&2; exit 1 ;;
+  esac
+done
+# --summary: keep the real stdout on fd 3 for the summary lines and send
+# everything else (log() writes to stdout) to stderr, so the captured stdout
+# is exactly the text a slide renders (scripts/demo-capture.sh's C8).
+_SUMMARY_LINES=()
+if [ "$SUMMARY" = 1 ]; then exec 3>&1 1>&2; fi
+_print_summary() { [ "$SUMMARY" = 1 ] && [ ${#_SUMMARY_LINES[@]} -gt 0 ] && printf '%s\n' "${_SUMMARY_LINES[@]}" >&3; return 0; }
 
 # Hierarchical prefix match: "2.6" matches "2.6" itself, "2.6.1" (a literal
 # "." boundary) and "2.x(...)" style ids (a literal "(" boundary) -- not an
@@ -81,7 +94,12 @@ check() { local id=$1 desc=$2 fn=$3
       ;;
   esac
   _SELECTED_COUNT=$((_SELECTED_COUNT + 1))
-  if "$fn"; then log "PASS $id — $desc"; else fail "FAIL $id — $desc"; fi }
+  if "$fn"; then
+    log "PASS $id — $desc"; _SUMMARY_LINES+=("$(summary_line "$id" PASS "$desc")")
+  else
+    _SUMMARY_LINES+=("$(summary_line "$id" FAIL "$desc")"); _print_summary
+    fail "FAIL $id — $desc"
+  fi }
 
 # ---- 2.1 federation core -----------------------------------------------------
 CS_KEY=$(api_key ${XROAD_BIND}:4000 xrd secret)
@@ -178,7 +196,11 @@ check_client_registered() {  # $1 = MEMBER:SUBSYSTEM
   # and fires on every exit path (including the jq -e failure below), and
   # unlike EXIT it cannot collide with this script's own EXIT traps
   # elsewhere (grep this file for `trap ... EXIT`). Found in review.
-  trap 'rm -f "$key"' RETURN
+  # It clears itself: a RETURN trap outlives the function that set it, so
+  # left in place it fires again when retry()'s own log() returns -- with
+  # $key out of scope, and set -u kills the run with "key: unbound
+  # variable" instead of the check's real failure.
+  trap 'rm -f "$key"; trap - RETURN' RETURN
   api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" /clients \
     | jq -e --arg s "$sub" '.[]|select(.subsystem_code==$s)|.status=="REGISTERED"' >/dev/null
 }
@@ -215,7 +237,7 @@ check_acl_exact() {  # $1 = SS hosting the client, $2 = client id, $3 = service 
   # RETURN, not EXIT -- see check_client_registered()'s identical comment
   # above. This function has two early `|| return 1` exits below; RETURN
   # covers both.
-  trap 'rm -f "$key"' RETURN
+  trap 'rm -f "$key"; trap - RETURN' RETURN
   api GET "${XROAD_BIND}:${SS_UI[$ss]}" "$key" "/clients/${client_id}/service-clients" \
     | jq -e --argjson want "$want_json" '([.[].id] | sort) == ($want | sort)' >/dev/null || return 1
   local subj
@@ -1124,7 +1146,7 @@ PY
       # RETURN, not EXIT -- see check_client_registered()'s identical
       # comment above. Set after the key exists (an earlier `|| return 1`
       # above never created one), and covers every `|| return 1` below.
-      trap 'rm -f "$key"' RETURN
+      trap 'rm -f "$key"; trap - RETURN' RETURN
       api GET "${XROAD_BIND}:${ui}" "$key" /clients \
         | jq -e --arg c "$code" 'map(select(.member_code == $c)) | length == 0' >/dev/null || return 1
       token=$(api GET "${XROAD_BIND}:${ui}" "$key" /tokens/0) || return 1
@@ -1198,6 +1220,7 @@ if [ "$SELECT_MODE" != all ] && [ "$_SELECTED_COUNT" = 0 ]; then
   fail "--$SELECT_MODE $SELECT_ARG matched none of this run's check ids -- nothing ran. Ids today: 2.1, 2.1.health(<host>), 2.x.addons(<host>), 2.x(<MEMBER:SUBSYSTEM>), 2.x.acl(<service>), 2.x.catalogue(<service-id>), 2.6.1-2.6.5, 2.7.1, 2.7.2, 2.7.r1(<member>.<service>), 2.7.deny(<member>.<service>), 2.7.catalogue(<member>.<service>), 2.7.unjoin(<member>), 2.7.unjoin.catalogue(<member>), 2.7.unjoin.topology."
 fi
 
+_print_summary
 if [ "$SELECT_MODE" = all ]; then
   log "ACCEPTANCE GREEN — the framework runs (mark modules VERIFIED via kp-solution-verify)"
 else

@@ -10,6 +10,12 @@ export PACK_DIR
 log()  { printf '\033[1;34m[kp2]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[kp2 FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# One acceptance check as a slide line: "2.6.4  PASS  <description>". No
+# colour, no timing -- scripts/acceptance.sh --summary prints these and a
+# text capture renders them, so the shape is pinned by
+# tests/test_acceptance_summary.py.
+summary_line() { printf '%s  %s  %s\n' "$1" "$2" "$3"; }
+
 # retry <tries> <sleep_s> <description> <command...>
 # Global-conf propagation and service start-up take minutes; retrying is normal
 # (xrd-dev-stack's own init "gets HTTP errors and keeps retrying").
