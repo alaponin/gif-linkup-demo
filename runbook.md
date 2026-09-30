@@ -24,8 +24,9 @@ Everything below is the engineering depth under those three.
   against that root before it writes anything, so every join approval fails
   outside this layout — while the federation itself deploys, which is what
   makes the failure confusing rather than obvious. `scripts/verify.sh
-  --fast` additionally expects the sibling `ITU-Giga-KP-Plugin` checkout
-  beside that root for the ship gate; without it the gate is skipped with a
+  --fast` additionally expects the kit that `KP_KIT` names for the ship
+  gate: set `KP_KIT` to the `plugins/itu-giga-kp` folder of a clone of the
+  claude-marketplace, the kit's home; without it the gate is skipped with a
   warning and the rest of the tier still runs. `scripts/preflight.sh`
   refuses on the layout, in words.
 - Run `scripts/preflight.sh` first -- checks all of the above plus Docker,

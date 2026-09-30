@@ -21,7 +21,7 @@ cd "$PACK_DIR"
 # configured deployment.yaml network.bind instead of an assumed localhost.
 . "$PACK_DIR/scripts/lib-core.sh"
 
-SHIP_GATE="$PACK_DIR/../../ITU-Giga-KP-Plugin/skills/kp-solution-verify/scripts/check_pack.py"
+SHIP_GATE="${KP_KIT:-$PACK_DIR/../../ITU-Giga-KP-Plugin}/skills/kp-solution-verify/scripts/check_pack.py"
 PYTEST="$PACK_DIR/.venv/bin/python3"
 
 log()  { printf '\033[1;34m[verify]\033[0m %s\n' "$*"; }
@@ -51,7 +51,7 @@ run_fast() {
     warn "ship gate NOT RUN -- kp-solution-verify not found at $SHIP_GATE."
     warn "  This tier is weaker than the one CI runs: pack structure, README/manifest"
     warn "  conformance and cross-document claims went unchecked. Everything else below still ran."
-    warn "  Clone the monorepo with its sibling ITU-Giga-KP-Plugin checkout for the full gate (runbook.md Prerequisites)."
+    warn "  For the full gate, set KP_KIT to the kit's folder: plugins/itu-giga-kp in a clone of the claude-marketplace (runbook.md Prerequisites)."
   fi
 
   log "check-exposure.sh"

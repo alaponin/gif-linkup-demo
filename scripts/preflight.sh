@@ -73,7 +73,7 @@ command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || FAI
 # approval fails, because join-api's compose service bind-mounts ../../.. as
 # /repo and approval runs `git status` against it (writer.apply_real's
 # repo_root, pack_dir.parents[2]), and scripts/verify.sh --fast looks for the
-# sibling ITU-Giga-KP-Plugin checkout beside that root. One check covers both:
+# kit that KP_KIT names for its ship gate. One check covers the layout:
 # the enclosing git work tree's top level must BE ../../.. from here.
 REPO_ROOT=$(cd "$PACK_DIR/../../.." 2>/dev/null && pwd || true)
 if ! command -v git >/dev/null 2>&1; then
@@ -229,7 +229,7 @@ for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
     layout)
       echo "- this copy of the pack is not a git checkout at <repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack" >&2
       echo "  Found: $PACK_DIR (enclosing work tree: $(git -C "$PACK_DIR" rev-parse --show-toplevel 2>/dev/null || echo 'none -- not a git work tree at all'))" >&2
-      echo "  The federation itself would deploy, which is what makes this worth refusing on: the join demo (runbook.md's join flow, exercises 2-4) then fails on every approval, because join-api bind-mounts ../../.. as /repo and expects the pack at that path inside it. scripts/verify.sh --fast also looks for the sibling ITU-Giga-KP-Plugin checkout beside that root." >&2
+      echo "  The federation itself would deploy, which is what makes this worth refusing on: the join demo (runbook.md's join flow, exercises 2-4) then fails on every approval, because join-api bind-mounts ../../.. as /repo and expects the pack at that path inside it. scripts/verify.sh --fast also looks for the kit that KP_KIT names, for its ship gate." >&2
       echo "  Fix: clone the monorepo and run from there (runbook.md Prerequisites). An archive of the pack alone is not a supported layout." >&2
       ;;
   esac
