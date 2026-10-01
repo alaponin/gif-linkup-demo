@@ -1,0 +1,22 @@
+# The demo block of video 5.5 -- the federation, stood up. Host beats only
+# (plan D6: text captures, no admin-UI frames); scripts/demo-capture.sh
+# --video 5.5 runs them.
+video: "5.5"
+beats:
+  - id: T0-containers
+    kind: text
+    host: true
+    caption: "One Central Server, one Test CA, four Security Servers — all healthy."
+  - id: T1-stood-up
+    kind: text
+    host: true
+    measured: true   # plan D8: real seconds, not byte-stable run to run
+    caption: "From zero to a running federation: measured, not estimated."
+  - id: T2-members
+    kind: text
+    host: true
+    caption: "Three members, each behind its own Security Server."
+  - id: T3-registered
+    kind: text
+    host: true
+    caption: "Registered on the Central Server, grants exact, monitoring add-ons running — the federation is real."

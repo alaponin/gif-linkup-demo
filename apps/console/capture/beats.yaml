@@ -12,19 +12,26 @@
 #            run naming the beat and what was on screen; nothing is written
 #            for that beat.
 #
+#   crop     optional selector: a frame is that element only; a clip is cut
+#            to the union of its box over every shot. At phone width only a
+#            cropped card reads -- full-viewport frames are for GitBook.
+#
 # Actions: goto <path> · tab <name> · click <selector> · wait <selector>
 #   (visible) · wait_js <expression> · step (release the counter's held
 #   "before" beat) · scroll <selector> · pin <selector> (clip: scrolled to
 #   before every shot, so a click's scroll-into-view never reaches the film)
 #   · record_until <expression> (clip: shoot frames, releasing held beats,
-#   until true) · record_for <ms> · still (this clip frame is the slide's
-#   still) · expect <assertions> (mid-beat check).
+#   until true) · record_for <ms> · record_steps {selector, spacing_ms}
+#   (clip: one shot per join-step change, each held spacing_ms, until the
+#   card reads ACTIVE) · still (this clip frame is the slide's still)
+#   · type {selector, text} · expect <assertions> (mid-beat check).
 # Assertions: {selector, text} every match contains text · {selector, count}
 #   · {selector, visible: bool} · {js, equals}.
 video: "5.6"
 beats:
   - id: C1-before
     kind: frame
+    crop: "#counter-form-card"
     caption: "Ten blank rows: without the bus, ten questions to answer."
     actions:
       - goto: "/?filming=1"
@@ -37,6 +44,7 @@ beats:
 
   - id: C2-after
     kind: frame
+    crop: "#counter-form-card"
     caption: "Nine fields arrive the learner was never asked for."
     actions:
       - step: true
@@ -56,6 +64,7 @@ beats:
 
   - id: C4-layers
     kind: frame
+    crop: "#inspector-layers .layer-pane >> nth=0"
     caption: "Legal, organisational, semantic, technical — read off the live response."
     actions:
       - tab: inspector
@@ -67,6 +76,7 @@ beats:
 
   - id: C5-allowed-denied
     kind: frame
+    crop: ".permissions-columns"
     caption: "PNEA: allowed. PLR, asking the identical question: AccessDenied."
     actions:
       - tab: permissions
@@ -80,6 +90,7 @@ beats:
 
   - id: C6-break-restore
     kind: clip
+    crop: "#counter-form-card"
     caption: "Grant withdrawn: the PNIA half fails, PLR still fills. Grant back: whole again."
     actions:
       - tab: counter

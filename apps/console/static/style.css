@@ -543,4 +543,6 @@ button.action:disabled { opacity: 0.5; cursor: default; }
 
 /* ?filming=1 (app.js FILMING): nothing that differs between two takes. */
 body.filming #tally-badge, body.filming .kp4-seam { display: none; }
+/* the join card's "submitted <timestamp>" line: a new one every run (video 5.4) */
+body.filming .join-request-meta { display: none; }
 body.filming *, body.filming *::before, body.filming *::after { transition: none !important; animation: none !important; }

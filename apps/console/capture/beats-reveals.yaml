@@ -1,0 +1,41 @@
+# One evidence slide each for 5.2, 5.3 and 5.7 (plan WP4). Host beats except
+# SLA-2. kind artefact = a generated markdown record (deck_lib.artefact_slide
+# reads its first pipe table).
+video: "reveals"
+beats:
+  - id: REQ-1
+    kind: artefact
+    host: true
+    for: "5.2"
+    caption: "Six items, stated by the applicant, rendered into its record."
+  - id: REQ-2
+    kind: text
+    host: true
+    for: "5.2"
+    caption: "The same six travel in the join request — the front of onboarding."
+  - id: SLA-1
+    kind: artefact
+    host: true
+    for: "5.3"
+    caption: "Five terms and a signatory, one record per published service."
+  - id: SLA-2
+    kind: frame
+    for: "5.3"
+    crop: ".catalogue-card:has-text('enrolment-api')"
+    caption: "Reachable from the service, not only from the member."
+    actions:
+      - goto: "/?filming=1"
+      - tab: catalogue
+      - wait: ".catalogue-card:has-text('enrolment-api')"
+    assert:
+      - {selector: ".catalogue-card:has-text('enrolment-api')", count: 1}
+  - id: P1
+    kind: text
+    host: true
+    for: "5.7"
+    caption: "Production posture, permissive key, no acknowledgement: the API refuses to start."
+  - id: P2
+    kind: artefact
+    host: true
+    for: "5.7"
+    caption: "What this demonstration is honest about: 41 implemented, 6 simulated, 24 named absences, 4 out of scope."

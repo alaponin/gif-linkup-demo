@@ -9,7 +9,11 @@ everything outside the browser (the reset, the host beats, takes.json).
 Writes, per browser beat: <id>.png (frame), <id>.txt (text), or <id>.frames/
 plus <id>.png (clip: one PNG per shot and a concat list with the real time
 between shots, which the host turns into <id>.mp4 -- this image has no
-H.264 encoder). Screenshots instead of Playwright's own recorder: that one is
+H.264 encoder). A beat's `crop: <selector>` narrows a frame to that element
+(Playwright's element screenshot), and a clip to one constant rectangle --
+the union of that element's box over every shot, written to crop.txt for
+the host's ffmpeg -- because a card that grows while it is filmed (the join
+card ticking through its steps) must not change the clip's frame size. Screenshots instead of Playwright's own recorder: that one is
 low-bitrate VP8, and small text is what these frames exist to show.
 
 Then beats.json: id -> {file, kind, caption}. A failed assertion exits 1 naming
@@ -70,16 +74,33 @@ class Clip:
         self.dir = out / f"{beat_id}.frames"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.shots: list[tuple[Path, float]] = []
+        self.hold: dict[int, float] = {}   # shot index -> fixed seconds (record_steps)
         self.still: Path | None = None
         self.pin: str | None = None
+        self.crop: str | None = None
+        self.box: list[float] | None = None   # union [x0, y0, x1, y1] of the crop element, CSS px
 
     def shoot(self, page: Page):
         path = self.dir / f"{len(self.shots):05d}.png"
         page.mouse.move(0, 0)
         if self.pin:
             scroll_to(page, self.pin)
-        page.screenshot(path=str(path))
+        # The join tab rebuilds its list every 3 s by emptying it first: a shot taken in that
+        # gap has no crop element. Wait for it, and retake if it vanished during the shot.
+        for _ in range(5):
+            if self.crop:
+                page.locator(self.crop).first.wait_for(state="visible", timeout=5_000)
+            page.screenshot(path=str(path))
+            b = page.locator(self.crop).first.bounding_box() if self.crop else None
+            if b is not None or not self.crop:
+                break
+        else:
+            raise BeatFailed(f"crop {self.crop}: the element kept vanishing mid-shot")
         self.shots.append((path, time.monotonic()))
+        if self.crop:
+            box = [b["x"], b["y"], b["x"] + b["width"], b["y"] + b["height"]]
+            self.box = box if self.box is None else [min(self.box[0], box[0]), min(self.box[1], box[1]),
+                                                     max(self.box[2], box[2]), max(self.box[3], box[3])]
 
     def shoot_until(self, page: Page, expression: str, timeout_s=TIMEOUT_MS / 1000):
         deadline = time.monotonic() + timeout_s
@@ -94,6 +115,30 @@ class Clip:
             if time.monotonic() > deadline:
                 raise BeatFailed(f"record_until timed out: {expression}")
 
+    def shoot_steps(self, page: Page, selector: str, spacing_ms: int, timeout_s=180):
+        """One shot per change in the step list's done/current/failed classes, each held a fixed
+        spacing_ms, until the join card's state badge reads ACTIVE. A ~95 s hosted join becomes a
+        short clip whose frames are the list ticking; fixed holds also keep it byte-stable. FAILED
+        aborts the beat -- that is a failed join, not a shorter film."""
+        sig_js = ("(s) => [...document.querySelectorAll(s + ' .join-step')].map(e => e.className).join('|')"
+                  " + '#' + (document.querySelector('.join-request .join-state') || {}).textContent")
+        deadline, last = time.monotonic() + timeout_s, None
+        while True:
+            page.evaluate("window.kp2film && window.kp2film.waiting() && window.kp2film.step()")
+            sig = page.evaluate(sig_js, selector)
+            if sig != last:
+                self.shoot(page)
+                self.hold[len(self.shots) - 1] = spacing_ms / 1000
+                last = sig
+            state = sig.rsplit("#", 1)[-1].strip()
+            if state == "FAILED":
+                raise BeatFailed(f"record_steps: the join FAILED -- {page.locator('.join-request').first.inner_text()[:300]!r}")
+            if state == "ACTIVE":
+                return
+            if time.monotonic() > deadline:
+                raise BeatFailed(f"record_steps timed out at state {state!r}")
+            time.sleep(0.25)
+
     def shoot_for(self, page: Page, ms: int):
         end = time.monotonic() + ms / 1000
         while time.monotonic() < end:
@@ -102,10 +147,16 @@ class Clip:
     def finish(self):
         """frames.txt for ffmpeg's concat demuxer: each shot held until the next was taken."""
         lines = []
-        for (path, t), (_, t_next) in zip(self.shots, self.shots[1:] + [(None, self.shots[-1][1] + 0.2)]):
-            lines += [f"file '{path.name}'", f"duration {t_next - t:.3f}"]
+        for i, ((path, t), (_, t_next)) in enumerate(zip(self.shots, self.shots[1:] + [(None, self.shots[-1][1] + 0.2)])):
+            lines += [f"file '{path.name}'", f"duration {self.hold.get(i, t_next - t):.3f}"]
         lines.append(f"file '{self.shots[-1][0].name}'")
         (self.dir / "frames.txt").write_text("\n".join(lines) + "\n")
+        if self.box:
+            # device pixels, even numbers (libx264's yuv420p wants both dimensions even), inside 1920x1080
+            x0, y0 = (max(0, int(v * SCALE)) // 2 * 2 for v in self.box[:2])
+            x1 = min(int(VIEWPORT["width"] * SCALE), int(self.box[2] * SCALE + 1))
+            y1 = min(int(VIEWPORT["height"] * SCALE), int(self.box[3] * SCALE + 1))
+            (self.dir / "crop.txt").write_text(f"{(x1 - x0) // 2 * 2}:{(y1 - y0) // 2 * 2}:{x0}:{y0}\n")
 
 
 def scroll_to(page: Page, selector: str):
@@ -134,6 +185,8 @@ def run_beat(page: Page, beat, args, out: Path):
             page.click(f".tab-btn[data-tab='{arg}']")
         elif verb == "click":
             page.click(arg)
+        elif verb == "type":
+            page.fill(arg["selector"], fill(arg["text"], nin))
         elif verb == "wait":
             page.wait_for_selector(arg, state="visible")
         elif verb == "wait_js":
@@ -148,12 +201,15 @@ def run_beat(page: Page, beat, args, out: Path):
         elif verb == "receipts":
             resp = page.request.get(args.console + arg, headers=HEADERS)
             text = resp.json()["calls"]
-        elif verb in ("pin", "record_until", "record_for", "still"):
+        elif verb in ("pin", "record_until", "record_for", "record_steps", "still"):
             clip = clip or Clip(out, beat["id"])
+            clip.crop = beat.get("crop")
             if verb == "pin":
                 clip.pin = arg
             elif verb == "record_until":
                 clip.shoot_until(page, arg)
+            elif verb == "record_steps":
+                clip.shoot_steps(page, arg["selector"], arg.get("spacing_ms", 1500))
             elif verb == "record_for":
                 clip.shoot_for(page, arg)
             else:
@@ -166,7 +222,9 @@ def run_beat(page: Page, beat, args, out: Path):
 
     kind, beat_id = beat["kind"], beat["id"]
     if kind == "frame":
-        page.screenshot(path=str(out / f"{beat_id}.png"))
+        page.mouse.move(0, 0)
+        target = page.locator(beat["crop"]).first if beat.get("crop") else page
+        target.screenshot(path=str(out / f"{beat_id}.png"))
         return f"{beat_id}.png"
     if kind == "text":
         (out / f"{beat_id}.txt").write_text(render_receipts(text))

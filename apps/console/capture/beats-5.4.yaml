@@ -1,0 +1,80 @@
+# The demo block of video 5.4 -- an agency arrives. Same grammar as
+# beats.yaml. scripts/demo-capture.sh --video 5.4 owns everything outside the
+# browser: a throwaway join store, the two submissions (PT SB, then PTSB --
+# exercises.md §2's payload), the host beats, the un-join, and the restore
+# of every path the join wrote.
+video: "5.4"
+beats:
+  - id: J0-refused
+    kind: frame
+    crop: ".join-request:has(.join-rejection)"
+    caption: "A member code with a space: refused before anything reaches the bus."
+    actions:
+      - goto: "/?filming=1"
+      - tab: join
+      - wait: ".join-rejection"
+    assert:
+      - {selector: ".join-request:has(.join-rejection) .join-state", text: "REJECTED"}
+      # The key_derivation check refuses a code with a space before the identifier check
+      # runs (apps/join-api/validate.py); its message names the permitted set too.
+      - {selector: ".join-rejection", text: "rejected (key_derivation): code 'PT SB'"}
+      - {selector: ".join-rejection", text: "which is not a valid member key ([a-z0-9]+ only)"}
+
+  - id: J1-submitted
+    kind: frame
+    crop: ".join-request:first-child"
+    caption: "The request and the exact diff it would write — nothing written yet."
+    actions:
+      - wait: ".join-request:first-child .join-diff"
+    assert:
+      - {selector: ".join-request:first-child .join-state", text: "SUBMITTED"}
+      - {selector: ".join-request:first-child .join-diff", text: "configs/member-ptsb/ptsb.yaml"}
+      - {selector: ".join-request:first-child .join-diff", text: "manifest.yaml"}
+
+  - id: J2-no-minute
+    kind: frame
+    crop: ".join-request:first-child"
+    caption: "Approve without a minute reference: refused. Admission is a committee decision."
+    actions:
+      - click: ".join-request:first-child .join-approve-btn"
+      - wait: ".join-decision-error"
+    assert:
+      - {selector: ".join-decision-error", text: "Decision reference is required: admission is a Steering Committee decision"}
+      - {selector: ".join-request:first-child .join-state", text: "SUBMITTED"}
+
+  - id: J3-join
+    kind: clip
+    crop: ".join-request:first-child"
+    caption: "Minute RIHA-2026-001 recorded: the steps run themselves, then a real call proves the backend answers."
+    actions:
+      - type: {selector: ".join-request:first-child .join-decision-reference", text: "RIHA-2026-001"}
+      - click: ".join-request:first-child .join-approve-btn"
+      - record_steps: {selector: ".join-request:first-child .join-step-list", spacing_ms: 1500}
+      - record_until: "document.querySelector('.join-request:first-child .join-verified.ok') !== null"
+      - still: true
+      - record_for: 2500
+    assert:
+      - {selector: ".join-request:first-child .join-state", text: "ACTIVE"}
+      - {selector: ".join-request:first-child .join-verified.ok", text: "verified: true"}
+      - {js: "[...document.querySelectorAll('.join-request:first-child .join-step')].every(e => e.classList.contains('done'))", equals: true}
+
+  - id: J4-admission
+    kind: text
+    host: true
+    caption: "The admission record: which decision admitted PTSB, and when."
+
+  - id: J5-hosted
+    kind: text
+    host: true
+    caption: "PTSB on the bus, hosted on PLR's server — origin: joined, never canonical."
+
+  - id: J6-proved
+    kind: text
+    host: true
+    caption: "Reachable by PNEA, refused to everyone else, exactly the contract's fields, listed on the bus."
+
+  - id: J7-unjoin
+    kind: text
+    host: true
+    slide: false   # GitBook only -- never a video slide
+    caption: "Un-join: the same gates walked backwards; the record of the membership is kept."
