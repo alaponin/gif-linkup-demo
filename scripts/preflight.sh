@@ -66,16 +66,15 @@ fi
 
 command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || FAILURES+=("sha256")
 
-# -- layout: this pack runs from inside the monorepo checkout, not standalone --
+# -- layout: this pack runs from a git checkout, the pack at its root --------
 #
 # A zip of the pack alone is the natural thing to hand a learner, and it looks
 # like it works: the federation deploys, exercise 1 passes. Then every join
-# approval fails, because join-api's compose service bind-mounts ../../.. as
-# /repo and approval runs `git status` against it (writer.apply_real's
-# repo_root, pack_dir.parents[2]), and scripts/verify.sh --fast looks for the
-# kit that KP_KIT names for its ship gate. One check covers the layout:
-# the enclosing git work tree's top level must BE ../../.. from here.
-REPO_ROOT=$(cd "$PACK_DIR/../../.." 2>/dev/null && pwd || true)
+# approval fails, because join-api's compose service bind-mounts the checkout
+# (.) as /repo and approval runs `git status` against it (writer.apply_real's
+# repo_root, which defaults to pack_dir). One check covers the layout: the
+# enclosing git work tree's top level must BE this pack directory.
+REPO_ROOT=$(cd "$PACK_DIR" 2>/dev/null && pwd -P || true)
 if ! command -v git >/dev/null 2>&1; then
   FAILURES+=("git")
 elif [ "$(git -C "$PACK_DIR" rev-parse --show-toplevel 2>/dev/null || true)" != "$REPO_ROOT" ]; then
@@ -173,7 +172,7 @@ print_warnings() {
 }
 
 if [ "${#FAILURES[@]}" -eq 0 ] && [ "${#ENV_PROBLEMS[@]}" -eq 0 ]; then
-  echo "preflight: docker, docker compose (v2), jq, curl, openssl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, a monorepo git checkout at the expected depth, and every .env key the deploy requires are all present."
+  echo "preflight: docker, docker compose (v2), jq, curl, openssl, python3 (3.9+ with PyYAML), a SHA-256 tool, bash 4+, a git checkout with the pack at its root, and every .env key the deploy requires are all present."
   print_warnings
   exit 0
 fi
@@ -227,10 +226,10 @@ for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
       hint "sudo apt-get install -y git" "git ships with the Xcode command line tools: xcode-select --install" >&2
       ;;
     layout)
-      echo "- this copy of the pack is not a git checkout at <repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack" >&2
+      echo "- this copy of the pack is not the root of a git checkout" >&2
       echo "  Found: $PACK_DIR (enclosing work tree: $(git -C "$PACK_DIR" rev-parse --show-toplevel 2>/dev/null || echo 'none -- not a git work tree at all'))" >&2
-      echo "  The federation itself would deploy, which is what makes this worth refusing on: the join demo (runbook.md's join flow, exercises 2-4) then fails on every approval, because join-api bind-mounts ../../.. as /repo and expects the pack at that path inside it. scripts/verify.sh --fast also looks for the kit that KP_KIT names, for its ship gate." >&2
-      echo "  Fix: clone the monorepo and run from there (runbook.md Prerequisites). An archive of the pack alone is not a supported layout." >&2
+      echo "  The federation itself would deploy, which is what makes this worth refusing on: the join demo (runbook.md's join flow, exercises 2-4) then fails on every approval, because join-api bind-mounts the checkout as /repo and runs git status against it." >&2
+      echo "  Fix: git clone https://github.com/alaponin/gif-linkup-demo and run from there (runbook.md Prerequisites). An archive of the pack alone is not a supported layout." >&2
       ;;
   esac
 done

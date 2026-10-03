@@ -28,9 +28,9 @@ that generate it, the scripts that deploy it, and the acceptance checks that pro
 - **4 CPU cores or more.** Unmeasured, unlike the figures above: five JVMs run
   concurrently, and a narrower host stretches the ~13-minute cold `--full`
   rather than breaking it.
-- **A git clone of the monorepo**, with this pack at
-  `10-Knowledge-Products/KP2-GIF/KP2-build-pack/`. `join-api` bind-mounts the
-  monorepo root and its `.git`, and `scripts/package.sh` builds from `git
+- **A git clone of this repository**
+  (`git clone https://github.com/alaponin/gif-linkup-demo`). `join-api`
+  bind-mounts the checkout and its `.git`, and `scripts/package.sh` builds from `git
   archive` — an unzipped copy stands the federation up fine, but not the join
   demo.
 
@@ -68,9 +68,7 @@ reproducibility proof run.
   directory: it carries the real `.env`, `out/`, the `.venv` and ~25 MB of
   darwin-only Terraform provider binary, all gitignored and all of which a
   Finder zip copies anyway. Give a clone rather than an archive when the
-  session includes the join demo — `join-api` needs the monorepo's `.git`,
-  and the pack has to sit at
-  `<repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack` inside it
+  session includes the join demo — `join-api` needs the checkout's `.git`
   (`scripts/preflight.sh` refuses any other layout; `runbook.md`
   Prerequisites says what breaks and why).
 - **Verify a change:** `scripts/verify.sh --fast|--live|--full` — three tiers,

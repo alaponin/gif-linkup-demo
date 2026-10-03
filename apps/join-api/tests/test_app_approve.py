@@ -1,8 +1,8 @@
 """POST /requests/{id}/approve and /resume through FastAPI's
-TestClient. The pack is a temp copy inside a throwaway git repo, three levels
-down, because writer.apply_real() runs `git status --porcelain` against the
-enclosing checkout and app.py lets it default repo_root the way
-docker-compose.yml lays the real one out.
+TestClient. The pack is a temp copy that IS a throwaway git repo, because
+writer.apply_real() runs `git status --porcelain` against the checkout and
+app.py lets it default repo_root the way docker-compose.yml lays the real one
+out (the pack at the repository root).
 
 The job itself is not run here -- app_module._start_job is replaced, so these
 tests are about the endpoints (state transitions, the operator-only asymmetry,
@@ -64,7 +64,7 @@ def client(tmp_path, monkeypatch):
     # state and a suite is not a caller (app.py's rate_limit).
     app_module._BUCKETS.clear()
     repo_root = tmp_path / "repo"
-    pack = repo_root / "a" / "b" / "pack"  # apply_real defaults repo_root to parents[2]
+    pack = repo_root  # apply_real defaults repo_root to pack_dir: the pack is the repo
     writer._copy_pack(REAL_PACK_DIR, pack)
     _git("init", "-q", cwd=repo_root)
     _git("config", "user.email", "test@example.invalid", cwd=repo_root)

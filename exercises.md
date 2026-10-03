@@ -191,7 +191,7 @@ edit is live with no restart:
 ```
 scripts/join.sh up      # acceptance.sh stops join-api when it finishes
 docker compose exec join-api \
-  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift ptsb
+  bash /repo/scripts/member.sh drift ptsb
 ```
 
 (The mock's *field filtering* is a different thing: that is read once at
@@ -227,9 +227,9 @@ publishing the old one is half a job:
 
 ```
 docker compose exec join-api \
-  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh refresh ptsb
+  bash /repo/scripts/member.sh refresh ptsb
 docker compose exec join-api \
-  bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift ptsb
+  bash /repo/scripts/member.sh drift ptsb
 ```
 
 - `refresh` makes X-Road re-read the description (it reloads on explicit

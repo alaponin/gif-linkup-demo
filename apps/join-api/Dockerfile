@@ -26,7 +26,7 @@ COPY --from=hurl /usr/bin/hurl /usr/local/bin/hurl
 COPY --from=hurl /lib/ld-musl-*.so.1 /lib/
 COPY --from=hurl /usr/lib/ /opt/hurl-lib/
 # writer.py's apply_real() shells out to `git status --porcelain` against the
-# enclosing monorepo, bind-mounted whole at /repo (docker-compose.yml's
+# checkout, bind-mounted whole at /repo (docker-compose.yml's
 # comment on this service's volumes). python:3.12-slim carries no git binary
 # -- found live, the first time this container really approved a request
 # (the first time this container actually ran POST /requests/{id}/approve

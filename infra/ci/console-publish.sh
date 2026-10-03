@@ -16,7 +16,7 @@
 set -euo pipefail
 : "${KP2_CONSOLE_HTPASSWD:?pass the pre-hashed htpasswd line via env}"
 
-PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+PACK="/opt/kp2/repo"
 
 # THIS is the script that starts the console and join-api on the droplet --
 # remote-deploy.sh never does, and this runs in its own ssh session, so

@@ -1,7 +1,7 @@
 kp: KP2
 track: interoperability
 title: Government Interoperability Framework
-home: 10-Knowledge-Products/KP2-GIF
+home: .
 depends_on: []
 building_blocks:
   - x-road-bus

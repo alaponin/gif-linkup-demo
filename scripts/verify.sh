@@ -21,7 +21,7 @@ cd "$PACK_DIR"
 # configured deployment.yaml network.bind instead of an assumed localhost.
 . "$PACK_DIR/scripts/lib-core.sh"
 
-SHIP_GATE="${KP_KIT:-$PACK_DIR/../../ITU-Giga-KP-Plugin}/skills/kp-solution-verify/scripts/check_pack.py"
+SHIP_GATE="${KP_KIT:+$KP_KIT/skills/kp-solution-verify/scripts/check_pack.py}"
 PYTEST="$PACK_DIR/.venv/bin/python3"
 
 log()  { printf '\033[1;34m[verify]\033[0m %s\n' "$*"; }
@@ -48,7 +48,7 @@ run_fast() {
     # sibling checkout a learner could not run --fast AT ALL, including the
     # ~1000 tests that need nothing external. What is lost is real and is
     # named, not implied.
-    warn "ship gate NOT RUN -- kp-solution-verify not found at $SHIP_GATE."
+    warn "ship gate NOT RUN -- kp-solution-verify not found (KP_KIT=${KP_KIT:-unset})."
     warn "  This tier is weaker than the one CI runs: pack structure, README/manifest"
     warn "  conformance and cross-document claims went unchecked. Everything else below still ran."
     warn "  For the full gate, set KP_KIT to the kit's folder: plugins/itu-giga-kp in a clone of the claude-marketplace (runbook.md Prerequisites)."

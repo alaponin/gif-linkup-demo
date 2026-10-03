@@ -1089,8 +1089,8 @@ def test_the_bundled_hurl_binary_actually_runs_and_writes_a_parseable_report():
     Skipped on a dev host, where nothing bundles Hurl. RUN IT IN THE IMAGE
     when either the Dockerfile's hurl stanza or _default_run_hurl changes:
         docker build -t kp2-join-api apps/join-api
-        docker run --rm -v "$PWD/../../..":/repo kp2-join-api sh -c \\
-          'pip install -q pytest && cd /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack \\
+        docker run --rm -v "$PWD":/repo kp2-join-api sh -c \\
+          'pip install -q pytest && cd /repo \\
            && python -m pytest apps/join-api/tests/test_job.py -q'
     """
     element = job._default_run_hurl(

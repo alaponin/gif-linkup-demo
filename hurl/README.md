@@ -221,8 +221,7 @@ installed".
 **Decision: raise the floor to 3.9+.** This deletes the invisible
 host-vs-container idiom rule — both sides
 now support `removeprefix`/`removesuffix` — and CI's `python-version` moves
-off an EOL 3.7 pin — in a CI workflow this pack does not carry, since the
-monorepo root owns every workflow and GitHub reads them nowhere else — that
+off an EOL 3.7 pin — in `.github/workflows/kp2-fast.yml` — that
 would eventually stop being satisfiable on hosted runner images at all. The
 `scripts/check-python-floor.sh` lint once queued
 is withdrawn: there is no longer a restriction for it to enforce.

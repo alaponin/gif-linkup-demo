@@ -62,3 +62,7 @@ infra/terraform-db/*.tfstate.backup
 # its tests and docs/decisions/ carry what survives. Kept locally, never
 # committed.
 docs/decisions/superpowers/
+
+# Claude Code workspace config and isolated worktrees (user-specific).
+.claude/
+.worktrees/

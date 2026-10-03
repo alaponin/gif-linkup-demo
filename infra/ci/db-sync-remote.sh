@@ -14,7 +14,7 @@
 set -euo pipefail
 : "${KP2_SYNC_CA_B64:?}" "${KP2_SYNC_DSN_B64:?}" "${KP2_SYNC_RO_B64:?}" "${KP2_SYNC_ADMIN_B64:?}"
 
-PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+PACK="/opt/kp2/repo"
 CA_PATH="/opt/kp2/do-db-ca.crt"
 cd "$PACK"
 

@@ -63,7 +63,7 @@ def client(tmp_path, monkeypatch):
     # state and a suite is not a caller (app.py's rate_limit).
     app_module._BUCKETS.clear()
     repo_root = tmp_path / "repo"
-    pack = repo_root / "a" / "b" / "pack"
+    pack = repo_root
     writer._copy_pack(REAL_PACK_DIR, pack)
     # writer._COPY_ITEMS is deliberately scoped to what hurl/generate.py reads
     # and does not include scripts/ -- widening it for a test would blur a

@@ -1,12 +1,12 @@
-"""join-api's monorepo mount is read-only, and its writable set stays small.
+"""join-api's checkout mount is read-only, and its writable set stays small.
 
 join-api parses applicant-controlled payloads, and it used to bind-mount the
-WHOLE monorepo read-write -- scripts/, apps/, infra/, .git and .env included
+WHOLE checkout read-write -- scripts/, apps/, infra/, .git and .env included
 -- while host scripts running as root sourced .env and hurl/topology.sh out
 of that same tree. Code execution inside the container was therefore root on
 the host at the next `scripts/console.sh status`.
 
-The mount half of the fix is `../../..:/repo:ro` plus a named read-write
+The mount half of the fix is `.:/repo:ro` plus a named read-write
 child per path a join actually writes. Docker mounts each path
 independently, so the boundary is the kernel's, not file ownership's. This
 test stops the next read-write mount from being added outside that set --
@@ -23,7 +23,7 @@ import yaml
 PACK = pathlib.Path(__file__).resolve().parent.parent
 COMPOSE = yaml.safe_load((PACK / "docker-compose.yml").read_text())
 
-_PACK_IN_REPO = "/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+_PACK_IN_REPO = "/repo"
 
 # Exactly apps/join-api/writer.py's _written_paths (manifest.yaml,
 # onboarding/ for the catalogue and onboarding/<key>/, configs/ for
@@ -76,9 +76,9 @@ def _target_of(mount: str) -> str:
     return mount.rsplit(":", 1)[-1] if mount.count(":") else mount
 
 
-def test_join_api_mounts_the_monorepo_read_only():
-    assert "../../..:/repo:ro" in _bind_mounts("join-api"), (
-        "join-api must mount the monorepo read-only. Without the :ro every "
+def test_join_api_mounts_the_checkout_read_only():
+    assert ".:/repo:ro" in _bind_mounts("join-api"), (
+        "join-api must mount the checkout read-only. Without the :ro every "
         "other safeguard here is decoration: the container can rewrite "
         "scripts/lib-stack.sh, apps/join-api/writer.py or .env directly."
     )
@@ -116,7 +116,7 @@ def test_no_read_write_mount_outside_the_known_writable_set():
 
 
 if __name__ == "__main__":
-    test_join_api_mounts_the_monorepo_read_only()
+    test_join_api_mounts_the_checkout_read_only()
     test_join_api_mounts_dot_git_read_only()
     test_no_read_write_mount_outside_the_known_writable_set()
     print("ok")

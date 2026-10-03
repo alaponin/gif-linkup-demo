@@ -11,9 +11,9 @@
 #   scripts/package.sh                 # -> ../kp2-build-pack-<sha>.zip
 #   scripts/package.sh /tmp/kp2.zip    # explicit destination (.zip or .tar.gz)
 #
-# The archive is the PACK, not the monorepo. That is enough for the whole
+# The archive holds the pack without its .git. That is enough for the whole
 # runbook -- preflight, gen-secrets, deploy, seed, acceptance -- but not for
-# the join demo: apps/join-api bind-mounts the monorepo root with its .git and
+# the join demo: apps/join-api bind-mounts the checkout with its .git and
 # runs `git status --porcelain` there before approving a join
 # (infra/DO-DEPLOYMENT.md). Hand out a clone, not an archive, when the join
 # demo is part of the session.

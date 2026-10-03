@@ -135,7 +135,7 @@ server {
 set -euo pipefail
 : "${KP2_CONSOLE_HTPASSWD:?pass the pre-hashed htpasswd line via env}"
 
-PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+PACK="/opt/kp2/repo"
 IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)
 
 # 1. The thing being exposed must be running (remote-deploy.sh does not start it).
@@ -160,7 +160,7 @@ echo "console published: https://$IP (basic auth)"
 Renewal for droplets that outlive the 160 h cert: the snap installs its own systemd renewal
 timer; `--deploy-hook` reloads nginx. Nothing custom to build.
 
-### 2.5 Workflow step (monorepo root — outside this pack directory)
+### 2.5 Workflow step
 
 In `.github/workflows/kp2-federation.yml`, after the existing remote-deploy step:
 
@@ -168,7 +168,7 @@ In `.github/workflows/kp2-federation.yml`, after the existing remote-deploy step
 - name: Publish console
   run: |
     ssh "root@$DROPLET_IP" "KP2_CONSOLE_HTPASSWD='${{ secrets.KP2_CONSOLE_HTPASSWD }}' \
-      bash /opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/infra/ci/console-publish.sh"
+      bash /opt/kp2/repo/infra/ci/console-publish.sh"
 ```
 
 Plus one new repo secret, **`KP2_CONSOLE_HTPASSWD`**, generated locally once:
@@ -449,7 +449,7 @@ records surviving is a feature (they are the demo's evidence trail).
 **What did NOT get more exposed.** Approve/reject/resume/un-join — the paths that write
 configs, run git, and mutate the live federation — remain reachable only via the console
 (basic auth + server-side operator token) or the tunnel. The repo-mounted-read-write property
-of the join-api container (its `../../..:/repo` bind) is untouched by this change and stays
+of the join-api container (its `.:/repo` bind) is untouched by this change and stays
 shielded behind the operator boundary. `GET /health` under `/join/` would be the one
 unauthenticated route; it is simply not proxied.
 

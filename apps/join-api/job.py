@@ -1106,7 +1106,7 @@ def run(
     since the gate step never advanced last_completed_step, a resume replans
     the same sequence from the top and hits the gate again, exactly like the
     member-server BLOCKED case above. `repo_root` defaults the same way
-    writer.apply_real's does (three levels above pack_dir); overridable so
+    writer.apply_real's does (pack_dir itself, the repository root); overridable so
     tests can point it at a throwaway repo instead.
 
     `log`, same seam as `save`: an optional `(event: str, **fields) -> None`
@@ -1207,7 +1207,7 @@ def run(
                 # config.commit (see run()'s own docstring). Resolved lazily,
                 # only once a gate step is actually reached, so a run with
                 # commit_gate off never has to resolve repo_root at all.
-                resolved_repo_root = repo_root or pack_dir.resolve().parents[2]
+                resolved_repo_root = repo_root or pack_dir.resolve()
                 log("job.step.start", step=step.id, kind="gate")
                 message = _commit_gate_blocked_message(resolved_repo_root, pack_dir, payload)
                 if message is not None:

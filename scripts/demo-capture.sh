@@ -280,7 +280,7 @@ open(sys.argv[2], "w").write(text)
 PY
   local logf="$tmp/join-api.log"
   "${COMPOSE[@]}" --profile demo run --rm --no-deps \
-    -v "$tmp/deployment.yaml:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/deployment.yaml:ro" \
+    -v "$tmp/deployment.yaml:/repo/deployment.yaml:ro" \
     join-api >"$logf" 2>&1 && fail "P1: join-api STARTED under an unacknowledged permissive key -- see $logf"
   cmp -s "$tmp/original.yaml" "$PACK_DIR/deployment.yaml" || fail "P1: deployment.yaml changed during the capture"
   { echo '$ docker compose run join-api   # deployment.yaml: posture: production, join_workflow.commit_gate: advisory'

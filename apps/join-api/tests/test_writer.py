@@ -265,8 +265,8 @@ def test_apply_real_refuses_when_the_checkout_is_dirty(tmp_path):
 
 def test_apply_real_refuses_cleanly_when_the_git_check_itself_cannot_run(tmp_path):
     """repo_root not actually being a git repo
-    (a structural problem: the pack copy ended up outside the monorepo, or
-    parents[2] resolved somewhere wrong) used to raise a raw, unhandled
+    (a structural problem: the pack copy is not a git checkout, or
+    repo_root resolved somewhere wrong) used to raise a raw, unhandled
     subprocess.CalledProcessError out of _git_status_dirty -- a 500, not a
     clear refusal. Contrast with test_apply_real_refuses_when_the_checkout_is_dirty
     above: that repo_root IS a real (uninitialised-content) git repo; this

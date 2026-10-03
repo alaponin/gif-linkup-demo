@@ -17,12 +17,11 @@ Everything below is the engineering depth under those three.
 
 ## Prerequisites
 
-- **A `git` clone of the monorepo, with the pack at
-  `<repo>/10-Knowledge-Products/KP2-GIF/KP2-build-pack`.** Not an unpacked
-  zip of the pack alone, and not the pack moved elsewhere: `join-api`
-  bind-mounts `../../..` as `/repo` and its approval step runs `git status`
-  against that root before it writes anything, so every join approval fails
-  outside this layout — while the federation itself deploys, which is what
+- **A `git` clone of this repository**
+  (`git clone https://github.com/alaponin/gif-linkup-demo`). Not an unpacked
+  zip of the pack: `join-api` bind-mounts the checkout as `/repo` and its
+  approval step runs `git status` against it before it writes anything, so
+  every join approval fails without the `.git` — while the federation itself deploys, which is what
   makes the failure confusing rather than obvious. `scripts/verify.sh
   --fast` additionally expects the kit that `KP_KIT` names for the ship
   gate: set `KP_KIT` to the `plugins/itu-giga-kp` folder of a clone of the
@@ -248,13 +247,13 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   run from inside that network (or from any other container already on
   `linkup`) if a plain host-side run reports "nodename nor servname
   provided" — that error is the trap working as designed, not a bug.
-  `join-api` mounts the monorepo at `/repo`, not the pack at its own
+  `join-api` mounts the checkout at `/repo`, not at its own
   working directory, and `member.sh` is bash, not Python — so the command
   is:
 
   ```
   docker compose exec join-api \
-    bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh drift <key>
+    bash /repo/scripts/member.sh drift <key>
   ```
 
   Start `join-api` with `scripts/join.sh up` first if it is not running —
@@ -272,7 +271,7 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
 
   ```
   docker compose exec join-api \
-    bash /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh refresh <key>
+    bash /repo/scripts/member.sh refresh <key>
   ```
 
   **What it refuses.** Before refreshing anything it re-runs the
@@ -580,7 +579,7 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
   - **A real bug this pack's own live proof found and fixed:** the
     `apps/join-api` container image (`python:3.12-slim`) shipped with no
     `git` binary, but `writer.apply_real()`'s dirty-checkout guard
-    shells out to `git status --porcelain` against the mounted monorepo —
+    shells out to `git status --porcelain` against the mounted checkout —
     every approval failed with a 500 until the Dockerfile installed it. If
     approving a request ever 500s with `FileNotFoundError: ... 'git'`
     again (e.g. after rebuilding the image differently), that guard is the
@@ -1079,7 +1078,7 @@ target:**
   (`cmd_refresh`'s pre-existing logic, unchanged by the Postgres addition) need the
   same docker-internal name resolution `drift` does. So `docker compose
   exec join-api bash
-  /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/scripts/member.sh
+  /repo/scripts/member.sh
   refresh <key>` (the existing guidance, above) is still correct, and it
   still works unmodified on a Postgres deployment **as long as join-api
   itself is up**: the record amendment then goes through join-api's own

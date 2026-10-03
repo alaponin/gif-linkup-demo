@@ -1236,7 +1236,7 @@ def _live_uncommitted(key: str) -> bool | None:
     means "could not check" and is truthy-adjacent in the console (renders
     its own, honestly-worded box) -- never coerced to False."""
     try:
-        repo_root = PACK_DIR.resolve().parents[2]
+        repo_root = PACK_DIR.resolve()  # the pack is the repository root
         rel = PACK_DIR.resolve().relative_to(repo_root)
         proc = subprocess.run(
             # --no-optional-locks for the same reason writer.py's _git_status

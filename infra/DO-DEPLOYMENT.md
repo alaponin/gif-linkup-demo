@@ -12,7 +12,7 @@ Host software is exactly what `scripts/preflight.sh` checks: docker with the com
 
 Three less obvious requirements shape the design more than the package list does:
 
-**The whole monorepo must be on the droplet, with its `.git`.** `join-api` bind-mounts `../../..` (the monorepo root) into its container and runs `git status --porcelain` against it before approving a join (`docker-compose.yml`, join-api stanza). Copying just the pack directory would break the join demo. The CI workflow therefore rsyncs the full checkout, `.git` included, to `/opt/kp2/repo/` on the droplet.
+**The whole checkout must be on the droplet, with its `.git`.** `join-api` bind-mounts the checkout root into its container and runs `git status --porcelain` against it before approving a join (`docker-compose.yml`, join-api stanza). Copying the files without `.git` would break the join demo. The CI workflow therefore rsyncs the full checkout, `.git` included, to `/opt/kp2/repo/` on the droplet.
 
 **That mount is read-only, and the containers do not run as root.** `join-api` parses applicant-controlled payloads, so the `/repo` mount is `:ro` with read-write child mounts for exactly the five paths a join writes (`configs/`, `manifest.yaml`, `onboarding/`, `out/`, `hurl/`), and both demo containers run as a dedicated unprivileged account rather than as whoever ran the deploy — which on this droplet is root. Two things follow for anyone operating it:
 
@@ -38,9 +38,9 @@ Two smaller points the pack pre-answers: **NTP** is mandatory (clock drift prese
 
 One Terraform root module (in `infra/terraform/`) creates three resources — an SSH deploy key, the droplet, and a firewall (SSH, plus 80/443 for the published console) — and files the droplet into the **pre-existing `ITU-KP` DO project** via a `digitalocean_project` data source plus `digitalocean_project_resources`, so everything KP2 is grouped separately from anything else on the account. Terraform deliberately does not own that project: it is created and named in the control panel, `destroy` unfiles the droplet rather than deleting the project, and the project can safely hold other work. Note that only project-assignable types can be filed this way — the SSH key and the firewall are account-level objects that belong to no project, in DO's model rather than by omission here. State lives in a **DigitalOcean Spaces bucket** via Terraform's S3 backend — needed because CI runners are stateless and `destroy` must find what `up` created. The droplet is `s-8vcpu-16gb` (8 vCPU / 16 GB / 320 GB SSD) in `fra1`, Ubuntu 24.04, with cloud-init installing docker-ce + compose plugin and the preflight package list at boot. The 320 GB disk comfortably holds the several-GB of X-Road images plus volumes.
 
-The GitHub Actions workflow (`.github/workflows/kp2-federation.yml`, at the monorepo root — GitHub reads workflows nowhere else) is a single manually-triggered job with three actions:
+The GitHub Actions workflow (`.github/workflows/kp2-federation.yml`, in this repository) is a single manually-triggered job with three actions:
 
-**up** — `terraform apply` (creates or refreshes the droplet), wait for cloud-init, rsync the monorepo checkout across, then run the pack's own sequence remotely: `gen-secrets.sh` (first time only) → `preflight.sh` → `preload-images.sh` → `deploy.sh` → `seed.sh` → `acceptance.sh`. The job ends by printing the SSH tunnel command in the run summary. Expect ~20–25 minutes end to end (droplet boot + apt + image pulls + the ~13-minute deploy).
+**up** — `terraform apply` (creates or refreshes the droplet), wait for cloud-init, rsync the checkout across, then run the pack's own sequence remotely: `gen-secrets.sh` (first time only) → `preflight.sh` → `preload-images.sh` → `deploy.sh` → `seed.sh` → `acceptance.sh`. The job ends by printing the SSH tunnel command in the run summary. Expect ~20–25 minutes end to end (droplet boot + apt + image pulls + the ~13-minute deploy).
 
 **deploy** — same as up minus infra changes; reruns the pack deploy on the existing droplet (apply is a no-op when nothing changed).
 

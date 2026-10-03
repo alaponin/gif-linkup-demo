@@ -1,0 +1,62 @@
+name: KP2 fast tier
+
+# scripts/verify.sh --fast: static checks (hurl/check_scenarios.py, the
+# kp-solution-verify ship gate, scripts/check-exposure.sh) plus
+# `pytest tests/ apps/console/tests/ apps/mock-registry/tests/`. No running containers, no network, no
+# federation -- but the Docker CLI is required, because check-exposure.sh
+# reads the rendered Compose config (profiles and ${VAR} interpolation
+# resolved) and that is what makes it worth having. That read needs neither
+# a running Docker daemon nor .env, confirmed by stopping the daemon itself
+# (tests/test_tiers.py) -- measured ~8s on a dev machine (README.md).
+#
+# --live and --full are deliberately NOT run here, and this is the whole
+# reason this workflow is scoped to --fast specifically: they need a real
+# federation (~16 GB RAM, ~15 minutes for --full, testing-strategy plan
+# Task 5's measurements) that a standard GitHub-hosted runner cannot
+# provide. Green CI means the fast tier passed -- it does NOT mean the
+# stack deploys, the acceptance suite passes, or the console works. See
+# the pack's own README.md "Verify a change" section before assuming
+# otherwise; run --live or --full locally, or on a self-hosted runner with
+# Docker and the RAM to spare, for that.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Host floor is 3.9+ (two-decisions plan Task 3/C10: the pack's old
+      # "system python3.7" comment was never a real macOS constraint, just a
+      # stray Homebrew install on one dev machine) -- one interpreter now
+      # covers both the host scripts (hurl/generate.py, check_scenarios.py)
+      # and apps/console's own 3.9+ idioms, so there is no second
+      # setup-python step to keep in sync with it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the host scripts' only hard Python dependency
+        run: pip install pyyaml
+
+      # A fresh checkout has no .env (gitignored, never committed --
+      # exposure-and-secrets plan Task 4) and no generated hurl/ artefacts
+      # (also gitignored). check_scenarios.py needs both: it reads
+      # hurl/vars.env (only hurl/generate.py writes it) and compares its
+      # credentials against .env, failing if either is stale or missing.
+      # check-exposure.sh needs neither: it sources only lib-core.sh and
+      # reads deployment.yaml directly via yq_get, with no .env dependency
+      # at all (lib-split-and-tier-honesty plan). Confirmed live locally
+      # (simulating a fresh checkout by moving .env and the generated
+      # hurl/ files aside) that --fast fails without this step and passes
+      # with it -- not assumed.
+      - name: Generate secrets and artefacts (fresh checkout has neither)
+        run: |
+          ./scripts/gen-secrets.sh
+          python3 hurl/generate.py
+
+      - name: scripts/verify.sh --fast
+        run: ./scripts/verify.sh --fast

@@ -6,6 +6,10 @@
 # Server unconditionally -- no lite/full split.
 # DEMO ONLY — never production (Test CA, fixed CS creds, single host).
 
+# Pinned, not derived from the checkout's folder name: the named volumes are
+# prefixed with it, so a clone under any other name would orphan them.
+name: kp2-build-pack
+
 x-sidecar: &sidecar
   # XROAD_SS_DIGEST (deployment.yaml xroad.ss_digest, C13) wins when set;
   # XROAD_VERSION is the plain-tag fallback.
@@ -461,9 +465,8 @@ services:
     # hurl/generate.py itself sits -- so it needs the whole pack tree present
     # at the same relative layout. It also runs `git status
     # --porcelain configs/ manifest.yaml`,
-    # which needs the enclosing .git -- the real git root, three levels above
-    # this pack directory. So: bind-mount the whole monorepo checkout at a
-    # path that preserves that relative layout, rather than a curated
+    # which needs the .git -- the repository root, which is this pack
+    # directory. So: bind-mount the whole checkout, rather than a curated
     # per-file subset.
     #
     # READ-ONLY, though, with the handful of paths a join actually writes
@@ -506,8 +509,8 @@ services:
     networks: [linkup, specs]
     ports: ["${XROAD_BIND:-127.0.0.1}:8091:8000"]
     environment:
-      PACK_DIR: /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack
-      OUT_DIR: /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out
+      PACK_DIR: /repo
+      OUT_DIR: /repo/out
       XROAD_ADMIN_USER: ${XROAD_ADMIN_USER:-xrd}
       XROAD_ADMIN_PASSWORD: ${XROAD_ADMIN_PASSWORD:?set in .env}
       XROAD_TOKEN_PIN: ${XROAD_TOKEN_PIN:?set in .env}
@@ -552,17 +555,17 @@ services:
       # this container (the NETWORK_HINT in that script says so). No new
       # mount: out/xroad-admin-certs is a subdirectory of the ./out bind
       # mount below.
-      KP2_XROAD_ADMIN_CERT_DIR: /repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out/xroad-admin-certs
+      KP2_XROAD_ADMIN_CERT_DIR: /repo/out/xroad-admin-certs
     volumes:
       - ca-certs:/etc/ssl/testca:ro
-      - ../../..:/repo:ro
+      - .:/repo:ro
       # The writable set, mounted back over the read-only parent above. It is
       # exactly apps/join-api/writer.py's _written_paths (manifest.yaml,
       # onboarding/ for CATALOGUE_PATH and onboarding/<key>/, configs/ for
       # member-<key>/), plus out/ for the join store and hurl/ for
       # generate.py's own outputs (scenarios/, vars.env, local.ini,
       # topology.json, topology.sh, compose.members.yml). Nothing else in the
-      # monorepo is writable from here.
+      # checkout is writable from here.
       #
       # Two of these are WIDER than what a join strictly writes, and both are
       # recorded rather than trimmed. configs/ is mounted whole, so
@@ -582,21 +585,21 @@ services:
       # in it. And the host no longer sources hurl/topology.sh at all
       # (scripts/lib-core.sh's kp2_load_topology reads topology.json as
       # data), so a write in here is no longer a path to the host.
-      - ./configs:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/configs
-      - ./manifest.yaml:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/manifest.yaml
-      - ./onboarding:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/onboarding
-      - ./out:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out
+      - ./configs:/repo/configs
+      - ./manifest.yaml:/repo/manifest.yaml
+      - ./onboarding:/repo/onboarding
+      - ./out:/repo/out
       # ...with one exception: out/xroad-admin-certs, this container's own
       # pinned trust anchors (KP2_XROAD_ADMIN_CERT_DIR above). A read-only
       # child mount OVER the read-write parent, listed after it so it wins.
       # Without this, the container that parses applicant-controlled
       # payloads could rewrite the certificates its own scripts/member.sh
       # calls pin against. Found in review.
-      - ./out/xroad-admin-certs:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/out/xroad-admin-certs:ro
-      - ./hurl:/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack/hurl
+      - ./out/xroad-admin-certs:/repo/out/xroad-admin-certs:ro
+      - ./hurl:/repo/hurl
       # ...with one addition, for a checkout that is a git WORKTREE. There,
       # /repo/.git is not a directory but a FILE holding
-      # "gitdir: <abs host path>/geatdm-framework/.git/worktrees/<name>" --
+      # "gitdir: <abs host path>/gif-linkup-demo/.git/worktrees/<name>" --
       # an absolute HOST path that does not exist inside the container, so
       # `git status --porcelain` exits 128 and every approval 409s with
       # "could not check whether ... is a clean checkout" (found live; the
@@ -616,7 +619,7 @@ services:
       # directory -- code the HOST's next git command would run, as root on
       # the droplet. `git status --no-optional-locks` (writer.py) is what
       # keeps that read from wanting to refresh .git/index.
-      - ${KP2_GIT_COMMON_DIR:-../../../.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}:ro
+      - ${KP2_GIT_COMMON_DIR:-./.git}:${KP2_GIT_COMMON_DIR:-/repo/.git}:ro
       # Same optional-mount pattern as KP2_GIT_COMMON_DIR above, for the
       # Postgres cluster's CA cert (deployment.yaml's datastore.kind:
       # postgres; named by KP2_JOIN_DB_URL's sslrootcert). Unset on

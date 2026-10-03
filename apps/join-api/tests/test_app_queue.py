@@ -54,7 +54,7 @@ def client(tmp_path, monkeypatch):
     # state and a suite is not a caller (app.py's rate_limit).
     app_module._BUCKETS.clear()
     repo_root = tmp_path / "repo"
-    pack = repo_root / "a" / "b" / "pack"  # apply_real defaults repo_root to parents[2]
+    pack = repo_root  # apply_real defaults repo_root to pack_dir: the pack is the repo
     writer._copy_pack(REAL_PACK_DIR, pack)
     _git("init", "-q", cwd=repo_root)
     _git("config", "user.email", "test@example.invalid", cwd=repo_root)
@@ -171,8 +171,8 @@ def test_active_record_carries_the_uncommitted_flag(client):
     entry = next(r for r in body if r["id"] == record["id"])
     assert entry["uncommitted"] is True  # written by approve, never committed
 
-    _git("add", "-A", cwd=app_module.PACK_DIR.resolve().parents[2])
-    _git("commit", "-q", "-m", "commit the join", cwd=app_module.PACK_DIR.resolve().parents[2])
+    _git("add", "-A", cwd=app_module.PACK_DIR)
+    _git("commit", "-q", "-m", "commit the join", cwd=app_module.PACK_DIR)
 
     body_after = client.get("/requests", headers=OPERATOR).json()["requests"]
     entry_after = next(r for r in body_after if r["id"] == record["id"])

@@ -78,7 +78,7 @@ class DirtyCheckoutError(Exception):
 
 class GitCheckFailure(Exception):
     """The dirty-checkout check itself could not run -- a structural problem
-    (the pack copy ended up outside the monorepo, `repo_root` does not
+    (the pack copy is not a git checkout, `repo_root` does not
     resolve to a real git repo, `git` itself is missing) rather than the
     checkout genuinely being dirty. Distinct from DirtyCheckoutError: this is
     "could not tell", not "and the answer is yes". Refusing here is the safe
@@ -997,11 +997,9 @@ def apply_real(
     approved_at: str | None = None,
 ) -> None:
     """The real write-then-regenerate sequence, against the real pack_dir --
-    what actually makes the join real. repo_root defaults to three levels
-    above pack_dir (docker-compose.yml: PACK_DIR is /repo/10-Knowledge-
-    Products/KP2-GIF/KP2-build-pack, repo_root is /repo, the enclosing
-    .git); overridable so tests can point it at a throwaway repo instead of
-    relying on that exact nesting.
+    what actually makes the join real. repo_root defaults to pack_dir
+    itself (docker-compose.yml: PACK_DIR is /repo, the repository root with
+    its .git); overridable so tests can point it at a throwaway repo instead.
 
     Refuses (DirtyCheckoutError) before writing anything if `git status
     --porcelain configs/ manifest.yaml onboarding/` is not clean --
@@ -1023,7 +1021,7 @@ def apply_real(
     only assigns them onto the record after it returns, so reading them off
     the record here would write 01-admission.md with them still empty.
     """
-    repo_root = repo_root or pack_dir.resolve().parents[2]
+    repo_root = repo_root or pack_dir.resolve()
     dirty = _git_status_dirty(repo_root, pack_dir)
     if dirty.strip():
         raise DirtyCheckoutError(

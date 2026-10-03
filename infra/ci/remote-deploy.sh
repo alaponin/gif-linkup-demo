@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs ON THE DROPLET (piped over SSH by the workflow) after the monorepo
+# Runs ON THE DROPLET (piped over SSH by the workflow) after the
 # checkout has been rsynced to /opt/kp2/repo. Follows runbook.md's own
 # order: gen-secrets (first deploy only) -> preflight -> preload-images ->
 # deploy -> seed -> acceptance. Budget ~15 min cold (deploy alone is
 # ~11-13 min per docs/deployment-targets.md).
 set -euo pipefail
 
-PACK="/opt/kp2/repo/10-Knowledge-Products/KP2-GIF/KP2-build-pack"
+PACK="/opt/kp2/repo"
 cd "$PACK"
 
 # This process's own default, only -- scripts/join-store-export.sh is never
