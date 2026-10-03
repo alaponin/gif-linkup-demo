@@ -194,7 +194,7 @@ deployed by accident.
 `name=value` list and a trailing `#` ends up inside the value. Commentary lives
 here instead.
 
-`check_scenarios.py` runs as part of the ship gate: `kp-solution-verify`'s
+`check_scenarios.py` runs as part of the ship gate: the course kit's
 `check_pack.py` executes any `<pack>/<tool>/check_*.py` it finds, so a scenario set
 with an undefined variable or a drifted credential cannot pass `--ready`.
 

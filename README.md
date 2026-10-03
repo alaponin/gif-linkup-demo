@@ -1,4 +1,4 @@
-# KP2 build pack — Government Interoperability Framework
+# The build pack — Building a Government Interoperability Framework (GIF)
 
 > **On the Progressa Learner Registry (PLR).** The PNEA ← PNIA + PLR exchange this pack proves is
 > the **target-state** slice that the National Learner Registry programme delivers. In the Progressa
