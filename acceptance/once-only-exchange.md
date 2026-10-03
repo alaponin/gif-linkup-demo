@@ -64,11 +64,11 @@ not silent.
 **Artefact:** on success the suite writes `out/application-{nin}.json` — the
 assembled credential application with per-field provenance (the one citizen
 field vs every bus-pre-filled field and its source). This is the tangible
-asked-once object for the video demonstration, and the seam a KP4 Joget form
+asked-once object for the video demonstration, and the seam a Joget form (Building Block Approach to Digital Services course)
 later replaces. Optional further evidence at P0: the exchange visible in the
 provider Security Server's message log [confirm P0: message-log query].
 
-When this check passes, KP2 stops being a framework explained and becomes a
+When this check passes, the Government Interoperability Framework stops being a framework explained and becomes a
 framework that runs.
 
 Status: VERIFIED on the live stack. Every assertion above — the four

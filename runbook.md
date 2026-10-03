@@ -617,8 +617,8 @@ thing only a from-zero rebuild can prove: the reproducibility proof (below), or 
     the DELETE to this command, which is also where the Docker cleanup below
     has to be run anyway.
   - **Canonical members are refused** before anything happens, naming the
-    reason: `manifest.yaml`'s `identifiers:` block is the frozen KP3/KP4
-    cross-pack contract and a demonstration un-join must never change it.
+    reason: `manifest.yaml`'s `identifiers:` block is the frozen
+    cross-course contract (the DPI Roadmap and Building Block Approach courses reuse it) and a demonstration un-join must never change it.
   - **A member with its OWN Security Server leaves two Docker commands
     behind.** The API never touches Docker (same split as
     `scripts/join-agent.sh`), so the record carries the instruction and you

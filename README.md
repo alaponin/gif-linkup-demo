@@ -5,7 +5,7 @@
 > baseline the PLR is planned, not started — its absence is the sector problem. The pack builds the
 > exchange the country is working towards, not one it already has.
 
-The runnable companion to the KP2 video bundle. The videos teach the build; this
+The runnable companion to the *Government Interoperability Framework (GIF)* course videos. The videos teach the build; this
 pack **is** the ready solution — the configuration the modules generate, the prompts
 that generate it, the scripts that deploy it, and the acceptance checks that prove it.
 
@@ -53,7 +53,7 @@ reproducibility proof run.
 - **Stand it up (the long way):** `runbook.md`
 - **Index:** `manifest.yaml` (module → BB → config → prompt → acceptance, with
   `video_ref` to the Topic 5 subtopic each module realises, and the frozen
-  Progressa identifiers that are the KP3/KP4 join keys)
+  Progressa identifiers that are the join keys the DPI Roadmap and Building Block Approach courses reuse)
 - **Status against the onboarding path:** `docs/path-conformance.md` — the
   only place the pack states what it does and does not implement of the
   member onboarding path it teaches.
@@ -89,7 +89,7 @@ reproducibility proof run.
 | `deployment.yaml` | The analyst-facing deployment spec: X-Road version pins, network bind, the proxy authorization-cache period every Security Server boots with (`server_conf_cache_period`, rendered into `hurl/local.ini`), and the digest pins that back them (`cs_digest`, `ss_digest`, `testca_tag`). `.env` carries only secrets. |
 | `docker-compose.yml` | X-Road 7.7.0: Central Server, Test CA, and four Security Servers: PDGA plus PNEA, PLR and PNIA each on their own. MoEYS is retired. |
 | `configs/` | Declarative YAML per module. |
-| `prompts/` | The `bb-config-gen` plays that generate the configs. |
+| `prompts/` | The prompts that generate the configs. |
 | `hurl/` | The federation as config-as-code: Hurl scenarios driving the admin REST APIs, generated from `configs/`, retargeted from X-Road 7.7.0's own `setup.hurl`. |
 | `acceptance/` | Given/when/then per module. `once-only-exchange.md` is the framework's acceptance; `member.md` is the generic per-member check every joined member gets automatically; `join-member.md` is the join API's own transition and reachability check. |
 | `scripts/` | Deploy, seed, acceptance and teardown; `member.sh list\|remove\|drift` (reports on, retires and checks drift for joined members); `join.sh up\|down\|status` (the join API's service lifecycle); and `verify.sh`, the tiered entry point above. |
@@ -146,11 +146,11 @@ What each tier-1 pattern label means, and the BB specification it anchors on, is
 
 ## Joget-free by design
 
-KP2's slice is **Joget-free**: the member systems are mocks behind stable OpenAPI contracts. That is the seam where KP4's Joget DX apps plug in later without touching the X-Road configuration. `docs/kp4-seam.md` states the seam as a contract: what is frozen, the two shapes a Joget app can take, the data fixture it must serve, and the host it has to fit on.
+This course's slice is **Joget-free**: the member systems are mocks behind stable OpenAPI contracts. That is the seam where the Joget DX apps of the Building Block Approach to Digital Services course plug in later without touching the X-Road configuration. `docs/kp4-seam.md` states the seam as a contract: what is frozen, the two shapes a Joget app can take, the data fixture it must serve, and the host it has to fit on.
 
 ## Status
 
-Built and proven with the `itu-giga-kp` kit: `bb-config-gen` fills the configs, `kp-solution-verify` proves the pack runs.
+Built and proven with the course's production kit: its configuration generator fills the configs, and its acceptance gate proves the pack runs.
 
 **Status: VERIFIED.** `check_pack.py --ready` passes and the live acceptance suite is green. That includes the reproducibility proof (`teardown.sh --purge` → cold redeploy → reseed → acceptance, unattended) and a full console up/exercise/reset pass.
 
