@@ -197,7 +197,10 @@ def test_lib_stack_resolves_the_identity_from_the_host_not_from_an_export():
 
     # No kp2 account (every laptop): the developer's own id, unchanged. This
     # is the invariant lib-stack.sh must preserve no matter which branch it
-    # resolves through.
+    # resolves through. Only checkable where the account really is absent:
+    # on the droplet cloud-init created it, and verify.sh --fast runs there too.
+    if subprocess.run(["id", "-u", "kp2"], capture_output=True).returncode == 0:
+        return
     plain = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env | {"PATH": os.environ["PATH"]})
     assert plain.stdout.strip() == f"{os.getuid()}:{os.getgid()}", (plain.stdout, plain.stderr)
 
