@@ -310,7 +310,7 @@ made to fail, against a running federation:
    AssertionError: apps/specs/pnia-identity.openapi.yaml: undeclared=['mother_name'] missing=[]
    FAIL 2.6.6 — field conformance — both responses carry exactly the fields their contract declares (G5.9)
    ```
-   The failure names the field **NAME** only — no value (`Awa Jallow`, the
+   The failure names the field **NAME** only — no value (`Nia Kivuli`, the
    seeded `mother_name` for this NIN) appears anywhere in the check's own
    output, confirming the purpose-limitation guarantee held under a real
    failure, not just in the code that was supposed to guarantee it.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Seed Progressa demo data for KP2: regenerate the Gambia-grounded CSVs
-# (Progressa-named; the source country is never named in artefacts) and restart
+# Seed Progressa demo data for KP2: regenerate the invented Progressa CSVs
+# and restart
 # the mock providers so they reload. Institution names + BB ids stay identical
 # across packs (join keys for the cumulative Progressa solution).
 set -euo pipefail

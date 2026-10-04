@@ -92,7 +92,7 @@ doing at each one. It refuses if a federation is already deployed.
    see `hurl/README.md` to run or retarget them, and `docs/decisions/xroad-770-notes.md` for
    what reading the reference corrected.
 3. **Seed** — `scripts/seed.sh`
-   Regenerates the Progressa demonstration data (Gambia-grounded, Progressa-named)
+   Regenerates the Progressa demonstration data (invented names, provinces and schools)
    and restarts the mock providers with it.
 4. **Prove** — `scripts/acceptance.sh`
    Runs `acceptance/federation-core.md` … `once-only-exchange.md` in order; exits non-zero on first failure.
@@ -1327,6 +1327,6 @@ images are pinned to it. `Docker/xrd-dev-stack` does not exist before 7.5.0 and 
 gone on `develop` — read the reference at the tag you deploy.
 
 > Reproducible: every step is a script in `scripts/` or a scenario in `hurl/`, and
-> every one of them is generated from `configs/` by bb-config-gen or
+> every one of them is generated from `configs/` by the prompts in `prompts/` or
 > `hurl/generate.py`. Do not hand-edit a config in `configs/`, a scenario in
 > `hurl/scenarios/`, or `hurl/vars.env` — regenerate them.

@@ -12,7 +12,7 @@ hurl/vars.env -- change configs/ or this file and re-run:
 
 Every identifier comes from configs/*.yaml and manifest.yaml, so the pack has a
 single source of truth for the Progressa identifiers and the Hurl set cannot
-drift from the YAML the bb-config-gen plays produce.
+drift from the YAML the configuration prompts produce.
 """
 
 from __future__ import annotations

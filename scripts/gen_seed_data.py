@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generate the Progressa demonstration seed data (deterministic).
 
-Grounding: realities of a small West African country — regions, Lower/Upper
-Basic + Senior Secondary school structure, 11-digit NIN-style identifiers
-[confirm: exact NIN format at P0]. Progressa names only; the source country is
-never named in any artefact.
+Grounding: an invented country. Names, provinces and schools are made up and
+belong to no real country; the structure is a small country's Basic + Senior
+Secondary schools and 11-digit NIN-style identifiers [confirm: exact NIN format
+at P0]. The lists keep their lengths so the rng draws, and so every NIN, stay
+the same as when the data was first generated.
 
 Outputs (to the directory given as argv[1]):
   persons.csv         50 persons at PNIA (the identity authority)
@@ -23,22 +24,22 @@ from pathlib import Path
 
 SEED = 2026  # deterministic — same data every run
 
-GIVEN_F = ["Fatou", "Awa", "Isatou", "Mariama", "Adama", "Binta", "Haddy",
-           "Kaddy", "Jainaba", "Sainabou", "Ndey", "Amie"]
-GIVEN_M = ["Lamin", "Modou", "Ousman", "Ebrima", "Momodou", "Bakary", "Alieu",
-           "Sulayman", "Kebba", "Yusupha", "Omar", "Saikou"]
-FAMILY = ["Ceesay", "Jallow", "Touray", "Njie", "Bah", "Camara", "Sanneh",
-          "Darboe", "Sowe", "Jammeh", "Faal", "Bojang", "Saidy", "Colley"]
-REGIONS = ["Banjul", "Kanifing", "West Coast", "North Bank",
-           "Lower River", "Central River", "Upper River"]
+GIVEN_F = ["Amara", "Nia", "Imani", "Zuri", "Halima", "Neema", "Rehema",
+           "Asha", "Lulu", "Tendai", "Chipo", "Ayana"]
+GIVEN_M = ["Juma", "Baraka", "Daudi", "Tumelo", "Jabari", "Kamau", "Sefu",
+           "Tariq", "Musa", "Neo", "Omari", "Themba"]
+FAMILY = ["Malando", "Kivuli", "Toreni", "Mbaleka", "Sanyika", "Chiwoso", "Lumbazi",
+          "Nyakeru", "Pemvani", "Shandoro", "Wakesa", "Zimbeli", "Ondaka", "Ruvelo"]
+REGIONS = ["Capital Province", "Lakeside Province", "Coastal Province", "Northern Province",
+           "Riverside Province", "Central Province", "Highland Province"]
 SCHOOLS = {
-    "Banjul": "Banjul Senior Secondary School",
-    "Kanifing": "Kanifing Senior Secondary School",
-    "West Coast": "Brikama Senior Secondary School",
-    "North Bank": "Kerewan Senior Secondary School",
-    "Lower River": "Mansakonko Senior Secondary School",
-    "Central River": "Janjanbureh Senior Secondary School",
-    "Upper River": "Basse Senior Secondary School",
+    "Capital Province": "Capital Senior Secondary School",
+    "Lakeside Province": "Lakeside Senior Secondary School",
+    "Coastal Province": "Coastal Senior Secondary School",
+    "Northern Province": "Northern Senior Secondary School",
+    "Riverside Province": "Riverside Senior Secondary School",
+    "Central Province": "Central Senior Secondary School",
+    "Highland Province": "Highland Senior Secondary School",
 }
 N_PERSONS = 50
 N_MISSING_FROM_PLR = 4   # in PNIA, not PLR -> clean-404 negative check

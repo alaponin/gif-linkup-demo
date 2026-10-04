@@ -92,7 +92,7 @@ reproducibility proof run.
 | `acceptance/` | Given/when/then per module. `once-only-exchange.md` is the framework's acceptance; `member.md` is the generic per-member check every joined member gets automatically; `join-member.md` is the join API's own transition and reachability check. |
 | `scripts/` | Deploy, seed, acceptance and teardown; `member.sh list\|remove\|drift` (reports on, retires and checks drift for joined members); `join.sh up\|down\|status` (the join API's service lifecycle); and `verify.sh`, the tiered entry point above. |
 | `tests/` | The golden corpus for `hurl/generate.py` (`test_golden.py`, no Docker). |
-| `apps/` | Mock REST registries behind the Security Servers, their OpenAPI contracts, and Gambia-grounded, Progressa-named seed data. See below for `apps/console/` and `apps/join-api/`. |
+| `apps/` | Mock REST registries behind the Security Servers, their OpenAPI contracts, and invented Progressa seed data. See below for `apps/console/` and `apps/join-api/`. |
 | `docs/` | The production delta (Module 5.7), the X-Road 8 note, what reading the 7.7.0 reference corrected, and `deployment-targets.md`, the contract a `target:` other than `docker-local` would be written against. |
 
 Two of the `apps/` are worth naming:

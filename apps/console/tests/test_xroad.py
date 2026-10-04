@@ -167,7 +167,7 @@ CALLS = [
 def test_exchange_happy_path():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-road-client"] == "PROGRESSA/GOV/PNEA/EXAMS"
-        return httpx.Response(200, json={"nin": "123", "given_name": "Binta"}, request=request)
+        return httpx.Response(200, json={"nin": "123", "given_name": "Neema"}, request=request)
 
     results = exchange(
         "http://ss-plr:8080", CALLS, "123", "PROGRESSA/GOV/PNEA/EXAMS",
@@ -177,7 +177,7 @@ def test_exchange_happy_path():
     assert results[0].status_code == 200
     assert results[0].denied is False
     assert results[0].error is None
-    assert results[0].body["given_name"] == "Binta"
+    assert results[0].body["given_name"] == "Neema"
 
 
 def test_exchange_denied_parses_exact_fault_shape():
