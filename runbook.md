@@ -57,7 +57,7 @@ Everything below is the engineering depth under those three.
   errors, not time errors. Check before deploying, don't just assume it:
   `timedatectl status` (Linux, look for `System clock synchronized: yes`) or
   `sntp -sS time.apple.com` / System Settings → Date & Time (macOS).
-- No ITU cloud dependency: this run book targets the local stack. The ITU cloud
+- No cloud dependency: this run book targets the local stack. The cloud
   (Linkup) deployment re-targets the same scripts later — see
   `docs/deployment-targets.md`.
 - **Firewalled host, conference network, or air-gapped machine?** `deploy.sh`
